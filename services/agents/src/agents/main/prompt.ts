@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import type { Skill } from "@aep/contracts";
+
 /** System instructions for the file-mutating main agent. */
 export const instructions = `You are a spec-bundle editing agent. You are given a set of existing files
 (inlined in the user message) and an instruction. Apply the instruction by calling the file tools.
@@ -43,6 +45,30 @@ Reacting to tool results (each result tells you the next move):
 - INVALID_YAML — your edit would break the YAML and was rejected; fix the indentation of newString and retry.
 
 Keep prose outside tool calls to a single short sentence. When the instruction is fully applied, stop.`;
+
+/**
+ * The skill catalog appended to the END of the system prompt (ADR-0002): skill
+ * names + one-line descriptions only, never bodies. It is identical across a
+ * conversation's turns (the caller sends the same library), so the cacheable
+ * instruction prefix is preserved. Returns "" for an empty list, leaving the
+ * base instructions byte-identical to a skill-free turn.
+ */
+export function buildSkillCatalog(skills: readonly Skill[]): string {
+  if (skills.length === 0) return "";
+  const lines = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  return `
+
+# Skills
+
+You have access to skills — reusable guidance for specific tasks. Only their names and one-line descriptions are listed below; the full guidance is hidden until you load it. If a skill is relevant to the instruction, call loadSkill(name) to read its guidance BEFORE applying it — never guess a skill's contents.
+
+${lines}`;
+}
+
+/** Base instructions + the skill catalog (empty when no skills are supplied). */
+export function buildInstructions(skills: readonly Skill[] = []): string {
+  return instructions + buildSkillCatalog(skills);
+}
 
 /**
  * The starting spec bundle the demo mutates. Mirrors the hello-api example in
@@ -135,7 +161,9 @@ paths:
 /** Build the user prompt: the current bundle inlined + the mutation instruction. */
 export function buildPrompt(files: Record<string, string>, instruction: string): string {
   const inlined = Object.entries(files)
-    .map(([path, content]) => `### ${path}\n\`\`\`\n${content}\`\`\``)
+    // Ensure a newline before the closing fence so a file lacking a trailing \n
+    // doesn't glue its last line to ``` (corrupting the block boundary).
+    .map(([path, content]) => `### ${path}\n\`\`\`\n${content.endsWith("\n") ? content : `${content}\n`}\`\`\``)
     .join("\n\n");
   return `Existing files:
 

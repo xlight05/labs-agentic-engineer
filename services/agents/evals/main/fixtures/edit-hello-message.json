@@ -1,0 +1,21 @@
+{
+  "name": "edit-hello-message",
+  "description": "Single-turn: rename the hello message in the spec.",
+  "difficulty": "easy",
+  "turns": [
+    {
+      "prompt": "Change the hello message from \"Hello, World!\" to \"Hi there!\" everywhere it appears in the spec bundle."
+    }
+  ],
+  "expect": {
+    "filesContain": [
+      { "path": "specs/design/components/hello-api/openapi.yaml", "text": "Hi there!" }
+    ],
+    "filesNotContain": [
+      { "path": "specs/design/components/hello-api/openapi.yaml", "text": "Hello, World!" }
+    ],
+    "yamlValid": ["specs/design/components/hello-api/openapi.yaml"],
+    "touched": ["specs/design/components/hello-api/openapi.yaml"],
+    "preferEdit": true
+  }
+}

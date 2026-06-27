@@ -108,8 +108,9 @@ test("removeFile: protects roots, deletes components, NOOP on absent", () => {
 test("setFrontmatterField: sets array + scalar, renders valid YAML, preserves body", () => {
   const b = fresh();
   expectOk(b.setFrontmatterField(DESIGN, "skillsApplied", ["go", "docker"]));
-  const scalar = expectOk(b.setFrontmatterField(DESIGN, "language", "TypeScript"));
-  const content = scalar.newContent;
+  expectOk(b.setFrontmatterField(DESIGN, "language", "TypeScript"));
+  // OpOk no longer carries newContent (§5); read the post-op content directly.
+  const content = b.read(DESIGN)!;
   const fm = parseYaml(content.split("\n---")[0]!.replace(/^---\n/, "")) as Record<string, unknown>;
   assert.deepEqual(fm.skillsApplied, ["go", "docker"]);
   assert.equal(fm.language, "TypeScript");

@@ -1,0 +1,50 @@
+{
+  "name": "name-param-then-required",
+  "description": "Continuation: turn 1 (recorded) adds an optional `name` query param; turn 2 makes it required. The `messages` block is an ILLUSTRATIVE recorded trace — regenerate against the live model with `EVAL_RECORD=1 pnpm --filter @aep/agents eval -- name-param-then-required` (anchors are valid against SEED_FILES, but the real model phrasing/op-split may differ).",
+  "difficulty": "medium",
+  "messages": [
+    { "role": "user", "content": "Add an optional `name` query parameter to GET /hello." },
+    {
+      "role": "assistant",
+      "content": [
+        { "type": "text", "text": "Adding the name query parameter." },
+        {
+          "type": "tool-call",
+          "toolCallId": "call_1",
+          "toolName": "editFile",
+          "input": {
+            "path": "specs/design/components/hello-api/openapi.yaml",
+            "oldString": "      operationId: getHello\n      responses:",
+            "newString": "      operationId: getHello\n      parameters:\n        - name: name\n          in: query\n          required: false\n          schema:\n            type: string\n      responses:"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": [
+        {
+          "type": "tool-result",
+          "toolCallId": "call_1",
+          "toolName": "editFile",
+          "output": {
+            "type": "json",
+            "value": { "ok": true, "op": "edit", "path": "specs/design/components/hello-api/openapi.yaml", "status": "applied" }
+          }
+        }
+      ]
+    }
+  ],
+  "turns": [
+    { "prompt": "Make the `name` query parameter required." }
+  ],
+  "expect": {
+    "fileMatches": [
+      { "path": "specs/design/components/hello-api/openapi.yaml", "pattern": "name:[\\s\\S]*?required:\\s*true" }
+    ],
+    "filesNotContain": [
+      { "path": "specs/design/components/hello-api/openapi.yaml", "text": "required: false" }
+    ],
+    "yamlValid": ["specs/design/components/hello-api/openapi.yaml"]
+  }
+}

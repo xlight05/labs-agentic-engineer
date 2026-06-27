@@ -42,7 +42,7 @@ LICENSE_FILES = $(shell git ls-files | \
 	grep -E '\.(go|ts|tsx|sh)$$|(^|/)Dockerfile$$' | \
 	grep -vE '\.gen\.go$$|_mock\.go$$|/mocks/|/node_modules/|/dist/|/generated/')
 
-.PHONY: install gen build dev test lint typecheck license license-check tools clean
+.PHONY: install gen build dev test lint typecheck license license-check tools clean eval
 
 install:
 	$(PNPM) install
@@ -62,6 +62,11 @@ dev:
 test: gen
 	$(TURBO) run test
 	@for d in $(GO_MODULE_DIRS); do echo ">> go test $$d"; ( cd "$$d" && go test ./... ); done
+
+# Model eval for @aep/agents (report-not-gate; spends tokens, skips without a key).
+# Not a turbo task — kept out of the CI `test` graph.
+eval:
+	$(PNPM) --filter @aep/agents eval
 
 lint:
 	$(TURBO) run lint

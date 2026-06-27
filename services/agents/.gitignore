@@ -1,0 +1,5 @@
+# Eval preview dumps — human inspection only, regenerated each run.
+evals/.eval-preview/
+
+# Eval result reports — non-deterministic live-model output, regenerated each run.
+evals/eval-results/

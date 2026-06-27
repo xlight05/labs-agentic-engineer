@@ -23,7 +23,7 @@
  * the agent's prompt (free, prefill-cached), so re-emitting a file body to
  * change two lines is the expensive thing. `editFile` is an anchored
  * search/replace whose output cost scales with the EDIT, not the file. See
- * design.md for the full rationale.
+ * services/agents/design/ADR-0001-anchored-file-edits.md for the full rationale.
  *
  * Design invariants this class enforces (pure, no I/O, fully testable):
  *  - Matching is LITERAL substring with NO structural normalization, so
@@ -39,6 +39,24 @@
  */
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import type {
+  Op,
+  ErrCode,
+  MatchCandidate,
+  OpOk,
+  OpErr,
+  OpResult,
+} from "@aep/contracts";
+
+// The op shapes & result types are the WIRE contract — defined once in
+// `@aep/contracts` and imported here type-only (erased at runtime, so the
+// domain stays dependency-light). Re-exported so in-package consumers
+// (`tool.ts`, the tests) keep importing them from the domain module.
+// NOTE: a successful `OpOk` carries NO file content (no `newContent`) — see §5
+// of the design doc / ADR-0001; the model anchors from its own tool-call args
+// and the re-inlined CURRENT STATE, and consumers reconstruct state from the
+// stream (`applyToolCall`).
+export type { Op, ErrCode, MatchCandidate, OpOk, OpErr, OpResult };
 
 /** Structural root files the demo refuses to delete. */
 const PROTECTED_PATHS = new Set<string>([
@@ -47,72 +65,15 @@ const PROTECTED_PATHS = new Set<string>([
 ]);
 
 /** Leading YAML frontmatter fence: `---\n<block>\n---`. */
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
-
-export type Op = "add" | "edit" | "remove" | "frontmatter";
-
-export type ErrCode =
-  | "ALREADY_EXISTS"
-  | "INVALID_PATH"
-  | "NOT_FOUND"
-  | "NOT_UNIQUE"
-  | "NO_SUCH_FILE"
-  | "EMPTY_OLD_STRING"
-  | "INVALID_YAML"
-  | "NO_FRONTMATTER"
-  | "PROTECTED_PATH";
-
-export interface OpOk {
-  ok: true;
-  path: string;
-  op: Op;
-  /** `applied` = state changed; `already-applied`/`noop` = idempotent no-change. */
-  status: "applied" | "already-applied" | "noop";
-  /** Post-op content ("" for a removed file). */
-  newContent: string;
-  /**
-   * Set in `warn` yamlMode when the applied content is not valid YAML: the edit
-   * still landed (disk-mode option B — leave the bytes), but the caller should
-   * surface this. Absent in `reject` mode, where invalid YAML is a hard error.
-   */
-  warning?: string;
-}
-
-/**
- * How invalid post-edit YAML is handled. `reject` (default) leaves the bundle
- * byte-for-byte unchanged and returns INVALID_YAML — the safe in-memory
- * contract. `warn` applies the edit anyway and tags the result with `warning`
- * — used in disk mode, where the bytes are already streamed to the real file.
- */
-export type YamlMode = "reject" | "warn";
-
-export interface MatchCandidate {
-  line: number;
-  text: string;
-}
-
-export interface OpErr {
-  ok: false;
-  path: string;
-  op: Op;
-  code: ErrCode;
-  message: string;
-  /** Populated for NOT_UNIQUE / NOT_FOUND to steer one-step re-anchoring. */
-  candidates?: MatchCandidate[];
-  count?: number;
-}
-
-export type OpResult = OpOk | OpErr;
+export const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/;
 
 const MAX_CANDIDATES = 6;
 
 export class FileBundle {
   private files = new Map<string, string>();
   private touchedPaths = new Set<string>();
-  private yamlMode: YamlMode;
 
-  constructor(initial: Record<string, string> = {}, opts: { yamlMode?: YamlMode } = {}) {
-    this.yamlMode = opts.yamlMode ?? "reject";
+  constructor(initial: Record<string, string> = {}) {
     for (const [path, content] of Object.entries(initial)) {
       this.files.set(path, lf(content));
     }
@@ -150,7 +111,7 @@ export class FileBundle {
     const next = lf(content);
     if (this.files.has(path)) {
       if (this.files.get(path) === next) {
-        return ok(path, op, "noop", next); // identical re-add
+        return ok(path, op, "noop"); // identical re-add
       }
       return err(
         path,
@@ -186,7 +147,7 @@ export class FileBundle {
       // (e.g. a short newString that coincidentally occurs inside another word),
       // silently dropping a requested change — worse than a corrective retry.
       if (newS.trim() !== "" && occurrences(content, newS).length === 1) {
-        return ok(path, op, "already-applied", content);
+        return ok(path, op, "already-applied");
       }
       return err(
         path,
@@ -220,35 +181,17 @@ export class FileBundle {
     );
   }
 
-  /**
-   * Locate a UNIQUE occurrence of `oldString` for the disk-streaming splice
-   * preview (run.ts) — returns the surrounding text, or null when the anchor is
-   * absent or ambiguous (nothing is streamed; editFile()'s result then carries
-   * the authoritative NOT_FOUND / NOT_UNIQUE error). Shares the exact matching
-   * (CRLF-normalized, non-overlapping) with editFile, so the live preview can
-   * never diverge from the bytes editFile commits.
-   */
-  locate(path: string, oldString: string): { head: string; tail: string } | null {
-    const content = this.files.get(path);
-    if (content === undefined || oldString === "") return null;
-    const oldS = lf(oldString);
-    const starts = occurrences(content, oldS);
-    if (starts.length !== 1) return null;
-    const idx = starts[0]!;
-    return { head: content.slice(0, idx), tail: content.slice(idx + oldS.length) };
-  }
-
   removeFile(path: string): OpResult {
     const op: Op = "remove";
     if (PROTECTED_PATHS.has(path)) {
       return err(path, op, "PROTECTED_PATH", `${path} is a structural root and cannot be deleted.`);
     }
     if (!this.files.has(path)) {
-      return ok(path, op, "noop", ""); // idempotent delete
+      return ok(path, op, "noop"); // idempotent delete
     }
     this.files.delete(path);
     this.touchedPaths.add(path);
-    return ok(path, op, "applied", "");
+    return ok(path, op, "applied");
   }
 
   setFrontmatterField(
@@ -292,20 +235,18 @@ export class FileBundle {
   }
 
   /**
-   * Apply `content` to `path`, gated by the YAML reparse guard. In `reject`
-   * mode invalid YAML aborts with INVALID_YAML and no write; in `warn` mode the
-   * content is written and tagged with a `warning` (disk-mode option B).
+   * Apply `content` to `path`, gated by the YAML reparse guard: invalid YAML
+   * aborts with INVALID_YAML and no write (leaves the bundle byte-for-byte
+   * unchanged — the safe in-memory contract).
    */
   private commit(path: string, op: Op, content: string, rejectMsg: (yamlErr: string) => string): OpResult {
     const yamlErr = checkYaml(path, content);
-    if (yamlErr && this.yamlMode === "reject") {
+    if (yamlErr) {
       return err(path, op, "INVALID_YAML", rejectMsg(yamlErr));
     }
     this.files.set(path, content);
     this.touchedPaths.add(path);
-    const result = ok(path, op, "applied", content);
-    if (yamlErr) result.warning = `invalid YAML: ${yamlErr}`;
-    return result;
+    return ok(path, op, "applied");
   }
 }
 
@@ -313,13 +254,13 @@ export class FileBundle {
 // Helpers
 // -------------------------------------------------------------------------
 
-/** Canonical newline form — all bundle content is stored LF; shared with run.ts. */
+/** Canonical newline form — all bundle content is stored LF. */
 export function lf(s: string): string {
   return s.replace(/\r\n/g, "\n");
 }
 
-function ok(path: string, op: Op, status: OpOk["status"], newContent: string): OpOk {
-  return { ok: true, path, op, status, newContent };
+function ok(path: string, op: Op, status: OpOk["status"]): OpOk {
+  return { ok: true, path, op, status };
 }
 
 function err(

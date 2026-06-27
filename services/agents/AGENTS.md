@@ -1,41 +1,40 @@
 # AGENTS.md — services/agents (`@aep/agents`)
 
-TS interactive spec agents (Vercel AI SDK). Ported from the legacy `agents/`
-service (`plan.md` §10) — currently seeded with ONE agent: the **main
-file-mutation agent** (prompt-driven add / edit / remove over a spec bundle,
-with an optional disk-streaming mode).
+TS interactive spec agents (Vercel AI SDK). Seeded with ONE agent: the **main
+file-mutation agent** (prompt-driven add/edit/remove over a spec bundle), exposed
+as an **SSE turn stream** (one turn = one HTTP request). The runtime **writes no
+files** — accept/edit/save is a separate concern.
 
-**Status:** seeded with the main agent only. The other spec agents (architect,
-requirements-chat, tech-lead) land as the service is fully ported.
+## Design
 
-## Layout
+Wire types (SSE events, `OpResult`, `*Input`, `Change`) live in `@aep/contracts`
+(`src/agents/sse-events.ts`) — the source of truth; Zod schemas are drift-guarded
+against them. See `design/` (`ADR-0001-anchored-file-edits.md`,
+`ADR-0002-skills-progressive-disclosure.md`, `agent-loop-and-eval-framework.md`).
 
-- `src/agents/main/` — the agent:
-  - `bundle.ts` — pure in-memory spec bundle + ops (anchored search/replace with
-    uniqueness + candidate echo, idempotency, YAML reparse guard). Testable, no I/O.
-  - `disk.ts` — `DiskMirror`: sandboxed real-filesystem mirror for disk mode.
-  - `tool.ts` — the four AI-SDK tools (`addFile`/`editFile`/`removeFile`/`setFrontmatterField`).
-  - `prompt.ts` — system instructions + the seed corpus the demo mutates.
-  - `run.ts` — CLI entry + `renderRun()` (consumes `fullStream`, renders the live
-    diff, streams mutations to disk).
-- `src/shared/` — the model seam (`createModel`) + config.
-
-Tool-edit rationale (anchored search/replace; alternatives rejected) is
-`docs/decisions/ADR-0003-anchored-file-edits.md`; the loop/SSE/persistence/eval
-refactor is `docs/design/agent-loop-and-eval-framework.md`. Tool *semantics* live
-in `bundle.ts` / `tool.ts`, not a separate design doc.
+**Skills** are guidance (not code): the caller pushes `skills: { name, description,
+content }[]` in the turn payload, the service shows a name+description **catalog** at
+the end of the system prompt, and the agent pulls a body on demand via the
+**`loadSkill`** tool. The service never reads skills from disk (the eval reads
+repo-root `skills/`); no skills in the payload → no catalog, behaves as today. See
+ADR-0002.
 
 ## Run
 
-- `pnpm --filter @aep/agents main -- "<instruction>"` — in-memory demo.
-- `pnpm --filter @aep/agents main -- --root foo1 "<instruction>"` — disk mode;
-  open `foo1/specs/design/components/hello-api/openapi.yaml` to watch edits stream in.
-- Needs `ANTHROPIC_API_KEY` — export it, or add it to a `.env` at the monorepo
-  root (see `.env.example`). `run.ts` reads the env, walking up to the nearest `.env`.
+- `pnpm --filter @aep/agents dev` — SSE server, watch/reload. `start` — run once.
+- Endpoints: `POST /conversations/:id/turns` (SSE) · `GET /conversations/:id`.
+- Needs `ANTHROPIC_API_KEY` (export, or `.env` at monorepo root — see `.env.example`).
+
+## Test
+
+- `test` — source unit tests (`src/**/*.test.ts`), no tokens.
+- `test:eval` — deterministic eval-tree tests (`evals/**/*.test.ts`), no tokens.
+- `eval` — model suite over the live route; report-not-gate, skips without a key.
+- `typecheck:eval` — typecheck the eval tree (`tsconfig.eval.json`).
 
 ## Conventions
 
-- SDK-specific wiring lives here (the consumer), not in `packages/agent` (the
-  SDK-agnostic surface).
+- SDK wiring lives here, not in `packages/agent` (SDK-agnostic surface).
 - Latest Claude models by default (see the `claude-api` skill for model ids).
-- One public entry point per agent under `src/agents/<name>/run.ts`.
+- One agent per `src/agents/<name>/`; the loop (`run-turn.ts`) is shared.
+- `src/` writes no files; only `evals/` touches the filesystem.

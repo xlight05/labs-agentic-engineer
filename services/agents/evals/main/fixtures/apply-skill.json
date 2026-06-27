@@ -1,0 +1,22 @@
+{
+  "name": "apply-skill",
+  "description": "Progressive disclosure: agent loads the relevant skill and derives a component per its convention (ADR-0002).",
+  "difficulty": "medium",
+  "turns": [
+    {
+      "prompt": "Derive a new backend component named `notifier` — a Go service that sends user notifications. Follow our component architecture skill for where the spec lives and what frontmatter it needs."
+    }
+  ],
+  "expect": {
+    "toolsUsed": ["loadSkill"],
+    "filesContain": [
+      { "path": "specs/design/components/notifier/design.md", "text": "type: service" },
+      { "path": "specs/design/components/notifier/design.md", "text": "buildpack: docker" }
+    ],
+    "fileMatches": [
+      { "path": "specs/design/components/notifier/design.md", "pattern": "language:\\s*Go" }
+    ],
+    "touched": ["specs/design/components/notifier/design.md"],
+    "noToolErrors": true
+  }
+}

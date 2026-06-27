@@ -16,21 +16,19 @@
  * under the License.
  */
 
-export * from "./agents/sse-events";
-
-import type { components } from "./generated/example";
-
 /**
- * Widget is sourced from the generated OpenAPI types — never hand-defined.
- * The OpenAPI spec (`openapi/example.yaml`) is the single source of truth.
+ * `writePreview` — dump the RECONSTRUCTED snapshot the eval scored into a
+ * gitignored dir for human inspection while tuning prompts. NOT part of scoring;
+ * it writes the already-reconstructed files (no extra processing), clearing the
+ * per-turn dir first so a removed file shows as absence.
  */
-export type Widget = components["schemas"]["Widget"];
 
-/**
- * A trivial consumer of the generated type. Renaming or removing the `name`
- * field in the OpenAPI spec breaks this line at typecheck time — guard #2,
- * the self-correction signal at a contract consumer.
- */
-export function widgetLabel(w: Widget): string {
-  return w.name;
+import { DiskMirror } from "./disk.js";
+
+export function writePreview(dir: string, snapshot: Record<string, string>): void {
+  const mirror = new DiskMirror(dir);
+  mirror.clear();
+  for (const [path, content] of Object.entries(snapshot)) {
+    mirror.write(path, content);
+  }
 }
