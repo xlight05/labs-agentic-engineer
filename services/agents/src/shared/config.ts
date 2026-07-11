@@ -72,6 +72,13 @@ export const config = {
   // doesn't do live rooms). Compose: ws://collab-server:3400.
   collabWsUrl: process.env.AGENT_COLLAB_WS_URL || undefined,
 
+  // Live-stream `addFile` markdown bodies into the collab doc as the model types
+  // them (docs/design/stream-addfile-content.md), instead of one write when the
+  // tool call closes. Default OFF: the feature ships dark; unset ⇒ byte-identical
+  // to today (execute() still does the single authoritative write). Only affects
+  // room-scoped (collab) `files` turns.
+  streamDocWrites: boolEnv(process.env.AGENT_STREAM_DOC_WRITES, false),
+
   // M2M gate (§12.3.2): a Bearer JWT with this audience, verified against a JWKS
   // (RS256) OR a shared secret (HS256) — whichever is configured. The gate is
   // ALWAYS ON; the composition root refuses to start if neither is set. No org

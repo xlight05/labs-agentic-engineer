@@ -307,6 +307,10 @@ services:
       # Room-scoped turns (#86 phase 4): the agents service joins spec rooms
       # as a live Yjs peer through the in-network collab server.
       AGENT_COLLAB_WS_URL: "ws://collab-server:3400"
+      # Live-stream addFile markdown bodies into the collab doc as they generate
+      # (docs/design/stream-addfile-content.md). Default off in the service; ON
+      # here for the feature e2e on this branch.
+      AGENT_STREAM_DOC_WRITES: "${AGENT_STREAM_DOC_WRITES:-true}"
       # AI SDK DevTools trace capture: wrap the model so every LLM call/step is
       # written to /repo/services/agents/.devtools/generations.json (bind-mounted
       # to deployments/data/agent-devtools). View with the host-side viewer:

@@ -32,6 +32,7 @@
 import { isStepCount, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { FileBundle, type McpConfig, type StreamPart, type Toolset } from "@aep/agent-stream";
 import { DocFileBundle } from "../collab/doc-bundle.js";
+import { StreamingDocWriter } from "../collab/streaming-add.js";
 import type { RoomPeer } from "../collab/room-peer.js";
 import { runTurn } from "../agents/main/run-turn.js";
 import { buildFileTools, ASK_QUESTION } from "../agents/main/tools/files.js";
@@ -139,6 +140,10 @@ export interface RunConversationTurnInput {
 
 export async function runConversationTurn(input: RunConversationTurnInput): Promise<Conversation> {
   input.guard.acquire(input.id); // throws ConcurrentTurnError on a concurrent turn → 409
+  // Live-preview writer (flag-gated, room-scoped files turns only): mirrors each
+  // addFile body into the doc AS IT STREAMS. Hoisted so the finally can drain +
+  // roll back a severed/rejected preview on EVERY exit path (before peer.leave).
+  let docWriter: StreamingDocWriter | undefined;
   try {
     // 1. load or lazily create
     const conv = (await input.store.get(input.id)) ?? freshConversation(input.id);
@@ -186,6 +191,21 @@ export async function runConversationTurn(input: RunConversationTurnInput): Prom
       }
     }
 
+    // 3c. Live doc streaming (flag-gated): only a room-scoped `files` turn has a
+    //     bundle + peer to preview into. Wrap onEvent so the writer observes every
+    //     part; SSE forwarding is unaffected (observe only enqueues). The bundle's
+    //     execute() stays the authority (validation + D14 manifest); the writer is
+    //     an optimistic preview that reconciles to the same content.
+    if (input.collabPeer && bundle && config.streamDocWrites) {
+      docWriter = new StreamingDocWriter(input.collabPeer, bundle);
+    }
+    const onEvent = docWriter
+      ? (p: StreamPart) => {
+          docWriter!.observe(p);
+          input.onEvent(p);
+        }
+      : input.onEvent;
+
     // 4. one generic turn. The instructions append the skill catalog at the END
     //    of the system prompt; buildPrompt inlines CURRENT STATE; prepend a one-line
     //    divergence note ONLY when the FE flagged an external edit (append-only).
@@ -200,7 +220,7 @@ export async function runConversationTurn(input: RunConversationTurnInput): Prom
       stopWhen: [isStepCount(config.maxSteps) /*, hasToolCall("ask_question") */],
       maxOutputTokens: config.maxOutputTokens,
       providerOptions: modelProviderOptions(),
-      onEvent: input.onEvent,
+      onEvent,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
 
@@ -225,6 +245,14 @@ export async function runConversationTurn(input: RunConversationTurnInput): Prom
     input.onEvent(buildManifestPart(bundle));
     return conv;
   } finally {
+    // Drain the live-preview writer and undo any addFile body we streamed but that
+    // never finalized (a severed or rejected op). Runs before the server detaches
+    // the peer (server.ts finally); on a clean turn every preview is already
+    // finalized by its tool-result, so this drops nothing.
+    if (docWriter) {
+      await docWriter.drain();
+      docWriter.rollbackDangling();
+    }
     input.guard.release(input.id);
   }
 }
