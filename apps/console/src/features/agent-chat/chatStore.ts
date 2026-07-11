@@ -35,6 +35,10 @@ export type ChatMessage =
       id: string;
       role: "tool";
       turnId: string;
+      /** Correlates the streaming card with its tool-result (== toolCallId). */
+      toolCallId: string;
+      /** `streaming` while the tool input is still arriving; `done` on result. */
+      status: "streaming" | "done";
       op: string;
       path: string;
       ok: boolean;
@@ -106,6 +110,30 @@ type WithoutId<T> = T extends unknown ? Omit<T, "id"> : never;
 
 export function addMessage(key: string, msg: WithoutId<ChatMessage>): void {
   persist(key, [...load(key), { ...msg, id: nextId() } as ChatMessage]);
+}
+
+/**
+ * Add or update a tool card in place, keyed by `toolCallId`. A "streaming" card
+ * ("Creating <file>") is written the moment the path resolves mid tool-input,
+ * then flipped to "done" ("Created <file>") on the tool-result — same card, no
+ * duplicate row. A blank toolCallId always appends (never a false in-place hit).
+ */
+export function upsertToolMessage(
+  key: string,
+  msg: WithoutId<Extract<ChatMessage, { role: "tool" }>>,
+): void {
+  const messages = [...load(key)];
+  const idx = msg.toolCallId
+    ? messages.findIndex(
+        (m) => m.role === "tool" && m.toolCallId === msg.toolCallId,
+      )
+    : -1;
+  if (idx >= 0) {
+    messages[idx] = { ...messages[idx], ...msg, id: messages[idx]!.id } as ChatMessage;
+  } else {
+    messages.push({ ...msg, id: nextId() } as ChatMessage);
+  }
+  persist(key, messages);
 }
 
 /** Streamed text accumulates into the turn's last assistant message. */

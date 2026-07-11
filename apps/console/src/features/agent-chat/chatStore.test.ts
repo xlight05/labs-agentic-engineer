@@ -40,6 +40,7 @@ import {
   getMessages,
   setTurnStatus,
   subscribe,
+  upsertToolMessage,
 } from "./chatStore";
 
 let n = 0;
@@ -82,11 +83,50 @@ describe("chatStore", () => {
     const key = freshKey();
     addMessage(key, { role: "user", content: "go", turnId: "t1", status: "in_flight" });
     appendAssistantText(key, "t1", "partial");
-    addMessage(key, { role: "tool", turnId: "t1", op: "edit", path: "requirements/prd.md", ok: true });
+    addMessage(key, {
+      role: "tool",
+      turnId: "t1",
+      toolCallId: "c1",
+      status: "done",
+      op: "edit",
+      path: "requirements/prd.md",
+      ok: true,
+    });
     dropTurnOutput(key, "t1");
     const msgs = getMessages(key);
     expect(msgs).toHaveLength(1);
     expect(msgs[0]?.role).toBe("user");
+  });
+
+  it("upsertToolMessage inserts a streaming card then flips it to done in place", () => {
+    const key = freshKey();
+    const base = {
+      role: "tool" as const,
+      turnId: "t1",
+      toolCallId: "c1",
+      op: "add",
+      path: "specs/requirements/requirements.md",
+      ok: true,
+    };
+    upsertToolMessage(key, { ...base, status: "streaming" });
+    expect(getMessages(key)).toHaveLength(1);
+    expect(getMessages(key)[0]).toMatchObject({ status: "streaming", op: "add" });
+    upsertToolMessage(key, { ...base, status: "done" });
+    const msgs = getMessages(key);
+    expect(msgs).toHaveLength(1); // same card, updated in place — no duplicate row
+    expect(msgs[0]).toMatchObject({ status: "done", op: "add" });
+  });
+
+  it("upsertToolMessage keeps distinct toolCallIds apart and never matches a blank id", () => {
+    const key = freshKey();
+    const mk = (toolCallId: string, path: string) => ({
+      role: "tool" as const, turnId: "t1", toolCallId, status: "done" as const, op: "add", path, ok: true,
+    });
+    upsertToolMessage(key, mk("c1", "a.md"));
+    upsertToolMessage(key, mk("c2", "b.md"));
+    upsertToolMessage(key, mk("", "c.md"));
+    upsertToolMessage(key, mk("", "d.md"));
+    expect(getMessages(key)).toHaveLength(4);
   });
 
   it("mints one conversation id per project and persists it", () => {

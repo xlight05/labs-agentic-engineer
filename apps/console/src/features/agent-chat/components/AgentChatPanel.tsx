@@ -67,19 +67,38 @@ function instructionFor(
 // new stack — narration + tool cards; the agent's FILE edits arrive through
 // the live spec room (collab turns), not through this panel.
 
-function opLabel(op: string): string {
+function opLabel(op: string, status: "streaming" | "done"): string {
+  const active = status === "streaming";
   switch (op) {
     case "add":
-      return "Created";
+      return active ? "Creating" : "Created";
     case "remove":
-      return "Deleted";
+      return active ? "Deleting" : "Deleted";
     default:
-      return "Modified";
+      return active ? "Modifying" : "Modified";
   }
 }
 
 function leafName(path: string): string {
   return path.split("/").at(-1) ?? path;
+}
+
+// A small spinning ring shown while a tool's input is still streaming in.
+function Spinner() {
+  return (
+    <Box
+      sx={{
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: "2px solid",
+        borderColor: "divider",
+        borderTopColor: "primary.main",
+        animation: "agentChatSpin 0.7s linear infinite",
+        "@keyframes agentChatSpin": { to: { transform: "rotate(360deg)" } },
+      }}
+    />
+  );
 }
 
 function MessageRow({ msg }: { msg: ChatMessage }) {
@@ -170,18 +189,20 @@ function ToolCardRow({
         py: 0.75,
         borderRadius: 1.5,
         border: 1,
-        borderColor: msg.ok ? "divider" : "error.main",
+        borderColor: !msg.ok && msg.status === "done" ? "error.main" : "divider",
         bgcolor: "background.paper",
       }}
     >
-      {msg.ok ? (
+      {msg.status === "streaming" ? (
+        <Spinner />
+      ) : msg.ok ? (
         <Check size={14} color="var(--oxygen-palette-success-main, green)" />
       ) : (
         <XIcon size={14} color="var(--oxygen-palette-error-main, red)" />
       )}
       <Wrench size={14} />
       <Typography variant="caption" color="text.secondary">
-        {opLabel(msg.op)}
+        {opLabel(msg.op, msg.status)}
       </Typography>
       {showFile && (
         <Tooltip title={msg.path}>
@@ -220,7 +241,8 @@ function ToolGroup({
       </Box>
     ) : null;
   }
-  const anyFailed = tools.some((t) => !t.ok);
+  const anyStreaming = tools.some((t) => t.status === "streaming");
+  const anyFailed = tools.some((t) => t.status === "done" && !t.ok);
   return (
     <Box sx={{ ml: 4 }}>
       <Stack
@@ -242,7 +264,9 @@ function ToolGroup({
           "&:hover": { bgcolor: "action.hover" },
         }}
       >
-        {anyFailed ? (
+        {anyStreaming ? (
+          <Spinner />
+        ) : anyFailed ? (
           <XIcon size={14} color="var(--oxygen-palette-error-main, red)" />
         ) : (
           <Check size={14} color="var(--oxygen-palette-success-main, green)" />

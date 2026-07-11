@@ -20,10 +20,17 @@
 // the FILE changes in the live room doc, so the panel folds only narration
 // (text deltas), tool results (cards), errors, and the one aep-api terminal.
 
-import { parseSseStream, toChange, type StreamPart } from "@aep/agent-stream";
+import {
+  parseSseStream,
+  toChange,
+  opForTool,
+  readToolInputPath,
+  type StreamPart,
+} from "@aep/agent-stream";
 import {
   appendAssistantText,
   addMessage,
+  upsertToolMessage,
   setTurnStatus,
 } from "./chatStore.js";
 import { getTurn, openTurnStream } from "./api/turns.js";
@@ -43,18 +50,49 @@ export async function attachAndFoldTurn(
   signal: AbortSignal,
 ): Promise<void> {
   let sawTerminal = false;
+  // Per tool call: accumulate its streamed input args so the path can be read as
+  // soon as it closes (path is the first schema property), then show a "Creating
+  // <file>" card BEFORE the tool finishes. Keyed by the input-stream id (== the
+  // eventual toolCallId). `carded` guards against re-emitting once shown.
+  const inputs = new Map<string, { toolName: string; buf: string; carded: boolean }>();
 
   const fold = (part: StreamPart): void => {
     switch (part.type) {
       case "text-delta":
         appendAssistantText(chatKey, turnId, part.delta ?? part.text ?? "");
         break;
+      case "tool-input-start":
+        if (part.toolName && FILE_TOOLS.has(part.toolName) && part.id) {
+          inputs.set(part.id, { toolName: part.toolName, buf: "", carded: false });
+        }
+        break;
+      case "tool-input-delta": {
+        const st = part.id ? inputs.get(part.id) : undefined;
+        if (!st || st.carded) break;
+        st.buf += part.delta ?? "";
+        const path = readToolInputPath(st.buf);
+        if (path) {
+          st.carded = true;
+          upsertToolMessage(chatKey, {
+            role: "tool",
+            turnId,
+            toolCallId: part.id!,
+            status: "streaming",
+            op: opForTool(st.toolName),
+            path,
+            ok: true,
+          });
+        }
+        break;
+      }
       case "tool-result": {
         if (!part.toolName || !FILE_TOOLS.has(part.toolName)) break;
         const change = toChange(part);
-        addMessage(chatKey, {
+        upsertToolMessage(chatKey, {
           role: "tool",
           turnId,
+          toolCallId: part.toolCallId ?? "",
+          status: "done",
           op: change.op,
           path: change.path,
           ok: change.result?.ok !== false,
@@ -84,7 +122,7 @@ export async function attachAndFoldTurn(
         });
         break;
       default:
-        break; // start/finish/tool-input plumbing — nothing to render
+        break; // start/finish/tool-input-end/tool-call plumbing — nothing to render
     }
   };
 

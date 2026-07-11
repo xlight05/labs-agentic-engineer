@@ -24,6 +24,8 @@ const tool = (id: string, path: string, ok = true): ChatMessage => ({
   id,
   role: "tool",
   turnId: "t1",
+  toolCallId: id,
+  status: "done",
   op: "edit",
   path,
   ok,

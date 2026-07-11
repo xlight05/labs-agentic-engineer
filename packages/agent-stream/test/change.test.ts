@@ -20,7 +20,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FileBundle } from "../src/bundle.js";
 import { SEED_FILES } from "./seed.js";
-import { toChange, applyToolCall, isFileMutationTool } from "../src/change.js";
+import {
+  toChange,
+  applyToolCall,
+  isFileMutationTool,
+  opForTool,
+  readToolInputPath,
+} from "../src/change.js";
 import type { StreamPart } from "../src/stream-types.js";
 
 const OPENAPI = "specs/design/components/hello-api/openapi.yaml";
@@ -41,6 +47,28 @@ test("applyToolCall reconstructs file state by folding an editFile call (matches
   // with no second matcher — the eval relies on this (newContent is gone, §5).
   assert.deepEqual(folded.snapshot(), direct.snapshot());
   assert.ok(folded.read(OPENAPI)!.includes('"Hi there!"'));
+});
+
+test("readToolInputPath resolves the path once its string closes, decoding escapes", () => {
+  // Path string still open → not resolvable yet.
+  assert.equal(readToolInputPath('{"path":"specs/req'), undefined);
+  // Path closed (content just starting) → resolved even though the object isn't.
+  assert.equal(
+    readToolInputPath('{"path":"specs/requirements/requirements.md","content":"# R'),
+    "specs/requirements/requirements.md",
+  );
+  // JSON escapes in the path are decoded.
+  assert.equal(readToolInputPath('{"path":"a\\"b.md"'), 'a"b.md');
+  // No path key present yet.
+  assert.equal(readToolInputPath("{"), undefined);
+  assert.equal(readToolInputPath(""), undefined);
+});
+
+test("opForTool maps file tools to ops (unknown → edit)", () => {
+  assert.equal(opForTool("addFile"), "add");
+  assert.equal(opForTool("editFile"), "edit");
+  assert.equal(opForTool("removeFile"), "remove");
+  assert.equal(opForTool("loadSkill"), "edit");
 });
 
 test("applyToolCall folds add then remove in stream order", () => {

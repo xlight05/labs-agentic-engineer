@@ -75,13 +75,23 @@ export const agentChatHandlers = [
     }
     return sse([
       { type: "text-delta", delta: "Joining the spec workspace… " },
-      { type: "text-delta", delta: "I'll update the requirements now." },
+      { type: "text-delta", delta: "I'll create the requirements now." },
+      // Streamed tool input: the panel shows "Creating requirements.md" as soon
+      // as the path resolves, then flips to "Created" on the tool-result.
+      { type: "tool-input-start", id: "tc-1", toolName: "addFile" },
+      {
+        type: "tool-input-delta",
+        id: "tc-1",
+        delta: '{"path":"specs/requirements/requirements.md","content":"# Requirements',
+      },
+      { type: "tool-input-delta", id: "tc-1", delta: '\\n\\n## Overview\\nA simple todo app.' },
+      { type: "tool-input-end", id: "tc-1" },
       {
         type: "tool-result",
-        toolName: "editFile",
+        toolName: "addFile",
         toolCallId: "tc-1",
         input: { path: "specs/requirements/requirements.md" },
-        output: { ok: true, op: "edit", path: "specs/requirements/requirements.md", status: "applied" },
+        output: { ok: true, op: "add", path: "specs/requirements/requirements.md", status: "applied" },
       },
       { type: "text-delta", delta: "\n\nDone — the change is live in the shared doc." },
       { type: "turn-committed", noChanges: true },

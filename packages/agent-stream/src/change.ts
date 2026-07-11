@@ -48,6 +48,29 @@ export function isFileMutationTool(toolName: string): boolean {
   return Object.hasOwn(OP_BY_TOOL, toolName);
 }
 
+/** Wire tool name → op, for labelling a tool card BEFORE its result arrives. */
+export function opForTool(toolName: string): Op {
+  return OP_BY_TOOL[toolName] ?? "edit";
+}
+
+/**
+ * Best-effort read of the `path` field from a PARTIAL tool-input args buffer
+ * (the concatenated `tool-input-delta`s). `path` is the first schema property in
+ * every file tool, so it resolves the instant its JSON string closes — letting a
+ * consumer label a card ("Creating <path>") mid-stream, before the tool finishes.
+ * Returns undefined until the path string is complete. Intentionally regex-based
+ * and dependency-light (the console can't pull the AI SDK's parsePartialJson).
+ */
+export function readToolInputPath(buf: string): string | undefined {
+  const m = /"path"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(buf);
+  if (!m) return undefined;
+  try {
+    return JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Pure field projection of ONE `tool-result` part → a reviewable `Change`. The
  * part carries everything in one frame (`input` + `output`), so any consumer
