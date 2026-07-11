@@ -157,6 +157,72 @@ func TestLastEventMillis(t *testing.T) {
 	}
 }
 
+// TestBootstrapEvent pins the pre-stdout "dark zone" state → synthetic line
+// mapping: every state is a kind=phase event with a STABLE negative seq (so the
+// console dedups re-polls yet shows each transition) and an empty ts (a
+// transient marker, not a wall-clock log line).
+func TestBootstrapEvent(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		podFound      bool
+		phase         string
+		waitingReason string
+		wantSeq       int64
+		wantPhase     string
+	}{
+		{"no pod yet", false, "", "", seqBootScheduling, "runner_scheduling"},
+		{"container creating", true, "Pending", "ContainerCreating", seqBootPulling, "runner_pulling_image"},
+		{"pod initializing", true, "Pending", "PodInitializing", seqBootPulling, "runner_pulling_image"},
+		{"image pull backoff", true, "Pending", "ImagePullBackOff", seqBootBackoff, "runner_image_pull_backoff"},
+		{"err image pull", true, "Pending", "ErrImagePull", seqBootBackoff, "runner_image_pull_backoff"},
+		{"config error", true, "Pending", "CreateContainerConfigError", seqBootConfig, "runner_config_error"},
+		{"invalid image name", true, "Pending", "InvalidImageName", seqBootConfig, "runner_config_error"},
+		{"running no output", true, "Running", "", seqBootStarting, "runner_starting"},
+		{"pending no reason", true, "Pending", "", seqBootScheduling, "runner_scheduling"},
+		{"unknown reason", true, "Pending", "SomethingWeird", seqBootPulling, "runner_pulling_image"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := bootstrapEvent(tc.podFound, tc.phase, tc.waitingReason)
+			if ev.Kind != "phase" {
+				t.Errorf("kind = %q, want phase", ev.Kind)
+			}
+			if ev.Seq != tc.wantSeq {
+				t.Errorf("seq = %d, want %d", ev.Seq, tc.wantSeq)
+			}
+			if ev.Phase != tc.wantPhase {
+				t.Errorf("phase = %q, want %q", ev.Phase, tc.wantPhase)
+			}
+			if ev.Ts != "" {
+				t.Errorf("ts = %q, want empty (synthetic marker)", ev.Ts)
+			}
+			if ev.SchemaVersion != progressSchemaVersion {
+				t.Errorf("schemaVersion = %d, want %d", ev.SchemaVersion, progressSchemaVersion)
+			}
+			if ev.Summary == "" {
+				t.Error("summary must be a non-empty human fallback")
+			}
+		})
+	}
+
+	// An unrecognised reason is surfaced verbatim so nothing hides.
+	if ev := bootstrapEvent(true, "Pending", "SomethingWeird"); !strings.Contains(ev.Summary, "SomethingWeird") {
+		t.Errorf("unknown reason summary = %q, want it to contain the raw reason", ev.Summary)
+	}
+
+	// Distinct states must carry distinct seqs (else the console dedups two
+	// different transitions into one row).
+	seqs := map[int64]bool{
+		seqBootScheduling: true, seqBootPulling: true, seqBootBackoff: true,
+		seqBootConfig: true, seqBootStarting: true,
+	}
+	if len(seqs) != 5 {
+		t.Errorf("bootstrap seqs collide: %v", seqs)
+	}
+}
+
 // TestPageEvents caps and flags truncation.
 func TestPageEvents(t *testing.T) {
 	t.Parallel()

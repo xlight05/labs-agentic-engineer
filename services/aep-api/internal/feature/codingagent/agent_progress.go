@@ -46,6 +46,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/contracts"
+	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -61,6 +62,68 @@ const (
 	// Paired with the watcher's 256KiB final-capture (finalLogTailBytes).
 	logPageBytes = 64 * 1024
 )
+
+// Bootstrap seqs identify the synthetic "dark zone" progress lines the reader
+// emits BEFORE the runner writes its first NDJSON line — the stretch (pod
+// scheduling, image pull, container boot) the live-tail is otherwise blind to,
+// so the console showed a dead "waiting…" for the slowest part of the flow.
+//
+// Each pre-stdout state carries a STABLE, NEGATIVE seq. The console dedups the
+// unified timeline by (executionId, seq) and the runner's real lines use
+// positive seqs, so: negatives never collide with real output; the same state
+// re-derived every ~2s collapses to one row; and a state TRANSITION (a new
+// negative seq) shows exactly one new row. Ts is left empty on purpose — these
+// are transient markers, not wall-clock log lines (filterEventsAfter keeps
+// untimestamped events, and lastEventMillis ignores them, so the cursor never
+// advances past a synthetic line).
+const (
+	seqBootScheduling = -10 // Job applied, pod not scheduled / created yet
+	seqBootPulling    = -11 // ContainerCreating / PodInitializing (image pull + setup)
+	seqBootBackoff    = -12 // ImagePullBackOff / ErrImagePull (pull retrying)
+	seqBootConfig     = -13 // CreateContainerConfigError / secrets not yet materialised
+	seqBootStarting   = -14 // container Running, agent has not emitted its first line
+)
+
+// bootstrapEvent maps a pre-stdout runner state to the synthetic progress line
+// the console renders during the dark zone. podFound=false means the Job exists
+// but no pod object does yet; otherwise phase/waitingReason come from the pod's
+// status (waitingReason is the first waiting container's reason, "" once the
+// container is running). Phase names are stable ids the console maps to friendly
+// labels; Summary is the human fallback when it doesn't.
+func bootstrapEvent(podFound bool, phase, waitingReason string) contracts.ProgressEvent {
+	mk := func(seq int64, name, summary string) contracts.ProgressEvent {
+		return contracts.ProgressEvent{
+			SchemaVersion: progressSchemaVersion,
+			Seq:           seq,
+			Kind:          "phase",
+			Phase:         name,
+			Summary:       summary,
+			// Ts intentionally empty — synthetic, wall-clock-less marker.
+		}
+	}
+	if !podFound {
+		return mk(seqBootScheduling, "runner_scheduling", "Waiting for a runner to be scheduled…")
+	}
+	switch waitingReason {
+	case "ImagePullBackOff", "ErrImagePull", "ImageInspectError", "RegistryUnavailable":
+		return mk(seqBootBackoff, "runner_image_pull_backoff", "Pulling the agent image is taking longer than usual (retrying)…")
+	case "CreateContainerConfigError", "CreateContainerError", "InvalidImageName":
+		return mk(seqBootConfig, "runner_config_error", "Runner is waiting on its configuration and secrets…")
+	case "ContainerCreating", "PodInitializing":
+		return mk(seqBootPulling, "runner_pulling_image", "Pulling the agent image and preparing the container…")
+	case "":
+		// No waiting reason: a Running pod is booting the agent; anything else
+		// (Pending with no container status yet) is still being scheduled.
+		if strings.EqualFold(phase, "Running") {
+			return mk(seqBootStarting, "runner_starting", "Runner container started — booting the agent…")
+		}
+		return mk(seqBootScheduling, "runner_scheduling", "Waiting for a runner to be scheduled…")
+	default:
+		// An unrecognised waiting reason — surface it verbatim so nothing hides,
+		// bucketed under the pulling seq (its most common cause).
+		return mk(seqBootPulling, "runner_pulling_image", "Preparing the runner container ("+waitingReason+")…")
+	}
+}
 
 // AgentProgressReader serves coding-execution activity from the ca-… pod log:
 // the live tail while the Job runs, the captured coding_agent_logs snapshot once
@@ -132,30 +195,58 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *models.Exe
 		// watcher captures on terminal state regardless.
 		return resp, nil
 	}
-	podName, err := r.proxy.GetJobPodName(ctx, ns, row.RunName)
+
+	// Once the row is terminal but the snapshot hasn't landed (a brief
+	// watcher-tick race), don't narrate the pod — the status settles the stream.
+	// The synthetic bootstrap lines below are only meaningful while the attempt
+	// is still queued/running.
+	live := !taskmeta.ExecutionStatus(row.Status).IsTerminal()
+
+	pod, err := r.proxy.GetJobPod(ctx, ns, row.RunName)
 	if err != nil {
 		if errors.Is(err, clustergatewayproxy.ErrNotFound) {
-			// Pod not scheduled yet, or GC'd past TTL with no snapshot — keep
-			// polling (empty, non-final).
+			// Job applied, pod not scheduled/created yet (or GC'd past TTL with no
+			// snapshot). Narrate "scheduling" so the console shows motion instead
+			// of a dead "waiting…" during the dark zone.
+			if live {
+				resp.Lines = []contracts.ProgressEvent{bootstrapEvent(false, "", "")}
+			}
 			return resp, nil
 		}
-		return nil, fmt.Errorf("get job pod name: %w", err)
+		return nil, fmt.Errorf("get job pod: %w", err)
 	}
-	body, err := r.proxy.TailPodLog(ctx, ns, podName, clustergatewayproxy.PodLogOptions{
+	body, err := r.proxy.TailPodLog(ctx, ns, pod.Name, clustergatewayproxy.PodLogOptions{
 		Timestamps: true,
 		LimitBytes: logPageBytes,
 	})
 	if err != nil {
 		// ErrNotFound: pod GC'd / not scheduled. ErrPodNotReady: container still
-		// starting. Both mean "no logs yet" — keep polling instead of flashing
-		// "live progress unavailable" at task start.
+		// starting (image pull / ContainerCreating / config). Both mean "no logs
+		// yet" — narrate the pod state from its status instead of a dead wait.
 		if errors.Is(err, clustergatewayproxy.ErrNotFound) ||
 			errors.Is(err, clustergatewayproxy.ErrPodNotReady) {
+			if live {
+				resp.Lines = []contracts.ProgressEvent{bootstrapEvent(true, pod.Phase, pod.WaitingReason)}
+			}
 			return resp, nil
 		}
 		return nil, fmt.Errorf("tail pod log: %w", err)
 	}
-	resp.Lines, resp.Truncated = pageEvents(string(body), sinceMillis)
+	all, truncated := textToProgressEvents(string(body))
+	if len(all) == 0 {
+		// Container is up but the runner hasn't emitted its first line yet (token
+		// mint / node boot). Name the wait rather than showing nothing.
+		if live {
+			resp.Lines = []contracts.ProgressEvent{bootstrapEvent(true, "Running", "")}
+		}
+		return resp, nil
+	}
+	newer := filterEventsAfter(all, sinceMillis)
+	if len(newer) > defaultProgressLimit {
+		newer = newer[:defaultProgressLimit]
+		truncated = true
+	}
+	resp.Lines, resp.Truncated = newer, truncated
 	// Advance the cursor only as far as actually-emitted content reaches (NOT
 	// now()), so the next poll's window never skips late-arriving lines.
 	if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {

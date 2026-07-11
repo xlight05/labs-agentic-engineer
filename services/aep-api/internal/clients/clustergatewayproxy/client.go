@@ -278,19 +278,43 @@ type JobStatusConditon struct {
 
 // ----- Pod ----------------------------------------------------------
 
-// GetJobPodName returns the name of the (first) pod owned by the named
-// Job. Used by JobWatcher + ProgressService to translate a runName
-// (= jobName) into the actual pod name for `pods/log` calls.
-// Returns ErrNotFound if no pods match.
-func (c *Client) GetJobPodName(ctx context.Context, namespace, jobName string) (string, error) {
+// PodInfo is the subset of a pod's identity + status the BFF reads to narrate
+// the runner's pre-stdout lifecycle (the "dark zone" between Job apply and the
+// first NDJSON line): the pod name for `pods/log`, plus the phase and — when a
+// container is stuck waiting — the container waiting reason/message (e.g.
+// ContainerCreating, ImagePullBackOff, CreateContainerConfigError). The
+// AgentProgressReader turns these into synthetic progress lines.
+type PodInfo struct {
+	Name           string
+	Phase          string // Pending | Running | Succeeded | Failed | Unknown
+	WaitingReason  string // first waiting container's reason ("" once running)
+	WaitingMessage string // its human message (best-effort, may be empty)
+}
+
+// podContainerStatus is the slice of a pod container status we decode: only the
+// waiting sub-state carries the reason we surface.
+type podContainerStatus struct {
+	State struct {
+		Waiting *struct {
+			Reason  string `json:"reason"`
+			Message string `json:"message"`
+		} `json:"waiting"`
+	} `json:"state"`
+}
+
+// GetJobPod returns the (first) pod owned by the named Job with its phase + the
+// first waiting-container reason. Used by ProgressService to narrate the runner
+// bootstrap and by GetJobPodName for the pod name alone. Returns ErrNotFound if
+// no pods match (Job created, pod not scheduled yet, or GC'd).
+func (c *Client) GetJobPod(ctx context.Context, namespace, jobName string) (*PodInfo, error) {
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods?labelSelector=batch.kubernetes.io%%2Fjob-name%%3D%s",
 		namespace, jobName)
 	resp, body, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("clustergatewayproxy: list pods %s/%s: status %d: %s",
+		return nil, fmt.Errorf("clustergatewayproxy: list pods %s/%s: status %d: %s",
 			namespace, jobName, resp.StatusCode, string(body))
 	}
 	var out struct {
@@ -298,15 +322,42 @@ func (c *Client) GetJobPodName(ctx context.Context, namespace, jobName string) (
 			Metadata struct {
 				Name string `json:"name"`
 			} `json:"metadata"`
+			Status struct {
+				Phase                 string               `json:"phase"`
+				ContainerStatuses     []podContainerStatus `json:"containerStatuses"`
+				InitContainerStatuses []podContainerStatus `json:"initContainerStatuses"`
+			} `json:"status"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil {
-		return "", fmt.Errorf("clustergatewayproxy: decode pod list: %w", err)
+		return nil, fmt.Errorf("clustergatewayproxy: decode pod list: %w", err)
 	}
 	if len(out.Items) == 0 {
-		return "", ErrNotFound
+		return nil, ErrNotFound
 	}
-	return out.Items[0].Metadata.Name, nil
+	it := out.Items[0]
+	info := &PodInfo{Name: it.Metadata.Name, Phase: it.Status.Phase}
+	// Init containers block the main container, so check them first; take the
+	// first container still in a waiting state as the reason to surface.
+	for _, cs := range append(append([]podContainerStatus{}, it.Status.InitContainerStatuses...), it.Status.ContainerStatuses...) {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			info.WaitingReason = cs.State.Waiting.Reason
+			info.WaitingMessage = cs.State.Waiting.Message
+			break
+		}
+	}
+	return info, nil
+}
+
+// GetJobPodName returns the name of the (first) pod owned by the named
+// Job. Used by JobWatcher to translate a runName (= jobName) into the actual
+// pod name for `pods/log` calls. Returns ErrNotFound if no pods match.
+func (c *Client) GetJobPodName(ctx context.Context, namespace, jobName string) (string, error) {
+	pod, err := c.GetJobPod(ctx, namespace, jobName)
+	if err != nil {
+		return "", err
+	}
+	return pod.Name, nil
 }
 
 // ----- Pod log -------------------------------------------------------

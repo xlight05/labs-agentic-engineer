@@ -307,8 +307,18 @@ services:
       # Room-scoped turns (#86 phase 4): the agents service joins spec rooms
       # as a live Yjs peer through the in-network collab server.
       AGENT_COLLAB_WS_URL: "ws://collab-server:3400"
+      # AI SDK DevTools trace capture: wrap the model so every LLM call/step is
+      # written to /repo/services/agents/.devtools/generations.json (bind-mounted
+      # to deployments/data/agent-devtools). View with the host-side viewer:
+      #   AI_SDK_DEVTOOLS_PORT=4983 npx @ai-sdk/devtools   (run in a dir whose
+      #   .devtools points at deployments/data/agent-devtools) → localhost:4983.
+      # The in-container notify to localhost:4983 is best-effort (swallowed); the
+      # viewer reads the file, so a browser refresh surfaces new traces.
+      AGENT_DEVTOOLS: "${AGENT_DEVTOOLS:-true}"
+      AI_SDK_DEVTOOLS_PORT: "4983"
     volumes:
       - aep-workspaces:/workspaces:ro
+      - ./data/agent-devtools:/repo/services/agents/.devtools
     networks:
       - aep
 

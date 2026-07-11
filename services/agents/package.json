@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.0",
+    "@ai-sdk/devtools": "^1.0.4",
     "@aep/agent-stream": "workspace:*",
     "@aep/collab-doc": "workspace:*",
     "@hocuspocus/provider": "^4.3.0",

@@ -66,6 +66,19 @@ export function intEnv(value: string | undefined, fallback: number): number {
 }
 
 /**
+ * Parse a boolean env var. Unset/empty → `fallback`. `"1"`, `"true"`, `"yes"`,
+ * `"on"` (case-insensitive) are true; `"0"`, `"false"`, `"no"`, `"off"` are
+ * false. Any other value falls back — a typo never silently flips the flag.
+ */
+export function boolEnv(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === "") return fallback;
+  const v = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (["0", "false", "no", "off"].includes(v)) return false;
+  return fallback;
+}
+
+/**
  * Return `ANTHROPIC_API_KEY`. Prefer the ambient env; otherwise load the
  * nearest `.env`. Throws when unset (the composition root surfaces this).
  */

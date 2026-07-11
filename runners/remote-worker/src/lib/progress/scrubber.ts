@@ -45,9 +45,14 @@ const TOKEN_PATTERNS: ReadonlyArray<RegExp> = [
 ];
 
 const HEADER_PATTERNS: ReadonlyArray<RegExp> = [
+  // Bearer credential FIRST. The `authorization:` pattern below only consumes
+  // the scheme word ("Bearer") — its `\S+` stops at the space before the token
+  // — so running this first is what actually redacts the credential in an
+  // `Authorization: Bearer <token>` string. Ordering matters now that the
+  // entropy backstop (which used to catch the leaked token) is disabled.
+  /(bearer\s+)([A-Za-z0-9._\-]{16,})/gi,
   /(authorization\s*:\s*)(\S+)/gi,
   /(x-api-key\s*:\s*)(\S+)/gi,
-  /(bearer\s+)([A-Za-z0-9._\-]{16,})/gi,
 ];
 
 // Base64url-ish charset; minimum length 32 for the entropy backstop.
@@ -56,6 +61,17 @@ const HEADER_PATTERNS: ReadonlyArray<RegExp> = [
 // — base64 padding only ever appears at a string's tail anyway.
 const ENTROPY_CANDIDATE = /[A-Za-z0-9_\-+/.]{32,}/g;
 const ENTROPY_THRESHOLD = 4.0; // bits/char
+
+// Entropy backstop toggle — DISABLED by default (2026-07-11). It over-redacts
+// CamelCase file paths in tool_use summaries: the candidate alphabet above
+// includes `/` and `.`, so a whole path such as
+// src/components/Dashboard/BuildHistoryPanel.tsx is treated as one 32+ char
+// token that scores >4.0 bits/char and is wholesale [REDACTED]. The denylist +
+// token/header patterns still run, so known secrets (primed literals, GitHub
+// tokens, auth/x-api-key/bearer headers) remain covered. Re-enable by setting
+// RUNNER_SCRUB_ENTROPY=1 — but only after the candidate alphabet drops `/` so
+// paths fragment into sub-32-char segments instead of matching as one token.
+const ENTROPY_BACKSTOP_ENABLED = process.env.RUNNER_SCRUB_ENTROPY === "1";
 
 function shannonEntropy(s: string): number {
   if (s.length === 0) return 0;
@@ -103,10 +119,12 @@ export class Scrubber {
       out = out.replace(re, (_match, prefix: string) => `${prefix}${REDACTED}`);
     }
 
-    out = out.replace(ENTROPY_CANDIDATE, (match) => {
-      if (shannonEntropy(match) >= ENTROPY_THRESHOLD) return REDACTED;
-      return match;
-    });
+    if (ENTROPY_BACKSTOP_ENABLED) {
+      out = out.replace(ENTROPY_CANDIDATE, (match) => {
+        if (shannonEntropy(match) >= ENTROPY_THRESHOLD) return REDACTED;
+        return match;
+      });
+    }
 
     return out;
   }

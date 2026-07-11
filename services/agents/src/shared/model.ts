@@ -28,10 +28,62 @@
  * key from the environment. See run.ts.)
  */
 
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel, type LanguageModelMiddleware } from "ai";
 import { createAnthropic, type AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
+import { devToolsMiddleware } from "@ai-sdk/devtools";
 import type { ProviderOptions } from "../agents/main/run-turn.js";
 import { config } from "./config.js";
+
+/**
+ * Make a middleware NON-FATAL: a throw in any of its hooks degrades to the
+ * unwrapped behavior instead of failing the model call. DevTools' `wrapStream`
+ * runs its trace-capture (`ensureRunCreated`/`createStep`, which touch
+ * `.devtools/generations.json`) BEFORE its own try/catch, so a corrupt/missing
+ * db or an FS error there propagates into the stream and KILLS THE TURN (seen
+ * live: "Cannot read properties of undefined (reading 'find')" → "stream ended
+ * without a manifest"). Trace capture is a debugging aid — it must never be able
+ * to break a live generation. The `wrapStream`/`wrapGenerate` fallbacks call the
+ * original `doStream`/`doGenerate` exactly once (DevTools only throws BEFORE it
+ * calls them, so there is no double model call).
+ */
+function nonFatalMiddleware(mw: LanguageModelMiddleware): LanguageModelMiddleware {
+  return {
+    ...mw,
+    ...(mw.transformParams
+      ? {
+          transformParams: async (o) => {
+            try {
+              return await mw.transformParams!(o);
+            } catch {
+              return o.params;
+            }
+          },
+        }
+      : {}),
+    ...(mw.wrapGenerate
+      ? {
+          wrapGenerate: async (o) => {
+            try {
+              return await mw.wrapGenerate!(o);
+            } catch {
+              return o.doGenerate();
+            }
+          },
+        }
+      : {}),
+    ...(mw.wrapStream
+      ? {
+          wrapStream: async (o) => {
+            try {
+              return await mw.wrapStream!(o);
+            } catch {
+              return o.doStream();
+            }
+          },
+        }
+      : {}),
+  };
+}
 
 /** Resolved LLM configuration for a single run. */
 export interface LlmConfig {
@@ -52,7 +104,16 @@ export function createModel(cfg: LlmConfig): LanguageModel {
     apiKey: cfg.apiKey,
     ...(cfg.baseURL ? { baseURL: cfg.baseURL } : {}),
   });
-  return provider(cfg.model ?? config.model);
+  const model = provider(cfg.model ?? config.model);
+  // AI SDK DevTools (AGENT_DEVTOOLS): wrap the model so every LLM call/step —
+  // request, response, tool calls, token usage, timing — is captured to
+  // `.devtools/generations.json` (and pushed to a running viewer on
+  // AI_SDK_DEVTOOLS_PORT) for the trace UI. Opt-in: the middleware writes a file
+  // + best-effort-notifies per call, so it stays off unless explicitly enabled.
+  if (config.devtools) {
+    return wrapLanguageModel({ model, middleware: nonFatalMiddleware(devToolsMiddleware()) });
+  }
+  return model;
 }
 
 /**

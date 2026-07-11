@@ -24,6 +24,7 @@ import { client } from "../../../api/client";
 type TaskStreamEvent = components["schemas"]["TaskStreamEvent"];
 type TaskView = components["schemas"]["TaskView"];
 type TimelineEvent = components["schemas"]["TimelineEvent"];
+type ExecutionView = components["schemas"]["ExecutionView"];
 
 export type TaskLogPhase = "connecting" | "live" | "reconnecting" | "ended";
 
@@ -32,6 +33,10 @@ export interface TaskLogState {
   task: TaskView | undefined;
   /** Unified timeline, deduped by executionId+seq (reconnects re-emit). */
   lines: TimelineEvent[];
+  /** Every attempt, upserted from `execution` frames (first appearance order).
+   * Drives the waiting-state affordance (is an attempt still running?) while the
+   * runner pod is scheduling / pulling its image and the timeline is empty. */
+  executions: ExecutionView[];
   /** Settled derivedStatus from the `done` frame — the stream is over. */
   settledStatus: string | undefined;
   phase: TaskLogPhase;
@@ -69,6 +74,7 @@ export function useTaskLog(
 ): TaskLogState {
   const [task, setTask] = useState<TaskView>();
   const [lines, setLines] = useState<TimelineEvent[]>([]);
+  const [executions, setExecutions] = useState<ExecutionView[]>([]);
   const [settledStatus, setSettledStatus] = useState<string>();
   const [phase, setPhase] = useState<TaskLogPhase>("connecting");
   const seen = useRef(new Set<string>());
@@ -78,6 +84,7 @@ export function useTaskLog(
     seen.current = new Set();
     setTask(undefined);
     setLines([]);
+    setExecutions([]);
     setSettledStatus(undefined);
     setPhase("connecting");
 
@@ -100,10 +107,24 @@ export function useTaskLog(
           case "task":
             if (event.task) setTask(event.task);
             break;
-          case "execution":
-            // Attempt metadata rides on each line (executionId/executionKind);
-            // the log view needs no separate executions map.
+          case "execution": {
+            // Timeline rows carry their own executionId/kind, so the log body
+            // needs no executions map. We DO keep the attempts here for the
+            // waiting-state affordance: while the runner pod is scheduling /
+            // pulling its image the timeline is empty, and knowing an attempt is
+            // still running lets the page reassure ("still working…") instead of
+            // implying the task stalled.
+            const exec = event.execution;
+            if (!exec) break;
+            setExecutions((prev) => {
+              const i = prev.findIndex((e) => e.id === exec.id);
+              if (i === -1) return [...prev, exec];
+              const next = prev.slice();
+              next[i] = exec;
+              return next;
+            });
             break;
+          }
           case "line": {
             const line = event.line;
             if (!line) break;
@@ -145,5 +166,5 @@ export function useTaskLog(
     };
   }, [projectName, issueNumber]);
 
-  return { task, lines, settledStatus, phase };
+  return { task, lines, executions, settledStatus, phase };
 }

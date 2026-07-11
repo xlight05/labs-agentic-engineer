@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { loadDotenv, intEnv } from "./env.js";
+import { loadDotenv, intEnv, boolEnv } from "./env.js";
 
 // Load the nearest .env BEFORE reading process.env, so AGENT_MODEL /
 // AGENT_MAX_STEPS set only in .env are honored (not silently dropped).
@@ -52,6 +52,12 @@ export const config = {
   // generation completes in one step. intEnv guards a non-numeric override.
   maxOutputTokens: intEnv(process.env.AGENT_MAX_OUTPUT_TOKENS, 64_000),
   logLevel: process.env.LOG_LEVEL || "info",
+  // AI SDK DevTools (AGENT_DEVTOOLS, default off): wrap the model in
+  // `devToolsMiddleware` so every LLM call is captured to
+  // `.devtools/generations.json` and streamed to the DevTools trace UI
+  // (`npx @ai-sdk/devtools`, port AI_SDK_DEVTOOLS_PORT / 4983). Heavier than the
+  // timing lines (per-call file write + viewer notify), so it is opt-in.
+  devtools: boolEnv(process.env.AGENT_DEVTOOLS, false),
   // SSE keep-alive cadence: a `: keep-alive` comment this often while a turn
   // streams, so long generations don't die behind an idle-timeout ingress.
   keepAliveMs: intEnv(process.env.AGENT_KEEPALIVE_MS, 15_000),

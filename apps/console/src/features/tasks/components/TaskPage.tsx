@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { useEffect, useState } from "react";
 import {
   Alert,
   Box,
@@ -35,6 +36,28 @@ import { TaskStatusChip } from "./TaskStatusChip";
 
 const LinkIconButton = createLink(IconButton);
 
+// Seconds elapsed since resetKey last changed, while `active`. Used to age the
+// waiting-state tail so a long, silent runner bootstrap (cold-start image pull
+// can take a minute) reads as "still working" rather than a stall. The clock
+// restarts whenever a new line arrives or the stream (re)connects, and stops
+// ticking (no wasted 1s re-renders) once there is nothing to wait on.
+function useSecondsSince(resetKey: string, active: boolean): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    setSeconds(0);
+    if (!active) return;
+    const started = Date.now();
+    const id = setInterval(
+      () => setSeconds(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [resetKey, active]);
+  return seconds;
+}
+
+const EXEC_ACTIVE = new Set(["queued", "running"]);
+
 // The per-task console (#173): slim header (title, status chip, GitHub
 // icon-link) over the flat streaming log. get-task provides the initial
 // state; the SSE stream owns everything after that.
@@ -47,6 +70,17 @@ export function TaskPage({
 }) {
   const detail = useTask(projectName, issueNumber);
   const log = useTaskLog(projectName, issueNumber);
+  // An attempt is still queued/running — used to reassure during long, silent
+  // stretches (the runner bootstrap emits synthetic phase lines, but between
+  // them the feed can be quiet for a while on a cold-start image pull).
+  const anyRunning = log.executions.some((e) => EXEC_ACTIVE.has(e.status));
+  // Restart the idle clock on every new line and on (re)connect; only tick while
+  // something is actually being waited on. Called before the early returns below
+  // so the hook order stays stable (rules of hooks).
+  const idleSeconds = useSecondsSince(
+    `${log.phase}:${log.lines.length}`,
+    log.phase !== "ended" && (log.lines.length === 0 || anyRunning),
+  );
 
   if (detail.isPending) {
     return (
@@ -81,16 +115,24 @@ export function TaskPage({
   // icon + tooltip is optional decoration, not load-bearing).
   const blockedBy = log.task?.blockedBy;
 
-  const tail =
-    log.phase === "reconnecting"
-      ? "· connection lost — reconnecting…"
-      : log.phase === "connecting"
-        ? "· attaching to the task log…"
-        : log.phase === "ended"
-          ? `· task settled — ${derivedStatus}`
-          : log.lines.length === 0
-            ? "· waiting for the first execution…"
-            : undefined;
+  let tail: string | undefined;
+  if (log.phase === "reconnecting") {
+    tail = "· connection lost — reconnecting…";
+  } else if (log.phase === "connecting") {
+    tail = "· attaching to the task log…";
+  } else if (log.phase === "ended") {
+    tail = `· task settled — ${derivedStatus}`;
+  } else if (log.lines.length === 0) {
+    // Live, no timeline yet: the coding attempt is being prepared (dispatch /
+    // scheduling) before the runner's first line lands.
+    tail =
+      `· preparing the coding agent…${idleSeconds >= 20 ? " (a cold start can take up to a minute)" : ""}` +
+      ` · ${idleSeconds}s`;
+  } else if (anyRunning && idleSeconds >= 5) {
+    // Timeline has content but nothing new for a bit and an attempt is live —
+    // reassure rather than leave the last line looking stuck.
+    tail = `· still working… · ${idleSeconds}s since last update`;
+  }
 
   return (
     <Box

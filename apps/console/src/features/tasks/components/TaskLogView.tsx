@@ -22,12 +22,30 @@ import type { components } from "../../../generated/aep-api";
 
 type TimelineEvent = components["schemas"]["TimelineEvent"];
 
+// Friendly labels for phase ids. Covers both the runner's own workspace phases
+// and the BFF's synthetic "dark zone" markers (agent_progress.go) that narrate
+// pod scheduling / image pull / boot — the stretch before the runner writes its
+// first line. An unmapped phase falls back to its summary, then the raw id, so
+// nothing hides.
+const PHASE_LABELS: Record<string, string> = {
+  runner_scheduling: "Waiting for a runner to be scheduled…",
+  runner_pulling_image: "Pulling the agent image…",
+  runner_image_pull_backoff: "Still pulling the agent image (retrying)…",
+  runner_config_error: "Waiting on runner configuration and secrets…",
+  runner_starting: "Starting the agent…",
+  workspace_provisioning: "Setting up the workspace…",
+  workspace_ready: "Workspace ready",
+};
+
 // One console line per TimelineEvent, formatted by kind (#173 decisions:
 // flat log; execution attempts are divider lines, not UI sections).
 function formatLine(e: TimelineEvent): { text: string; tone: string } {
   switch (e.kind) {
-    case "phase":
-      return { text: `▸ ${e.phase ?? e.message ?? "phase"}`, tone: "info.light" };
+    case "phase": {
+      const label =
+        (e.phase && PHASE_LABELS[e.phase]) ?? e.summary ?? e.phase ?? e.message ?? "phase";
+      return { text: `▸ ${label}`, tone: "info.light" };
+    }
     case "tool_use":
       return {
         text: `$ ${e.tool ?? "tool"}${e.command ? ` ${e.command}` : ""}`,

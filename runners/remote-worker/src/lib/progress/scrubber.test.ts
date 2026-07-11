@@ -103,12 +103,25 @@ test("scrub: redacts x-api-key value", () => {
   assert.match(out, /x-api-key\s*:\s*\[REDACTED\]/i);
 });
 
-test("scrub: redacts a high-entropy 32+ char base64 substring", () => {
+test("scrub: entropy backstop disabled — high-entropy base64 substring passes through", () => {
   const s = fresh();
+  // With RUNNER_SCRUB_ENTROPY unset the entropy layer is off (default), so an
+  // unknown high-entropy blob is NOT caught — only the denylist + token/header
+  // patterns run. See ENTROPY_BACKSTOP_ENABLED in scrubber.ts. If this flips
+  // red, someone re-enabled the backstop; make that a conscious choice.
   const line = "credential=A7Bk39fZqLpNc2RxYwUv0sGmH4dT8jWoEi end";
   const out = s.scrub(line);
-  assert.ok(!out.includes("A7Bk39fZqLpNc2RxYwUv0sGmH4dT8jWoEi"));
-  assert.match(out, /credential=\[REDACTED\] end/);
+  assert.equal(out, line);
+});
+
+test("scrub: CamelCase file-path summary survives (entropy backstop disabled)", () => {
+  const s = fresh();
+  // Regression for the reason the backstop is disabled: this path scores >4.0
+  // bits/char and used to be wholesale [REDACTED], blanking Write tool_use
+  // summaries. With the backstop off the path stays readable.
+  const line = "Write src/components/Dashboard/BuildHistoryPanel.tsx";
+  const out = s.scrub(line);
+  assert.equal(out, line);
 });
 
 test("scrub: leaves low-entropy long substring alone (false-positive guard)", () => {
