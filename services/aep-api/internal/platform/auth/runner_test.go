@@ -31,7 +31,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
@@ -59,12 +58,12 @@ func newRunnerTaskManager(t *testing.T) *TaskTokenManager {
 	return mgr
 }
 
-// statusOf extracts the HTTP status a huma error carries (0 if it is not a
-// huma.StatusError).
+// statusOf extracts the HTTP status an *HTTPError carries (0 if it is not
+// one).
 func statusOf(err error) int {
-	var se huma.StatusError
-	if errors.As(err, &se) {
-		return se.GetStatus()
+	var he *HTTPError
+	if errors.As(err, &he) {
+		return he.Status
 	}
 	return 0
 }

@@ -1,0 +1,129 @@
+openapi: 3.0.3
+info:
+  title: AEP Internal S2S API
+  description: |-
+    The BFF's internal service-to-service surface: runner-pod callbacks.
+    Non-public — never gateway-advertised. Callers authenticate with a
+    BFF-signed per-task RS256 JWT (runner pods) or a Thunder per-org publisher
+    client-credentials token; the acting org is always derived from the
+    verified credential, never from request input.
+
+    RUNNER LOCKSTEP: the credentials-refresh exchange is consumed by the
+    coding runner — its request/response bytes must not change without a
+    coordinated runner release.
+  version: 1.0.0
+servers:
+- url: /internal/v1
+paths:
+  /executions/{executionId}/credentials/refresh:
+    post:
+      operationId: runner-refresh-credentials
+      summary: Refresh an execution's git credentials (runner callback)
+      tags:
+      - Internal
+      security:
+      - taskJWT: []
+      - publisherCC: []
+      parameters:
+      - description: Execution id the runner callback is scoped to
+        in: path
+        name: executionId
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+components:
+  schemas:
+    RefreshResponse:
+      description: Fresh GitHub token + commit identity for the execution.
+      type: object
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        identity:
+          $ref: '#/components/schemas/Identity'
+        taskId:
+          type: string
+      required:
+      - token
+      - expiresAt
+      - identity
+      - taskId
+      # Byte-compat: the served body is the orgcreds service's own struct —
+      # no mapping layer, so the runner-lockstep wire shape cannot drift.
+      x-go-type: orgcreds.RefreshResponse
+      x-go-type-import:
+        path: github.com/wso2/aep/aep-api/internal/feature/orgcreds
+    Identity:
+      description: Git commit identity. Field names are capitalized on the
+        wire (historical runner lockstep — do not "fix").
+      type: object
+      additionalProperties: false
+      properties:
+        Name:
+          type: string
+        Email:
+          type: string
+        Login:
+          type: string
+      required:
+      - Name
+      - Email
+      - Login
+    Error:
+      description: Flat error envelope returned by every non-2xx response.
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          description: Machine-readable error code (stable slug).
+          type: string
+        message:
+          description: Human-readable error message.
+          type: string
+        details:
+          description: Field-level details for validation errors.
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+      required:
+      - code
+      - message
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+      required:
+      - field
+      - message
+  securitySchemes:
+    taskJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: BFF-signed per-task RS256 JWT (runner pods)
+    publisherCC:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Thunder per-org publisher client-credentials token

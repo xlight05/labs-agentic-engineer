@@ -64,19 +64,21 @@ test-db:
 # (internal/api/gen/contract — go:embed cannot reach across the module
 # boundary; same posture as vendor-skills). Generated files are committed;
 # gen-api-check is the CI freshness gate.
-CONTRACT_DIR = ../../packages/contracts/api/v1
+CONTRACT_DIR          = ../../packages/contracts/api/v1
+INTERNAL_CONTRACT_DIR = ../../packages/contracts/api/internal/v1
 gen-api:
 	@$(OAPI_CODEGEN) -config internal/api/gen/oapi-codegen-models.yaml $(CONTRACT_DIR)/components.yaml
 	@$(OAPI_CODEGEN) -config internal/api/gen/oapi-codegen-server.yaml $(CONTRACT_DIR)/openapi.yaml
+	@$(OAPI_CODEGEN) -config internal/api/igen/oapi-codegen.yaml $(INTERNAL_CONTRACT_DIR)/openapi.yaml
 	@cp $(CONTRACT_DIR)/openapi.yaml $(CONTRACT_DIR)/components.yaml internal/api/gen/contract/
-	@gofmt -w models/models_gen.go internal/api/gen/server_gen.go
+	@gofmt -w models/models_gen.go internal/api/gen/server_gen.go internal/api/igen/igen_gen.go
 	@echo "API types + strict server + vendored contract regenerated"
 
 # CI freshness gate: regenerate, then fail if anything tracked drifted — a
 # contract edit without `make gen-api`, or a hand-edit of generated output.
 gen-api-check: gen-api
-	@if ! git diff --exit-code --quiet -- models/models_gen.go internal/api/gen/; then \
-		git diff --stat -- models/models_gen.go internal/api/gen/ | cat; \
+	@if ! git diff --exit-code --quiet -- models/models_gen.go internal/api/gen/ internal/api/igen/; then \
+		git diff --stat -- models/models_gen.go internal/api/gen/ internal/api/igen/ | cat; \
 		echo ""; \
 		echo "Generated API code is stale w.r.t. packages/contracts/api/v1."; \
 		echo "Run 'make gen-api' in services/aep-api and commit the changes."; \

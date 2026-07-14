@@ -1,0 +1,15 @@
+# Strict server + types for the internal S2S surface, generated from the
+# committed internal contract (packages/contracts/api/internal/v1). Run via
+# `make gen-api`. Self-contained: the internal shapes are private to this
+# surface (RefreshResponse maps onto orgcreds' own struct via x-go-type for
+# runner-lockstep byte compatibility).
+package: igen
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output: internal/api/igen/igen_gen.go
+output-options:
+  skip-prune: true
+  prefer-skip-optional-pointer: true
+  name-normalizer: ToCamelCaseWithInitialisms

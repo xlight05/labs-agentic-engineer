@@ -17,58 +17,115 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
-	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humago"
-
+	"github.com/wso2/aep/aep-api/internal/api/igen"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/platform/auth"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-// newInternalAPI creates the Huma API for the internal service-to-service
-// surface over internalMux. It is the sibling of newHumaAPI (the public edge),
-// with three deliberate differences: (1) it is NOT wrapped by the user-JWT
-// middleware — each operation authenticates by construction via
-// auth.ExecutionScopedInput (BFF Task-JWT / publisher-cc); (2) its security
-// schemes are the S2S ones, not userJWT; (3) its spec is non-public — it is
-// generated to a checked-in file and is never advertised on the gateway. See
-// docs/design/internal-s2s-api.md §3.
-func newInternalAPI(internalMux *http.ServeMux) huma.API {
-	cfg := huma.DefaultConfig("AEP Internal S2S API", apiVersion)
-	// Same rationale as newHumaAPI: clear the built-in spec/docs/schema routes
-	// (they would land on internalMux, which only receives /internal/* anyway)
-	// and suppress the $schema response-body link so runner callbacks stay
-	// byte-compatible with the pre-Huma raw handlers.
-	cfg.OpenAPIPath = ""
-	cfg.DocsPath = ""
-	cfg.SchemasPath = ""
-	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"taskJWT":     {Type: "http", Scheme: "bearer", BearerFormat: "JWT", Description: "BFF-signed per-task RS256 JWT (runner pods)"},
-		"publisherCC": {Type: "http", Scheme: "bearer", BearerFormat: "JWT", Description: "Thunder per-org publisher client-credentials token"},
-	}
-	return humago.New(internalMux, cfg)
-}
+// The internal service-to-service surface (/internal/v1), served CONTRACT-FIRST
+// from packages/contracts/api/internal/v1 (generated strict server in
+// internal/api/igen). It is NOT wrapped by the user-JWT middleware: every
+// operation passes runnerAuthGate, which verifies the caller's BFF Task-JWT or
+// publisher-cc bearer against the execution named in the path (the INT-6
+// fence) and binds the verified org into the context. The spec is non-public —
+// never gateway-advertised. See docs/design/internal-s2s-api.md §3.
+//
+// RUNNER LOCKSTEP: the credentials-refresh response body is the orgcreds
+// service's own struct (igen.RefreshResponse is an alias via x-go-type), so
+// the wire bytes cannot drift from what the runner expects.
 
-// InternalDeps carries the services the internal S2S operations need. main.go
-// fills it with real services; GenerateInternalOpenAPIYAML passes the zero
-// value (nil deps — registration never invokes them).
+// InternalDeps carries the services + authorizer the internal S2S operations
+// need. main.go (internal/app) fills it with real instances.
 type InternalDeps struct {
 	CredsRefresh orgcreds.CredentialsRefreshService
+	// RunnerAuth verifies runner bearers (Task-JWT / publisher-cc) against the
+	// path execution id. nil fails closed: every internal op answers 503.
+	RunnerAuth *auth.RunnerAuthorizer
 }
 
-// RegisterAllInternal registers every internal S2S operation on the Huma API.
-// The single canonical list — used by NewHandler (real deps) and the internal
-// spec generator (zero deps).
-func RegisterAllInternal(api huma.API, d InternalDeps) {
-	orgcreds.RegisterInternalCredentials(api, d.CredsRefresh)
+// internalServer implements igen.StrictServerInterface.
+type internalServer struct {
+	deps InternalDeps
 }
 
-// GenerateInternalOpenAPIYAML builds the internal S2S OpenAPI document and
-// returns it as YAML. Used by the `make openapi` generator and the internal
-// spec-freshness drift guard. Deps are nil — registration is pure metadata.
-func GenerateInternalOpenAPIYAML() ([]byte, error) {
-	internalMux := http.NewServeMux()
-	api := newInternalAPI(internalMux)
-	RegisterAllInternal(api, InternalDeps{})
-	return api.OpenAPI().YAML()
+var _ igen.StrictServerInterface = (*internalServer)(nil)
+
+// newInternalV1Handler assembles the internal edge: runner-auth gate → strict
+// wrapper (envelope error writers) → generated router.
+func newInternalV1Handler(deps InternalDeps) http.Handler {
+	strict := igen.NewStrictHandlerWithOptions(
+		&internalServer{deps: deps},
+		[]igen.StrictMiddlewareFunc{runnerAuthGate(deps.RunnerAuth)},
+		igen.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  writeRequestError,
+			ResponseErrorHandlerFunc: writeResponseError,
+		},
+	)
+	mux := http.NewServeMux()
+	igen.HandlerWithOptions(strict, igen.StdHTTPServerOptions{
+		BaseURL:          internalV1,
+		BaseRouter:       mux,
+		ErrorHandlerFunc: writeRequestError,
+	})
+	return mux
+}
+
+// runnerAuthGate is the internal surface's deny-by-default gate: every
+// operation must present a bearer the authorizer accepts for the execution id
+// named in the request, and the verified org is bound into the context. There
+// are deliberately NO carve-outs here. An operation whose request shape the
+// gate does not know is denied outright — adding an internal op means teaching
+// this gate its execution key first.
+func runnerAuthGate(authorizer *auth.RunnerAuthorizer) igen.StrictMiddlewareFunc {
+	return func(f igen.StrictHandlerFunc, operationID string) igen.StrictHandlerFunc {
+		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
+			if authorizer == nil {
+				return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "runner auth not configured", nil}
+			}
+			var executionID string
+			switch req := request.(type) {
+			case igen.RunnerRefreshCredentialsRequestObject:
+				executionID = req.ExecutionID
+			default:
+				return nil, errUnauthorized("unauthenticated internal operation: " + operationID)
+			}
+			caller, err := authorizer.Authorize(ctx, r.Header.Get("Authorization"), executionID)
+			if err != nil {
+				return nil, mapRunnerAuthError(err)
+			}
+			return f(tenant.WithBoundOrg(ctx, string(caller.Org)), w, r, request)
+		}
+	}
+}
+
+// mapRunnerAuthError translates the authorizer's neutral auth.HTTPError onto
+// the envelope; anything unrecognized fails closed as a 401.
+func mapRunnerAuthError(err error) error {
+	var ae *auth.HTTPError
+	if errors.As(err, &ae) {
+		switch ae.Status {
+		case http.StatusForbidden:
+			return errForbidden(ae.Message)
+		default:
+			return errUnauthorized(ae.Message)
+		}
+	}
+	return errUnauthorized("invalid bearer")
+}
+
+func (s *internalServer) RunnerRefreshCredentials(ctx context.Context, request igen.RunnerRefreshCredentialsRequestObject) (igen.RunnerRefreshCredentialsResponseObject, error) {
+	if s.deps.CredsRefresh == nil {
+		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "credentials refresh not configured", nil}
+	}
+	org := tenant.BoundOrgFromContext(ctx)
+	resp, err := s.deps.CredsRefresh.Refresh(ctx, request.ExecutionID, org)
+	if err != nil {
+		return nil, errInternal("failed to refresh credentials")
+	}
+	return igen.RunnerRefreshCredentials200JSONResponse(*resp), nil
 }

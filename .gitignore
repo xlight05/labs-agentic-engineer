@@ -48,3 +48,4 @@ learning/
 **/__screenshots__/
 **/.vitest-attachments/
 .scratch/
+.agents/

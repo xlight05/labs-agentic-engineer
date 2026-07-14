@@ -17,24 +17,27 @@
 package api
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestGenerateInternalOpenAPIYAML asserts the internal S2S spec registers
-// cleanly (no duplicate-op panic) and describes exactly the runner-callback
-// operations with the S2S security schemes — and only those.
-func TestGenerateInternalOpenAPIYAML(t *testing.T) {
-	out, err := GenerateInternalOpenAPIYAML()
+// TestInternalContract asserts the committed internal contract describes
+// exactly the runner-callback operations with the S2S security schemes — and
+// only those. (The Huma export is gone; the contract is the source of truth.)
+func TestInternalContract(t *testing.T) {
+	out, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "packages", "contracts", "api", "internal", "v1", "openapi.yaml"))
 	if err != nil {
-		t.Fatalf("GenerateInternalOpenAPIYAML: %v", err)
+		t.Fatalf("read internal contract: %v", err)
 	}
 	yaml := string(out)
 
 	for _, want := range []string{
 		"runner-refresh-credentials",
-		// Runner S2S re-keyed from task to execution (tasks-github-native §9.2).
-		"/internal/v1/executions/{executionId}/credentials/refresh",
+		// Runner S2S re-keyed from task to execution (tasks-github-native §9.2);
+		// the version root lives in `servers`, the path is server-relative.
+		"/executions/{executionId}/credentials/refresh",
 		"taskJWT",
 		"publisherCC",
 	} {

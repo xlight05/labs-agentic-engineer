@@ -29,11 +29,13 @@ func main() {
 		path string
 		gen  func() ([]byte, error)
 	}{
-		// The curated contract (packages/contracts/api/v1/openapi.yaml) is the
-		// hand-maintained source of truth and is NEVER written by this tool;
-		// both exports below are comparison aids under the gitignored build/.
+		// The curated contracts (packages/contracts/api/{v1,internal/v1}) are the
+		// hand-maintained source of truth and are NEVER written by this tool.
+		// This export renders what remains Huma-REGISTERED (unmigrated features)
+		// as a comparison aid under the gitignored build/; the internal surface
+		// is contract-first now, so its export is gone. The whole tool dies with
+		// the last *_huma.go (contract-first migration, issue 005).
 		{filepath.Join("build", "public-openapi.yaml"), api.GenerateOpenAPIYAML},
-		{filepath.Join("build", "internal-openapi.yaml"), api.GenerateInternalOpenAPIYAML},
 	}
 	for _, s := range specs {
 		if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {

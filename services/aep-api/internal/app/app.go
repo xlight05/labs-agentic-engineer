@@ -757,7 +757,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// the runner bearer is an execution id, and the publisher-cc branch resolves
 	// the acting org by execution id.
 	publisherVerifier := authn.NewPublisherTokenVerifier(thunderJWKS, cfg.PlatformIDP.Issuer, "aep-publisher-")
-	authn.SetRunnerAuthorizer(authn.NewRunnerAuthorizer(taskTokens, publisherVerifier, executionOrgLookup(db)))
+	runnerAuth := authn.NewRunnerAuthorizer(taskTokens, publisherVerifier, executionOrgLookup(db))
 
 	// Controllers
 	params := api.AppParams{
@@ -767,6 +767,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		// feature registers code-first via params.HumaDeps below.
 		InternalDeps: api.InternalDeps{
 			CredsRefresh: credRefreshService,
+			RunnerAuth:   runnerAuth,
 		},
 		WebhookController:   webhookCtrl,
 		OrgGitHubController: orgGitHubCtrl,

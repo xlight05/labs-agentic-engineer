@@ -115,16 +115,14 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	}
 
 	// ── internal S2S surface ─────────────────────────────────────────────────
-	// Its own Huma API on its own mux, NOT wrapped by the /api/ user-JWT
-	// middleware. Each operation authenticates by construction via
-	// auth.ExecutionScopedInput (BFF Task-JWT or publisher-cc) and is never
-	// gateway-advertised. All runner callbacks (skills, credentials refresh)
-	// are keyed to the execution id — tasks-github-native §9.2. See
+	// Served contract-first from packages/contracts/api/internal/v1 (strict
+	// server in internal/api/igen), NOT wrapped by the /api/ user-JWT
+	// middleware. Every operation passes the deny-by-default runnerAuthGate
+	// (BFF Task-JWT or publisher-cc verified against the path execution id)
+	// and is never gateway-advertised. All runner callbacks are keyed to the
+	// execution id — tasks-github-native §9.2. See
 	// docs/design/internal-s2s-api.md §3.
-	internalMux := http.NewServeMux()
-	internalAPI := newInternalAPI(internalMux)
-	RegisterAllInternal(internalAPI, params.InternalDeps)
-	mux.Handle(internalV1+"/executions/", internalMux)
+	mux.Handle(internalV1+"/executions/", newInternalV1Handler(params.InternalDeps))
 
 	// ── internal MCP discovery (POST /internal/v1/mcp) ───────────────────────
 	// A raw (non-Huma) JSON-RPC mount: the MCP server the agents service's
