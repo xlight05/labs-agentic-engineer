@@ -27,7 +27,7 @@
 // helper against a shared Y.Doc whose XmlFragment backs the editor, so the
 // editor grows exactly as it does in production — no server, no cluster.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
