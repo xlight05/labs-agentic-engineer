@@ -55,11 +55,8 @@ function scenario(): SettingsScenario {
   );
 }
 
-function problem(body: object, status: number) {
-  return HttpResponse.json(body, {
-    status,
-    headers: { "Content-Type": "application/problem+json" },
-  });
+function errorJson(body: object, status: number) {
+  return HttpResponse.json(body, { status });
 }
 
 // Session-local state layered on top of the scenario baseline, mirroring
@@ -162,7 +159,7 @@ function configProjection(): ConfigProjection {
 export const settingsHandlers = [
   http.get("*/api/v1/config", () => {
     ensureInitialized();
-    if (scenario() === "error") return problem(configLoadError, 500);
+    if (scenario() === "error") return errorJson(configLoadError, 500);
     return HttpResponse.json(configProjection());
   }),
 
@@ -174,7 +171,7 @@ export const settingsHandlers = [
       if (body.llm === null) {
         llm = null;
       } else if (body.llm.apiKey === INVALID_CREDENTIAL_VALUE) {
-        return problem(llmValidationError, 422);
+        return errorJson(llmValidationError, 400);
       } else {
         llm = {
           kind: "anthropic",
@@ -189,10 +186,10 @@ export const settingsHandlers = [
 
     if (body.gitProvider !== undefined) {
       if (body.gitProvider === null) {
-        return problem(gitProviderDisconnectRejected, 422);
+        return errorJson(gitProviderDisconnectRejected, 400);
       }
       if (body.gitProvider.pat === INVALID_CREDENTIAL_VALUE) {
-        return problem(gitProviderValidationError, 422);
+        return errorJson(gitProviderValidationError, 400);
       }
       const login = body.gitProvider.githubLogin || "acme-dev";
       gitProvider = {
@@ -231,7 +228,7 @@ export const settingsHandlers = [
       fileName = "";
     }
     if (!fileName || fileName.includes(IMPORT_INVALID_SENTINEL)) {
-      return problem(importFileInvalidError, 422);
+      return errorJson(importFileInvalidError, 400);
     }
     const name =
       slugFromFileName(fileName) || `imported-skill-${skills.length + 1}`;
@@ -245,7 +242,7 @@ export const settingsHandlers = [
   // the mock treats that as part of the same opaque call.
   http.post("*/api/v1/skills/sync", () => {
     ensureInitialized();
-    if (scenario() === "sync-error") return problem(skillsSyncError, 502);
+    if (scenario() === "sync-error") return errorJson(skillsSyncError, 502);
     const targets = skillUpdates;
 
     for (const t of targets) {
@@ -277,13 +274,13 @@ export const settingsHandlers = [
 
   http.get("*/api/v1/skills/updates", () => {
     ensureInitialized();
-    if (scenario() === "error") return problem(skillsLoadError, 500);
+    if (scenario() === "error") return errorJson(skillsLoadError, 500);
     return HttpResponse.json({ updates: skillUpdates, count: skillUpdates.length });
   }),
 
   http.get("*/api/v1/skills", () => {
     ensureInitialized();
-    if (scenario() === "error") return problem(skillsLoadError, 500);
+    if (scenario() === "error") return errorJson(skillsLoadError, 500);
     return HttpResponse.json({
       skills: skills.map(toSummary),
       repoUrl: skillsRepoUrl,
@@ -294,12 +291,10 @@ export const settingsHandlers = [
     ensureInitialized();
     const body = (await request.json()) as CreateSkillInput;
     if (skills.some((s) => s.name === body.name)) {
-      return problem(
+      return errorJson(
         {
-          type: "about:blank",
-          status: 409,
-          title: "Conflict",
-          detail: `A skill named ${body.name} already exists`,
+          code: "conflict",
+          message: `A skill named ${body.name} already exists`,
         },
         409,
       );
@@ -323,12 +318,10 @@ export const settingsHandlers = [
     ensureInitialized();
     const skill = skills.find((s) => s.name === params.name);
     if (!skill) {
-      return problem(
+      return errorJson(
         {
-          type: "about:blank",
-          status: 404,
-          title: "Not Found",
-          detail: `Skill ${String(params.name)} not found`,
+          code: "not_found",
+          message: `Skill ${String(params.name)} not found`,
         },
         404,
       );
@@ -340,12 +333,10 @@ export const settingsHandlers = [
     ensureInitialized();
     const skill = skills.find((s) => s.name === params.name && s.editable);
     if (!skill) {
-      return problem(
+      return errorJson(
         {
-          type: "about:blank",
-          status: 404,
-          title: "Not Found",
-          detail: `Editable skill ${String(params.name)} not found`,
+          code: "not_found",
+          message: `Editable skill ${String(params.name)} not found`,
         },
         404,
       );

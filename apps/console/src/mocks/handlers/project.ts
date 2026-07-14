@@ -35,7 +35,6 @@ function respond<T extends JsonBodyType>(
   if (s === "error") {
     return HttpResponse.json(projectSectionError, {
       status: 500,
-      headers: { "Content-Type": "application/problem+json" },
     });
   }
   return HttpResponse.json(pick(s));
@@ -83,19 +82,16 @@ export const projectHandlers = [
     if (s === "error") {
       return HttpResponse.json(projectSectionError, {
         status: 500,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     const detail = taskDetailOf(s, Number(params.issueNumber));
     if (!detail) {
       return HttpResponse.json(
         {
-          type: "about:blank",
-          status: 404,
-          title: "Not Found",
-          detail: `no task #${String(params.issueNumber)}`,
+          code: "not_found",
+          message: `no task #${String(params.issueNumber)}`,
         },
-        { status: 404, headers: { "Content-Type": "application/problem+json" } },
+        { status: 404 },
       );
     }
     return HttpResponse.json(detail);
@@ -110,7 +106,6 @@ export const projectHandlers = [
       if (s === "error") {
         return HttpResponse.json(projectSectionError, {
           status: 500,
-          headers: { "Content-Type": "application/problem+json" },
         });
       }
       const issueNumber = Number(params.issueNumber);
@@ -181,7 +176,6 @@ export const projectHandlers = [
     if (s === "error") {
       return HttpResponse.json(projectSectionError, {
         status: 500,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     const pathname = new URL(request.url).pathname;
@@ -190,7 +184,6 @@ export const projectHandlers = [
     if (!file) {
       return HttpResponse.json(specFileNotFound(path), {
         status: 404,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     return HttpResponse.json(file);

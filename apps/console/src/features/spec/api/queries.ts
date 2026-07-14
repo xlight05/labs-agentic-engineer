@@ -21,12 +21,12 @@ import type { components } from "../../../generated/aep-api";
 import { client } from "../../../api/client";
 import { specKeys } from "./keys";
 import { toSpecEntries } from "./mapping";
+import { apiErrorMessage } from "../../../api/errors";
 
 type FileContent = components["schemas"]["FileContent"];
 
 function toError(error: unknown, fallback: string): Error {
-  const e = error as { detail?: string; title?: string } | undefined;
-  return new Error(e?.detail ?? e?.title ?? fallback);
+  return new Error(apiErrorMessage(error, fallback));
 }
 
 /**
@@ -61,17 +61,17 @@ export async function fetchSpecFileContent(
   projectName: string,
   file: { path: string; sha: string },
 ): Promise<FileContent> {
-  // openapi-fetch can't substitute Huma's `{path...}` wildcard (its
-  // serializer only knows `{name}`/`{name*}`, and both percent-encode
-  // the slashes the wildcard exists to keep). Build the concrete URL,
-  // cast to the contract path so the response stays typed. `file.path`
-      // is already the full repo path (specs/…) the Files API expects.
+  // The contract's {path} param is a trailing wildcard — it spans multiple
+  // segments, and openapi-fetch's serializer would percent-encode the very
+  // slashes the wildcard exists to keep. Build the concrete URL, cast to
+  // the contract path so the response stays typed. `file.path` is already
+  // the full repo path (specs/…) the Files API expects.
   const repoPath = file.path
     .split("/")
     .map(encodeURIComponent)
     .join("/");
   const { data, error } = await client.GET(
-    `/projects/${encodeURIComponent(projectName)}/files/${repoPath}` as "/projects/{projectName}/files/{path...}",
+    `/projects/${encodeURIComponent(projectName)}/files/${repoPath}` as "/projects/{projectName}/files/{path}",
     { params: { path: { projectName, path: file.path } } },
   );
   if (error || data === undefined)

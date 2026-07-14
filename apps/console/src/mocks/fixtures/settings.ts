@@ -22,7 +22,7 @@ type GitProviderProjection = components["schemas"]["GitProviderProjection"];
 type LLMProjection = components["schemas"]["LLMProjection"];
 type SkillDetailBody = components["schemas"]["SkillDetailBody"];
 type SkillUpdate = components["schemas"]["SkillUpdate"];
-type ErrorModel = components["schemas"]["ErrorModel"];
+type ApiError = components["schemas"]["Error"];
 
 // Scenario switch for the Settings (#96) and Onboarding (#102) features.
 // Toggle in devtools:
@@ -64,11 +64,9 @@ export const importWarningsFixture = [
 // envelope repoUrl — powers the Import dialog's via-pull-request guidance).
 export const skillsRepoUrl = "https://github.com/acme-dev/org-skills";
 
-export const importFileInvalidError: ErrorModel = {
-  type: "about:blank",
-  status: 422,
-  title: "Unprocessable Entity",
-  detail: "body.file: not a valid gzip AgentSkills tarball",
+export const importFileInvalidError: ApiError = {
+  code: "validation_failed",
+  message: "body.file: not a valid gzip AgentSkills tarball",
 };
 
 export const githubConnectedFixture: GitProviderProjection = {
@@ -93,48 +91,36 @@ export const llmConnectedFixture: LLMProjection = {
   lastValidatedAt: "2026-07-01T09:00:00Z",
 };
 
-export const gitProviderValidationError: ErrorModel = {
-  type: "about:blank",
-  status: 422,
-  title: "Unprocessable Entity",
-  detail: "body.gitProvider: the provided PAT could not be validated against GitHub",
+export const gitProviderValidationError: ApiError = {
+  code: "validation_failed",
+  message: "body.gitProvider: the provided PAT could not be validated against GitHub",
 };
 
-export const llmValidationError: ErrorModel = {
-  type: "about:blank",
-  status: 422,
-  title: "Unprocessable Entity",
-  detail: "body.llm: the provided API key was rejected by Anthropic",
+export const llmValidationError: ApiError = {
+  code: "validation_failed",
+  message: "body.llm: the provided API key was rejected by Anthropic",
 };
 
-export const gitProviderDisconnectRejected: ErrorModel = {
-  type: "about:blank",
-  status: 422,
-  title: "Unprocessable Entity",
-  detail: "body.gitProvider: use POST /config/git-provider/disconnect to disconnect the git provider",
+export const gitProviderDisconnectRejected: ApiError = {
+  code: "validation_failed",
+  message: "body.gitProvider: use POST /config/git-provider/disconnect to disconnect the git provider",
 };
 
-export const configLoadError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Failed to load organization configuration",
+export const configLoadError: ApiError = {
+  code: "internal_error",
+  message: "Failed to load organization configuration",
 };
 
-export const skillsLoadError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Failed to load skills",
+export const skillsLoadError: ApiError = {
+  code: "internal_error",
+  message: "Failed to load skills",
 };
 
 // Bootstrap failure for the onboarding wizard (#102): repo creation or the
 // built-ins push failed. Sync is idempotent, so the remedy is retry.
-export const skillsSyncError: ErrorModel = {
-  type: "about:blank",
-  status: 502,
-  title: "Bad Gateway",
-  detail: "Failed to create the skills repository on GitHub",
+export const skillsSyncError: ApiError = {
+  code: "bad_gateway",
+  message: "Failed to create the skills repository on GitHub",
 };
 
 // Covers all four kinds (org | platform | custom | imported — the BE's real

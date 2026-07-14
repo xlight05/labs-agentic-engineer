@@ -2,7 +2,7 @@ import type { components } from "../../generated/aep-api";
 
 type RcaAgentReport = components["schemas"]["RcaAgentReport"];
 type RcaAgentReportList = components["schemas"]["RcaAgentReportList"];
-type ErrorModel = components["schemas"]["ErrorModel"];
+type ApiError = components["schemas"]["Error"];
 
 // Scenario switch (api-guidelines: mocks must produce empty AND error
 // states). Toggle in the browser devtools:
@@ -253,16 +253,12 @@ export const seedAlerts: RcaAgentReport[] = [
 // (#155's list). The bell (#154) always passes its own limit explicitly.
 export const ALERTS_PAGE_SIZE = 6;
 
-export const alertsError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Mock error scenario for RCA-agent alert reports",
+export const alertsError: ApiError = {
+  code: "internal_error",
+  message: "Mock error scenario for RCA-agent alert reports",
 };
 
-export const alertNotFoundError = (id: string): ErrorModel => ({
-  type: "about:blank",
-  status: 404,
-  title: "Not Found",
-  detail: `RCA report ${id} not found`,
+export const alertNotFoundError = (id: string): ApiError => ({
+  code: "not_found",
+  message: `RCA report ${id} not found`,
 });

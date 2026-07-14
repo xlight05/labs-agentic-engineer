@@ -18,6 +18,7 @@
 
 import type { components } from "../../../generated/aep-api";
 import { client } from "../../../api/client";
+import { apiErrorMessage } from "../../../api/errors";
 
 export type TurnStatus = components["schemas"]["TurnStatus"];
 
@@ -39,11 +40,10 @@ export async function startCollabTurn(
     },
   );
   if (error || data === undefined) {
-    const e = error as { detail?: string; title?: string; code?: string } | undefined;
     if (response.status === 409) {
       throw new Error("An agent turn is already running for this project — wait for it to finish.");
     }
-    throw new Error(e?.detail ?? e?.title ?? "Failed to start the agent turn");
+    throw new Error(apiErrorMessage(error, "Failed to start the agent turn"));
   }
   return data.turnId;
 }

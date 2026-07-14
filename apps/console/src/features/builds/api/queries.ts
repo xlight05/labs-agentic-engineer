@@ -19,6 +19,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { client } from "../../../api/client";
 import { buildKeys } from "./keys";
+import { apiErrorMessage } from "../../../api/errors";
 
 // Same cadence as the task list: the builds page is where the user watches a
 // running build move; a settled history doesn't need refreshing.
@@ -35,8 +36,7 @@ export function useBuilds(projectName: string) {
         { params: { path: { projectName } } },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to load builds");
+        throw new Error(apiErrorMessage(error, "Failed to load builds"));
       }
       return data.builds ?? [];
     },

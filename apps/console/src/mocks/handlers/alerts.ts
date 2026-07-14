@@ -25,7 +25,6 @@ export const alertsHandlers = [
     if (scenario() === "error") {
       return HttpResponse.json(alertsError, {
         status: 500,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     const all = currentAlerts();
@@ -48,14 +47,12 @@ export const alertsHandlers = [
     if (scenario() === "error") {
       return HttpResponse.json(alertsError, {
         status: 500,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     const report = currentAlerts().find((r) => r.id === params.reportId);
     if (!report) {
       return HttpResponse.json(alertNotFoundError(String(params.reportId)), {
         status: 404,
-        headers: { "Content-Type": "application/problem+json" },
       });
     }
     return HttpResponse.json(report);

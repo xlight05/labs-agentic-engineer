@@ -19,6 +19,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { client } from "../../../api/client";
 import { organizationKeys } from "./keys";
+import { apiErrorMessage } from "../../../api/errors";
 
 // Orgs for the header switcher. Near-static reference data → long staleTime.
 // Note: the BFF lists every org it can see, not the caller's memberships —
@@ -30,7 +31,7 @@ export function useOrganizations() {
       const { data, error } = await client.GET("/organizations");
       if (error) {
         throw new Error(
-          error.detail ?? error.title ?? "Failed to load organizations",
+          apiErrorMessage(error, "Failed to load organizations"),
         );
       }
       return data;

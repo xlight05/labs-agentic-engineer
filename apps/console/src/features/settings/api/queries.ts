@@ -20,14 +20,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "../../../generated/aep-api";
 import { client } from "../../../api/client";
 import { configKeys, skillsKeys } from "./keys";
+import { apiErrorMessage } from "../../../api/errors";
 
 type ConfigProjection = components["schemas"]["ConfigProjection"];
 type CreateSkillInput = components["schemas"]["CreateSkillInput"];
 type UpdateSkillInput = components["schemas"]["UpdateSkillInput"];
 
 function errorMessage(error: unknown, fallback: string): string {
-  const e = error as { detail?: string; title?: string } | undefined;
-  return e?.detail ?? e?.title ?? fallback;
+  return apiErrorMessage(error, fallback);
 }
 
 // --- Org config: GitHub + Anthropic (+ IDP, read-only here — out of scope

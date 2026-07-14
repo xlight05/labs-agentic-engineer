@@ -9,7 +9,7 @@ type BuildList = components["schemas"]["BuildList"];
 type DeploymentList = components["schemas"]["DeploymentList"];
 type FileMeta = components["schemas"]["FileMeta"];
 type FileContent = components["schemas"]["FileContent"];
-type ErrorModel = components["schemas"]["ErrorModel"];
+type ApiError = components["schemas"]["Error"];
 
 // Scenario switch for the project overview (#77/#183) and spec view (#80).
 // Toggle in devtools:
@@ -734,16 +734,12 @@ export function specFileContent(
   };
 }
 
-export const specFileNotFound = (path: string): ErrorModel => ({
-  type: "about:blank",
-  status: 404,
-  title: "Not Found",
-  detail: `no spec file at ${path}`,
+export const specFileNotFound = (path: string): ApiError => ({
+  code: "not_found",
+  message: `no spec file at ${path}`,
 });
 
-export const projectSectionError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Mock error scenario for the project overview",
+export const projectSectionError: ApiError = {
+  code: "internal_error",
+  message: "Mock error scenario for the project overview",
 };

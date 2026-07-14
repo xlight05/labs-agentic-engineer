@@ -1,2427 +1,91 @@
-components:
-  schemas:
-    AccessRequest:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/AccessRequest.json
-          format: uri
-          readOnly: true
-          type: string
-        consumerComponentName:
-          type: string
-        consumerProjectId:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        id:
-          type: string
-        orgServiceName:
-          type: string
-        providerComponentName:
-          type: string
-        providerIssueNumber:
-          format: int64
-          type: integer
-        providerIssueUrl:
-          type: string
-        providerProjectId:
-          type: string
-        providerTaskId:
-          type: string
-        status:
-          type: string
-        updatedAt:
-          format: date-time
-          type: string
-      required:
-        - id
-        - consumerProjectId
-        - consumerComponentName
-        - orgServiceName
-        - status
-        - createdAt
-        - updatedAt
-      type: object
-    ApplyRequest:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ApplyRequest.json
-          format: uri
-          readOnly: true
-          type: string
-        deletes:
-          items:
-            $ref: "#/components/schemas/DeleteOp"
-          type:
-            - array
-            - "null"
-        message:
-          type: string
-        writes:
-          items:
-            $ref: "#/components/schemas/WriteOp"
-          type:
-            - array
-            - "null"
-      type: object
-    ApplyResult:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ApplyResult.json
-          format: uri
-          readOnly: true
-          type: string
-        commitSha:
-          type: string
-        files:
-          items:
-            $ref: "#/components/schemas/FileMeta"
-          type:
-            - array
-            - "null"
-        warnings:
-          items:
-            $ref: "#/components/schemas/Warning"
-          type:
-            - array
-            - "null"
-      required:
-        - commitSha
-        - files
-      type: object
-    BuildInputItem:
-      additionalProperties: false
-      properties:
-        approved:
-          type: boolean
-        component:
-          description: Owning component name
-          type: string
-        dependency:
-          description: Dependency name
-          type: string
-        kind:
-          enum:
-            - external-config
-            - external-spec
-            - platform-resource
-            - org-service
-          type: string
-        parameters:
-          additionalProperties: {}
-          type: object
-        specContent:
-          type: string
-        specUrl:
-          type: string
-        values:
-          items:
-            $ref: "#/components/schemas/ConfigValue"
-          type:
-            - array
-            - "null"
-      required:
-        - component
-        - dependency
-        - kind
-      type: object
-    BuildList:
-      additionalProperties: false
-      description: list-project-builds response — one entry per built spec version tag, newest first.
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildList.json
-          format: uri
-          readOnly: true
-          type: string
-        builds:
-          items:
-            $ref: "#/components/schemas/BuildSummary"
-          type:
-            - array
-            - "null"
-      required:
-        - builds
-      type: object
-    BuildLogEntry:
-      additionalProperties: false
-      properties:
-        level:
-          type: string
-        log:
-          type: string
-        timestamp:
-          type: string
-      required:
-        - log
-      type: object
-    BuildLogs:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildLogs.json
-          format: uri
-          readOnly: true
-          type: string
-        logs:
-          items:
-            $ref: "#/components/schemas/BuildLogEntry"
-          type:
-            - array
-            - "null"
-        totalCount:
-          format: int64
-          type: integer
-      required:
-        - logs
-      type: object
-    BuildPreflight:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildPreflight.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/PreflightItem"
-          type:
-            - array
-            - "null"
-        needsInput:
-          type: boolean
-      required:
-        - needsInput
-        - items
-      type: object
-    BuildRequest:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildRequest.json
-          format: uri
-          readOnly: true
-          type: string
-        inputs:
-          items:
-            $ref: "#/components/schemas/BuildInputItem"
-          type:
-            - array
-            - "null"
-      type: object
-    BuildResponse:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildResponse.json
-          format: uri
-          readOnly: true
-          type: string
-        failures:
-          items:
-            $ref: "#/components/schemas/InputFailure"
-          type:
-            - array
-            - "null"
-        tag:
-          type: string
-      type: object
-    BuildStatus:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/BuildStatus.json
-          format: uri
-          readOnly: true
-          type: string
-        reason:
-          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error, so the console can show WHY it failed.
-          type: string
-        status:
-          enum:
-            - started
-            - in_progress
-            - completed
-            - failed
-          type: string
-        tasks:
-          items:
-            $ref: "#/components/schemas/BuildStatusTask"
-          type:
-            - array
-            - "null"
-        workflow_status:
-          type: string
-      required:
-        - status
-        - workflow_status
-      type: object
-    BuildStage:
-      additionalProperties: false
-      description: Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task counts, so the overview needs no list-tasks read.
-      properties:
-        status:
-          description: idle (never built), running, failed, succeeded
-          enum:
-            - idle
-            - running
-            - failed
-            - succeeded
-          type: string
-        tasks:
-          additionalProperties: false
-          description: Task counts bucketed from derivedStatus.
-          properties:
-            active:
-              format: int64
-              type: integer
-            done:
-              format: int64
-              type: integer
-            failed:
-              format: int64
-              type: integer
-            total:
-              format: int64
-              type: integer
-          required:
-            - total
-            - done
-            - failed
-            - active
-          type: object
-        version:
-          description: Spec tag the current/last build built; "" if never built.
-          type: string
-      required:
-        - version
-        - status
-        - tasks
-      type: object
-    BuildStatusTask:
-      additionalProperties: false
-      properties:
-        issueNumber:
-          description: GitHub issue number of the Task — links a build-status row to its issue (and to the task-log stream); replaces the old title-join.
-          format: int64
-          type: integer
-        status:
-          enum:
-            - started
-            - in_progress
-            - completed
-            - failed
-          type: string
-        title:
-          type: string
-      required:
-        - title
-        - status
-      type: object
-    BuildSummary:
-      additionalProperties: false
-      description: One entry of list-project-builds — a spec version tag's newest run. A list read has no live workflow query, so "started" never occurs here.
-      properties:
-        completedAt:
-          format: date-time
-          type: string
-        reason:
-          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error, surfaced beside the Failed badge in the console.
-          type: string
-        startedAt:
-          format: date-time
-          type: string
-        status:
-          enum:
-            - started
-            - in_progress
-            - completed
-            - failed
-          type: string
-        tag:
-          type: string
-        tasks:
-          $ref: "#/components/schemas/BuildTally"
-          description: The run's own frozen task tally, written by the workflow — not a live task recount.
-      required:
-        - tag
-        - status
-        - tasks
-        - startedAt
-      type: object
-    BuildTally:
-      additionalProperties: false
-      properties:
-        active:
-          format: int64
-          type: integer
-        done:
-          format: int64
-          type: integer
-        failed:
-          format: int64
-          type: integer
-        total:
-          format: int64
-          type: integer
-      required:
-        - total
-        - done
-        - failed
-        - active
-      type: object
-    ClientSecretOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ClientSecretOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        clientSecret:
-          type: string
-      required:
-        - clientSecret
-      type: object
-    CollabSessionOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/CollabSessionOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        email:
-          type: string
-        roomId:
-          type: string
-        userName:
-          type: string
-        wsUrl:
-          type: string
-      required:
-        - roomId
-        - wsUrl
-        - userName
-        - email
-      type: object
-    CollabValidateOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/CollabValidateOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        email:
-          type: string
-        name:
-          type: string
-        projectName:
-          description: The room's project, resolved by the oracle from `spec-<org>-<project>`; the collab service uses it for the seed read (#114).
-          type: string
-      required:
-        - name
-        - email
-        - projectName
-      type: object
-    Component:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/Component.json
-          format: uri
-          readOnly: true
-          type: string
-        autoBuild:
-          type: boolean
-        autoDeploy:
-          type: boolean
-        createdAt:
-          type: string
-        description:
-          type: string
-        displayName:
-          type: string
-        endpointUrl:
-          description: >-
-            Public URL of the running dev deployment. Populated for web
-            applications only; absent until deployed.
-          type: string
-        name:
-          type: string
-        projectName:
-          type: string
-        status:
-          type: string
-        type:
-          description: >-
-            Component kind in AEP's design vocabulary — "web-application" or
-            "service" (matching design.json's componentType). OpenChoreo's
-            prefixed ComponentType names (deployment/*) never appear on this
-            API.
-          type: string
-        uid:
-          type: string
-      required:
-        - name
-      type: object
-    ComponentConfig:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ComponentConfig.json
-          format: uri
-          readOnly: true
-          type: string
-        componentName:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        envVars:
-          items:
-            $ref: "#/components/schemas/EnvVar"
-          type:
-            - array
-            - "null"
-        id:
-          type: string
-        projectName:
-          type: string
-        updatedAt:
-          format: date-time
-          type: string
-      required:
-        - id
-        - projectName
-        - componentName
-        - envVars
-        - createdAt
-        - updatedAt
-      type: object
-    ComponentList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ComponentList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/Component"
-          type:
-            - array
-            - "null"
-      required:
-        - items
-      type: object
-    ComponentOpenAPI:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ComponentOpenAPI.json
-          format: uri
-          readOnly: true
-          type: string
-        componentName:
-          type: string
-        componentType:
-          type: string
-        spec:
-          type: string
-      required:
-        - componentName
-        - componentType
-        - spec
-      type: object
-    ConfigKeyDTO:
-      additionalProperties: false
-      properties:
-        defaultValue:
-          type: string
-        description:
-          type: string
-        key:
-          type: string
-        secret:
-          type: boolean
-      required:
-        - key
-      type: object
-    ConfigKeyView:
-      additionalProperties: false
-      properties:
-        defaultValue:
-          type: string
-        description:
-          type: string
-        key:
-          type: string
-        secret:
-          type: boolean
-      required:
-        - key
-      type: object
-    ConfigPatch:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ConfigPatch.json
-          format: uri
-          readOnly: true
-          type: string
-        gitProvider:
-          additionalProperties: false
-          properties:
-            githubLogin:
-              type: string
-            kind:
-              enum:
-                - github
-              type: string
-            mode:
-              enum:
-                - pat
-              type: string
-            pat:
-              type: string
-          required:
-            - kind
-            - mode
-            - pat
-          type:
-            - object
-            - "null"
-        idp:
-          additionalProperties: false
-          properties:
-            issuer:
-              type: string
-            jwksUrl:
-              type: string
-            kind:
-              enum:
-                - platform
-                - asgardeo
-                - custom
-              type: string
-          required:
-            - kind
-          type:
-            - object
-            - "null"
-        llm:
-          additionalProperties: false
-          properties:
-            apiKey:
-              type: string
-            kind:
-              enum:
-                - anthropic
-              type: string
-          required:
-            - kind
-            - apiKey
-          type:
-            - object
-            - "null"
-      type: object
-    ConfigProjection:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ConfigProjection.json
-          format: uri
-          readOnly: true
-          type: string
-        gitProvider:
-          oneOf:
-            - $ref: "#/components/schemas/GitProviderProjection"
-            - type: "null"
-        idp:
-          $ref: "#/components/schemas/IDPProjection"
-        llm:
-          oneOf:
-            - $ref: "#/components/schemas/LLMProjection"
-            - type: "null"
-      required:
-        - llm
-        - gitProvider
-        - idp
-      type: object
-    ConfigValue:
-      additionalProperties: false
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-      required:
-        - key
-        - value
-      type: object
-    ConsumerDTO:
-      additionalProperties: false
-      properties:
-        componentName:
-          type: string
-        projectId:
-          type: string
-      required:
-        - projectId
-        - componentName
-      type: object
-    CreateProjectRequest:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/CreateProjectRequest.json
-          format: uri
-          readOnly: true
-          type: string
-        deploymentPipeline:
-          type: string
-        description:
-          type: string
-        displayName:
-          type: string
-        name:
-          type: string
-        prompt:
-          description: >-
-            The user's initial requirement — what they want built. Persisted
-            as the project's requirement and kicks off spec derivation for
-            the new project (issue #72). Projects created without a prompt
-            keep today's behavior.
-          type: string
-        repoName:
-          description: >-
-            Repository name for the project's GitHub repo; defaults to the
-            project name, the organization is fixed server-side (issue #71).
-          type: string
-      required:
-        - name
-      type: object
-    CreateRcaAgentReportRequest:
-      additionalProperties: false
-      description: Write-side request for a new RCA-agent alert report (issue #156). Server assigns id and createdAt.
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/CreateRcaAgentReportRequest.json
-          format: uri
-          readOnly: true
-          type: string
-        classification:
-          description: "code-level, config-level, mixed, or none — set by the handoff agent"
-          type: string
-        component:
-          type: string
-        deployed:
-          type: boolean
-        deployedAt:
-          type: string
-          format: date-time
-        diagnosis:
-          description: Full RCA diagnosis + remediation content (markdown)
-          type: string
-        dispatched:
-          type: boolean
-        issueExcerpt:
-          type: string
-        issueNumber:
-          format: int64
-          type: integer
-        issueTitle:
-          type: string
-        issueUrl:
-          type: string
-        project:
-          type: string
-        summary:
-          type: string
-        title:
-          type: string
-      required:
-        - project
-        - title
-        - summary
-        - classification
-        - diagnosis
-      type: object
-    CreateSkillInput:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/CreateSkillInput.json
-          format: uri
-          readOnly: true
-          type: string
-        name:
-          type: string
-        references:
-          additionalProperties:
-            type: string
-          type: object
-        skillMd:
-          type: string
-      required:
-        - name
-        - skillMd
-      type: object
-    DeleteOp:
-      additionalProperties: false
-      properties:
-        baseSha:
-          type: string
-        path:
-          type: string
-      required:
-        - path
-      type: object
-    DependencyStatus:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/DependencyStatus.json
-          format: uri
-          readOnly: true
-          type: string
-        outputs:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        ready:
-          type: boolean
-        status:
-          type: string
-      required:
-        - status
-        - ready
-        - outputs
-      type: object
-    Deployment:
-      additionalProperties: false
-      properties:
-        componentName:
-          type: string
-        createdAt:
-          type: string
-        endpointUrl:
-          type: string
-        environment:
-          type: string
-        name:
-          type: string
-        releaseName:
-          type: string
-        status:
-          type: string
-      type: object
-    DeploymentList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/DeploymentList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/Deployment"
-          type:
-            - array
-            - "null"
-      required:
-        - items
-      type: object
-    DeployStage:
-      additionalProperties: false
-      description: Deploy-stage aggregate on ProjectStatus (#184) — what's live in dev and rollout progress.
-      properties:
-        components:
-          additionalProperties: false
-          description: Component rollout progress for the current deploy.
-          properties:
-            ready:
-              format: int64
-              type: integer
-            total:
-              format: int64
-              type: integer
-          required:
-            - total
-            - ready
-          type: object
-        status:
-          enum:
-            - none
-            - deploying
-            - deployed
-            - failed
-          type: string
-        version:
-          description: Spec tag live in dev; "" if nothing deployed.
-          type: string
-      required:
-        - version
-        - status
-        - components
-      type: object
-    DisconnectOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/DisconnectOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        status:
-          type: string
-      required:
-        - status
-      type: object
-    DiscoverOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/DiscoverOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        issuer:
-          type: string
-        jwksUrl:
-          type: string
-      required:
-        - issuer
-        - jwksUrl
-      type: object
-    EnvVar:
-      additionalProperties: false
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-      required:
-        - key
-        - value
-      type: object
-    ErrorDetail:
-      additionalProperties: false
-      properties:
-        location:
-          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
-          type: string
-        message:
-          description: Error message text
-          type: string
-        value:
-          description: The value at the given location
-      type: object
-    ErrorModel:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ErrorModel.json
-          format: uri
-          readOnly: true
-          type: string
-        detail:
-          description: A human-readable explanation specific to this occurrence of the problem.
-          examples:
-            - Property foo is required but is missing.
-          type: string
-        errors:
-          description: Optional list of individual error details
-          items:
-            $ref: "#/components/schemas/ErrorDetail"
-          type:
-            - array
-            - "null"
-        instance:
-          description: A URI reference that identifies the specific occurrence of the problem.
-          examples:
-            - https://example.com/error-log/abc123
-          format: uri
-          type: string
-        status:
-          description: HTTP status code
-          examples:
-            - 400
-          format: int64
-          type: integer
-        title:
-          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
-          examples:
-            - Bad Request
-          type: string
-        type:
-          default: about:blank
-          description: A URI reference to human-readable documentation for the error.
-          examples:
-            - https://example.com/errors/example
-          format: uri
-          type: string
-      type: object
-    ExecutionView:
-      additionalProperties: false
-      properties:
-        createdAt:
-          format: date-time
-          type: string
-        endedAt:
-          format: date-time
-          type: string
-        id:
-          type: string
-        kind:
-          type: string
-        reason:
-          type: string
-        runName:
-          type: string
-        startedAt:
-          format: date-time
-          type: string
-        status:
-          type: string
-      required:
-        - id
-        - kind
-        - status
-        - createdAt
-      type: object
-    ExternalResourceDTO:
-      additionalProperties: false
-      properties:
-        config:
-          items:
-            $ref: "#/components/schemas/ConfigKeyDTO"
-          type:
-            - array
-            - "null"
-        consumers:
-          items:
-            $ref: "#/components/schemas/ConsumerDTO"
-          type:
-            - array
-            - "null"
-        description:
-          type: string
-        name:
-          type: string
-      required:
-        - name
-        - config
-        - consumers
-      type: object
-    FileContent:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/FileContent.json
-          format: uri
-          readOnly: true
-          type: string
-        content:
-          type: string
-        path:
-          type: string
-        sha:
-          type: string
-      required:
-        - path
-        - content
-        - sha
-      type: object
-    FileMeta:
-      additionalProperties: false
-      properties:
-        path:
-          type: string
-        sha:
-          type: string
-        size:
-          format: int64
-          type: integer
-      required:
-        - path
-        - sha
-      type: object
-    GitProviderProjection:
-      additionalProperties: false
-      properties:
-        connectedAt:
-          format: date-time
-          type: string
-        githubLogin:
-          type: string
-        identityChangedAt:
-          format: date-time
-          type: string
-        identityEmail:
-          type: string
-        identityLogin:
-          type: string
-        identityName:
-          type: string
-        installationId:
-          format: int64
-          type: integer
-        kind:
-          enum:
-            - github
-          type: string
-        lastValidatedAt:
-          format: date-time
-          type: string
-        mode:
-          enum:
-            - app
-            - pat
-          type: string
-        prevIdentityLogin:
-          type: string
-        selectedRepos:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        status:
-          type: string
-      required:
-        - kind
-        - mode
-        - status
-        - connectedAt
-      type: object
-    IDPProjection:
-      additionalProperties: false
-      properties:
-        hasClientSecret:
-          type: boolean
-        issuer:
-          type: string
-        jwksUrl:
-          type: string
-        kind:
-          enum:
-            - platform
-            - asgardeo
-            - custom
-          type: string
-        publisherClientId:
-          type: string
-      required:
-        - kind
-        - issuer
-        - jwksUrl
-        - publisherClientId
-        - hasClientSecret
-      type: object
-    ImportResult:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ImportResult.json
-          format: uri
-          readOnly: true
-          type: string
-        compatibility:
-          type: string
-        kind:
-          type: string
-        license:
-          type: string
-        name:
-          type: string
-        warnings:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-      required:
-        - name
-        - kind
-        - warnings
-      type: object
-    InputFailure:
-      additionalProperties: false
-      properties:
-        component:
-          type: string
-        dependency:
-          type: string
-        kind:
-          type: string
-        reason:
-          type: string
-      required:
-        - dependency
-        - reason
-      type: object
-    LLMProjection:
-      additionalProperties: false
-      properties:
-        connectedAt:
-          format: date-time
-          type: string
-        keyLast4:
-          type: string
-        keyPrefix:
-          type: string
-        kind:
-          enum:
-            - anthropic
-          type: string
-        lastValidatedAt:
-          format: date-time
-          type: string
-        status:
-          type: string
-        validationError:
-          type: string
-      required:
-        - kind
-        - keyPrefix
-        - keyLast4
-        - status
-        - connectedAt
-      type: object
-    Lineage:
-      additionalProperties: false
-      properties:
-        designTag:
-          type: string
-        specTag:
-          type: string
-      type: object
-    OrganizationList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/OrganizationList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/OrganizationView"
-          type:
-            - array
-            - "null"
-      required:
-        - items
-      type: object
-    OrganizationView:
-      additionalProperties: false
-      properties:
-        createdAt:
-          format: date-time
-          type: string
-        description:
-          type: string
-        displayName:
-          type: string
-        name:
-          type: string
-        status:
-          type: string
-        uuid:
-          type: string
-      required:
-        - uuid
-        - name
-        - createdAt
-      type: object
-    PlatformResourceTypeDTO:
-      additionalProperties: false
-      properties:
-        description:
-          type: string
-        name:
-          type: string
-        outputs:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        parameters:
-          additionalProperties: {}
-          type: object
-      required:
-        - name
-      type: object
-    PreflightItem:
-      additionalProperties: false
-      properties:
-        component:
-          description: Owning component name
-          type: string
-        config:
-          items:
-            $ref: "#/components/schemas/ConfigKeyView"
-          type:
-            - array
-            - "null"
-        dependency:
-          description: Dependency name
-          type: string
-        description:
-          type: string
-        kind:
-          enum:
-            - external-config
-            - external-spec
-            - platform-resource
-            - org-service
-          type: string
-        parameters:
-          additionalProperties: {}
-          type: object
-        resourceType:
-          type: string
-      required:
-        - component
-        - dependency
-        - kind
-        - description
-      type: object
-    ProgressEvent:
-      additionalProperties: false
-      properties:
-        branch:
-          type: string
-        command:
-          type: string
-        completedAt:
-          type: string
-        error:
-          type: string
-        files:
-          format: int64
-          type: integer
-        kind:
-          type: string
-        level:
-          type: string
-        message:
-          type: string
-        phase:
-          type: string
-        schemaVersion:
-          format: int64
-          type: integer
-        seq:
-          format: int64
-          type: integer
-        sha:
-          type: string
-        startedAt:
-          type: string
-        status:
-          type: string
-        step:
-          type: string
-        summary:
-          type: string
-        tool:
-          type: string
-        ts:
-          type: string
-      required:
-        - schemaVersion
-        - ts
-        - seq
-        - kind
-      type: object
-    Project:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/Project.json
-          format: uri
-          readOnly: true
-          type: string
-        createdAt:
-          type: string
-        deploymentPipeline:
-          type: string
-        description:
-          type: string
-        displayName:
-          type: string
-        name:
-          type: string
-        namespaceName:
-          type: string
-        repoUrl:
-          description: Clone URL of the project's Git repository; absent when no repo is provisioned (issue #108).
-          type: string
-        status:
-          type: string
-        uid:
-          type: string
-      required:
-        - name
-      type: object
-    ProjectList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ProjectList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/Project"
-          type:
-            - array
-            - "null"
-        nextCursor:
-          description: Cursor for the next page; absent on the last page.
-          type: string
-      required:
-        - items
-      type: object
-    ProjectStatus:
-      additionalProperties: false
-      description: Computed SDLC phase and artifact states.
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ProjectStatus.json
-          format: uri
-          readOnly: true
-          type: string
-        build:
-          $ref: "#/components/schemas/BuildStage"
-        deploy:
-          $ref: "#/components/schemas/DeployStage"
-        designStatus:
-          description: '"", draft, approved'
-          type: string
-        hasDesign:
-          type: boolean
-        hasSpec:
-          type: boolean
-        hasTasks:
-          type: boolean
-        phase:
-          description: no-repo, repo-cloning, repo-error, prompt, spec, architecture, tasks, components
-          type: string
-        repoErrorMessage:
-          description: Set when phase is repo-error.
-          type: string
-        repoStatus:
-          description: '"", pending, cloning, ready, error'
-          type: string
-        repoUrl:
-          type: string
-        spec:
-          $ref: "#/components/schemas/SpecStage"
-        specStatus:
-          description: '"", draft, approved'
-          type: string
-      required:
-        - phase
-        - repoStatus
-        - repoUrl
-        - hasSpec
-        - hasDesign
-        - hasTasks
-        - specStatus
-        - designStatus
-        - spec
-        - build
-        - deploy
-      type: object
-    ProvisionBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/ProvisionBody.json
-          format: uri
-          readOnly: true
-          type: string
-        environments:
-          description: "Environments to provision (default: [development])"
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        params:
-          additionalProperties:
-            type: string
-          description: Provisioning parameters (override the design defaults)
-          type: object
-      type: object
-    RcaAgentReport:
-      additionalProperties: false
-      description: An RCA report from the OpenChoreo SRE/RCA-agent handoff (console issues #154, #155).
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/RcaAgentReport.json
-          format: uri
-          readOnly: true
-          type: string
-        classification:
-          description: "code-level, config-level, mixed, or none — set by the handoff agent"
-          type: string
-        component:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        deployed:
-          description: Whether the resulting fix has been deployed (Verify Fix threshold, not merely PR-merged)
-          type: boolean
-        deployedAt:
-          type: string
-          format: date-time
-        diagnosis:
-          description: Full RCA diagnosis + remediation content (markdown)
-          type: string
-        dispatched:
-          description: Whether the coding agent has been dispatched for the linked issue (false in issue-only/manual-dispatch mode until a human dispatches)
-          type: boolean
-        id:
-          type: string
-        issueExcerpt:
-          description: Short excerpt of the linked GitHub issue; absent when no issue was created
-          type: string
-        issueNumber:
-          description: GitHub issue number created by the handoff; also the Task key (see /projects/{projectName}/tasks/{issueNumber}); absent when the handoff was config-only
-          format: int64
-          type: integer
-        issueTitle:
-          type: string
-        issueUrl:
-          type: string
-        project:
-          type: string
-        summary:
-          description: Short RCA summary; the console truncates this further for list rows
-          type: string
-        title:
-          type: string
-      required:
-        - id
-        - project
-        - createdAt
-        - title
-        - summary
-        - classification
-        - diagnosis
-        - deployed
-      type: object
-    RcaAgentReportList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/RcaAgentReportList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/RcaAgentReport"
-          type:
-            - array
-            - "null"
-        nextCursor:
-          description: Cursor for the next page; absent on the last page.
-          type: string
-      required:
-        - items
-      type: object
-    SaveValuesBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SaveValuesBody.json
-          format: uri
-          readOnly: true
-          type: string
-        environments:
-          additionalProperties:
-            additionalProperties:
-              type: string
-            type: object
-          description: "Per-environment { configKey: value } maps. Secret keys are routed to the secret manager by the registered schema."
-          type: object
-      required:
-        - environments
-      type: object
-    SkillDetailBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillDetailBody.json
-          format: uri
-          readOnly: true
-          type: string
-        compatibility:
-          type: string
-        contentSha:
-          type: string
-        description:
-          type: string
-        editable:
-          type: boolean
-        kind:
-          type: string
-        license:
-          type: string
-        name:
-          type: string
-        orgId:
-          type: string
-        references:
-          additionalProperties:
-            type: string
-          type: object
-        skillMd:
-          type: string
-        updatedAt:
-          format: date-time
-          type: string
-      required:
-        - editable
-        - orgId
-        - name
-        - kind
-        - description
-        - skillMd
-        - references
-        - contentSha
-        - updatedAt
-      type: object
-    SkillSummary:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillSummary.json
-          format: uri
-          readOnly: true
-          type: string
-        contentSha:
-          type: string
-        description:
-          type: string
-        editable:
-          type: boolean
-        kind:
-          type: string
-        name:
-          type: string
-      required:
-        - name
-        - kind
-        - description
-        - contentSha
-        - editable
-      type: object
-    SkillSummaryList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillSummaryList.json
-          format: uri
-          readOnly: true
-          type: string
-        repoUrl:
-          description: HTML URL of the org skills repo backing the catalogue.
-          type: string
-        skills:
-          items:
-            $ref: "#/components/schemas/SkillSummary"
-          type:
-            - array
-            - "null"
-      required:
-        - skills
-        - repoUrl
-      type: object
-    SkillSyncOutput:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillSyncOutput.json
-          format: uri
-          readOnly: true
-          type: string
-        status:
-          type: string
-        updated:
-          format: int64
-          type: integer
-      required:
-        - status
-        - updated
-      type: object
-    SkillUpdate:
-      additionalProperties: false
-      description: >
-        One built-in whose embedded (platform) content differs from the org's
-        repo copy. Reconcile compares ContentSHA, not a hand-maintained version.
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillUpdate.json
-          format: uri
-          readOnly: true
-          type: string
-        name:
-          type: string
-      required:
-        - name
-      type: object
-    SkillUpdateList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/SkillUpdateList.json
-          format: uri
-          readOnly: true
-          type: string
-        count:
-          format: int64
-          type: integer
-        updates:
-          items:
-            $ref: "#/components/schemas/SkillUpdate"
-          type:
-            - array
-            - "null"
-      required:
-        - updates
-        - count
-      type: object
-    SpecStage:
-      additionalProperties: false
-      description: Spec-stage aggregate on ProjectStatus (#184). Approved/draft is derived, not stored — version set and not dirty = approved (vN); dirty = draft changes (vN+); no version = unpublished draft; exists false = no spec yet.
-      properties:
-        design:
-          description: Design files exist for the spec (gates the Spec view's design button).
-          type: boolean
-        dirty:
-          description: specs/ moved on GitHub past the latest tag.
-          type: boolean
-        exists:
-          description: Any spec file created; false renders the Generate-spec CTA.
-          type: boolean
-        version:
-          description: Latest v<N> spec tag; "" if never published.
-          type: string
-      required:
-        - exists
-        - version
-        - dirty
-        - design
-      type: object
-    StartConnectInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/StartConnectInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        installationId:
-          description: Optional installation to pin (set when the user picks a candidate from the 2+ picker)
-          format: int64
-          type: integer
-      type: object
-    StartConnectOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/StartConnectOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        authorizeUrl:
-          type: string
-      required:
-        - authorizeUrl
-      type: object
-    StatusMsg:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/StatusMsg.json
-          format: uri
-          readOnly: true
-          type: string
-        status:
-          type: string
-      required:
-        - status
-      type: object
-    TagList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/TagList.json
-          format: uri
-          readOnly: true
-          type: string
-        latest:
-          description: Newest spec version tag (e.g. v3); absent when nothing is tagged.
-          type: string
-        specDirty:
-          description: True when specs/ changed after latest was tagged.
-          type: boolean
-        tags:
-          description: Spec version tags (v<N>), newest first.
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-      required:
-        - tags
-      type: object
-    TaskDetail:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/TaskDetail.json
-          format: uri
-          readOnly: true
-          type: string
-        attention:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        body:
-          type: string
-        component:
-          type: string
-        dependsOn:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        derivedStatus:
-          type: string
-        executionHistory:
-          items:
-            $ref: "#/components/schemas/ExecutionView"
-          type:
-            - array
-            - "null"
-        executions:
-          additionalProperties:
-            $ref: "#/components/schemas/ExecutionView"
-          type: object
-        executorClass:
-          type: string
-        hold:
-          type: boolean
-        issueNumber:
-          format: int64
-          type: integer
-        issueUrl:
-          type: string
-        lineage:
-          $ref: "#/components/schemas/Lineage"
-        operation:
-          type: string
-        origin:
-          type: string
-        rationale:
-          type: string
-        title:
-          type: string
-      required:
-        - executionHistory
-        - issueNumber
-        - title
-        - issueUrl
-        - dependsOn
-        - lineage
-        - derivedStatus
-        - hold
-        - attention
-        - executions
-      type: object
-    TaskStreamEvent:
-      additionalProperties: false
-      description: >-
-        One SSE frame on the task-log stream. `type` discriminates the payload:
-        `task` carries the full TaskView (client upserts by issue), `execution`
-        one ExecutionView (client upserts by id), `line` one TimelineEvent
-        (client appends, deduped by executionId+seq), and `done` the settled
-        derivedStatus (the server then closes the stream).
-      properties:
-        derivedStatus:
-          description: Settled derived status — present only on the `done` frame.
-          type: string
-        execution:
-          $ref: "#/components/schemas/ExecutionView"
-        line:
-          $ref: "#/components/schemas/TimelineEvent"
-        task:
-          $ref: "#/components/schemas/TaskView"
-        type:
-          enum:
-            - task
-            - execution
-            - line
-            - done
-          type: string
-      required:
-        - type
-      type: object
-    TaskView:
-      additionalProperties: false
-      properties:
-        attention:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        blockedBy:
-          description: >-
-            Names of the dependencies this task is waiting on; present when
-            derivedStatus is on_hold.
-          items:
-            type: string
-          type: array
-        body:
-          type: string
-        component:
-          type: string
-        dependsOn:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        derivedStatus:
-          type: string
-        executions:
-          additionalProperties:
-            $ref: "#/components/schemas/ExecutionView"
-          type: object
-        executorClass:
-          type: string
-        hold:
-          type: boolean
-        issueNumber:
-          format: int64
-          type: integer
-        issueUrl:
-          type: string
-        lineage:
-          $ref: "#/components/schemas/Lineage"
-        operation:
-          type: string
-        origin:
-          type: string
-        rationale:
-          type: string
-        title:
-          type: string
-      required:
-        - issueNumber
-        - title
-        - issueUrl
-        - dependsOn
-        - lineage
-        - derivedStatus
-        - hold
-        - attention
-        - executions
-      type: object
-    TimelineEvent:
-      additionalProperties: false
-      description: >-
-        A unified-timeline entry: today's ProgressEvent (phase | tool_use |
-        git_commit | git_push | gh_action | build_step | log | result) plus its
-        attribution — which execution attempt it came from. This is the per-row
-        shape the console renders; the FE groups rows by executionId/kind.
-      properties:
-        branch:
-          type: string
-        command:
-          type: string
-        completedAt:
-          type: string
-        error:
-          type: string
-        executionId:
-          description: Id of the execution attempt this line belongs to.
-          type: string
-        executionKind:
-          description: Kind of that attempt (coding | build | ops) — client-side grouping/section labels.
-          type: string
-        files:
-          format: int64
-          type: integer
-        kind:
-          type: string
-        level:
-          type: string
-        message:
-          type: string
-        phase:
-          type: string
-        schemaVersion:
-          format: int64
-          type: integer
-        seq:
-          format: int64
-          type: integer
-        sha:
-          type: string
-        startedAt:
-          type: string
-        status:
-          type: string
-        step:
-          type: string
-        summary:
-          type: string
-        tool:
-          type: string
-        ts:
-          type: string
-      required:
-        - schemaVersion
-        - ts
-        - seq
-        - kind
-        - executionId
-        - executionKind
-      type: object
-    TurnInputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/TurnInputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        collab:
-          description: 'Room-scoped turn (#86 phase 4): the agent joins the project''s spec collab room as a live peer, reads and edits the shared doc, and commits nothing to git.'
-          type: boolean
-        instruction:
-          description: User message / generation directive
-          type: string
-        target:
-          description: Optional target (e.g. a doc type)
-          type: string
-        useCase:
-          description: Which generation/chat flow. Omit to run a generic spec turn.
-          enum:
-            - requirements-generate
-            - requirements-chat
-            - design-generate
-          type: string
-      required:
-        - instruction
-      type: object
-    TurnOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/TurnOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        turnId:
-          description: The started turn's id — poll/attach with it
-          type: string
-      required:
-        - turnId
-      type: object
-    TurnStatus:
-      additionalProperties: false
-      description: One turn's lifecycle view (create-turn 202 → poll/attach).
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/TurnStatus.json
-          format: uri
-          readOnly: true
-          type: string
-        commitSha:
-          type: string
-        conversationId:
-          type: string
-        createdAt:
-          format: date-time
-          type: string
-        message:
-          type: string
-        noChanges:
-          type: boolean
-        paths:
-          items:
-            type: string
-          type:
-            - array
-            - "null"
-        reason:
-          type: string
-        status:
-          description: running, completed, failed
-          type: string
-        turnId:
-          type: string
-        updatedAt:
-          format: date-time
-          type: string
-        useCase:
-          type: string
-      required:
-        - turnId
-        - conversationId
-        - useCase
-        - status
-        - createdAt
-        - updatedAt
-      type: object
-    UpdateConfigBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/UpdateConfigBody.json
-          format: uri
-          readOnly: true
-          type: string
-        envVars:
-          items:
-            $ref: "#/components/schemas/EnvVar"
-          type:
-            - array
-            - "null"
-      required:
-        - envVars
-      type: object
-    UpdateSkillInput:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/UpdateSkillInput.json
-          format: uri
-          readOnly: true
-          type: string
-        references:
-          additionalProperties:
-            type: string
-          type: object
-        skillMd:
-          type: string
-      required:
-        - skillMd
-      type: object
-    Warning:
-      additionalProperties: false
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        path:
-          type: string
-      required:
-        - path
-        - code
-        - message
-      type: object
-    WorkflowRun:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/WorkflowRun.json
-          format: uri
-          readOnly: true
-          type: string
-        completed:
-          type: boolean
-        componentName:
-          type: string
-        name:
-          type: string
-        projectName:
-          type: string
-        startedAt:
-          type: string
-        status:
-          type: string
-        tasks:
-          items:
-            $ref: "#/components/schemas/WorkflowRunTask"
-          type:
-            - array
-            - "null"
-      type: object
-    WorkflowRunList:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - /api/v1/WorkflowRunList.json
-          format: uri
-          readOnly: true
-          type: string
-        items:
-          items:
-            $ref: "#/components/schemas/WorkflowRun"
-          type:
-            - array
-            - "null"
-      required:
-        - items
-      type: object
-    WorkflowRunTask:
-      additionalProperties: false
-      properties:
-        completedAt:
-          type: string
-        message:
-          type: string
-        name:
-          type: string
-        phase:
-          type: string
-        startedAt:
-          type: string
-      required:
-        - name
-      type: object
-    WriteOp:
-      additionalProperties: false
-      properties:
-        baseSha:
-          type: string
-        content:
-          type: string
-        path:
-          type: string
-      required:
-        - path
-        - content
-      type: object
-  securitySchemes:
-    userJWT:
-      bearerFormat: JWT
-      description: Thunder end-user JWT (RS256, JWKS-verified)
-      scheme: bearer
-      type: http
+openapi: 3.0.3
 info:
   title: AEP BFF API
   version: 1.0.0
-openapi: 3.1.0
+servers:
+- url: /api/v1
 paths:
   /collab/validate:
     get:
       operationId: validate-collab-access
       parameters:
-        - description: Collaboration room ID (spec-<org>-<project>)
-          in: header
-          name: X-Room-Id
-          schema:
-            description: Collaboration room ID (spec-<org>-<project>)
-            type: string
-        - description: Bearer token; the display identity is decoded from it
-          in: header
-          name: Authorization
-          schema:
-            description: Bearer token; the display identity is decoded from it
-            type: string
+      - description: Collaboration room ID (spec-<org>-<project>)
+        in: header
+        name: X-Room-Id
+        schema:
+          description: Collaboration room ID (spec-<org>-<project>)
+          type: string
+      - description: Bearer token; the display identity is decoded from it
+        in: header
+        name: Authorization
+        schema:
+          description: Bearer token; the display identity is decoded from it
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CollabValidateOutputBody"
+                $ref: ./components.yaml#/components/schemas/CollabValidateOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Authorize a collaboration room (server-to-server)
       tags:
-        - Collaboration
+      - Collaboration
   /config:
     get:
       operationId: get-config
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConfigProjection"
+                $ref: ./components.yaml#/components/schemas/ConfigProjection
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get the organization's integration config (statuses/kinds, no secrets)
       tags:
-        - Org Config
+      - Org Config
     patch:
       operationId: update-config
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConfigPatch"
+              $ref: ./components.yaml#/components/schemas/ConfigPatch
         required: true
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConfigProjection"
+                $ref: ./components.yaml#/components/schemas/ConfigProjection
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Patch the organization's integration config (per-section, atomic)
       tags:
-        - Org Config
+      - Org Config
   /config/git-provider/connect-sessions:
     post:
       operationId: start-git-provider-connect
@@ -2429,1506 +93,1505 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StartConnectInputBody"
+              $ref: ./components.yaml#/components/schemas/StartConnectInputBody
         required: true
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StartConnectOutputBody"
+                $ref: ./components.yaml#/components/schemas/StartConnectOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Start App-mode git-provider connect (OAuth-driven)
       tags:
-        - Org Config
+      - Org Config
   /config/git-provider/disconnect:
     post:
       operationId: disconnect-git-provider
       parameters:
-        - description: "App-mode only: when false, leave the install on GitHub for later re-adoption (defaults true)"
-          explode: false
-          in: query
-          name: uninstall
-          schema:
-            default: true
-            description: "App-mode only: when false, leave the install on GitHub for later re-adoption (defaults true)"
-            type: boolean
+      - description: 'App-mode only: when false, leave the install on GitHub for later re-adoption (defaults
+          true)'
+        explode: false
+        in: query
+        name: uninstall
+        schema:
+          default: true
+          description: 'App-mode only: when false, leave the install on GitHub for later re-adoption (defaults
+            true)'
+          type: boolean
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DisconnectOutputBody"
+                $ref: ./components.yaml#/components/schemas/DisconnectOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Disconnect the git provider (cascade) for the org
       tags:
-        - Org Config
+      - Org Config
   /config/idp/client-secret:
     post:
       operationId: rotate-idp-client-secret
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ClientSecretOutputBody"
+                $ref: ./components.yaml#/components/schemas/ClientSecretOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Rotate the IDP publisher client secret (returned once)
       tags:
-        - Org Config
+      - Org Config
   /config/idp/discovery:
     get:
       operationId: discover-idp
       parameters:
-        - description: OIDC issuer URL to fetch the discovery document for
-          explode: false
-          in: query
-          name: issuer
-          schema:
-            description: OIDC issuer URL to fetch the discovery document for
-            type: string
+      - description: OIDC issuer URL to fetch the discovery document for
+        explode: false
+        in: query
+        name: issuer
+        schema:
+          description: OIDC issuer URL to fetch the discovery document for
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DiscoverOutputBody"
+                $ref: ./components.yaml#/components/schemas/DiscoverOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Discover an OIDC issuer's metadata
       tags:
-        - Org Config
+      - Org Config
   /dependencies/external-resources:
     get:
       operationId: list-external-resources
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/ExternalResourceDTO"
-                type:
-                  - array
-                  - "null"
+                  $ref: ./components.yaml#/components/schemas/ExternalResourceDTO
+                type: array
+                nullable: true
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List the org's external-resource catalog
       tags:
-        - Dependencies
+      - Dependencies
   /dependencies/external-resources/{name}:
     delete:
       operationId: delete-external-resource
       parameters:
-        - description: External resource name
-          in: path
-          name: name
-          required: true
-          schema:
-            description: External resource name
-            type: string
+      - description: External resource name
+        in: path
+        name: name
+        required: true
+        schema:
+          description: External resource name
+          type: string
       responses:
-        "204":
+        '204':
           description: No Content
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Delete an external-resource catalog entry (409 if in use)
       tags:
-        - Dependencies
+      - Dependencies
   /dependencies/platform-resource-types:
     get:
       operationId: list-platform-resource-types
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/PlatformResourceTypeDTO"
-                type:
-                  - array
-                  - "null"
+                  $ref: ./components.yaml#/components/schemas/PlatformResourceTypeDTO
+                type: array
+                nullable: true
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List the platform-provisioned resource types available on the cluster
       tags:
-        - Dependencies
+      - Dependencies
   /organizations:
     get:
       operationId: list-organizations
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OrganizationList"
+                $ref: ./components.yaml#/components/schemas/OrganizationList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List organizations
       tags:
-        - Organizations
+      - Organizations
   /projects:
     get:
       operationId: list-projects
       parameters:
-        - description: Opaque pagination cursor
-          explode: false
-          in: query
-          name: cursor
-          schema:
-            description: Opaque pagination cursor
-            type: string
-        - description: Case-insensitive substring match on name and displayName
-          explode: false
-          in: query
-          name: search
-          schema:
-            description: Case-insensitive substring match on name and displayName
-            type: string
-        - description: Maximum number of items to return (server default when absent)
-          explode: false
-          in: query
-          name: limit
-          schema:
-            description: Maximum number of items to return (server default when absent)
-            type: integer
+      - description: Opaque pagination cursor
+        explode: false
+        in: query
+        name: cursor
+        schema:
+          description: Opaque pagination cursor
+          type: string
+      - description: Case-insensitive substring match on name and displayName
+        explode: false
+        in: query
+        name: search
+        schema:
+          description: Case-insensitive substring match on name and displayName
+          type: string
+      - description: Maximum number of items to return (server default when absent)
+        explode: false
+        in: query
+        name: limit
+        schema:
+          description: Maximum number of items to return (server default when absent)
+          type: integer
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectList"
+                $ref: ./components.yaml#/components/schemas/ProjectList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List projects
       tags:
-        - Projects
+      - Projects
     post:
       operationId: create-project
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateProjectRequest"
+              $ref: ./components.yaml#/components/schemas/CreateProjectRequest
         required: true
       responses:
-        "201":
+        '201':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Project"
+                $ref: ./components.yaml#/components/schemas/Project
           description: Created
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Create a project
       tags:
-        - Projects
+      - Projects
   /projects/{projectName}:
     delete:
       operationId: delete-project
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       responses:
-        "204":
+        '204':
           description: No Content
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Delete a project
       tags:
-        - Projects
+      - Projects
     get:
       operationId: get-project
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Project"
+                $ref: ./components.yaml#/components/schemas/Project
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get a project
       tags:
-        - Projects
-  /projects/{projectName}/build:
-    post:
-      operationId: build-project
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BuildRequest"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BuildResponse"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Trigger a project build
-      tags:
-        - Projects
-  /projects/{projectName}/build/preflight:
-    get:
-      operationId: get-build-preflight
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BuildPreflight"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Compute the build dependency-drawer preflight
-      tags:
-        - Projects
-  /projects/{projectName}/build/{tag}:
-    get:
-      operationId: get-project-build
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Build tag
-          in: path
-          name: tag
-          required: true
-          schema:
-            description: Build tag
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BuildStatus"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get project build status
-      tags:
-        - Projects
-  /projects/{projectName}/builds:
-    get:
-      description: One entry per built spec version tag, newest first — each the tag's newest run with its frozen task tally.
-      operationId: list-project-builds
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BuildList"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: List project builds
-      tags:
-        - Projects
-  /projects/{projectName}/components:
-    get:
-      operationId: list-components
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ComponentList"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: List components
-      tags:
-        - Components
-  /projects/{projectName}/components/{componentName}:
-    get:
-      operationId: get-component
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Component"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get a component
-      tags:
-        - Components
-  /projects/{projectName}/components/{componentName}/builds:
-    get:
-      operationId: list-builds
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowRunList"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: List component builds
-      tags:
-        - Components
-    post:
-      operationId: trigger-build
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowRun"
-          description: Created
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Trigger a component build
-      tags:
-        - Components
-  /projects/{projectName}/components/{componentName}/builds/{buildName}/logs:
-    get:
-      operationId: get-build-logs
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-        - description: Build WorkflowRun name (DNS-label slug)
-          in: path
-          name: buildName
-          required: true
-          schema:
-            description: Build WorkflowRun name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BuildLogs"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get build logs
-      tags:
-        - Components
-  /projects/{projectName}/components/{componentName}/configs:
-    get:
-      operationId: get-component-config
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ComponentConfig"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get component config
-      tags:
-        - Config
-    put:
-      operationId: update-component-config
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateConfigBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ComponentConfig"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Update component config
-      tags:
-        - Config
-  /projects/{projectName}/components/{componentName}/dependencies/{depName}/access-request:
-    post:
-      operationId: request-org-service-access
-      parameters:
-        - description: Consumer project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Consumer project name (DNS-label slug)
-            type: string
-        - description: Consumer component name
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Consumer component name
-            type: string
-        - description: org-service dependency name (the provider component)
-          in: path
-          name: depName
-          required: true
-          schema:
-            description: org-service dependency name (the provider component)
-            type: string
-      responses:
-        "201":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccessRequest"
-          description: Created
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Request access to a cross-project org-service dependency
-      tags:
-        - Dependencies
-  /projects/{projectName}/components/{componentName}/dependencies/{depName}/provision:
-    post:
-      operationId: provision-platform-resource
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component the drawer opened on (context only)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component the drawer opened on (context only)
-            type: string
-        - description: Platform-resource dependency name
-          in: path
-          name: depName
-          required: true
-          schema:
-            description: Platform-resource dependency name
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProvisionBody"
-      responses:
-        "202":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StatusMsg"
-          description: Accepted
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Provision a platform-resource dependency (async)
-      tags:
-        - Dependencies
-  /projects/{projectName}/components/{componentName}/dependencies/{depName}/status:
-    get:
-      operationId: get-dependency-status
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component the drawer opened on (context only)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component the drawer opened on (context only)
-            type: string
-        - description: Dependency name
-          in: path
-          name: depName
-          required: true
-          schema:
-            description: Dependency name
-            type: string
-        - description: "Environment (default: development)"
-          explode: false
-          in: query
-          name: environment
-          schema:
-            description: "Environment (default: development)"
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DependencyStatus"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get a dependency's provisioning status (outputs masked to names)
-      tags:
-        - Dependencies
-  /projects/{projectName}/components/{componentName}/deployments:
-    get:
-      operationId: list-deployments
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentList"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: List component deployments
-      tags:
-        - Components
-  /projects/{projectName}/components/{componentName}/openapi:
-    get:
-      operationId: get-component-openapi
-      parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Component name (DNS-label slug)
-          in: path
-          name: componentName
-          required: true
-          schema:
-            description: Component name (DNS-label slug)
-            type: string
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ComponentOpenAPI"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      security:
-        - userJWT: []
-      summary: Get a component's OpenAPI spec
-      tags:
-        - Components
-  /projects/{projectName}/agents/{conversationId}/messages: 
+      - Projects
+  /projects/{projectName}/agents/{conversationId}/messages:
     get:
       operationId: get-conversation
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: FE-chosen conversation uuid
-          in: path
-          name: conversationId
-          required: true
-          schema:
-            description: FE-chosen conversation uuid
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: FE-chosen conversation uuid
+        in: path
+        name: conversationId
+        required: true
+        schema:
+          description: FE-chosen conversation uuid
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema: {}
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Rehydrate a chat conversation (messages only)
       tags:
-        - GenAI
+      - GenAI
     post:
       operationId: create-turn
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: FE-chosen conversation uuid
-          in: path
-          name: conversationId
-          required: true
-          schema:
-            description: FE-chosen conversation uuid
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: FE-chosen conversation uuid
+        in: path
+        name: conversationId
+        required: true
+        schema:
+          description: FE-chosen conversation uuid
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TurnInputBody"
+              $ref: ./components.yaml#/components/schemas/TurnInputBody
         required: true
       responses:
-        "202":
+        '202':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TurnOutputBody"
+                $ref: ./components.yaml#/components/schemas/TurnOutputBody
           description: Accepted
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Start a generation/chat turn (202 — runs detached; attach via the turn stream)
       tags:
-        - GenAI
+      - GenAI
+  /projects/{projectName}/build:
+    post:
+      operationId: build-project
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ./components.yaml#/components/schemas/BuildRequest
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/BuildResponse
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Trigger a project build
+      tags:
+      - Projects
+  /projects/{projectName}/build/preflight:
+    get:
+      operationId: get-build-preflight
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/BuildPreflight
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Compute the build dependency-drawer preflight
+      tags:
+      - Projects
+  /projects/{projectName}/build/{tag}:
+    get:
+      operationId: get-project-build
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Build tag
+        in: path
+        name: tag
+        required: true
+        schema:
+          description: Build tag
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/BuildStatus
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get project build status
+      tags:
+      - Projects
+  /projects/{projectName}/builds:
+    get:
+      description: One entry per built spec version tag, newest first — each the tag's newest run with
+        its frozen task tally.
+      operationId: list-project-builds
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/BuildList
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: List project builds
+      tags:
+      - Projects
+  /projects/{projectName}/components:
+    get:
+      operationId: list-components
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ComponentList
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: List components
+      tags:
+      - Components
+  /projects/{projectName}/components/{componentName}:
+    get:
+      operationId: get-component
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Component
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get a component
+      tags:
+      - Components
+  /projects/{projectName}/components/{componentName}/builds:
+    get:
+      operationId: list-builds
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/WorkflowRunList
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: List component builds
+      tags:
+      - Components
+    post:
+      operationId: trigger-build
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/WorkflowRun
+          description: Created
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Trigger a component build
+      tags:
+      - Components
+  /projects/{projectName}/components/{componentName}/builds/{buildName}/logs:
+    get:
+      operationId: get-build-logs
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      - description: Build WorkflowRun name (DNS-label slug)
+        in: path
+        name: buildName
+        required: true
+        schema:
+          description: Build WorkflowRun name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/BuildLogs
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get build logs
+      tags:
+      - Components
+  /projects/{projectName}/components/{componentName}/configs:
+    get:
+      operationId: get-component-config
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ComponentConfig
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get component config
+      tags:
+      - Config
+    put:
+      operationId: update-component-config
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ./components.yaml#/components/schemas/UpdateConfigBody
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ComponentConfig
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Update component config
+      tags:
+      - Config
+  /projects/{projectName}/components/{componentName}/dependencies/{depName}/access-request:
+    post:
+      operationId: request-org-service-access
+      parameters:
+      - description: Consumer project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Consumer project name (DNS-label slug)
+          type: string
+      - description: Consumer component name
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Consumer component name
+          type: string
+      - description: org-service dependency name (the provider component)
+        in: path
+        name: depName
+        required: true
+        schema:
+          description: org-service dependency name (the provider component)
+          type: string
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/AccessRequest
+          description: Created
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Request access to a cross-project org-service dependency
+      tags:
+      - Dependencies
+  /projects/{projectName}/components/{componentName}/dependencies/{depName}/provision:
+    post:
+      operationId: provision-platform-resource
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component the drawer opened on (context only)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component the drawer opened on (context only)
+          type: string
+      - description: Platform-resource dependency name
+        in: path
+        name: depName
+        required: true
+        schema:
+          description: Platform-resource dependency name
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ./components.yaml#/components/schemas/ProvisionBody
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/StatusMsg
+          description: Accepted
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Provision a platform-resource dependency (async)
+      tags:
+      - Dependencies
+  /projects/{projectName}/components/{componentName}/dependencies/{depName}/status:
+    get:
+      operationId: get-dependency-status
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component the drawer opened on (context only)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component the drawer opened on (context only)
+          type: string
+      - description: Dependency name
+        in: path
+        name: depName
+        required: true
+        schema:
+          description: Dependency name
+          type: string
+      - description: 'Environment (default: development)'
+        explode: false
+        in: query
+        name: environment
+        schema:
+          description: 'Environment (default: development)'
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/DependencyStatus
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get a dependency's provisioning status (outputs masked to names)
+      tags:
+      - Dependencies
+  /projects/{projectName}/components/{componentName}/deployments:
+    get:
+      operationId: list-deployments
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/DeploymentList
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: List component deployments
+      tags:
+      - Components
+  /projects/{projectName}/components/{componentName}/openapi:
+    get:
+      operationId: get-component-openapi
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Component name (DNS-label slug)
+        in: path
+        name: componentName
+        required: true
+        schema:
+          description: Component name (DNS-label slug)
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ComponentOpenAPI
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+      security:
+      - userJWT: []
+      summary: Get a component's OpenAPI spec
+      tags:
+      - Components
   /projects/{projectName}/dependencies/access-requests:
     get:
       operationId: list-access-requests
       parameters:
-        - description: Consumer project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Consumer project name (DNS-label slug)
-            type: string
+      - description: Consumer project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Consumer project name (DNS-label slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/AccessRequest"
-                type:
-                  - array
-                  - "null"
+                  $ref: ./components.yaml#/components/schemas/AccessRequest
+                type: array
+                nullable: true
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List a consumer project's access requests
       tags:
-        - Dependencies
+      - Dependencies
   /projects/{projectName}/dependencies/external-resources/{name}/values:
     post:
       operationId: collect-external-resource-values
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: External resource (dependency) name
-          in: path
-          name: name
-          required: true
-          schema:
-            description: External resource (dependency) name
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: External resource (dependency) name
+        in: path
+        name: name
+        required: true
+        schema:
+          description: External resource (dependency) name
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SaveValuesBody"
+              $ref: ./components.yaml#/components/schemas/SaveValuesBody
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatusMsg"
+                $ref: ./components.yaml#/components/schemas/StatusMsg
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Collect an external dependency's values and provision it
       tags:
-        - Dependencies
+      - Dependencies
   /projects/{projectName}/files:
     get:
       operationId: list-files
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Only list paths under this prefix (e.g. specs/design/)
-          explode: false
-          in: query
-          name: prefix
-          schema:
-            description: Only list paths under this prefix (e.g. specs/design/)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Only list paths under this prefix (e.g. specs/design/)
+        explode: false
+        in: query
+        name: prefix
+        schema:
+          description: Only list paths under this prefix (e.g. specs/design/)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/FileMeta"
-                type:
-                  - array
-                  - "null"
+                  $ref: ./components.yaml#/components/schemas/FileMeta
+                type: array
+                nullable: true
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List spec files at HEAD
       tags:
-        - Files
+      - Files
   /projects/{projectName}/files/apply:
     post:
       operationId: apply-files
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ApplyRequest"
+              $ref: ./components.yaml#/components/schemas/ApplyRequest
               description: Atomic write/delete batch with per-file baseSha
         required: true
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApplyResult"
+                $ref: ./components.yaml#/components/schemas/ApplyResult
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Atomically apply a batch of writes/deletes (single commit to main)
       tags:
-        - Files
-  /projects/{projectName}/files/{path...}:
+      - Files
+  /projects/{projectName}/files/{path}:
     get:
       operationId: read-file
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: File path under specs/
-          in: path
-          name: path
-          required: true
-          schema:
-            description: File path under specs/
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: 'File path under specs/ (trailing wildcard: may span multiple segments, i.e. contain
+          slashes)'
+        in: path
+        name: path
+        required: true
+        schema:
+          description: File path under specs/
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/FileContent"
+                $ref: ./components.yaml#/components/schemas/FileContent
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Read a spec file at HEAD
       tags:
-        - Files
+      - Files
   /projects/{projectName}/spec/collab-session:
     get:
       operationId: get-spec-collab-session
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Bearer token; the display identity is decoded from it
-          in: header
-          name: Authorization
-          schema:
-            description: Bearer token; the display identity is decoded from it
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Bearer token; the display identity is decoded from it
+        in: header
+        name: Authorization
+        schema:
+          description: Bearer token; the display identity is decoded from it
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CollabSessionOutputBody"
+                $ref: ./components.yaml#/components/schemas/CollabSessionOutputBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get the collaboration session descriptor for the spec workspace
       tags:
-        - Collaboration
+      - Collaboration
   /projects/{projectName}/status:
     get:
       operationId: get-project-status
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectStatus"
+                $ref: ./components.yaml#/components/schemas/ProjectStatus
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get a project's SDLC status
       tags:
-        - Projects
+      - Projects
   /projects/{projectName}/tags:
     get:
       operationId: list-project-tags
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TagList"
+                $ref: ./components.yaml#/components/schemas/TagList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List spec version tags
       tags:
-        - Projects
+      - Projects
   /projects/{projectName}/tasks:
     get:
       operationId: list-tasks
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Which Tasks to return (default open)
-          explode: false
-          in: query
-          name: state
-          schema:
-            description: Which Tasks to return (default open)
-            enum:
-              - open
-              - closed
-              - all
-            type: string
-        - description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns all versions.
-          explode: false
-          in: query
-          name: tag
-          schema:
-            description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns all versions.
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Which Tasks to return (default open)
+        explode: false
+        in: query
+        name: state
+        schema:
+          description: Which Tasks to return (default open)
+          enum:
+          - open
+          - closed
+          - all
+          type: string
+      - description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns
+          all versions.
+        explode: false
+        in: query
+        name: tag
+        schema:
+          description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns
+            all versions.
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
                 items:
-                  $ref: "#/components/schemas/TaskView"
-                type:
-                  - array
-                  - "null"
+                  $ref: ./components.yaml#/components/schemas/TaskView
+                type: array
+                nullable: true
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
-      summary: List a project's Tasks (live GitHub ⋈ executions → derived status), optionally scoped to one spec/build version tag
+      - userJWT: []
+      summary: List a project's Tasks (live GitHub ⋈ executions → derived status), optionally scoped to
+        one spec/build version tag
       tags:
-        - Tasks
+      - Tasks
   /projects/{projectName}/tasks/{issueNumber}:
     get:
       operationId: get-task
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: GitHub issue number of the Task
-          in: path
-          name: issueNumber
-          required: true
-          schema:
-            description: GitHub issue number of the Task
-            format: int64
-            type: integer
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: GitHub issue number of the Task
+        in: path
+        name: issueNumber
+        required: true
+        schema:
+          description: GitHub issue number of the Task
+          format: int64
+          type: integer
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TaskDetail"
+                $ref: ./components.yaml#/components/schemas/TaskDetail
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get one Task with its full Execution history
       tags:
-        - Tasks
+      - Tasks
   /projects/{projectName}/tasks/{issueNumber}/log:
     get:
       operationId: stream-task-log
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: GitHub issue number of the Task
-          in: path
-          name: issueNumber
-          required: true
-          schema:
-            description: GitHub issue number of the Task
-            format: int64
-            type: integer
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: GitHub issue number of the Task
+        in: path
+        name: issueNumber
+        required: true
+        schema:
+          description: GitHub issue number of the Task
+          format: int64
+          type: integer
       responses:
-        "200":
+        '200':
           content:
             text/event-stream:
               schema:
-                $ref: "#/components/schemas/TaskStreamEvent"
-          description: >-
-            SSE stream of the Task's entire live state — status, executions, and
-            a unified timeline across all attempts. One `data:` JSON frame per
-            event (a TaskStreamEvent discriminated by `type`: task | execution |
-            line | done), each stamped `id: <seq>`; `: keep-alive` comments pace
-            idle waits. A settled Task streams its full history then ends with
-            `data: [DONE]` and the server closes the connection. Reconnects are
-            idempotent: the client upserts task/execution by id and dedups lines,
-            so state re-emitted on reconnect is safe. There are deliberately no
-            server-side filters (executionId/kind) — every line carries its own
-            attribution and the console groups by attempt client-side.
+                $ref: ./components.yaml#/components/schemas/TaskStreamEvent
+          description: 'SSE stream of the Task''s entire live state — status, executions, and a unified
+            timeline across all attempts. One `data:` JSON frame per event (a TaskStreamEvent discriminated
+            by `type`: task | execution | line | done), each stamped `id: <seq>`; `: keep-alive` comments
+            pace idle waits. A settled Task streams its full history then ends with `data: [DONE]` and
+            the server closes the connection. Reconnects are idempotent: the client upserts task/execution
+            by id and dedups lines, so state re-emitted on reconnect is safe. There are deliberately no
+            server-side filters (executionId/kind) — every line carries its own attribution and the console
+            groups by attempt client-side.'
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Stream a Task's live state (status + executions + unified timeline) as SSE
       tags:
-        - Tasks
+      - Tasks
   /projects/{projectName}/turns/active:
     get:
       operationId: get-active-turn
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TurnStatus"
+                $ref: ./components.yaml#/components/schemas/TurnStatus
           description: OK
-        "204":
+        '204':
           description: No running turn
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get the project's running turn (204 when none)
       tags:
-        - GenAI
+      - GenAI
   /projects/{projectName}/turns/{turnId}:
     get:
       operationId: get-turn
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Turn id from the 202 create response
-          in: path
-          name: turnId
-          required: true
-          schema:
-            description: Turn id from the 202 create response
-            type: string
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Turn id from the 202 create response
+        in: path
+        name: turnId
+        required: true
+        schema:
+          description: Turn id from the 202 create response
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TurnStatus"
+                $ref: ./components.yaml#/components/schemas/TurnStatus
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get one turn's status
       tags:
-        - GenAI
+      - GenAI
   /projects/{projectName}/turns/{turnId}/stream:
     get:
       operationId: stream-turn
       parameters:
-        - description: Project name (DNS-label slug)
-          in: path
-          name: projectName
-          required: true
-          schema:
-            description: Project name (DNS-label slug)
-            type: string
-        - description: Turn id from the 202 create response
-          in: path
-          name: turnId
-          required: true
-          schema:
-            description: Turn id from the 202 create response
-            type: string
-        - description: Replay from this absolute event index (wins over Last-Event-ID)
-          in: query
-          name: from
-          schema:
-            description: Replay from this absolute event index (wins over Last-Event-ID)
-            type: integer
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Turn id from the 202 create response
+        in: path
+        name: turnId
+        required: true
+        schema:
+          description: Turn id from the 202 create response
+          type: string
+      - description: Replay from this absolute event index (wins over Last-Event-ID)
+        in: query
+        name: from
+        schema:
+          description: Replay from this absolute event index (wins over Last-Event-ID)
+          type: integer
       responses:
-        "200":
+        '200':
           content:
             text/event-stream:
               schema:
@@ -3937,153 +1600,153 @@ paths:
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Attach to a turn's event stream (SSE replay + live tail)
       tags:
-        - GenAI
+      - GenAI
   /rca-agent/reports:
     get:
       operationId: list-rca-agent-reports
       parameters:
-        - description: Opaque pagination cursor
-          explode: false
-          in: query
-          name: cursor
-          schema:
-            description: Opaque pagination cursor
-            type: string
-        - description: Maximum number of items to return (server default when absent)
-          explode: false
-          in: query
-          name: limit
-          schema:
-            description: Maximum number of items to return (server default when absent)
-            type: integer
+      - description: Opaque pagination cursor
+        explode: false
+        in: query
+        name: cursor
+        schema:
+          description: Opaque pagination cursor
+          type: string
+      - description: Maximum number of items to return (server default when absent)
+        explode: false
+        in: query
+        name: limit
+        schema:
+          description: Maximum number of items to return (server default when absent)
+          type: integer
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RcaAgentReportList"
+                $ref: ./components.yaml#/components/schemas/RcaAgentReportList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List RCA-agent alert reports across the caller's org, newest first
       tags:
-        - RcaAgentReports
+      - RcaAgentReports
     post:
       operationId: create-rca-agent-report
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRcaAgentReportRequest"
+              $ref: ./components.yaml#/components/schemas/CreateRcaAgentReportRequest
         required: true
       responses:
-        "201":
+        '201':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RcaAgentReport"
+                $ref: ./components.yaml#/components/schemas/RcaAgentReport
           description: Created
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
-      summary: Record a new RCA-agent alert report (internal/service-authenticated writer; issue #156)
+      - userJWT: []
+      summary: Record a new RCA-agent alert report (internal/service-authenticated writer; issue
       tags:
-        - RcaAgentReports
+      - RcaAgentReports
   /rca-agent/reports/{reportId}:
     get:
       operationId: get-rca-agent-report
       parameters:
-        - description: RCA report id
-          in: path
-          name: reportId
-          required: true
-          schema:
-            description: RCA report id
-            type: string
+      - description: RCA report id
+        in: path
+        name: reportId
+        required: true
+        schema:
+          description: RCA report id
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RcaAgentReport"
+                $ref: ./components.yaml#/components/schemas/RcaAgentReport
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get a single RCA-agent alert report
       tags:
-        - RcaAgentReports
+      - RcaAgentReports
   /skills:
     get:
       operationId: list-skills
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillSummaryList"
+                $ref: ./components.yaml#/components/schemas/SkillSummaryList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List skills
       tags:
-        - Skills
+      - Skills
     post:
       operationId: create-skill
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateSkillInput"
+              $ref: ./components.yaml#/components/schemas/CreateSkillInput
         required: true
       responses:
-        "201":
+        '201':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillDetailBody"
+                $ref: ./components.yaml#/components/schemas/SkillDetailBody
           description: Created
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Create a custom skill
       tags:
-        - Skills
+      - Skills
   /skills/import:
     post:
       operationId: import-skill
@@ -4096,87 +1759,85 @@ paths:
             schema:
               properties:
                 file:
-                  contentEncoding: binary
-                  contentMediaType: application/octet-stream
                   description: Gzip-compressed AgentSkills tarball
                   format: binary
                   type: string
               required:
-                - file
+              - file
               type: object
       responses:
-        "201":
+        '201':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ImportResult"
+                $ref: ./components.yaml#/components/schemas/ImportResult
           description: Created
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Import an AgentSkills tarball
       tags:
-        - Skills
+      - Skills
   /skills/sync:
     post:
       operationId: sync-skills
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillSyncOutput"
+                $ref: ./components.yaml#/components/schemas/SkillSyncOutput
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Sync built-in skills (creates the org's skills repo if missing)
       tags:
-        - Skills
+      - Skills
   /skills/updates:
     get:
       operationId: list-skill-updates
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillUpdateList"
+                $ref: ./components.yaml#/components/schemas/SkillUpdateList
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: List available built-in skill updates
       tags:
-        - Skills
+      - Skills
   /skills/{name}:
     delete:
       operationId: delete-skill
       parameters:
-        - description: Skill name (slug)
-          in: path
-          name: name
-          required: true
-          schema:
-            description: Skill name (slug)
-            type: string
+      - description: Skill name (slug)
+        in: path
+        name: name
+        required: true
+        schema:
+          description: Skill name (slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
@@ -4185,76 +1846,81 @@ paths:
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Delete a custom or imported skill
       tags:
-        - Skills
+      - Skills
     get:
       operationId: get-skill
       parameters:
-        - description: Skill name (slug)
-          in: path
-          name: name
-          required: true
-          schema:
-            description: Skill name (slug)
-            type: string
+      - description: Skill name (slug)
+        in: path
+        name: name
+        required: true
+        schema:
+          description: Skill name (slug)
+          type: string
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillDetailBody"
+                $ref: ./components.yaml#/components/schemas/SkillDetailBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Get a skill
       tags:
-        - Skills
+      - Skills
     put:
       operationId: update-skill
       parameters:
-        - description: Skill name (slug)
-          in: path
-          name: name
-          required: true
-          schema:
-            description: Skill name (slug)
-            type: string
+      - description: Skill name (slug)
+        in: path
+        name: name
+        required: true
+        schema:
+          description: Skill name (slug)
+          type: string
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateSkillInput"
+              $ref: ./components.yaml#/components/schemas/UpdateSkillInput
         required: true
       responses:
-        "200":
+        '200':
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillDetailBody"
+                $ref: ./components.yaml#/components/schemas/SkillDetailBody
           description: OK
         default:
           content:
-            application/problem+json:
+            application/json:
               schema:
-                $ref: "#/components/schemas/ErrorModel"
+                $ref: ./components.yaml#/components/schemas/Error
           description: Error
       security:
-        - userJWT: []
+      - userJWT: []
       summary: Update a custom skill
       tags:
-        - Skills
-servers:
-  - url: /api/v1
+      - Skills
+components:
+  securitySchemes:
+    userJWT:
+      bearerFormat: JWT
+      description: Thunder end-user JWT (RS256, JWKS-verified)
+      scheme: bearer
+      type: http

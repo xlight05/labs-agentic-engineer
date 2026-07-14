@@ -2,7 +2,7 @@ import type { components } from "../../generated/aep-api";
 
 type Project = components["schemas"]["Project"];
 type ProjectList = components["schemas"]["ProjectList"];
-type ErrorModel = components["schemas"]["ErrorModel"];
+type ApiError = components["schemas"]["Error"];
 
 // Scenario switch (api-guidelines: mocks must produce empty AND error
 // states). Toggle in the browser devtools:
@@ -126,27 +126,21 @@ export const seedProjects: Project[] = [
 // Mock server-side page size for the projects list (View more pagination).
 export const PROJECTS_PAGE_SIZE = 6;
 
-export const projectsError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Mock error scenario for the projects list",
+export const projectsError: ApiError = {
+  code: "internal_error",
+  message: "Mock error scenario for the projects list",
 };
 
-export const duplicateProjectError: ErrorModel = {
-  type: "about:blank",
-  status: 409,
-  title: "Conflict",
-  detail: "A project with this name already exists",
+export const duplicateProjectError: ApiError = {
+  code: "conflict",
+  message: "A project with this name already exists",
 };
 
 // Delete-failure scenario (#107): toggle in the browser devtools:
 //   localStorage.setItem('aep:mock:projects:delete', 'error')
-export const deleteProjectError: ErrorModel = {
-  type: "about:blank",
-  status: 500,
-  title: "Internal Server Error",
-  detail: "Mock error scenario for project deletion",
+export const deleteProjectError: ApiError = {
+  code: "internal_error",
+  message: "Mock error scenario for project deletion",
 };
 
 // The /config mock (org-config projection) lives in mocks/fixtures/settings.ts

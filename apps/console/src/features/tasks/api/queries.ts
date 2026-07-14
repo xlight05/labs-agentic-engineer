@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { client } from "../../../api/client";
 import { taskKeys } from "./keys";
 import { isActiveStatus } from "./status";
+import { apiErrorMessage } from "../../../api/errors";
 
 // Poll while any task is non-terminal, stop once everything settles (#173
 // decisions). 5s: the list is where the user watches chips go green.
@@ -42,8 +43,7 @@ export function useAllTasks(projectName: string, tag?: string) {
         },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to load tasks");
+        throw new Error(apiErrorMessage(error, "Failed to load tasks"));
       }
       return data ?? [];
     },
@@ -68,8 +68,7 @@ export function useTask(projectName: string, issueNumber: number) {
         { params: { path: { projectName, issueNumber } } },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to load the task");
+        throw new Error(apiErrorMessage(error, "Failed to load the task"));
       }
       return data;
     },

@@ -19,6 +19,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { client } from "../../../api/client";
 import { alertKeys } from "./keys";
+import { apiErrorMessage } from "../../../api/errors";
 
 // Bell badge poll interval (#154 decision: 60s, matches the ~3-4 min
 // RCA→handoff completion time from the SRE-handoff runbook).
@@ -37,7 +38,7 @@ export function useRecentAlerts(limit: number = BELL_LIMIT) {
         params: { query: { limit } },
       });
       if (error) {
-        throw new Error(error.detail ?? error.title ?? "Failed to load alerts");
+        throw new Error(apiErrorMessage(error, "Failed to load alerts"));
       }
       return data.items ?? [];
     },
@@ -60,7 +61,7 @@ export function useAlertsInfinite(limit?: number) {
         },
       });
       if (error) {
-        throw new Error(error.detail ?? error.title ?? "Failed to load alerts");
+        throw new Error(apiErrorMessage(error, "Failed to load alerts"));
       }
       return data;
     },
@@ -79,7 +80,7 @@ export function useAlertReport(reportId: string) {
         params: { path: { reportId } },
       });
       if (error) {
-        throw new Error(error.detail ?? error.title ?? "Failed to load the alert");
+        throw new Error(apiErrorMessage(error, "Failed to load the alert"));
       }
       return data;
     },

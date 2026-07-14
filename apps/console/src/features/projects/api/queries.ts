@@ -30,6 +30,7 @@ import { useConfig } from "../../settings/api/queries";
 import { firstEndpointUrl } from "../lib/deploymentUrl";
 import { deploymentsAreMoving } from "../lib/deploymentRows";
 import { projectKeys } from "./keys";
+import { apiErrorMessage } from "../../../api/errors";
 
 type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
 type BuildRequest = components["schemas"]["BuildRequest"];
@@ -48,7 +49,7 @@ export function useProjectsList(search = "", limit?: number) {
         },
       });
       if (error) {
-        throw new Error(error.detail ?? error.title ?? "Failed to load projects");
+        throw new Error(apiErrorMessage(error, "Failed to load projects"));
       }
       return data;
     },
@@ -69,7 +70,7 @@ export function useProject(projectName: string) {
         params: { path: { projectName } },
       });
       if (error) {
-        throw new Error(error.detail ?? error.title ?? "Failed to load project");
+        throw new Error(apiErrorMessage(error, "Failed to load project"));
       }
       return data;
     },
@@ -109,8 +110,7 @@ function useProjectResource<T>(
     queryFn: async () => {
       const { data, error } = await fetcher();
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? `Failed to load ${what}`);
+        throw new Error(apiErrorMessage(error, `Failed to load ${what}`));
       }
       return data;
     },
@@ -173,8 +173,7 @@ export function useComponentsDeployments(
           { params: { path: { projectName, componentName } } },
         );
         if (error || data === undefined) {
-          const e = error as { detail?: string; title?: string } | undefined;
-          throw new Error(e?.detail ?? e?.title ?? "Failed to load deployments");
+          throw new Error(apiErrorMessage(error, "Failed to load deployments"));
         }
         return data;
       },
@@ -210,8 +209,7 @@ export function useComponentEndpointUrl(
         { params: { path: { projectName, componentName } } },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to load deployments");
+        throw new Error(apiErrorMessage(error, "Failed to load deployments"));
       }
       return data;
     },
@@ -238,9 +236,8 @@ export function useComponentOpenApi(
         { params: { path: { projectName, componentName } } },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
         throw new Error(
-          e?.detail ?? e?.title ?? "Failed to load the API contract",
+          apiErrorMessage(error, "Failed to load the API contract"),
         );
       }
       return data;
@@ -273,7 +270,7 @@ export function useCreateProject() {
       const { data, error } = await client.POST("/projects", { body });
       if (error) {
         throw new Error(
-          error.detail ?? error.title ?? "Failed to create project",
+          apiErrorMessage(error, "Failed to create project"),
         );
       }
       return data;
@@ -296,7 +293,7 @@ export function useDeleteProject() {
       });
       if (error) {
         throw new Error(
-          error.detail ?? error.title ?? "Failed to delete project",
+          apiErrorMessage(error, "Failed to delete project"),
         );
       }
     },
@@ -323,8 +320,7 @@ export function useBuildPreflight(projectName: string) {
         },
       );
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to check build readiness");
+        throw new Error(apiErrorMessage(error, "Failed to check build readiness"));
       }
       return data;
     },
@@ -347,8 +343,7 @@ export function useBuildProject(projectName: string) {
         body,
       });
       if (error || data === undefined) {
-        const e = error as { detail?: string; title?: string } | undefined;
-        throw new Error(e?.detail ?? e?.title ?? "Failed to start the build");
+        throw new Error(apiErrorMessage(error, "Failed to start the build"));
       }
       return data;
     },

@@ -1,0 +1,1904 @@
+openapi: 3.0.3
+info:
+  title: AEP BFF API — components
+  description: Shared schema components for the AEP BFF public contract. Referenced by ./openapi.yaml;
+    kept as its own document so Go types and server code can generate into separate packages.
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    AccessRequest:
+      additionalProperties: false
+      properties:
+        consumerComponentName:
+          type: string
+        consumerProjectId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        orgServiceName:
+          type: string
+        providerComponentName:
+          type: string
+        providerIssueNumber:
+          format: int64
+          type: integer
+        providerIssueUrl:
+          type: string
+        providerProjectId:
+          type: string
+        providerTaskId:
+          type: string
+        status:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - id
+      - consumerProjectId
+      - consumerComponentName
+      - orgServiceName
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    ApplyRequest:
+      additionalProperties: false
+      properties:
+        deletes:
+          items:
+            $ref: '#/components/schemas/DeleteOp'
+          type: array
+          nullable: true
+        message:
+          type: string
+        writes:
+          items:
+            $ref: '#/components/schemas/WriteOp'
+          type: array
+          nullable: true
+      type: object
+    ApplyResult:
+      additionalProperties: false
+      properties:
+        commitSha:
+          type: string
+        files:
+          items:
+            $ref: '#/components/schemas/FileMeta'
+          type: array
+          nullable: true
+        warnings:
+          items:
+            $ref: '#/components/schemas/Warning'
+          type: array
+          nullable: true
+      required:
+      - commitSha
+      - files
+      type: object
+    BuildInputItem:
+      additionalProperties: false
+      properties:
+        approved:
+          type: boolean
+        component:
+          description: Owning component name
+          type: string
+        dependency:
+          description: Dependency name
+          type: string
+        kind:
+          enum:
+          - external-config
+          - external-spec
+          - platform-resource
+          - org-service
+          type: string
+        parameters:
+          additionalProperties: {}
+          type: object
+        specContent:
+          type: string
+        specUrl:
+          type: string
+        values:
+          items:
+            $ref: '#/components/schemas/ConfigValue'
+          type: array
+          nullable: true
+      required:
+      - component
+      - dependency
+      - kind
+      type: object
+    BuildList:
+      additionalProperties: false
+      description: list-project-builds response — one entry per built spec version tag, newest first.
+      properties:
+        builds:
+          items:
+            $ref: '#/components/schemas/BuildSummary'
+          type: array
+          nullable: true
+      required:
+      - builds
+      type: object
+    BuildLogEntry:
+      additionalProperties: false
+      properties:
+        level:
+          type: string
+        log:
+          type: string
+        timestamp:
+          type: string
+      required:
+      - log
+      type: object
+    BuildLogs:
+      additionalProperties: false
+      properties:
+        logs:
+          items:
+            $ref: '#/components/schemas/BuildLogEntry'
+          type: array
+          nullable: true
+        totalCount:
+          format: int64
+          type: integer
+      required:
+      - logs
+      type: object
+    BuildPreflight:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/PreflightItem'
+          type: array
+          nullable: true
+        needsInput:
+          type: boolean
+      required:
+      - needsInput
+      - items
+      type: object
+    BuildRequest:
+      additionalProperties: false
+      properties:
+        inputs:
+          items:
+            $ref: '#/components/schemas/BuildInputItem'
+          type: array
+          nullable: true
+      type: object
+    BuildResponse:
+      additionalProperties: false
+      properties:
+        failures:
+          items:
+            $ref: '#/components/schemas/InputFailure'
+          type: array
+          nullable: true
+        tag:
+          type: string
+      type: object
+    BuildStage:
+      additionalProperties: false
+      description: Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task
+        counts, so the overview needs no list-tasks read.
+      properties:
+        status:
+          description: idle (never built), running, failed, succeeded
+          enum:
+          - idle
+          - running
+          - failed
+          - succeeded
+          type: string
+        tasks:
+          additionalProperties: false
+          description: Task counts bucketed from derivedStatus.
+          properties:
+            active:
+              format: int64
+              type: integer
+            done:
+              format: int64
+              type: integer
+            failed:
+              format: int64
+              type: integer
+            total:
+              format: int64
+              type: integer
+          required:
+          - total
+          - done
+          - failed
+          - active
+          type: object
+        version:
+          description: Spec tag the current/last build built; "" if never built.
+          type: string
+      required:
+      - version
+      - status
+      - tasks
+      type: object
+    BuildStatus:
+      additionalProperties: false
+      properties:
+        reason:
+          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error,
+            so the console can show WHY it failed.
+          type: string
+        status:
+          enum:
+          - started
+          - in_progress
+          - completed
+          - failed
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/BuildStatusTask'
+          type: array
+          nullable: true
+        workflow_status:
+          type: string
+      required:
+      - status
+      - workflow_status
+      type: object
+    BuildStatusTask:
+      additionalProperties: false
+      properties:
+        issueNumber:
+          description: GitHub issue number of the Task — links a build-status row to its issue (and to
+            the task-log stream); replaces the old title-join.
+          format: int64
+          type: integer
+        status:
+          enum:
+          - started
+          - in_progress
+          - completed
+          - failed
+          type: string
+        title:
+          type: string
+      required:
+      - title
+      - status
+      type: object
+    BuildSummary:
+      additionalProperties: false
+      description: One entry of list-project-builds — a spec version tag's newest run. A list read has
+        no live workflow query, so "started" never occurs here.
+      properties:
+        completedAt:
+          format: date-time
+          type: string
+        reason:
+          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error,
+            surfaced beside the Failed badge in the console.
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          enum:
+          - started
+          - in_progress
+          - completed
+          - failed
+          type: string
+        tag:
+          type: string
+        tasks:
+          $ref: '#/components/schemas/BuildTally'
+          description: The run's own frozen task tally, written by the workflow — not a live task recount.
+      required:
+      - tag
+      - status
+      - tasks
+      - startedAt
+      type: object
+    BuildTally:
+      additionalProperties: false
+      properties:
+        active:
+          format: int64
+          type: integer
+        done:
+          format: int64
+          type: integer
+        failed:
+          format: int64
+          type: integer
+        total:
+          format: int64
+          type: integer
+      required:
+      - total
+      - done
+      - failed
+      - active
+      type: object
+    ClientSecretOutputBody:
+      additionalProperties: false
+      properties:
+        clientSecret:
+          type: string
+      required:
+      - clientSecret
+      type: object
+    CollabSessionOutputBody:
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+        roomId:
+          type: string
+        userName:
+          type: string
+        wsUrl:
+          type: string
+      required:
+      - roomId
+      - wsUrl
+      - userName
+      - email
+      type: object
+    CollabValidateOutputBody:
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+        projectName:
+          description: The room's project, resolved by the oracle from `spec-<org>-<project>`; the collab
+            service uses it for the seed read (#114).
+          type: string
+      required:
+      - name
+      - email
+      - projectName
+      type: object
+    Component:
+      additionalProperties: false
+      properties:
+        autoBuild:
+          type: boolean
+        autoDeploy:
+          type: boolean
+        createdAt:
+          type: string
+        description:
+          type: string
+        displayName:
+          type: string
+        endpointUrl:
+          description: Public URL of the running dev deployment. Populated for web applications only;
+            absent until deployed.
+          type: string
+        name:
+          type: string
+        projectName:
+          type: string
+        status:
+          type: string
+        type:
+          description: Component kind in AEP's design vocabulary — "web-application" or "service" (matching
+            design.json's componentType). OpenChoreo's prefixed ComponentType names (deployment/*) never
+            appear on this API.
+          type: string
+        uid:
+          type: string
+      required:
+      - name
+      type: object
+    ComponentConfig:
+      additionalProperties: false
+      properties:
+        componentName:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        envVars:
+          items:
+            $ref: '#/components/schemas/EnvVar'
+          type: array
+          nullable: true
+        id:
+          type: string
+        projectName:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - id
+      - projectName
+      - componentName
+      - envVars
+      - createdAt
+      - updatedAt
+      type: object
+    ComponentList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/Component'
+          type: array
+          nullable: true
+      required:
+      - items
+      type: object
+    ComponentOpenAPI:
+      additionalProperties: false
+      properties:
+        componentName:
+          type: string
+        componentType:
+          type: string
+        spec:
+          type: string
+      required:
+      - componentName
+      - componentType
+      - spec
+      type: object
+    ConfigKeyDTO:
+      additionalProperties: false
+      properties:
+        defaultValue:
+          type: string
+        description:
+          type: string
+        key:
+          type: string
+        secret:
+          type: boolean
+      required:
+      - key
+      type: object
+    ConfigKeyView:
+      additionalProperties: false
+      properties:
+        defaultValue:
+          type: string
+        description:
+          type: string
+        key:
+          type: string
+        secret:
+          type: boolean
+      required:
+      - key
+      type: object
+    ConfigPatch:
+      additionalProperties: false
+      properties:
+        gitProvider:
+          additionalProperties: false
+          properties:
+            githubLogin:
+              type: string
+            kind:
+              enum:
+              - github
+              type: string
+            mode:
+              enum:
+              - pat
+              type: string
+            pat:
+              type: string
+          required:
+          - kind
+          - mode
+          - pat
+          type: object
+          nullable: true
+        idp:
+          additionalProperties: false
+          properties:
+            issuer:
+              type: string
+            jwksUrl:
+              type: string
+            kind:
+              enum:
+              - platform
+              - asgardeo
+              - custom
+              type: string
+          required:
+          - kind
+          type: object
+          nullable: true
+        llm:
+          additionalProperties: false
+          properties:
+            apiKey:
+              type: string
+            kind:
+              enum:
+              - anthropic
+              type: string
+          required:
+          - kind
+          - apiKey
+          type: object
+          nullable: true
+      type: object
+    ConfigProjection:
+      additionalProperties: false
+      properties:
+        gitProvider:
+          allOf:
+          - $ref: '#/components/schemas/GitProviderProjection'
+          nullable: true
+        idp:
+          $ref: '#/components/schemas/IDPProjection'
+        llm:
+          allOf:
+          - $ref: '#/components/schemas/LLMProjection'
+          nullable: true
+      required:
+      - llm
+      - gitProvider
+      - idp
+      type: object
+    ConfigValue:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      required:
+      - key
+      - value
+      type: object
+    ConsumerDTO:
+      additionalProperties: false
+      properties:
+        componentName:
+          type: string
+        projectId:
+          type: string
+      required:
+      - projectId
+      - componentName
+      type: object
+    CreateProjectRequest:
+      additionalProperties: false
+      properties:
+        deploymentPipeline:
+          type: string
+        description:
+          type: string
+        displayName:
+          type: string
+        name:
+          type: string
+        prompt:
+          description: 'The user''s initial requirement — what they want built. Persisted as the project''s
+            requirement and kicks off spec derivation for the new project (issue #72). Projects created
+            without a prompt keep today''s behavior.'
+          type: string
+        repoName:
+          description: 'Repository name for the project''s GitHub repo; defaults to the project name,
+            the organization is fixed server-side (issue #71).'
+          type: string
+      required:
+      - name
+      type: object
+    CreateRcaAgentReportRequest:
+      additionalProperties: false
+      description: Write-side request for a new RCA-agent alert report (issue
+      properties:
+        classification:
+          description: code-level, config-level, mixed, or none — set by the handoff agent
+          type: string
+        component:
+          type: string
+        deployed:
+          type: boolean
+        deployedAt:
+          type: string
+          format: date-time
+        diagnosis:
+          description: Full RCA diagnosis + remediation content (markdown)
+          type: string
+        dispatched:
+          type: boolean
+        issueExcerpt:
+          type: string
+        issueNumber:
+          format: int64
+          type: integer
+        issueTitle:
+          type: string
+        issueUrl:
+          type: string
+        project:
+          type: string
+        summary:
+          type: string
+        title:
+          type: string
+      required:
+      - project
+      - title
+      - summary
+      - classification
+      - diagnosis
+      type: object
+    CreateSkillInput:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        references:
+          additionalProperties:
+            type: string
+          type: object
+        skillMd:
+          type: string
+      required:
+      - name
+      - skillMd
+      type: object
+    DeleteOp:
+      additionalProperties: false
+      properties:
+        baseSha:
+          type: string
+        path:
+          type: string
+      required:
+      - path
+      type: object
+    DependencyStatus:
+      additionalProperties: false
+      properties:
+        outputs:
+          items:
+            type: string
+          type: array
+          nullable: true
+        ready:
+          type: boolean
+        status:
+          type: string
+      required:
+      - status
+      - ready
+      - outputs
+      type: object
+    DeployStage:
+      additionalProperties: false
+      description: Deploy-stage aggregate on ProjectStatus (#184) — what's live in dev and rollout progress.
+      properties:
+        components:
+          additionalProperties: false
+          description: Component rollout progress for the current deploy.
+          properties:
+            ready:
+              format: int64
+              type: integer
+            total:
+              format: int64
+              type: integer
+          required:
+          - total
+          - ready
+          type: object
+        status:
+          enum:
+          - none
+          - deploying
+          - deployed
+          - failed
+          type: string
+        version:
+          description: Spec tag live in dev; "" if nothing deployed.
+          type: string
+      required:
+      - version
+      - status
+      - components
+      type: object
+    Deployment:
+      additionalProperties: false
+      properties:
+        componentName:
+          type: string
+        createdAt:
+          type: string
+        endpointUrl:
+          type: string
+        environment:
+          type: string
+        name:
+          type: string
+        releaseName:
+          type: string
+        status:
+          type: string
+      type: object
+    DeploymentList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/Deployment'
+          type: array
+          nullable: true
+      required:
+      - items
+      type: object
+    DisconnectOutputBody:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+      - status
+      type: object
+    DiscoverOutputBody:
+      additionalProperties: false
+      properties:
+        issuer:
+          type: string
+        jwksUrl:
+          type: string
+      required:
+      - issuer
+      - jwksUrl
+      type: object
+    EnvVar:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+      required:
+      - key
+      - value
+      type: object
+    Error:
+      description: Flat error envelope returned by every non-2xx response.
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          description: Machine-readable error code (stable slug).
+          type: string
+          example: validation_failed
+        message:
+          description: Human-readable error message.
+          type: string
+          example: request body is invalid
+        details:
+          description: Field-level details for validation errors.
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+      required:
+      - code
+      - message
+    ErrorDetail:
+      description: One field-level validation error.
+      type: object
+      additionalProperties: false
+      properties:
+        field:
+          description: Location of the offending field (e.g. body.name).
+          type: string
+        message:
+          description: What is wrong with the field.
+          type: string
+      required:
+      - field
+      - message
+    ExecutionView:
+      additionalProperties: false
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        endedAt:
+          format: date-time
+          type: string
+        id:
+          type: string
+        kind:
+          type: string
+        reason:
+          type: string
+        runName:
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        status:
+          type: string
+      required:
+      - id
+      - kind
+      - status
+      - createdAt
+      type: object
+    ExternalResourceDTO:
+      additionalProperties: false
+      properties:
+        config:
+          items:
+            $ref: '#/components/schemas/ConfigKeyDTO'
+          type: array
+          nullable: true
+        consumers:
+          items:
+            $ref: '#/components/schemas/ConsumerDTO'
+          type: array
+          nullable: true
+        description:
+          type: string
+        name:
+          type: string
+      required:
+      - name
+      - config
+      - consumers
+      type: object
+    FileContent:
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+        path:
+          type: string
+        sha:
+          type: string
+      required:
+      - path
+      - content
+      - sha
+      type: object
+    FileMeta:
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+        sha:
+          type: string
+        size:
+          format: int64
+          type: integer
+      required:
+      - path
+      - sha
+      type: object
+    GitProviderProjection:
+      additionalProperties: false
+      properties:
+        connectedAt:
+          format: date-time
+          type: string
+        githubLogin:
+          type: string
+        identityChangedAt:
+          format: date-time
+          type: string
+        identityEmail:
+          type: string
+        identityLogin:
+          type: string
+        identityName:
+          type: string
+        installationId:
+          format: int64
+          type: integer
+        kind:
+          enum:
+          - github
+          type: string
+        lastValidatedAt:
+          format: date-time
+          type: string
+        mode:
+          enum:
+          - app
+          - pat
+          type: string
+        prevIdentityLogin:
+          type: string
+        selectedRepos:
+          items:
+            type: string
+          type: array
+          nullable: true
+        status:
+          type: string
+      required:
+      - kind
+      - mode
+      - status
+      - connectedAt
+      type: object
+    IDPProjection:
+      additionalProperties: false
+      properties:
+        hasClientSecret:
+          type: boolean
+        issuer:
+          type: string
+        jwksUrl:
+          type: string
+        kind:
+          enum:
+          - platform
+          - asgardeo
+          - custom
+          type: string
+        publisherClientId:
+          type: string
+      required:
+      - kind
+      - issuer
+      - jwksUrl
+      - publisherClientId
+      - hasClientSecret
+      type: object
+    ImportResult:
+      additionalProperties: false
+      properties:
+        compatibility:
+          type: string
+        kind:
+          type: string
+        license:
+          type: string
+        name:
+          type: string
+        warnings:
+          items:
+            type: string
+          type: array
+          nullable: true
+      required:
+      - name
+      - kind
+      - warnings
+      type: object
+    InputFailure:
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+        dependency:
+          type: string
+        kind:
+          type: string
+        reason:
+          type: string
+      required:
+      - dependency
+      - reason
+      type: object
+    LLMProjection:
+      additionalProperties: false
+      properties:
+        connectedAt:
+          format: date-time
+          type: string
+        keyLast4:
+          type: string
+        keyPrefix:
+          type: string
+        kind:
+          enum:
+          - anthropic
+          type: string
+        lastValidatedAt:
+          format: date-time
+          type: string
+        status:
+          type: string
+        validationError:
+          type: string
+      required:
+      - kind
+      - keyPrefix
+      - keyLast4
+      - status
+      - connectedAt
+      type: object
+    Lineage:
+      additionalProperties: false
+      properties:
+        designTag:
+          type: string
+        specTag:
+          type: string
+      type: object
+    OrganizationList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/OrganizationView'
+          type: array
+          nullable: true
+      required:
+      - items
+      type: object
+    OrganizationView:
+      additionalProperties: false
+      properties:
+        createdAt:
+          format: date-time
+          type: string
+        description:
+          type: string
+        displayName:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        uuid:
+          type: string
+      required:
+      - uuid
+      - name
+      - createdAt
+      type: object
+    PlatformResourceTypeDTO:
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        outputs:
+          items:
+            type: string
+          type: array
+          nullable: true
+        parameters:
+          additionalProperties: {}
+          type: object
+      required:
+      - name
+      type: object
+    PreflightItem:
+      additionalProperties: false
+      properties:
+        component:
+          description: Owning component name
+          type: string
+        config:
+          items:
+            $ref: '#/components/schemas/ConfigKeyView'
+          type: array
+          nullable: true
+        dependency:
+          description: Dependency name
+          type: string
+        description:
+          type: string
+        kind:
+          enum:
+          - external-config
+          - external-spec
+          - platform-resource
+          - org-service
+          type: string
+        parameters:
+          additionalProperties: {}
+          type: object
+        resourceType:
+          type: string
+      required:
+      - component
+      - dependency
+      - kind
+      - description
+      type: object
+    ProgressEvent:
+      additionalProperties: false
+      properties:
+        branch:
+          type: string
+        command:
+          type: string
+        completedAt:
+          type: string
+        error:
+          type: string
+        files:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        level:
+          type: string
+        message:
+          type: string
+        phase:
+          type: string
+        schemaVersion:
+          format: int64
+          type: integer
+        seq:
+          format: int64
+          type: integer
+        sha:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        step:
+          type: string
+        summary:
+          type: string
+        tool:
+          type: string
+        ts:
+          type: string
+      required:
+      - schemaVersion
+      - ts
+      - seq
+      - kind
+      type: object
+    Project:
+      additionalProperties: false
+      properties:
+        createdAt:
+          type: string
+        deploymentPipeline:
+          type: string
+        description:
+          type: string
+        displayName:
+          type: string
+        name:
+          type: string
+        namespaceName:
+          type: string
+        repoUrl:
+          description: Clone URL of the project's Git repository; absent when no repo is provisioned (issue
+          type: string
+        status:
+          type: string
+        uid:
+          type: string
+      required:
+      - name
+      type: object
+    ProjectList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/Project'
+          type: array
+          nullable: true
+        nextCursor:
+          description: Cursor for the next page; absent on the last page.
+          type: string
+      required:
+      - items
+      type: object
+    ProjectStatus:
+      additionalProperties: false
+      description: Computed SDLC phase and artifact states.
+      properties:
+        build:
+          $ref: '#/components/schemas/BuildStage'
+        deploy:
+          $ref: '#/components/schemas/DeployStage'
+        designStatus:
+          description: '"", draft, approved'
+          type: string
+        hasDesign:
+          type: boolean
+        hasSpec:
+          type: boolean
+        hasTasks:
+          type: boolean
+        phase:
+          description: no-repo, repo-cloning, repo-error, prompt, spec, architecture, tasks, components
+          type: string
+        repoErrorMessage:
+          description: Set when phase is repo-error.
+          type: string
+        repoStatus:
+          description: '"", pending, cloning, ready, error'
+          type: string
+        repoUrl:
+          type: string
+        spec:
+          $ref: '#/components/schemas/SpecStage'
+        specStatus:
+          description: '"", draft, approved'
+          type: string
+      required:
+      - phase
+      - repoStatus
+      - repoUrl
+      - hasSpec
+      - hasDesign
+      - hasTasks
+      - specStatus
+      - designStatus
+      - spec
+      - build
+      - deploy
+      type: object
+    ProvisionBody:
+      additionalProperties: false
+      properties:
+        environments:
+          description: 'Environments to provision (default: [development])'
+          items:
+            type: string
+          type: array
+          nullable: true
+        params:
+          additionalProperties:
+            type: string
+          description: Provisioning parameters (override the design defaults)
+          type: object
+      type: object
+    RcaAgentReport:
+      additionalProperties: false
+      description: An RCA report from the OpenChoreo SRE/RCA-agent handoff (console issues
+      properties:
+        classification:
+          description: code-level, config-level, mixed, or none — set by the handoff agent
+          type: string
+        component:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deployed:
+          description: Whether the resulting fix has been deployed (Verify Fix threshold, not merely PR-merged)
+          type: boolean
+        deployedAt:
+          type: string
+          format: date-time
+        diagnosis:
+          description: Full RCA diagnosis + remediation content (markdown)
+          type: string
+        dispatched:
+          description: Whether the coding agent has been dispatched for the linked issue (false in issue-only/manual-dispatch
+            mode until a human dispatches)
+          type: boolean
+        id:
+          type: string
+        issueExcerpt:
+          description: Short excerpt of the linked GitHub issue; absent when no issue was created
+          type: string
+        issueNumber:
+          description: GitHub issue number created by the handoff; also the Task key (see /projects/{projectName}/tasks/{issueNumber});
+            absent when the handoff was config-only
+          format: int64
+          type: integer
+        issueTitle:
+          type: string
+        issueUrl:
+          type: string
+        project:
+          type: string
+        summary:
+          description: Short RCA summary; the console truncates this further for list rows
+          type: string
+        title:
+          type: string
+      required:
+      - id
+      - project
+      - createdAt
+      - title
+      - summary
+      - classification
+      - diagnosis
+      - deployed
+      type: object
+    RcaAgentReportList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/RcaAgentReport'
+          type: array
+          nullable: true
+        nextCursor:
+          description: Cursor for the next page; absent on the last page.
+          type: string
+      required:
+      - items
+      type: object
+    SaveValuesBody:
+      additionalProperties: false
+      properties:
+        environments:
+          additionalProperties:
+            additionalProperties:
+              type: string
+            type: object
+          description: 'Per-environment { configKey: value } maps. Secret keys are routed to the secret
+            manager by the registered schema.'
+          type: object
+      required:
+      - environments
+      type: object
+    SkillDetailBody:
+      additionalProperties: false
+      properties:
+        compatibility:
+          type: string
+        contentSha:
+          type: string
+        description:
+          type: string
+        editable:
+          type: boolean
+        kind:
+          type: string
+        license:
+          type: string
+        name:
+          type: string
+        orgId:
+          type: string
+        references:
+          additionalProperties:
+            type: string
+          type: object
+        skillMd:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+      - editable
+      - orgId
+      - name
+      - kind
+      - description
+      - skillMd
+      - references
+      - contentSha
+      - updatedAt
+      type: object
+    SkillSummary:
+      additionalProperties: false
+      properties:
+        contentSha:
+          type: string
+        description:
+          type: string
+        editable:
+          type: boolean
+        kind:
+          type: string
+        name:
+          type: string
+      required:
+      - name
+      - kind
+      - description
+      - contentSha
+      - editable
+      type: object
+    SkillSummaryList:
+      additionalProperties: false
+      properties:
+        repoUrl:
+          description: HTML URL of the org skills repo backing the catalogue.
+          type: string
+        skills:
+          items:
+            $ref: '#/components/schemas/SkillSummary'
+          type: array
+          nullable: true
+      required:
+      - skills
+      - repoUrl
+      type: object
+    SkillSyncOutput:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+        updated:
+          format: int64
+          type: integer
+      required:
+      - status
+      - updated
+      type: object
+    SkillUpdate:
+      additionalProperties: false
+      description: |
+        One built-in whose embedded (platform) content differs from the org's repo copy. Reconcile compares ContentSHA, not a hand-maintained version.
+      properties:
+        name:
+          type: string
+      required:
+      - name
+      type: object
+    SkillUpdateList:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+        updates:
+          items:
+            $ref: '#/components/schemas/SkillUpdate'
+          type: array
+          nullable: true
+      required:
+      - updates
+      - count
+      type: object
+    SpecStage:
+      additionalProperties: false
+      description: Spec-stage aggregate on ProjectStatus (#184). Approved/draft is derived, not stored
+        — version set and not dirty = approved (vN); dirty = draft changes (vN+); no version = unpublished
+        draft; exists false = no spec yet.
+      properties:
+        design:
+          description: Design files exist for the spec (gates the Spec view's design button).
+          type: boolean
+        dirty:
+          description: specs/ moved on GitHub past the latest tag.
+          type: boolean
+        exists:
+          description: Any spec file created; false renders the Generate-spec CTA.
+          type: boolean
+        version:
+          description: Latest v<N> spec tag; "" if never published.
+          type: string
+      required:
+      - exists
+      - version
+      - dirty
+      - design
+      type: object
+    StartConnectInputBody:
+      additionalProperties: false
+      properties:
+        installationId:
+          description: Optional installation to pin (set when the user picks a candidate from the 2+ picker)
+          format: int64
+          type: integer
+      type: object
+    StartConnectOutputBody:
+      additionalProperties: false
+      properties:
+        authorizeUrl:
+          type: string
+      required:
+      - authorizeUrl
+      type: object
+    StatusMsg:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+      - status
+      type: object
+    TagList:
+      additionalProperties: false
+      properties:
+        latest:
+          description: Newest spec version tag (e.g. v3); absent when nothing is tagged.
+          type: string
+        specDirty:
+          description: True when specs/ changed after latest was tagged.
+          type: boolean
+        tags:
+          description: Spec version tags (v<N>), newest first.
+          items:
+            type: string
+          type: array
+          nullable: true
+      required:
+      - tags
+      type: object
+    TaskDetail:
+      additionalProperties: false
+      properties:
+        attention:
+          items:
+            type: string
+          type: array
+          nullable: true
+        body:
+          type: string
+        component:
+          type: string
+        dependsOn:
+          items:
+            type: string
+          type: array
+          nullable: true
+        derivedStatus:
+          type: string
+        executionHistory:
+          items:
+            $ref: '#/components/schemas/ExecutionView'
+          type: array
+          nullable: true
+        executions:
+          additionalProperties:
+            $ref: '#/components/schemas/ExecutionView'
+          type: object
+        executorClass:
+          type: string
+        hold:
+          type: boolean
+        issueNumber:
+          format: int64
+          type: integer
+        issueUrl:
+          type: string
+        lineage:
+          $ref: '#/components/schemas/Lineage'
+        operation:
+          type: string
+        origin:
+          type: string
+        rationale:
+          type: string
+        title:
+          type: string
+      required:
+      - executionHistory
+      - issueNumber
+      - title
+      - issueUrl
+      - dependsOn
+      - lineage
+      - derivedStatus
+      - hold
+      - attention
+      - executions
+      type: object
+    TaskStreamEvent:
+      additionalProperties: false
+      description: 'One SSE frame on the task-log stream. `type` discriminates the payload: `task` carries
+        the full TaskView (client upserts by issue), `execution` one ExecutionView (client upserts by
+        id), `line` one TimelineEvent (client appends, deduped by executionId+seq), and `done` the settled
+        derivedStatus (the server then closes the stream).'
+      properties:
+        derivedStatus:
+          description: Settled derived status — present only on the `done` frame.
+          type: string
+        execution:
+          $ref: '#/components/schemas/ExecutionView'
+        line:
+          $ref: '#/components/schemas/TimelineEvent'
+        task:
+          $ref: '#/components/schemas/TaskView'
+        type:
+          enum:
+          - task
+          - execution
+          - line
+          - done
+          type: string
+      required:
+      - type
+      type: object
+    TaskView:
+      additionalProperties: false
+      properties:
+        attention:
+          items:
+            type: string
+          type: array
+          nullable: true
+        blockedBy:
+          description: Names of the dependencies this task is waiting on; present when derivedStatus is
+            on_hold.
+          items:
+            type: string
+          type: array
+        body:
+          type: string
+        component:
+          type: string
+        dependsOn:
+          items:
+            type: string
+          type: array
+          nullable: true
+        derivedStatus:
+          type: string
+        executions:
+          additionalProperties:
+            $ref: '#/components/schemas/ExecutionView'
+          type: object
+        executorClass:
+          type: string
+        hold:
+          type: boolean
+        issueNumber:
+          format: int64
+          type: integer
+        issueUrl:
+          type: string
+        lineage:
+          $ref: '#/components/schemas/Lineage'
+        operation:
+          type: string
+        origin:
+          type: string
+        rationale:
+          type: string
+        title:
+          type: string
+      required:
+      - issueNumber
+      - title
+      - issueUrl
+      - dependsOn
+      - lineage
+      - derivedStatus
+      - hold
+      - attention
+      - executions
+      type: object
+    TimelineEvent:
+      additionalProperties: false
+      description: 'A unified-timeline entry: today''s ProgressEvent (phase | tool_use | git_commit |
+        git_push | gh_action | build_step | log | result) plus its attribution — which execution attempt
+        it came from. This is the per-row shape the console renders; the FE groups rows by executionId/kind.'
+      properties:
+        branch:
+          type: string
+        command:
+          type: string
+        completedAt:
+          type: string
+        error:
+          type: string
+        executionId:
+          description: Id of the execution attempt this line belongs to.
+          type: string
+        executionKind:
+          description: Kind of that attempt (coding | build | ops) — client-side grouping/section labels.
+          type: string
+        files:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        level:
+          type: string
+        message:
+          type: string
+        phase:
+          type: string
+        schemaVersion:
+          format: int64
+          type: integer
+        seq:
+          format: int64
+          type: integer
+        sha:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        step:
+          type: string
+        summary:
+          type: string
+        tool:
+          type: string
+        ts:
+          type: string
+      required:
+      - schemaVersion
+      - ts
+      - seq
+      - kind
+      - executionId
+      - executionKind
+      type: object
+    TurnInputBody:
+      additionalProperties: false
+      properties:
+        collab:
+          description: 'Room-scoped turn (#86 phase 4): the agent joins the project''s spec collab room
+            as a live peer, reads and edits the shared doc, and commits nothing to git.'
+          type: boolean
+        instruction:
+          description: User message / generation directive
+          type: string
+        target:
+          description: Optional target (e.g. a doc type)
+          type: string
+        useCase:
+          description: Which generation/chat flow. Omit to run a generic spec turn.
+          enum:
+          - requirements-generate
+          - requirements-chat
+          - design-generate
+          type: string
+      required:
+      - instruction
+      type: object
+    TurnOutputBody:
+      additionalProperties: false
+      properties:
+        turnId:
+          description: The started turn's id — poll/attach with it
+          type: string
+      required:
+      - turnId
+      type: object
+    TurnStatus:
+      additionalProperties: false
+      description: One turn's lifecycle view (create-turn 202 → poll/attach).
+      properties:
+        commitSha:
+          type: string
+        conversationId:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        message:
+          type: string
+        noChanges:
+          type: boolean
+        paths:
+          items:
+            type: string
+          type: array
+          nullable: true
+        reason:
+          type: string
+        status:
+          description: running, completed, failed
+          type: string
+        turnId:
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        useCase:
+          type: string
+      required:
+      - turnId
+      - conversationId
+      - useCase
+      - status
+      - createdAt
+      - updatedAt
+      type: object
+    UpdateConfigBody:
+      additionalProperties: false
+      properties:
+        envVars:
+          items:
+            $ref: '#/components/schemas/EnvVar'
+          type: array
+          nullable: true
+      required:
+      - envVars
+      type: object
+    UpdateSkillInput:
+      additionalProperties: false
+      properties:
+        references:
+          additionalProperties:
+            type: string
+          type: object
+        skillMd:
+          type: string
+      required:
+      - skillMd
+      type: object
+    Warning:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+      required:
+      - path
+      - code
+      - message
+      type: object
+    WorkflowRun:
+      additionalProperties: false
+      properties:
+        completed:
+          type: boolean
+        componentName:
+          type: string
+        name:
+          type: string
+        projectName:
+          type: string
+        startedAt:
+          type: string
+        status:
+          type: string
+        tasks:
+          items:
+            $ref: '#/components/schemas/WorkflowRunTask'
+          type: array
+          nullable: true
+      type: object
+    WorkflowRunList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/WorkflowRun'
+          type: array
+          nullable: true
+      required:
+      - items
+      type: object
+    WorkflowRunTask:
+      additionalProperties: false
+      properties:
+        completedAt:
+          type: string
+        message:
+          type: string
+        name:
+          type: string
+        phase:
+          type: string
+        startedAt:
+          type: string
+      required:
+      - name
+      type: object
+    WriteOp:
+      additionalProperties: false
+      properties:
+        baseSha:
+          type: string
+        content:
+          type: string
+        path:
+          type: string
+      required:
+      - path
+      - content
+      type: object
