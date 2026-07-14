@@ -36,6 +36,7 @@ const (
 	CodeNotFound         = "not_found"
 	CodeConflict         = "conflict"
 	CodeInternal         = "internal_error"
+	CodeBadGateway       = "bad_gateway"
 	CodeNotImplemented   = "not_implemented"
 )
 
@@ -62,6 +63,9 @@ func errNotFound(msg string) error  { return &apiError{http.StatusNotFound, Code
 func errConflict(msg string) error  { return &apiError{http.StatusConflict, CodeConflict, msg, nil} }
 func errInternal(msg string) error {
 	return &apiError{http.StatusInternalServerError, CodeInternal, msg, nil}
+}
+func errBadGateway(msg string) error {
+	return &apiError{http.StatusBadGateway, CodeBadGateway, msg, nil}
 }
 
 // errNotImplemented is what every unmigrated stub returns until its feature

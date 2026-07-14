@@ -98,7 +98,6 @@ func RegisterAllHuma(api huma.API, d HumaDeps) {
 	dependencies.RegisterResourceTypes(api, d.ResourceTypeCatalog)
 	task.RegisterTask(api, d.TaskReads, d.TaskCommands, d.TaskPlan)
 	execution.RegisterTaskStream(api, d.TaskStream)
-	orgconfig.RegisterConfig(api, d.OrgConfigSvc)
 	skills.RegisterSkill(api, d.SkillSvc, d.SkillMutationSvc, d.SkillImportSvc)
 	files.RegisterFiles(api, d.FilesSvc)
 	artifacts.RegisterTags(api, d.ArtifactSvc)

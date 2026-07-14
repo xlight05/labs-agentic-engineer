@@ -81,141 +81,6 @@ func (e BuildSummaryStatus) Valid() bool {
 	}
 }
 
-// Defines values for ConfigPatchGitProviderKind.
-const (
-	ConfigPatchGitProviderKindGithub ConfigPatchGitProviderKind = "github"
-)
-
-// Valid indicates whether the value is a known member of the ConfigPatchGitProviderKind enum.
-func (e ConfigPatchGitProviderKind) Valid() bool {
-	switch e {
-	case ConfigPatchGitProviderKindGithub:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConfigPatchGitProviderMode.
-const (
-	ConfigPatchGitProviderModePat ConfigPatchGitProviderMode = "pat"
-)
-
-// Valid indicates whether the value is a known member of the ConfigPatchGitProviderMode enum.
-func (e ConfigPatchGitProviderMode) Valid() bool {
-	switch e {
-	case ConfigPatchGitProviderModePat:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConfigPatchIdpKind.
-const (
-	ConfigPatchIdpKindAsgardeo ConfigPatchIdpKind = "asgardeo"
-	ConfigPatchIdpKindCustom   ConfigPatchIdpKind = "custom"
-	ConfigPatchIdpKindPlatform ConfigPatchIdpKind = "platform"
-)
-
-// Valid indicates whether the value is a known member of the ConfigPatchIdpKind enum.
-func (e ConfigPatchIdpKind) Valid() bool {
-	switch e {
-	case ConfigPatchIdpKindAsgardeo:
-		return true
-	case ConfigPatchIdpKindCustom:
-		return true
-	case ConfigPatchIdpKindPlatform:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConfigPatchLlmKind.
-const (
-	ConfigPatchLlmKindAnthropic ConfigPatchLlmKind = "anthropic"
-)
-
-// Valid indicates whether the value is a known member of the ConfigPatchLlmKind enum.
-func (e ConfigPatchLlmKind) Valid() bool {
-	switch e {
-	case ConfigPatchLlmKindAnthropic:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GitProviderProjectionKind.
-const (
-	GitProviderProjectionKindGithub GitProviderProjectionKind = "github"
-)
-
-// Valid indicates whether the value is a known member of the GitProviderProjectionKind enum.
-func (e GitProviderProjectionKind) Valid() bool {
-	switch e {
-	case GitProviderProjectionKindGithub:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GitProviderProjectionMode.
-const (
-	GitProviderProjectionModeApp GitProviderProjectionMode = "app"
-	GitProviderProjectionModePat GitProviderProjectionMode = "pat"
-)
-
-// Valid indicates whether the value is a known member of the GitProviderProjectionMode enum.
-func (e GitProviderProjectionMode) Valid() bool {
-	switch e {
-	case GitProviderProjectionModeApp:
-		return true
-	case GitProviderProjectionModePat:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for IDPProjectionKind.
-const (
-	IDPProjectionKindAsgardeo IDPProjectionKind = "asgardeo"
-	IDPProjectionKindCustom   IDPProjectionKind = "custom"
-	IDPProjectionKindPlatform IDPProjectionKind = "platform"
-)
-
-// Valid indicates whether the value is a known member of the IDPProjectionKind enum.
-func (e IDPProjectionKind) Valid() bool {
-	switch e {
-	case IDPProjectionKindAsgardeo:
-		return true
-	case IDPProjectionKindCustom:
-		return true
-	case IDPProjectionKindPlatform:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for LLMProjectionKind.
-const (
-	LLMProjectionKindAnthropic LLMProjectionKind = "anthropic"
-)
-
-// Valid indicates whether the value is a known member of the LLMProjectionKind enum.
-func (e LLMProjectionKind) Valid() bool {
-	switch e {
-	case LLMProjectionKindAnthropic:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PreflightItemKind.
 const (
 	PreflightItemKindExternalConfig   PreflightItemKind = "external-config"
@@ -482,44 +347,6 @@ type ConfigKeyView struct {
 	Secret       bool   `json:"secret,omitempty"`
 }
 
-// ConfigPatch defines model for ConfigPatch.
-type ConfigPatch struct {
-	GitProvider struct {
-		GithubLogin string                     `json:"githubLogin,omitempty"`
-		Kind        ConfigPatchGitProviderKind `json:"kind"`
-		Mode        ConfigPatchGitProviderMode `json:"mode"`
-		Pat         string                     `json:"pat"`
-	} `json:"gitProvider,omitempty"`
-	Idp struct {
-		Issuer  string             `json:"issuer,omitempty"`
-		JwksURL string             `json:"jwksUrl,omitempty"`
-		Kind    ConfigPatchIdpKind `json:"kind"`
-	} `json:"idp,omitempty"`
-	Llm struct {
-		APIKey string             `json:"apiKey"`
-		Kind   ConfigPatchLlmKind `json:"kind"`
-	} `json:"llm,omitempty"`
-}
-
-// ConfigPatchGitProviderKind defines model for ConfigPatch.GitProvider.Kind.
-type ConfigPatchGitProviderKind string
-
-// ConfigPatchGitProviderMode defines model for ConfigPatch.GitProvider.Mode.
-type ConfigPatchGitProviderMode string
-
-// ConfigPatchIdpKind defines model for ConfigPatch.Idp.Kind.
-type ConfigPatchIdpKind string
-
-// ConfigPatchLlmKind defines model for ConfigPatch.Llm.Kind.
-type ConfigPatchLlmKind string
-
-// ConfigProjection defines model for ConfigProjection.
-type ConfigProjection struct {
-	GitProvider GitProviderProjection `json:"gitProvider"`
-	Idp         IDPProjection         `json:"idp"`
-	Llm         LLMProjection         `json:"llm"`
-}
-
 // ConfigValue defines model for ConfigValue.
 type ConfigValue struct {
 	Key   string `json:"key"`
@@ -687,41 +514,6 @@ type FileMeta struct {
 	Size int64  `json:"size,omitempty"`
 }
 
-// GitProviderProjection defines model for GitProviderProjection.
-type GitProviderProjection struct {
-	ConnectedAt       time.Time                 `json:"connectedAt"`
-	GithubLogin       string                    `json:"githubLogin,omitempty"`
-	IdentityChangedAt time.Time                 `json:"identityChangedAt,omitempty"`
-	IdentityEmail     string                    `json:"identityEmail,omitempty"`
-	IdentityLogin     string                    `json:"identityLogin,omitempty"`
-	IdentityName      string                    `json:"identityName,omitempty"`
-	InstallationID    int64                     `json:"installationId,omitempty"`
-	Kind              GitProviderProjectionKind `json:"kind"`
-	LastValidatedAt   time.Time                 `json:"lastValidatedAt,omitempty"`
-	Mode              GitProviderProjectionMode `json:"mode"`
-	PrevIdentityLogin string                    `json:"prevIdentityLogin,omitempty"`
-	SelectedRepos     []string                  `json:"selectedRepos,omitempty"`
-	Status            string                    `json:"status"`
-}
-
-// GitProviderProjectionKind defines model for GitProviderProjection.Kind.
-type GitProviderProjectionKind string
-
-// GitProviderProjectionMode defines model for GitProviderProjection.Mode.
-type GitProviderProjectionMode string
-
-// IDPProjection defines model for IDPProjection.
-type IDPProjection struct {
-	HasClientSecret   bool              `json:"hasClientSecret"`
-	Issuer            string            `json:"issuer"`
-	JwksURL           string            `json:"jwksUrl"`
-	Kind              IDPProjectionKind `json:"kind"`
-	PublisherClientID string            `json:"publisherClientId"`
-}
-
-// IDPProjectionKind defines model for IDPProjection.Kind.
-type IDPProjectionKind string
-
 // ImportResult defines model for ImportResult.
 type ImportResult struct {
 	Compatibility string   `json:"compatibility,omitempty"`
@@ -738,20 +530,6 @@ type InputFailure struct {
 	Kind       string `json:"kind,omitempty"`
 	Reason     string `json:"reason"`
 }
-
-// LLMProjection defines model for LLMProjection.
-type LLMProjection struct {
-	ConnectedAt     time.Time         `json:"connectedAt"`
-	KeyLast4        string            `json:"keyLast4"`
-	KeyPrefix       string            `json:"keyPrefix"`
-	Kind            LLMProjectionKind `json:"kind"`
-	LastValidatedAt time.Time         `json:"lastValidatedAt,omitempty"`
-	Status          string            `json:"status"`
-	ValidationError string            `json:"validationError,omitempty"`
-}
-
-// LLMProjectionKind defines model for LLMProjection.Kind.
-type LLMProjectionKind string
 
 // Lineage defines model for Lineage.
 type Lineage struct {

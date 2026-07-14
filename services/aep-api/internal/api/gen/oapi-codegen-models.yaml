@@ -20,3 +20,11 @@ output-options:
     - AccessRequest
     - ComponentConfig
     - RcaAgentReport
+    # org-config document: ConfigPatch sections are tri-state patch.Field
+    # values and projections use pointer-sections for null-means-not-connected
+    # — hand-written in models/org_config.go.
+    - ConfigPatch
+    - ConfigProjection
+    - LLMProjection
+    - GitProviderProjection
+    - IDPProjection

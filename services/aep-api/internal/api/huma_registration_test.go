@@ -45,8 +45,7 @@ func TestHumaRegistration_NoDupAndComplete(t *testing.T) {
 		// The task-log endpoint is now one SSE stream (status + executions +
 		// unified timeline), not the cursor-poll it replaced.
 		"stream-task-log",
-		// Consolidated org-config surface (replaces the Anthropic/GitHub/IDP tag groups).
-		"get-config", "update-config", "list-skills",
+		"list-skills",
 		// Single-tag build surface (the contract's build-project/get-project-build).
 		"build-project", "get-project-build", "list-project-tags",
 		// Alerts (console issues #154, #155, BE handshake #156).

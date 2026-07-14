@@ -47,6 +47,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/idp"
@@ -859,14 +860,20 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 
 func TestConfigComponent_H2_SpecShape(t *testing.T) {
 	t.Parallel()
-	spec, err := api.GenerateOpenAPIYAML()
+	// The served spec IS the committed contract now (embedded at build time) —
+	// assert the /config surface stays typed there.
+	paths, err := gen.ContractFS.ReadFile("contract/openapi.yaml")
 	if err != nil {
-		t.Fatalf("spec: %v", err)
+		t.Fatalf("embedded contract: %v", err)
 	}
-	s := string(spec)
+	schemas, err := gen.ContractFS.ReadFile("contract/components.yaml")
+	if err != nil {
+		t.Fatalf("embedded components: %v", err)
+	}
+	s := string(paths)
 	for _, want := range []string{"get-config", "update-config", "ConfigProjection", "ConfigPatch"} {
-		if !strings.Contains(s, want) {
-			t.Errorf("spec missing %q", want)
+		if !strings.Contains(s, want) && !strings.Contains(string(schemas), want) {
+			t.Errorf("contract missing %q", want)
 		}
 	}
 	// The /config ops must be typed — no untyped map bodies (additionalProperties: {}).
@@ -877,9 +884,9 @@ func TestConfigComponent_H2_SpecShape(t *testing.T) {
 
 func TestConfigComponent_H1b_SkillsRenamed(t *testing.T) {
 	t.Parallel()
-	spec, err := api.GenerateOpenAPIYAML()
+	spec, err := gen.ContractFS.ReadFile("contract/openapi.yaml")
 	if err != nil {
-		t.Fatalf("spec: %v", err)
+		t.Fatalf("embedded contract: %v", err)
 	}
 	s := string(spec)
 	if !strings.Contains(s, "/skills") {

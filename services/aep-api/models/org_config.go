@@ -14,23 +14,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package orgconfig is the consolidated org-integration surface: one singleton
-// config resource (GET/PATCH /config) carrying the llm, gitProvider and idp
-// sections, plus the state-changing action routes (OAuth connect-session,
-// disconnect, IDP client-secret rotation, OIDC discovery). It replaces the
-// three inconsistent legacy tag groups (Anthropic/GitHub/IDP integration) with
-// a single typed document sized for the console's one settings page.
-//
-// This package is a route/type-layer consolidation: it reuses the existing
-// orgcreds + idp services as-is and adds one small orchestrator (Service) that
-// runs the atomic, probe-before-persist multi-section PATCH. See
-// docs/design/org-config-consolidation.md.
-package orgconfig
+// Org-config surface types (GET/PATCH /config — the consolidated llm /
+// gitProvider / idp document). HAND-WRITTEN and excluded from contract
+// codegen (exclude-schemas): ConfigPatch's sections are three-state
+// patch.Field values (absent = keep / null = clear / value = replace) and the
+// projections use pointer sections for the wire's null-means-not-connected —
+// semantics the generator cannot express. Kept field-for-field aligned with
+// packages/contracts/api/v1 (ConfigProjection, ConfigPatch, *Projection);
+// gen-api-check pins the rest of the contract.
+package models
 
 import (
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/platform/humakit/patch"
+	"github.com/wso2/aep/aep-api/internal/platform/patch"
 )
 
 // --- Read side: ConfigProjection (no secret material) -----------------------

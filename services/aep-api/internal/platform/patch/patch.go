@@ -20,20 +20,15 @@
 // an omitted key (leave it untouched). Field[T] captures all three states so a
 // handler can branch on Sent/Null.
 //
-// It follows Huma's documented omittable-nullable recipe (huma v2's own
-// schema_test.go OmittableNullable example): a custom json.Unmarshaler records
-// whether the key was sent and whether it was null, and a huma.SchemaProvider
-// renders the field as `oneOf: [<section schema>, {type: null}]` so the section
-// schema is referenced (not inlined per use) and the null branch is explicit in
-// the generated OpenAPI. See docs/design/org-config-consolidation.md §4.
+// A custom json.Unmarshaler records whether the key was sent and whether it
+// was null; the contract declares the matching `nullable` section schemas, so
+// the request validator accepts all three states. See
+// docs/design/org-config-consolidation.md §4.
 package patch
 
 import (
 	"bytes"
 	"encoding/json"
-	"reflect"
-
-	"github.com/danielgtaylor/huma/v2"
 )
 
 // Field is a three-state PATCH field wrapping a value of type T.
@@ -65,24 +60,4 @@ func (f *Field[T]) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	return json.Unmarshal(b, &f.Value)
-}
-
-// Schema makes the field validate as "T's object, or null". It follows Huma's
-// documented recipe (schema_test.go OmittableNullable): take T's generated
-// schema and mark it Nullable. Huma's request validator short-circuits a JSON
-// null on a Nullable schema BEFORE it checks `type`, and validates a present
-// value against T's full object schema (its required fields, its
-// additionalProperties:false) otherwise. So a `null` clears, a well-formed
-// object is accepted, and a malformed one 422s at the schema layer — all three
-// PATCH states covered.
-//
-// The schema is requested inlined (allowRef=false) rather than as a $ref: Huma
-// resolves a $ref away before the Nullable short-circuit runs, which would drop
-// the null allowance. Each section type is used exactly once (in ConfigPatch),
-// so inlining costs no reuse. A value receiver is required so Huma can call it
-// on a zero Field value while introspecting the parent struct.
-func (Field[T]) Schema(r huma.Registry) *huma.Schema {
-	s := r.Schema(reflect.TypeFor[T](), false, "")
-	s.Nullable = true
-	return s
 }

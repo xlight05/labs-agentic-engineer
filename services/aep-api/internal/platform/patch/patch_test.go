@@ -16,19 +16,15 @@
 
 // Unit tier (docs/design/org-config-consolidation.md §5.A). These rows ARE the
 // contract for the omittable-nullable field the /config PATCH surface is built
-// on: absent vs null vs value must be distinguishable, and the generated schema
-// must reference the section schema rather than inline it per use.
+// on: absent vs null vs value must be distinguishable. (Schema-side nullability
+// lives in the committed contract now — kin-openapi validates it.)
 package patch_test
 
 import (
 	"encoding/json"
-	"reflect"
-	"strings"
 	"testing"
 
-	"github.com/danielgtaylor/huma/v2"
-
-	"github.com/wso2/aep/aep-api/internal/platform/humakit/patch"
+	"github.com/wso2/aep/aep-api/internal/platform/patch"
 )
 
 // sampleWrite stands in for a real section-write struct (LLMWrite etc).
@@ -81,48 +77,5 @@ func TestField_ValueIsSentAndDecoded(t *testing.T) {
 	}
 	if b.Sec.Value.Kind != "anthropic" || b.Sec.Value.Key != "k123" {
 		t.Fatalf("value not decoded: %+v", b.Sec.Value)
-	}
-}
-
-// A4: the generated field schema is T's object schema marked Nullable — Huma's
-// validator accepts a JSON null (clear) via the Nullable short-circuit and
-// validates a present value against the object (its required inner fields). The
-// field itself is NOT required (absent = keep). Rendered JSON is
-// `type: ["object","null"]`.
-func TestField_SchemaIsNullableObject(t *testing.T) {
-	r := huma.NewMapRegistry("#/components/schemas/", huma.DefaultSchemaNamer)
-	s := r.Schema(reflect.TypeFor[sampleBody](), false, "")
-
-	field, ok := s.Properties["sec"]
-	if !ok {
-		t.Fatalf("schema missing 'sec' property: %+v", s.Properties)
-	}
-	if !field.Nullable {
-		t.Fatalf("section field must be Nullable so a JSON null validates, got %+v", field)
-	}
-	if field.Type != "object" {
-		t.Fatalf("section field must carry the object type, got %q", field.Type)
-	}
-	// The inner required fields are preserved, so a malformed section still 422s.
-	if _, ok := field.Properties["kind"]; !ok {
-		t.Fatalf("section field must keep the inner properties (kind), got %+v", field.Properties)
-	}
-	if len(field.Required) == 0 {
-		t.Fatalf("section field must keep its required inner fields, got %v", field.Required)
-	}
-	// Rendered JSON is `type: ["object","null"]`.
-	raw, err := field.MarshalJSON()
-	if err != nil {
-		t.Fatalf("marshal field schema: %v", err)
-	}
-	if !strings.Contains(string(raw), `"null"`) || !strings.Contains(string(raw), `"object"`) {
-		t.Fatalf("rendered field schema must be nullable object, got %s", raw)
-	}
-
-	// Absent must mean "keep" — an omittable section is never required.
-	for _, req := range s.Required {
-		if req == "sec" {
-			t.Fatalf("omittable section must not be required, got required=%v", s.Required)
-		}
 	}
 }
