@@ -16,9 +16,9 @@
 
 // COMPONENT tier (bff-component-testing.md §4): the REAL project service
 // behind the REAL production handler chain — global middleware → faked auth at
-// the jwt.WithClaims seam → orgensure → Huma parsing/validation → the tenant
-// gate in ENFORCE → mapProjectError — driven in-process via the componenttest
-// harness. Only the out-of-process OpenChoreo client is mocked. Error-shape
+// the jwt.WithClaims seam → orgensure → contract validation → the deny-by-
+// default tenant gate in ENFORCE → strict handlers → mapProjectError — driven
+// in-process via the componenttest harness. Only the out-of-process OpenChoreo client is mocked. Error-shape
 // assertions mirror the harvested goldens (testdata/harvest/golden/): the 422
 // and 404 bodies here are the same RFC-9457 problems the deployed stack
 // serves.
@@ -78,26 +78,6 @@ func newProjectHarness(t *testing.T) (*componenttest.Harness, *ocmocks.ProjectCl
 	return componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{ProjectSvc: svc}}), oc
 }
 
-// problem is the RFC-9457 body shape Huma serves for every error.
-type problem struct {
-	Title  string `json:"title"`
-	Status int    `json:"status"`
-	Detail string `json:"detail"`
-	Errors []struct {
-		Message  string `json:"message"`
-		Location string `json:"location"`
-	} `json:"errors"`
-}
-
-func decodeProblem(t *testing.T, body string) problem {
-	t.Helper()
-	var p problem
-	if err := json.Unmarshal([]byte(body), &p); err != nil {
-		t.Fatalf("not an RFC-9457 problem body: %v\n%s", err, body)
-	}
-	return p
-}
-
 func TestProjectComponent_ListAuthedReachesRealService(t *testing.T) {
 	t.Parallel()
 	h, oc := newProjectHarness(t)
@@ -128,14 +108,12 @@ func TestProjectComponent_NoClaimsDeniedByEnforceGate(t *testing.T) {
 	if resp.Code != 401 {
 		t.Fatalf("no-claims list: want the gate's ENFORCE 401, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	// This is the GATE's 401, not the JWT middleware's {error,message} shape in
-	// the err_401 golden — the harness fakes the verifier away; the middleware's
-	// rejection is integration-owned. Huma aggregates resolver errors into one
-	// RFC-9457 problem (detail "validation failed") carrying the gate's message
-	// in errors[].
-	p := decodeProblem(t, resp.Body.String())
-	if p.Status != 401 || len(p.Errors) == 0 || !strings.Contains(p.Errors[0].Message, "authentication required") {
-		t.Fatalf("gate 401 problem shape: got %s", resp.Body.String())
+	// This is the GATE's 401, not the JWT middleware's rejection (the harness
+	// fakes the verifier away; that path is integration-owned). The deny-by-
+	// default gate answers with the flat envelope.
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "unauthorized" || !strings.Contains(e.Message, "authentication required") {
+		t.Fatalf("gate 401 envelope shape: got %s", resp.Body.String())
 	}
 }
 
@@ -146,15 +124,16 @@ func TestProjectComponent_CreateValidationAndHappyPath(t *testing.T) {
 		return &models.Project{Name: req.Name, NamespaceName: orgName}, nil
 	}
 
-	// name ABSENT → Huma schema validation 422, same shape as the harvested
-	// golden err_422_create_project.json.
+	// name ABSENT → the contract validator's 400 (the error-model break:
+	// schema violations are 400 validation_failed now, not Huma's 422), with
+	// the offending property named in details[].
 	resp := h.AsOrg("acme").Post("/api/v1/projects", `{}`)
-	if resp.Code != 422 {
-		t.Fatalf("empty body: want 422, got %d body=%s", resp.Code, resp.Body.String())
+	if resp.Code != 400 {
+		t.Fatalf("empty body: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	p := decodeProblem(t, resp.Body.String())
-	if len(p.Errors) == 0 || !strings.Contains(p.Errors[0].Message, "expected required property name to be present") {
-		t.Fatalf("422 shape drifted from golden: %s", resp.Body.String())
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "validation_failed" || len(e.Details) == 0 || !strings.Contains(e.Details[0].Message, "name") {
+		t.Fatalf("validation 400 shape: %s", resp.Body.String())
 	}
 	if len(oc.CreateProjectCalls()) != 0 {
 		t.Fatal("schema-invalid request must never reach the service")
@@ -165,8 +144,8 @@ func TestProjectComponent_CreateValidationAndHappyPath(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("empty name: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeProblem(t, resp.Body.String()); p.Detail != "name is required" {
-		t.Fatalf("400 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Message != "name is required" {
+		t.Fatalf("400 message: got %q", e.Message)
 	}
 
 	// Valid create → 201 with the project body; exactly one OC call, token org.
@@ -200,8 +179,8 @@ func TestProjectComponent_CreateValidationAndHappyPath(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("bad repoName: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "repoName") {
-		t.Fatalf("400 detail should name repoName: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "repoName") {
+		t.Fatalf("400 message should name repoName: got %q", e.Message)
 	}
 }
 
@@ -223,9 +202,9 @@ func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 	if resp.Code != 409 {
 		t.Fatalf("taken repoName: want 409, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	p := decodeProblem(t, resp.Body.String())
-	if !strings.Contains(strings.ToLower(p.Detail), "repo") {
-		t.Fatalf("409 detail should mention the repository name: got %q", p.Detail)
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "conflict" || !strings.Contains(strings.ToLower(e.Message), "repo") {
+		t.Fatalf("409 envelope should mention the repository name: got %q", e.Message)
 	}
 	if n := len(oc.DeleteProjectCalls()); n != 1 {
 		t.Fatalf("OC project compensation: DeleteProject called %d times, want 1", n)
@@ -243,9 +222,8 @@ func TestProjectComponent_GetMapsNotFoundToGoldenProblem(t *testing.T) {
 	if resp.Code != 404 {
 		t.Fatalf("want 404, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	// Same body as testdata/harvest/golden/err_404_project.json.
-	if p := decodeProblem(t, resp.Body.String()); p.Detail != "project not found" || p.Title != "Not Found" {
-		t.Fatalf("404 shape drifted from golden: %s", resp.Body.String())
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "not_found" || e.Message != "project not found" {
+		t.Fatalf("404 envelope shape: %s", resp.Body.String())
 	}
 }
 
@@ -277,9 +255,9 @@ func TestProjectComponent_ErrorMapping(t *testing.T) {
 			if resp.Code != tc.wantStatus {
 				t.Fatalf("want %d, got %d body=%s", tc.wantStatus, resp.Code, resp.Body.String())
 			}
-			p := decodeProblem(t, resp.Body.String())
-			if tc.wantDetail != "" && p.Detail != tc.wantDetail {
-				t.Fatalf("detail: got %q want %q", p.Detail, tc.wantDetail)
+			e := componenttest.DecodeEnvelope(t, resp.Body.String())
+			if tc.wantDetail != "" && e.Message != tc.wantDetail {
+				t.Fatalf("message: got %q want %q", e.Message, tc.wantDetail)
 			}
 			if tc.wantStatus == 500 && strings.Contains(resp.Body.String(), "connection refused") {
 				t.Fatalf("500 body leaks internals: %s", resp.Body.String())

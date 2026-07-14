@@ -1,0 +1,130 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package api
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"path"
+	"strings"
+
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
+
+	"github.com/wso2/aep/aep-api/internal/api/gen"
+	"github.com/wso2/aep/aep-api/models"
+)
+
+// loadContract parses the embedded committed contract (both documents) into a
+// kin-openapi model. It panics on failure: the contract is compiled into the
+// binary, so a load error is a build defect, not a runtime condition.
+func loadContract() *openapi3.T {
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(_ *openapi3.Loader, uri *url.URL) ([]byte, error) {
+		return gen.ContractFS.ReadFile(path.Join("contract", path.Base(uri.Path)))
+	}
+	doc, err := loader.LoadFromDataWithPath(mustReadContract("contract/openapi.yaml"),
+		&url.URL{Path: "contract/openapi.yaml"})
+	if err != nil {
+		panic(fmt.Sprintf("embedded contract failed to load: %v", err))
+	}
+	return doc
+}
+
+func mustReadContract(name string) []byte {
+	b, err := gen.ContractFS.ReadFile(name)
+	if err != nil {
+		panic(fmt.Sprintf("embedded contract missing %s: %v", name, err))
+	}
+	return b
+}
+
+// requestValidator validates every routable request against the committed
+// contract BEFORE it reaches the generated handler chain: schema-invalid
+// input never reaches a handler and is answered with the flat envelope
+// (400 validation_failed + field details). Design notes:
+//
+//   - Route-miss falls through to the router untouched — the generated mux
+//     owns 404s, and the read-file catch-all (nested {path} segments, which
+//     the single-segment contract template cannot match) stays servable.
+//   - Security requirements are NOT checked here (AuthenticationFunc is a
+//     no-op): authN is the outer JWKS middleware's job and authZ (tenant
+//     gate) runs deny-by-default inside the strict chain.
+func requestValidator(next http.Handler) http.Handler {
+	doc := loadContract()
+	router, err := legacyrouter.NewRouter(doc)
+	if err != nil {
+		panic(fmt.Sprintf("contract router: %v", err))
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route, pathParams, err := router.FindRoute(r)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		input := &openapi3filter.RequestValidationInput{
+			Request:    r,
+			PathParams: pathParams,
+			Route:      route,
+			Options: &openapi3filter.Options{
+				AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			},
+		}
+		if err := openapi3filter.ValidateRequest(r.Context(), input); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// writeValidationError maps a kin-openapi request-validation failure onto the
+// envelope: 400 validation_failed with one details entry per schema violation.
+func writeValidationError(w http.ResponseWriter, err error) {
+	var reqErr *openapi3filter.RequestError
+	if !errors.As(err, &reqErr) {
+		writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, err.Error(), nil)
+		return
+	}
+
+	loc := "body"
+	if reqErr.Parameter != nil {
+		loc = reqErr.Parameter.In + "." + reqErr.Parameter.Name
+	}
+
+	var schemaErr *openapi3.SchemaError
+	if errors.As(reqErr.Err, &schemaErr) {
+		field := loc
+		if ptr := strings.Join(schemaErr.JSONPointer(), "."); ptr != "" {
+			field = loc + "." + ptr
+		}
+		writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, "request validation failed",
+			[]models.ErrorDetail{{Field: field, Message: schemaErr.Reason}})
+		return
+	}
+
+	msg := reqErr.Reason
+	if msg == "" {
+		msg = reqErr.Error()
+	}
+	writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, "request validation failed",
+		[]models.ErrorDetail{{Field: loc, Message: msg}})
+}

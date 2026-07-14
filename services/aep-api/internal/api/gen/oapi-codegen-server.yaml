@@ -1,0 +1,14 @@
+# Strict server + std ServeMux router generated from the committed contract
+# (packages/contracts/api/v1/openapi.yaml). Run via `make gen-api`.
+package: gen
+generate:
+  std-http-server: true
+  strict-server: true
+  # Params/request-body aliases for the server; schema types resolve into
+  # package models via the import-mapping below.
+  models: true
+output: internal/api/gen/server_gen.go
+output-options:
+  name-normalizer: ToCamelCaseWithInitialisms
+import-mapping:
+  ./components.yaml: github.com/wso2/aep/aep-api/models

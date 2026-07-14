@@ -53,32 +53,3 @@ type RcaAgentReport struct {
 // TableName pins the table name explicitly (matches GORM's default
 // pluralization, kept stable per house convention).
 func (RcaAgentReport) TableName() string { return "rca_agent_reports" }
-
-// RcaAgentReportList is the paginated list envelope served by
-// list-rca-agent-reports.
-type RcaAgentReportList struct {
-	Items []RcaAgentReport `json:"items"`
-	// NextCursor is the opaque continuation token for the next page;
-	// empty/absent on the last page.
-	NextCursor string `json:"nextCursor,omitempty" doc:"Cursor for the next page; absent on the last page."`
-}
-
-// CreateRcaAgentReportRequest is the write-side payload for
-// create-rca-agent-report. Server assigns ID and CreatedAt.
-type CreateRcaAgentReportRequest struct {
-	Project        string `json:"project"`
-	Component      string `json:"component,omitempty"`
-	Title          string `json:"title"`
-	Summary        string `json:"summary"`
-	Classification string `json:"classification"`
-	Diagnosis      string `json:"diagnosis"`
-
-	IssueNumber  *int64 `json:"issueNumber,omitempty"`
-	IssueURL     string `json:"issueUrl,omitempty"`
-	IssueTitle   string `json:"issueTitle,omitempty"`
-	IssueExcerpt string `json:"issueExcerpt,omitempty"`
-
-	Dispatched bool       `json:"dispatched,omitempty"`
-	Deployed   bool       `json:"deployed,omitempty"`
-	DeployedAt *time.Time `json:"deployedAt,omitempty"`
-}

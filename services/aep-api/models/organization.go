@@ -41,19 +41,3 @@ type Organization struct {
 	// carries an `ouId` claim. Nullable for backward compatibility.
 	ThunderOrgUUID *uuid.UUID `gorm:"type:uuid;column:thunder_org_uuid;index" json:"thunderOrgUuid,omitempty"`
 }
-
-// OrganizationView is the API response shape — joins the local UUID with the
-// OC namespace's display fields.
-type OrganizationView struct {
-	UUID        uuid.UUID `json:"uuid"`
-	Name        string    `json:"name"`
-	DisplayName string    `json:"displayName,omitempty"`
-	Description string    `json:"description,omitempty"`
-	Status      string    `json:"status,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-// OrganizationList is the list-endpoint response.
-type OrganizationList struct {
-	Items []OrganizationView `json:"items"`
-}

@@ -33,8 +33,12 @@ func TestHumaRegistration_NoDupAndComplete(t *testing.T) {
 	}
 	s := string(spec)
 
+	// project + organization ops are gone from this list: they migrated to the
+	// contract-first strict server (handlers_project.go / handlers_organization.go)
+	// and are no longer Huma-registered. Ops leave this list as each feature
+	// migrates (issue 003); the whole file dies with Huma (issue 005).
 	wantOps := []string{
-		"list-projects", "list-organizations", "list-components", "get-component-config",
+		"list-components", "get-component-config",
 		"get-spec-collab-session",
 		// Tasks-github-native surface (§9.1): the board/dispatch/retry ops are gone.
 		"list-tasks", "get-task", "plan-tasks", "execute-task", "hold-task", "unhold-task",

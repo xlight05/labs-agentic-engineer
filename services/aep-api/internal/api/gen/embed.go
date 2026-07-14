@@ -14,4 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package models
+package gen
+
+import "embed"
+
+// ContractFS embeds the vendored copy of the committed public contract
+// (packages/contracts/api/v1 — the source of truth). `make gen-api` refreshes
+// the vendor alongside the generated code; go:embed cannot reach across the
+// module boundary, same posture as skills/embedded. Consumed by the request
+// validator middleware and the /openapi.yaml + /components.yaml routes.
+//
+//go:embed contract/openapi.yaml contract/components.yaml
+var ContractFS embed.FS

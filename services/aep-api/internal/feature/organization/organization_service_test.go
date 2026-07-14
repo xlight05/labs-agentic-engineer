@@ -29,59 +29,14 @@ package organization
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
-
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// statusOf casts a huma error to its wire status, failing the test if the
-// mapper returned something that is not a huma.StatusError.
-func statusOf(t *testing.T, err error) int {
-	t.Helper()
-	se, ok := err.(huma.StatusError)
-	if !ok {
-		t.Fatalf("expected a huma.StatusError, got %T (%v)", err, err)
-	}
-	return se.GetStatus()
-}
-
-// TestMapOrganizationError pins the handler-facing status mapping: only an OC
-// 401 becomes a 401 (so an upstream auth failure isn't masked); every other OC
-// sentinel and any opaque error are an opaque 500 whose body carries a fixed
-// message (never the underlying error, so internals can't leak). The 401
-// distinction is the deliberate coarseness of the read-only List contract.
-func TestMapOrganizationError(t *testing.T) {
-	t.Parallel()
-
-	if got := statusOf(t, mapOrganizationError(openchoreo.ErrUnauthorized)); got != 401 {
-		t.Fatalf("oc unauthorized → %d, want 401", got)
-	}
-	// Wrapped unauthorized still maps to 401 (errors.Is chain).
-	if got := statusOf(t, mapOrganizationError(fmt.Errorf("list: %w", openchoreo.ErrUnauthorized))); got != 401 {
-		t.Fatalf("wrapped oc unauthorized → %d, want 401", got)
-	}
-	// Every other OC sentinel and any opaque error collapse to an opaque 500.
-	for _, err := range []error{openchoreo.ErrForbidden, openchoreo.ErrNotFound, errors.New("pg down")} {
-		e := mapOrganizationError(err)
-		if got := statusOf(t, e); got != 500 {
-			t.Fatalf("%v → %d, want 500", err, got)
-		}
-		if e.Error() != "failed to list organizations" {
-			t.Fatalf("500 must carry the fixed message, got %q", e.Error())
-		}
-	}
-}
-
-// TestList_EmptyNamespacesShortCircuits proves the len==0 fast path: an empty
-// namespace list returns an empty (non-nil) item slice WITHOUT touching the DB —
-// which is why this test can run with a nil *gorm.DB. If the short-circuit were
-// removed the nil DB would panic, so this also guards that branch's existence.
 func TestList_EmptyNamespacesShortCircuits(t *testing.T) {
 	t.Parallel()
 	nsCli := &ocmocks.NamespaceClientMock{

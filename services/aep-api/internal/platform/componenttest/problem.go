@@ -23,8 +23,34 @@ import (
 	"testing"
 )
 
-// Problem is the RFC-9457 body shape Huma serves for every error. Shared here
-// so per-feature component tests stop re-rolling it (Pilot B review nit).
+// Envelope is the flat error body the contract-first edge serves for every
+// non-2xx response: {code, message, details?} (contract schema Error).
+type Envelope struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details []struct {
+		Field   string `json:"field"`
+		Message string `json:"message"`
+	} `json:"details"`
+}
+
+// DecodeEnvelope parses a flat error envelope, failing the test on anything
+// that isn't one.
+func DecodeEnvelope(t testing.TB, body string) Envelope {
+	t.Helper()
+	var e Envelope
+	if err := json.Unmarshal([]byte(body), &e); err != nil {
+		t.Fatalf("not a flat error envelope: %v\n%s", err, body)
+	}
+	if e.Code == "" {
+		t.Fatalf("error envelope missing code:\n%s", body)
+	}
+	return e
+}
+
+// Problem is the RFC-9457 body shape Huma served for every error. It remains
+// only for tests of features not yet migrated to the contract-first edge —
+// delete with the last *_huma.go (issue 003/005).
 type Problem struct {
 	Title  string `json:"title"`
 	Status int    `json:"status"`

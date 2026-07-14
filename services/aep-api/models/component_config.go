@@ -18,12 +18,6 @@ package models
 
 import "time"
 
-// EnvVar represents a single environment variable key-value pair.
-type EnvVar struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
 // EnvVarSlice is a typed slice for JSONB storage in PostgreSQL.
 type EnvVarSlice []EnvVar
 

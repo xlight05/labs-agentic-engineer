@@ -1,0 +1,22 @@
+# Schema types generated INTO package models (same import path its ~194
+# importers already use). Input: packages/contracts/api/v1/components.yaml —
+# the committed contract is the source of truth; run via `make gen-api`.
+package: models
+generate:
+  models: true
+output: models/models_gen.go
+output-options:
+  # components.yaml has no paths, so pruning would drop every schema.
+  skip-prune: true
+  # Hand-written models use value types + omitempty for optional fields;
+  # pointers would ripple through every importer.
+  prefer-skip-optional-pointer: true
+  # Match hand-written Go names (UUID, RepoURL, …), not Uuid/RepoUrl.
+  name-normalizer: ToCamelCaseWithInitialisms
+  # These schemas stay hand-written in models/ — they are gorm-tagged DB
+  # models that double as API shapes (behavior the generator must not own).
+  # Same-package name resolution lets generated types reference them.
+  exclude-schemas:
+    - AccessRequest
+    - ComponentConfig
+    - RcaAgentReport

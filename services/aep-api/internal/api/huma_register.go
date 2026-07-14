@@ -50,46 +50,46 @@ import (
 // registration list in one place (RegisterAllHuma) is what keeps the served
 // handler, the spec artifact, and the tests in lockstep.
 type HumaDeps struct {
-	ProjectSvc        project.ProjectService
-	OrgSvc            organization.OrganizationService
-	ComponentSvc      component.ComponentService
-	ConfigSvc         component.ConfigService
-	CollabRepo        gitrepo.RepoService
-	IssueSvc          gitrepo.IssueService
+	ProjectSvc          project.ProjectService
+	OrgSvc              organization.OrganizationService
+	ComponentSvc        component.ComponentService
+	ConfigSvc           component.ConfigService
+	CollabRepo          gitrepo.RepoService
+	IssueSvc            gitrepo.IssueService
 	ProvisioningSvc     *provisioning.Service
 	ResourceTypeCatalog dependencies.ResourceTypeLister
-	TaskReads         *task.Reads
-	TaskCommands      *task.Commands
-	TaskPlan          *task.PlanService
-	TaskStream        *execution.TaskStreamService
-	ComponentClient   openchoreo.ComponentClient
-	IDPSvc            idp.IDPService
-	CredentialSvc     *orgcreds.CredentialService
-	DisconnectSvc     *orgcreds.OrgDisconnectService
-	BearerSvc         *orgcreds.BearerService
-	AnthropicSvc      *orgcreds.AnthropicCredentialService
-	OrgConfigSvc      *orgconfig.Service
-	TaskTokens        *auth.TaskTokenManager
-	SkillSvc          *skills.SkillService
-	SkillMutationSvc  *skills.SkillMutationService
-	SkillImportSvc    *skills.SkillImportService
-	FilesSvc          files.FilesService
-	ArtifactSvc       artifacts.ArtifactService
-	GenAISvc          genai.GenAIService
-	BuildSvc          *build.Service
-	RcaAgentReportSvc rcaagent.RcaAgentReportService
-	PreflightSvc      *build.PreflightService
-	GitHubAppSlug     string
-	BFFPublicURL      string
-	GitHubAppClientID string
+	TaskReads           *task.Reads
+	TaskCommands        *task.Commands
+	TaskPlan            *task.PlanService
+	TaskStream          *execution.TaskStreamService
+	ComponentClient     openchoreo.ComponentClient
+	IDPSvc              idp.IDPService
+	CredentialSvc       *orgcreds.CredentialService
+	DisconnectSvc       *orgcreds.OrgDisconnectService
+	BearerSvc           *orgcreds.BearerService
+	AnthropicSvc        *orgcreds.AnthropicCredentialService
+	OrgConfigSvc        *orgconfig.Service
+	TaskTokens          *auth.TaskTokenManager
+	SkillSvc            *skills.SkillService
+	SkillMutationSvc    *skills.SkillMutationService
+	SkillImportSvc      *skills.SkillImportService
+	FilesSvc            files.FilesService
+	ArtifactSvc         artifacts.ArtifactService
+	GenAISvc            genai.GenAIService
+	BuildSvc            *build.Service
+	RcaAgentReportSvc   rcaagent.RcaAgentReportService
+	PreflightSvc        *build.PreflightService
+	GitHubAppSlug       string
+	BFFPublicURL        string
+	GitHubAppClientID   string
 }
 
 // RegisterAllHuma registers every migrated feature's operations on the Huma API.
 // This is the single canonical list — used by NewHandler (real deps), the spec
 // generator (zero deps), and the registration test.
 func RegisterAllHuma(api huma.API, d HumaDeps) {
-	project.RegisterProject(api, d.ProjectSvc)
-	organization.RegisterOrganization(api, d.OrgSvc)
+	// project + organization moved to the contract-first strict server
+	// (handlers_project.go / handlers_organization.go, issue 002).
 	component.RegisterComponent(api, d.ComponentSvc)
 	component.RegisterConfig(api, d.ConfigSvc)
 	requirements.RegisterCollab(api, d.CollabRepo)

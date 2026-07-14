@@ -33,8 +33,8 @@ import (
 //
 //	Surface        Root                 Guard (who may call)                       Where it lives / spec
 //	───────────────────────────────────────────────────────────────────────────────────────────────────
-//	public         /api/v1              Thunder user JWT + org gate                *_huma.go · humakit.OrgScopedInput
-//	               (jwt → orgensure)    (org from the verified token, never input)  → api/openapi.yaml
+//	public         /api/v1              Thunder user JWT + org gate                handlers_*.go · tenant_gate.go
+//	               (jwt → orgensure)    (org from the verified token, never input)  ← packages/contracts/api/v1 (source of truth)
 //	internal S2S   /internal/v1/executions/  BFF Task-JWT or publisher-cc          internal.go · auth.ExecutionScopedInput
 //	               (per-op resolver)         (dual-token verify + INT-6 fence)      → api/internal-openapi.yaml (non-public)
 //	internal MCP   /internal/v1/mcp     BFF-signed JWT, aud aep-api-mcp            dependencies/mcp_server.go ·
@@ -82,19 +82,19 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	})
 
 	// ── public edge (/api/v1) ────────────────────────────────────────────────
-	// User-JWT authenticated (JWKS-backed RS256). Every org-scoped operation
-	// embeds humakit.OrgScopedInput, whose Resolve derives the active org SOLELY
-	// from the verified token (there is no {orgHandle} param) and applies the
-	// tenant gate — the allowlist-by-construction IDOR fence. Carve-outs (org
-	// listing, idp discover) read no org and bypass it. The Huma API is mounted
-	// on apiMux so every op inherits the jwt + orgensure middleware applied to
-	// "/api/" below; the public spec + docs are served on the outer mux.
-	apiMux := http.NewServeMux()
+	// User-JWT authenticated (JWKS-backed RS256), served CONTRACT-FIRST: the
+	// generated strict router (internal/api/gen, from packages/contracts/api/v1)
+	// replaces the Huma mux. Every operation passes the deny-by-default tenant
+	// gate (tenant_gate.go) — org derived SOLELY from the verified token, bound
+	// into context, handed to services explicitly; carve-outs are enumerated in
+	// tenantGateCarveOuts. Requests are validated against the committed contract
+	// before any handler runs (validator.go). apiV1 mounts under the jwt +
+	// orgensure middleware applied to "/api/" below; the committed spec + docs
+	// are served on the outer mux.
 	gateMode := tenant.ParseGateMode(params.Config.TenantGateMode)
 	slog.Info("tenant gate active", "mode", string(gateMode))
-	humaAPI := newHumaAPI(apiMux)
-	registerHumaDocs(mux, humaAPI)
-	RegisterAllHuma(humaAPI, params.HumaDeps)
+	apiV1 := newAPIV1Handler(params.HumaDeps)
+	registerContractDocs(mux)
 
 	// ── dev/test surface (/_dev/v1) ──────────────────────────────────────────
 	// Local-only tooling, no request auth by design; safety is structural
@@ -187,7 +187,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 			next.ServeHTTP(w, r.WithContext(tenant.WithGateMode(r.Context(), gateMode)))
 		})
 	}
-	mux.Handle("/api/", jwt(ensureOrg(stampGateMode(apiMux))))
+	mux.Handle("/api/", jwt(ensureOrg(stampGateMode(apiV1))))
 
 	return mux
 }

@@ -65,22 +65,6 @@ import (
 
 const orgListPath = "/api/v1/organizations"
 
-// problem is the RFC-9457 body shape Huma serves for every error.
-type problem struct {
-	Title  string `json:"title"`
-	Status int    `json:"status"`
-	Detail string `json:"detail"`
-}
-
-func decodeProblem(t *testing.T, body string) problem {
-	t.Helper()
-	var p problem
-	if err := json.Unmarshal([]byte(body), &p); err != nil {
-		t.Fatalf("not an RFC-9457 problem body: %v\n%s", err, body)
-	}
-	return p
-}
-
 // topKeysSansSchema returns the sorted top-level keys of a JSON object with the
 // Huma-injected "$schema" removed — the low-maintenance on-wire contract
 // (pin the field SET, not volatile values), excluded on BOTH sides per the
@@ -186,7 +170,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 		name       string
 		clientErr  error
 		wantStatus int
-		wantDetail string
+		wantDetail string // envelope message
 	}{
 		{"oc unauthorized → 401", openchoreo.ErrUnauthorized, 401, "invalid or expired token"},
 		{"oc forbidden → opaque 500", openchoreo.ErrForbidden, 500, "failed to list organizations"},
@@ -207,8 +191,8 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 			if resp.Code != tc.wantStatus {
 				t.Fatalf("want %d, got %d body=%s", tc.wantStatus, resp.Code, resp.Body.String())
 			}
-			if p := decodeProblem(t, resp.Body.String()); p.Detail != tc.wantDetail {
-				t.Fatalf("detail: got %q want %q", p.Detail, tc.wantDetail)
+			if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Message != tc.wantDetail {
+				t.Fatalf("message: got %q want %q", e.Message, tc.wantDetail)
 			}
 			if tc.wantStatus == 500 && strings.Contains(resp.Body.String(), "connection refused") {
 				t.Fatalf("500 body leaks internals: %s", resp.Body.String())

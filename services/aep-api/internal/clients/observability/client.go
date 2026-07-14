@@ -112,7 +112,7 @@ func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, project
 
 	logs := &models.BuildLogs{}
 	if result.TotalCount != nil {
-		logs.TotalCount = *result.TotalCount
+		logs.TotalCount = int64(*result.TotalCount)
 	}
 	if result.Logs != nil {
 		for _, e := range *result.Logs {

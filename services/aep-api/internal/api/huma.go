@@ -61,26 +61,8 @@ func newHumaAPI(apiMux *http.ServeMux) huma.API {
 	return humago.NewWithPrefix(apiMux, humakit.APIV1, cfg)
 }
 
-// registerHumaDocs serves the generated OpenAPI document and the Stoplight
-// Elements docs UI publicly on the outer mux (no JWT) so tooling and the
-// console can read the spec without a token. The spec is rendered lazily at
-// request time, so operations registered after this call are still included.
-func registerHumaDocs(mux *http.ServeMux, api huma.API) {
-	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
-		b, err := api.OpenAPI().YAML()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/yaml")
-		_, _ = w.Write(b)
-	})
-	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(docsHTML))
-	})
-}
-
+// docsHTML is the Stoplight Elements docs UI, served publicly on the outer
+// mux by registerContractDocs (server.go) against the committed contract.
 const docsHTML = `<!doctype html>
 <html>
   <head>
