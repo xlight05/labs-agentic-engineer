@@ -14,10 +14,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Component tier for the Files API: the REAL Huma handler (via componenttest)
-// over the production gitrepo gateway — reads AND the Apply write through the
-// REAL gitfs Workspace engine mirroring a REAL bare file:// origin (pure
-// workspacetest fixture; the Git-Data fake is gone with the REST write path).
+// Component tier for the Files API: the REAL contract-first handler chain
+// (strict server via componenttest) over the production gitrepo gateway —
+// reads AND the Apply write through the REAL gitfs Workspace engine mirroring
+// a REAL bare file:// origin (pure workspacetest fixture; the Git-Data fake is
+// gone with the REST write path).
 // Only the repo row + credential resolver are faked, so list/read/apply run
 // against genuine git object-store semantics — a stale baseSha is a real 409,
 // a multi-write+delete apply is a real single commit pushed to origin under
@@ -112,7 +113,7 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	engine := workspacetest.NewEngine(t)
 	gitOps := gitrepo.NewGitOpsService(stubResolver{}, engine)
 	svc := files.NewService(stubRepoResolver{rec: rec}, gitOps)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{FilesSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{FilesSvc: svc}})
 	return &filesRig{h: h, remote: remote, engine: engine}
 }
 
@@ -428,8 +429,9 @@ func TestFiles_CrossOrg_404(t *testing.T) {
 	}
 }
 
-// A unicode path survives the whole chain — URL escaping, the Huma {path...}
-// param, ls-tree -z (unquoted NUL plumbing), cat-file — byte-identically.
+// A unicode path survives the whole chain — URL escaping, the ServeMux
+// {path...} catch-all (server.go) + wrapper PathValue decoding, ls-tree -z
+// (unquoted NUL plumbing), cat-file — byte-identically.
 func TestReadAtHead_UnicodePath(t *testing.T) {
 	const path = "specs/requirements/仕様-résumé ノート.md"
 	const content = "非ASCIIコンテンツ — ünïcödé\n"

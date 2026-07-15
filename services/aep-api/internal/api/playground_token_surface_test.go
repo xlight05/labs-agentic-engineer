@@ -51,8 +51,8 @@ func newPlaygroundTokenTestServer(t *testing.T, enabled bool) (*httptest.Server,
 		t.Fatalf("NewTaskTokenManager: %v", err)
 	}
 	handler := NewHandler(AppParams{
-		Config:   config.Config{PlaygroundTokenEnabled: enabled},
-		HumaDeps: HumaDeps{TaskTokens: mgr},
+		Config: config.Config{PlaygroundTokenEnabled: enabled},
+		Deps:   Deps{TaskTokens: mgr},
 	})
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

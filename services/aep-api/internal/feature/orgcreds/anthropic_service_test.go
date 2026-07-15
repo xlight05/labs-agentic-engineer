@@ -242,10 +242,10 @@ func TestAnthropicValidateKey_UpstreamServerErrorIs502(t *testing.T) {
 			if !errors.As(err, &ue) {
 				t.Fatalf("upstream %d must yield *UpstreamError, got %T: %v", status, err, err)
 			}
-			// And it must map to 502 at the API edge, never a client-fault 400.
-			if got := statusOf(t, mapCredentialError(err)); got != 502 {
-				t.Fatalf("upstream %d → %d at the edge, want 502", status, got)
-			}
+			// The edge mapping (upstream 5xx → 502 bad_gateway, never a
+			// client-fault 400) lives in orgconfig.sectionErrorFrom +
+			// api.mapPatchError now; the typed UpstreamError above is the seam
+			// this package owns.
 		})
 	}
 }

@@ -47,11 +47,11 @@ const internalV1 = "/internal/v1"
 type AppParams struct {
 	Config config.Config
 
-	// HumaDeps carries the feature services for the code-first Huma API. main.go
+	// Deps carries the feature services for the code-first Huma API. main.go
 	// fills it; NewHandler creates the Huma API on apiMux and registers every
 	// migrated feature via RegisterAllHuma. See
 	// docs/design/bff-openapi-huma-migration.md.
-	HumaDeps HumaDeps
+	Deps Deps
 
 	// Controllers still wired as raw handlers (deferred-from-Huma set):
 	// OrgGitHubController (App-mode connect callback), WebhookController (GitHub
@@ -98,7 +98,7 @@ type AppParams struct {
 	// platform resource-type catalog); the mounted handler nil-guards each —
 	// a nil MCPExternalResources 503s the surface, a nil lister degrades its
 	// one tool to an empty result. The mount itself (surfaces.go) only needs
-	// HumaDeps.TaskTokens, which verifies the caller's BFF-signed MCP token.
+	// Deps.TaskTokens, which verifies the caller's BFF-signed MCP token.
 	MCPExternalResources dependencies.ExternalResourceReader
 	MCPOrgEndpoints      dependencies.OrgEndpointLister
 	MCPResourceTypes     dependencies.ResourceTypeLister

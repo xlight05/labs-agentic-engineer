@@ -18,12 +18,12 @@
 // error (openchoreo.Err*) into the HTTP status the BFF surfaces for it. The
 // project, component, and organization features each used to re-derive this
 // classification inline; consolidating it here keeps the OC-status contract
-// in one place. It lives under platform/ (not humakit) so humakit keeps its
+// in one place. It lives under platform/ so the transport layer keeps its
 // lean auth/tenant/huma dependency set — this package is the only platform
 // leaf that imports the OpenChoreo client, which is allowed because a client
 // is not a feature (see internal/arch feature-free invariant).
 //
-// Callers pair Status with humakit.ErrorFromStatus to build the RFC-9457
+// Callers pair Status with the api layer's errFromStatus to build the
 // problem response; features that surface a coarser contract (organization
 // only distinguishes 401) branch on the returned status directly.
 package ocerr

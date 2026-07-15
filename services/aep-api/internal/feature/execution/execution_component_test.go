@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Component tier for the task-log SSE stream: the REAL Huma handler (via
-// componenttest, tenant gate in ENFORCE) over GET
+// Component tier for the task-log SSE stream: the REAL contract-first strict
+// handler (via componenttest, tenant gate in ENFORCE) over GET
 // /projects/{p}/tasks/{issueNumber}/log, with the task snapshot / execution
 // history / repo lookup faked. Proves the HTTP contract — the text/event-stream
 // framing (task → execution → done → [DONE] for a SETTLED task, which is a
@@ -108,7 +108,7 @@ func newStreamHarness(t *testing.T, snap *execution.TaskSnapshot, rows []models.
 		fakeStreamRepo{},
 		execution.NewTaskStreamHub(),
 	)
-	return componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{TaskStream: svc}})
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{TaskStream: svc}})
 }
 
 const streamPath = "/api/v1/projects/widgets/tasks/7/log"

@@ -15,7 +15,7 @@
 // under the License.
 
 // UNIT tier: the pure SKILL.md helpers in skill_service.go and the RFC-9457
-// status mapper in skill_huma.go — no git, no HTTP, no cache. These pin the
+// no git, no HTTP, no cache. These pin the
 // parse/hash primitives every higher tier composes with, and the
 // mapSkillError status table exhaustively (the component tier only reaches the
 // reachable subset). Complements skill_mutation_service_test.go, which covers
@@ -24,12 +24,8 @@
 package skills
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/danielgtaylor/huma/v2"
 )
 
 func TestParseSkillMD_Table(t *testing.T) {
@@ -124,50 +120,6 @@ func TestContentSHA(t *testing.T) {
 			t.Fatal("different reference content produced the same hash")
 		}
 	})
-}
-
-// TestMapSkillError pins the whole mapSkillError status table — including the
-// wrapped-sentinel unwrapping (errors.As/Is) and the opaque→500-no-leak rule.
-// The component tier only reaches 400/409/403/404 through real routes; the 500
-// and wrapped cases are proven here.
-func TestMapSkillError(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name       string
-		in         error
-		wantStatus int
-		wantDetail string // "" = don't assert
-		noLeakOf   string // substring that MUST NOT appear in the body
-	}{
-		{"validation → 400", validationErr("NAME_REQUIRED", "name is required", "name"), 400, "", ""},
-		{"collision → 409", ErrSkillNameCollision, 409, "skill name already in use", ""},
-		{"not-editable → 403", ErrSkillNotEditable, 403, "built-in skills are read-only", ""},
-		{"not-found → 404", ErrSkillNotFound, 404, "skill not found", ""},
-		{"opaque → 500 without leaking internals", errors.New("pg: connection refused"), 500, "internal error", "connection refused"},
-		{"wrapped not-found still 404", fmt.Errorf("resolve %q: %w", "go", ErrSkillNotFound), 404, "skill not found", ""},
-		{"wrapped validation still 400", fmt.Errorf("ctx: %w", validationErr("SIZE_EXCEEDED", "too big", "")), 400, "", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			err := mapSkillError(tc.in)
-			var se huma.StatusError
-			if !errors.As(err, &se) {
-				t.Fatalf("mapSkillError returned a non-huma error: %#v", err)
-			}
-			if se.GetStatus() != tc.wantStatus {
-				t.Fatalf("status = %d, want %d (from %v)", se.GetStatus(), tc.wantStatus, tc.in)
-			}
-			if tc.wantDetail != "" {
-				if m, ok := se.(*huma.ErrorModel); ok && m.Detail != tc.wantDetail {
-					t.Fatalf("detail = %q, want %q", m.Detail, tc.wantDetail)
-				}
-			}
-			if tc.noLeakOf != "" && strings.Contains(se.Error(), tc.noLeakOf) {
-				t.Fatalf("error body leaks internals %q: %s", tc.noLeakOf, se.Error())
-			}
-		})
-	}
 }
 
 // frontmatterKind derivation: metadata.aep.kind names the skill's kind; absent,

@@ -22,9 +22,9 @@
 // testdata/harvest/golden/get_organizations.json.
 //
 // WHY NO GATE / NO NoAuth-401 CASE (deliberate, not a gap): list-organizations
-// is the pre-org-selection carve-out (organization_huma.go, §6.6f). Its input
-// does NOT embed humakit.OrgScopedInput, so there is NO tenant gate on the route
-// — its only auth is the JWKS verifier, which this harness fakes away. So a
+// is the pre-org-selection carve-out (api.tenantGateCarveOuts, §6.6f) — the
+// deny-by-default tenant gate skips it, so its only auth is the JWKS
+// verifier, which this harness fakes away. So a
 // tokenless request is NOT rejected with a gate 401; it reaches the handler
 // (pinned positively in TestOrganizationComponent_CarveOut_NoGate below). The
 // verifier's real tokenless/forged rejection is a DIFFERENT code path and is
@@ -130,7 +130,7 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(db, ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{OrgSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
 
 	resp := h.AsOrg("acme").Get(orgListPath)
 	if resp.Code != 200 {
@@ -185,7 +185,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 				},
 			}
 			svc := organization.NewOrganizationService(nil, ns) // nil DB: errors before any DB access
-			h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{OrgSvc: svc}})
+			h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
 
 			resp := h.AsOrg("acme").Get(orgListPath)
 			if resp.Code != tc.wantStatus {
@@ -215,7 +215,7 @@ func TestOrganizationComponent_CarveOut_NoGate(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(nil, ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{OrgSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
 
 	resp := h.NoAuth().Get(orgListPath)
 	if resp.Code == 401 {

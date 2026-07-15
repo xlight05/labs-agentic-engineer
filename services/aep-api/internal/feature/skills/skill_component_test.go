@@ -16,8 +16,9 @@
 
 // COMPONENT tier (bff-component-testing.md §4): the REAL skills services behind
 // the REAL production handler chain — global middleware → faked auth at the
-// auth.WithClaims seam → orgensure → Huma parsing/validation → the tenant gate in
-// ENFORCE → mapSkillError — driven in-process via the componenttest harness. The
+// auth.WithClaims seam → orgensure → contract validation → the deny-by-default
+// tenant gate in ENFORCE → strict handlers → mapSkillError — driven in-process
+// via the componenttest harness. The
 // SkillService/SkillMutationService/SkillImportService run for real over the
 // gitfs Workspace engine + one REAL bare file:// origin per org
 // (skills.NewComponentStore, the export_test.go handle around
@@ -25,10 +26,10 @@
 // plumbing — every request fetches, reads, and commits genuine git objects.
 //
 // Read-body shapes are asserted by FIELD SET against the harvested goldens
-// (testdata/harvest/golden/). Both goldens and served responses would carry
-// Huma's `$schema`, but this edge sets SchemasPath="" (api/huma.go) so responses
-// omit it; it is normalised away on both sides so the comparison asserts the
-// skills feature's own field set.
+// (testdata/harvest/golden/). The goldens were harvested from the Huma edge and
+// may carry `$schema`; the contract-first edge never serves it, so it is
+// normalised away on both sides and the comparison asserts the skills feature's
+// own field set.
 //
 // External test package: the harness imports api, which imports skills — an
 // in-package test file would be an import cycle (mirrors project/design/orgcreds).
@@ -65,7 +66,7 @@ const (
 func newHarness(t *testing.T) (*componenttest.Harness, *skills.ComponentStore) {
 	t.Helper()
 	store := skills.NewComponentStore(t)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		SkillSvc:         store.Svc,
 		SkillMutationSvc: skills.NewSkillMutationService(store.Svc),
 		SkillImportSvc:   skills.NewSkillImportService(store.Svc),
@@ -265,8 +266,8 @@ func TestSkillsComponent_GetOne_NotFound_404(t *testing.T) {
 	if resp.Code != 404 {
 		t.Fatalf("missing skill: want 404, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "skill not found" {
-		t.Fatalf("404 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "not_found" || e.Message != "skill not found" {
+		t.Fatalf("404 envelope: %s", resp.Body.String())
 	}
 }
 
@@ -279,8 +280,8 @@ func TestSkillsComponent_GetOne_InvalidSlug_400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("invalid slug: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.HasPrefix(p.Detail, "name:") {
-		t.Fatalf("400 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.HasPrefix(e.Message, "name:") {
+		t.Fatalf("400 message: %q", e.Message)
 	}
 }
 
@@ -379,17 +380,20 @@ func TestSkillsComponent_Create_WithoutReferences_201(t *testing.T) {
 	}
 }
 
-func TestSkillsComponent_Create_MissingBody_422(t *testing.T) {
+func TestSkillsComponent_Create_MissingBody_400(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 
-	// Required schema fields absent → Huma validation 422, never reaches the service.
+	// Required schema fields absent → the contract validator's 400 (the
+	// error-model break: schema violations are 400 validation_failed now, not
+	// Huma's 422), never reaches the service.
 	resp := h.AsOrg("acme").Post(base, `{}`)
-	if resp.Code != 422 {
-		t.Fatalf("empty body: want 422, got %d body=%s", resp.Code, resp.Body.String())
+	if resp.Code != 400 {
+		t.Fatalf("empty body: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); len(p.Errors) == 0 {
-		t.Fatalf("422 must carry validation errors: %s", resp.Body.String())
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "validation_failed" || len(e.Details) == 0 {
+		t.Fatalf("validation 400 must carry details: %s", resp.Body.String())
 	}
 }
 
@@ -404,8 +408,8 @@ func TestSkillsComponent_Create_InvalidSkillMD_400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("invalid skillMd: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "skill validation failed") {
-		t.Fatalf("400 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "skill validation failed") {
+		t.Fatalf("400 message: %q", e.Message)
 	}
 }
 
@@ -419,8 +423,8 @@ func TestSkillsComponent_Create_CollisionWithBuiltin_409(t *testing.T) {
 	if resp.Code != 409 {
 		t.Fatalf("collision: want 409, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "skill name already in use" {
-		t.Fatalf("409 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "conflict" || e.Message != "skill name already in use" {
+		t.Fatalf("409 envelope: %s", resp.Body.String())
 	}
 }
 
@@ -433,8 +437,8 @@ func TestSkillsComponent_Update_Builtin_403(t *testing.T) {
 	if resp.Code != 403 {
 		t.Fatalf("update builtin: want 403, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "built-in skills are read-only" {
-		t.Fatalf("403 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "forbidden" || e.Message != "built-in skills are read-only" {
+		t.Fatalf("403 envelope: %s", resp.Body.String())
 	}
 }
 
@@ -447,8 +451,8 @@ func TestSkillsComponent_Update_Missing_404(t *testing.T) {
 	if resp.Code != 404 {
 		t.Fatalf("update missing: want 404, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "skill not found" {
-		t.Fatalf("404 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "not_found" || e.Message != "skill not found" {
+		t.Fatalf("404 envelope: %s", resp.Body.String())
 	}
 }
 
@@ -526,8 +530,8 @@ func TestSkillsComponent_Import_InvalidTarball_400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("bad tarball: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "skill validation failed") {
-		t.Fatalf("400 detail: %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "skill validation failed") {
+		t.Fatalf("400 message: %q", e.Message)
 	}
 }
 
@@ -537,7 +541,7 @@ func TestSkillsComponent_Create_MutationUnconfigured_503(t *testing.T) {
 	t.Parallel()
 	// SkillSvc wired for reads, but no mutation service → create is 503.
 	store := skills.NewComponentStore(t)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{SkillSvc: store.Svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{SkillSvc: store.Svc}})
 
 	body := `{"name":"cool-skill","skillMd":` + jsonString(skillMD("cool-skill", "")) + `,"references":{}}`
 	resp := h.AsOrg("acme").Post(base, body)
@@ -556,9 +560,9 @@ func TestSkillsComponent_NoAuth_401(t *testing.T) {
 	if resp.Code != 401 {
 		t.Fatalf("no-auth: want gate 401, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	p := componenttest.DecodeProblem(t, resp.Body.String())
-	if p.Status != 401 || len(p.Errors) == 0 || !strings.Contains(p.Errors[0].Message, "authentication required") {
-		t.Fatalf("gate 401 problem shape: %s", resp.Body.String())
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "unauthorized" || !strings.Contains(e.Message, "authentication required") {
+		t.Fatalf("gate 401 envelope shape: %s", resp.Body.String())
 	}
 }
 

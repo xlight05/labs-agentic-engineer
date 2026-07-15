@@ -14,9 +14,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package files
+package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -25,15 +26,17 @@ import (
 )
 
 // A wrapped Workspace.Mutate CAS-exhaustion (ErrRefNotFastForward) is a
-// concurrent-write conflict, so mapFilesError must render it as a 409 — not the
-// 500 the default arm would otherwise produce.
+// concurrent-write conflict, so mapFilesError must render it as a 409 — not
+// the 500 the default arm would otherwise produce. (Ported from the files
+// feature's Huma-era internal test at the contract-first cutover.)
 func TestMapFilesError_CASExhaustionMapsTo409(t *testing.T) {
 	err := mapFilesError(fmt.Errorf("apply: mutate: %w", gitrepo.ErrRefNotFastForward))
-	se, ok := err.(interface{ GetStatus() int })
-	if !ok {
-		t.Fatalf("mapped error %T does not implement huma StatusError", err)
+	var ae *apiError
+	if !errors.As(err, &ae) {
+		t.Fatalf("mapped error %T is not an *apiError", err)
 	}
-	if se.GetStatus() != http.StatusConflict {
-		t.Fatalf("status = %d, want 409 (CAS exhaustion is a retryable conflict)", se.GetStatus())
+	if ae.Status != http.StatusConflict || ae.Code != CodeConflict {
+		t.Fatalf("status/code = %d/%s, want 409/%s (CAS exhaustion is a retryable conflict)",
+			ae.Status, ae.Code, CodeConflict)
 	}
 }

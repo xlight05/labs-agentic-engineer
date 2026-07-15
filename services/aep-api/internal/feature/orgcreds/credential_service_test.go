@@ -18,7 +18,7 @@ package orgcreds
 
 // UNIT tier (bff-component-testing.md §2): the pure, DB-free surface of the
 // credential service — projectionFromRow's field mapping, the typed errors'
-// messages, mapCredentialError's status table, and the PAT-validation probes
+// messages and the PAT-validation probes
 // (fetchPATIdentity / validatePATMembership / probePATRepoRead) driven against
 // a fake GitHub. No Postgres, no Huma handler. The SQL-shaped behavior
 // (Connect/Disconnect/webhook-secret rotation/routing lookups) is pinned in
@@ -34,12 +34,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -170,63 +167,6 @@ func TestCredentialErrors_Messages(t *testing.T) {
 		t.Fatalf("NotFoundError.Error = %q", got)
 	}
 }
-
-// --- mapCredentialError ------------------------------------------------------
-
-// statusOf extracts the HTTP status a Huma problem error carries.
-func statusOf(t testing.TB, err error) int {
-	t.Helper()
-	var se huma.StatusError
-	if !errors.As(err, &se) {
-		t.Fatalf("not a huma.StatusError: %#v", err)
-	}
-	return se.GetStatus()
-}
-
-func TestMapCredentialError_StatusTable(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name       string
-		in         error
-		wantStatus int
-	}{
-		{"NotFoundError → 404", &NotFoundError{What: "org_credentials.acme"}, 404},
-		{"ConflictError → 409", &ConflictError{Reason: "cross-mode"}, 409},
-		{"ValidationError → 400", &ValidationError{Code: "pat_invalid", Message: "bad pat"}, 400},
-		{"ErrAppBindNotConfigured → 503", ErrAppBindNotConfigured, 503},
-		{"wrapped NotFoundError still 404", errors.Join(errors.New("ctx"), &NotFoundError{What: "x"}), 404},
-		{"opaque → 500", errors.New("pg: connection refused"), 500},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := statusOf(t, mapCredentialError(tc.in)); got != tc.wantStatus {
-				t.Fatalf("status: got %d want %d", got, tc.wantStatus)
-			}
-		})
-	}
-}
-
-// TestMapCredentialError_500IsOpaque pins the FIXED behavior: the opaque-error
-// branch collapses to a fixed "internal error" and never echoes the raw error
-// string (which could be a DB DSN-shaped internal). The typed-error branches
-// (404/409/400) still preserve their structured message for the UI — only the
-// 500 fallthrough is opaque, matching project's mapProjectError.
-func TestMapCredentialError_500IsOpaque(t *testing.T) {
-	t.Parallel()
-	err := mapCredentialError(errors.New("pg: connection refused on 10.0.0.5:5432"))
-	if statusOf(t, err) != 500 {
-		t.Fatalf("want 500, got %d", statusOf(t, err))
-	}
-	if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "10.0.0.5") {
-		t.Fatalf("500 must not leak the internal message; body=%q", err.Error())
-	}
-	if err.Error() != "internal error" {
-		t.Fatalf("500 must carry the fixed opaque message, got %q", err.Error())
-	}
-}
-
-// --- fetchPATIdentity --------------------------------------------------------
 
 func TestFetchPATIdentity(t *testing.T) {
 	t.Parallel()

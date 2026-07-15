@@ -58,7 +58,7 @@ var _ project.ProjectService = fakeProjectService{}
 // passes"). The real project_component_test.go (Pilot A) supersedes it.
 func TestHarness_Smoke(t *testing.T) {
 	t.Parallel()
-	h := New(t, Options{Deps: api.HumaDeps{ProjectSvc: fakeProjectService{}}})
+	h := New(t, Options{Deps: api.Deps{ProjectSvc: fakeProjectService{}}})
 
 	// Authed → real handler runs, real service data returned.
 	if resp := h.AsOrg("acme").Get("/api/v1/projects"); resp.Code != 200 {

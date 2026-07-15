@@ -37,14 +37,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"time"
-
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/platform/humakit"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -107,12 +103,6 @@ func NewTaskStreamService(progress *ProgressService, tasks TaskSnapshotReader, e
 	return &TaskStreamService{progress: progress, tasks: tasks, execs: execs, repos: repos, hub: hub}
 }
 
-type taskStreamInput struct {
-	humakit.OrgScopedInput
-	ProjectName string `path:"projectName" doc:"Project name (DNS-label slug)"`
-	IssueNumber int64  `path:"issueNumber" doc:"GitHub issue number of the Task"`
-}
-
 // streamFrame is one SSE `data:` payload, discriminated by Type.
 type streamFrame struct {
 	Type          string                   `json:"type"` // task | execution | line | done
@@ -133,41 +123,6 @@ type execView struct {
 	CreatedAt time.Time  `json:"createdAt"`
 	StartedAt *time.Time `json:"startedAt,omitempty"`
 	EndedAt   *time.Time `json:"endedAt,omitempty"`
-}
-
-// RegisterTaskStream registers the task-log SSE endpoint on the public Huma API
-// (contract: GET /projects/{p}/tasks/{issueNumber}/log → text/event-stream).
-func RegisterTaskStream(api huma.API, svc *TaskStreamService) {
-	huma.Register(api, huma.Operation{
-		OperationID: "stream-task-log",
-		Method:      http.MethodGet,
-		Path:        "/projects/{projectName}/tasks/{issueNumber}/log",
-		Summary:     "Stream a Task's live state (status + executions + unified timeline) as SSE",
-		Tags:        []string{"Tasks"},
-		Security:    humakit.SecurityUserJWT,
-	}, func(ctx context.Context, in *taskStreamInput) (*huma.StreamResponse, error) {
-		if svc == nil {
-			return nil, huma.Error503ServiceUnavailable("task stream not configured")
-		}
-		issue := int(in.IssueNumber)
-		// Resolve the hub key + fence the issue as a real Task before opening
-		// the stream, so a bad path answers a normal JSON error (not a broken
-		// half-stream).
-		repo, err := svc.repos.RepoFullName(ctx, in.OrgHandle, in.ProjectName)
-		if err != nil {
-			return nil, huma.Error404NotFound("project repository not found")
-		}
-		snap, err := svc.tasks.TaskSnapshot(ctx, in.OrgHandle, in.ProjectName, issue)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("task snapshot failed")
-		}
-		if snap == nil {
-			return nil, huma.Error404NotFound("task not found")
-		}
-		return &huma.StreamResponse{Body: humakit.SSEBody(func(w io.Writer, flush func()) {
-			svc.run(ctx, w, flush, in.OrgHandle, in.ProjectName, repo, issue, snap)
-		})}, nil
-	})
 }
 
 // run is one connection's lifetime: an initial full derive (task → executions →

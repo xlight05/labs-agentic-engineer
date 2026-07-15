@@ -17,6 +17,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -46,6 +47,27 @@ func TestTenantGateCarveOuts_NameContractOperations(t *testing.T) {
 	// the diff (and this comment) into any PR that adds one.
 	if len(tenantGateCarveOuts) != 1 {
 		t.Errorf("carve-out set changed size (%d) — review deny-by-default posture", len(tenantGateCarveOuts))
+	}
+}
+
+// TestNoClientSuppliedOrg is the IDOR arch-lock, contract edition (successor
+// of the retired *_huma.go tag scan): the active org is derived SOLELY from
+// the verified JWT — the committed contract must never declare a parameter
+// that would let a request name an org. Re-adding one would reintroduce the
+// IDOR class the token-only model closed.
+func TestNoClientSuppliedOrg(t *testing.T) {
+	t.Parallel()
+	banned := []string{"orgHandle", "orgId", "organizationId"}
+	for _, doc := range []string{"contract/openapi.yaml", "contract/components.yaml"} {
+		raw, err := gen.ContractFS.ReadFile(doc)
+		if err != nil {
+			t.Fatalf("embedded contract %s: %v", doc, err)
+		}
+		for _, name := range banned {
+			if bytes.Contains(raw, []byte("name: "+name)) {
+				t.Errorf("%s declares a client-supplied org parameter %q", doc, name)
+			}
+		}
 	}
 }
 

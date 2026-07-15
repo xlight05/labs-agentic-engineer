@@ -1,0 +1,194 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package api
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	"github.com/wso2/aep/aep-api/internal/api/gen"
+	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
+	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/models"
+)
+
+// Dependency-provisioning feature on the strict interface: the external-
+// resource catalog, value collection, platform-resource provisioning/status,
+// and the cross-project org-service access-request surface. Every operation is
+// org-scoped; the org from the gate serves as both the OC namespace/issues org
+// and the SM-API org id. A nil service answers 503, mirroring the retired
+// RegisterResources/registerAccess nil guards (the surface exists with the
+// feature unwired).
+
+// errProvisioningUnavailable is the nil-service guard's 503.
+func errProvisioningUnavailable() error {
+	return &apiError{http.StatusServiceUnavailable, "service_unavailable", "provisioning is not configured", nil}
+}
+
+func (s *apiServer) ListExternalResources(ctx context.Context, _ gen.ListExternalResourcesRequestObject) (gen.ListExternalResourcesResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	views, err := s.deps.ProvisioningSvc.ListExternalResources(ctx, org)
+	if err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.ListExternalResources200JSONResponse(toExternalResourceDTOs(views)), nil
+}
+
+func (s *apiServer) DeleteExternalResource(ctx context.Context, request gen.DeleteExternalResourceRequestObject) (gen.DeleteExternalResourceResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	if err := s.deps.ProvisioningSvc.DeleteExternalResource(ctx, org, request.Name); err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.DeleteExternalResource204Response{}, nil
+}
+
+func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request gen.CollectExternalResourceValuesRequestObject) (gen.CollectExternalResourceValuesResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	var envs map[string]map[string]string
+	if request.Body != nil {
+		envs = request.Body.Environments
+	}
+	// org serves as both the OC namespace/issues org and the SM-API org id; the
+	// ctx carries the user JWT the SM-API writer reads for the vault path.
+	if err := s.deps.ProvisioningSvc.SaveValues(ctx, org, org, request.ProjectName, request.Name, envs); err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.CollectExternalResourceValues200JSONResponse(models.StatusMsg{Status: "provisioned"}), nil
+}
+
+func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request gen.ProvisionPlatformResourceRequestObject) (gen.ProvisionPlatformResourceResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	var params map[string]any
+	var envs []string
+	if request.Body != nil {
+		// The contract narrowed params to string values (ProvisionBody.params:
+		// additionalProperties string) where the service — and the retired Huma
+		// shape — accept mixed scalars; widen back for the untouched service.
+		if len(request.Body.Params) > 0 {
+			params = make(map[string]any, len(request.Body.Params))
+			for k, v := range request.Body.Params {
+				params[k] = v
+			}
+		}
+		envs = request.Body.Environments
+	}
+	if err := s.deps.ProvisioningSvc.Provision(ctx, org, request.ProjectName, request.DepName, params, envs); err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.ProvisionPlatformResource202JSONResponse(models.StatusMsg{Status: "provisioning"}), nil
+}
+
+func (s *apiServer) GetDependencyStatus(ctx context.Context, request gen.GetDependencyStatusRequestObject) (gen.GetDependencyStatusResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	env := ""
+	if request.Params.Environment != nil {
+		env = *request.Params.Environment
+	}
+	st, err := s.deps.ProvisioningSvc.Status(ctx, org, request.ProjectName, request.DepName, env)
+	if err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.GetDependencyStatus200JSONResponse(models.DependencyStatus{
+		Status:  st.Status,
+		Ready:   st.Ready,
+		Outputs: st.Outputs,
+	}), nil
+}
+
+func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request gen.RequestOrgServiceAccessRequestObject) (gen.RequestOrgServiceAccessResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	ar, err := s.deps.ProvisioningSvc.RequestAccess(ctx, org, request.ProjectName, request.ComponentName, request.DepName)
+	if err != nil {
+		return nil, mapProvisionError(err)
+	}
+	return gen.RequestOrgServiceAccess201JSONResponse(*ar), nil
+}
+
+func (s *apiServer) ListAccessRequests(ctx context.Context, request gen.ListAccessRequestsRequestObject) (gen.ListAccessRequestsResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if s.deps.ProvisioningSvc == nil {
+		return nil, errProvisioningUnavailable()
+	}
+	reqs, err := s.deps.ProvisioningSvc.ListAccessRequests(ctx, org, request.ProjectName)
+	if err != nil {
+		return nil, mapProvisionError(err)
+	}
+	if reqs == nil {
+		reqs = []models.AccessRequest{}
+	}
+	return gen.ListAccessRequests200JSONResponse(reqs), nil
+}
+
+// mapProvisionError translates the provisioning sentinels into the envelope:
+// wrong kind → 400, not-found / not-registered → 404, in-use → 409, provision
+// failure → 502, else an opaque 500.
+func mapProvisionError(err error) error {
+	switch {
+	case errors.Is(err, resources.ErrDepWrongKind):
+		return errBadRequest(err.Error())
+	case errors.Is(err, resources.ErrDepNotFound),
+		errors.Is(err, resources.ErrNotRegistered),
+		errors.Is(err, provisioning.ErrOrgServiceNotFound):
+		return errNotFound(err.Error())
+	case errors.Is(err, provisioning.ErrExternalResourceInUse):
+		return errConflict(err.Error())
+	case errors.Is(err, resources.ErrProvisionFailed):
+		return errBadGateway(err.Error())
+	}
+	return errInternal("provisioning failed")
+}
+
+func toExternalResourceDTOs(views []provisioning.ExternalResourceView) []models.ExternalResourceDTO {
+	out := make([]models.ExternalResourceDTO, 0, len(views))
+	for _, v := range views {
+		keys := make([]models.ConfigKeyDTO, 0, len(v.Config))
+		for _, k := range v.Config {
+			keys = append(keys, models.ConfigKeyDTO{Key: k.Key, Secret: k.Secret, Description: k.Description, DefaultValue: k.DefaultValue})
+		}
+		consumers := make([]models.ConsumerDTO, 0, len(v.Consumers))
+		for _, c := range v.Consumers {
+			consumers = append(consumers, models.ConsumerDTO{ProjectID: c.ProjectID, ComponentName: c.ComponentName})
+		}
+		out = append(out, models.ExternalResourceDTO{
+			Name:        v.Name,
+			Description: v.Description,
+			Config:      keys,
+			Consumers:   consumers,
+		})
+	}
+	return out
+}

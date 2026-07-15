@@ -82,7 +82,7 @@ func newMCPTestServer(t *testing.T) (*httptest.Server, *auth.TaskTokenManager, *
 	}}}
 	handler := NewHandler(AppParams{
 		Config:               config.Config{},
-		HumaDeps:             HumaDeps{TaskTokens: mgr},
+		Deps:                 Deps{TaskTokens: mgr},
 		MCPExternalResources: reader,
 		// MCPOrgEndpoints / MCPResourceTypes deliberately nil — those tools
 		// degrade to empty results; the round-trip below uses the resource tools.

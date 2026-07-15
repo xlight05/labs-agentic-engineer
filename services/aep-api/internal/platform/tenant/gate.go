@@ -22,9 +22,10 @@ import (
 )
 
 // GateMode controls whether the tenant gate enforces or only observes. With the
-// active org now derived solely from the verified token (humakit.OrgScopedInput),
-// the gate's only decision is whether a missing org claim denies (enforce) or
-// passes through with a canary (log). Rollback from enforce is TENANT_GATE_MODE=log.
+// active org derived solely from the verified token (api.tenantGate, the
+// deny-by-default strict middleware), the gate's only decision is whether a
+// missing org claim denies (enforce) or passes through with a canary (log).
+// Rollback from enforce is TENANT_GATE_MODE=log.
 type GateMode string
 
 const (

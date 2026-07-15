@@ -46,10 +46,10 @@ func TestJWKSRoute_PublishesActiveKey(t *testing.T) {
 		t.Fatalf("NewTaskTokenManager: %v", err)
 	}
 
-	// JWKS is a plain discovery handler on the outer mux, fed by HumaDeps.TaskTokens.
+	// JWKS is a plain discovery handler on the outer mux, fed by Deps.TaskTokens.
 	handler := NewHandler(AppParams{
-		Config:   config.Config{TestMode: false},
-		HumaDeps: HumaDeps{TaskTokens: mgr},
+		Config: config.Config{TestMode: false},
+		Deps:   Deps{TaskTokens: mgr},
 	})
 
 	srv := httptest.NewServer(handler)
@@ -105,7 +105,7 @@ func TestJWKSRoute_NotGatedByJWT(t *testing.T) {
 	// still respond.
 	handler := NewHandler(AppParams{
 		Config:      config.Config{TestMode: false},
-		HumaDeps:    HumaDeps{TaskTokens: mgr},
+		Deps:        Deps{TaskTokens: mgr},
 		ThunderJWKS: nil, // no inbound auth wired
 	})
 

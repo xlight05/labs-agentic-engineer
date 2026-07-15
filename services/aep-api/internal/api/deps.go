@@ -17,10 +17,6 @@
 package api
 
 import (
-	"net/http"
-
-	"github.com/danielgtaylor/huma/v2"
-
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 
@@ -39,17 +35,15 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/rcaagent"
-	"github.com/wso2/aep/aep-api/internal/feature/requirements"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 )
 
-// HumaDeps carries every dependency the code-first feature registrations need.
-// main.go fills it with the real services; the OpenAPI spec generator passes
-// the zero value (nil deps — registration never invokes them). Keeping the
-// registration list in one place (RegisterAllHuma) is what keeps the served
-// handler, the spec artifact, and the tests in lockstep.
-type HumaDeps struct {
+// Deps carries every feature service the strict handlers (handlers_*.go)
+// call. main.go (internal/app) fills it with the real services; component
+// tests fill only what the feature under test needs (untouched fields
+// nil-guard or 503 in their handlers).
+type Deps struct {
 	ProjectSvc          project.ProjectService
 	OrgSvc              organization.OrganizationService
 	ComponentSvc        component.ComponentService
@@ -82,37 +76,4 @@ type HumaDeps struct {
 	GitHubAppSlug       string
 	BFFPublicURL        string
 	GitHubAppClientID   string
-}
-
-// RegisterAllHuma registers every migrated feature's operations on the Huma API.
-// This is the single canonical list — used by NewHandler (real deps), the spec
-// generator (zero deps), and the registration test.
-func RegisterAllHuma(api huma.API, d HumaDeps) {
-	// project + organization moved to the contract-first strict server
-	// (handlers_project.go / handlers_organization.go, issue 002).
-	component.RegisterComponent(api, d.ComponentSvc)
-	component.RegisterConfig(api, d.ConfigSvc)
-	requirements.RegisterCollab(api, d.CollabRepo)
-	gitrepo.RegisterIssue(api, d.IssueSvc)
-	provisioning.RegisterResources(api, d.ProvisioningSvc)
-	dependencies.RegisterResourceTypes(api, d.ResourceTypeCatalog)
-	task.RegisterTask(api, d.TaskReads, d.TaskCommands, d.TaskPlan)
-	execution.RegisterTaskStream(api, d.TaskStream)
-	skills.RegisterSkill(api, d.SkillSvc, d.SkillMutationSvc, d.SkillImportSvc)
-	files.RegisterFiles(api, d.FilesSvc)
-	artifacts.RegisterTags(api, d.ArtifactSvc)
-	genai.RegisterGenAI(api, d.GenAISvc)
-	build.RegisterBuild(api, d.BuildSvc)
-	rcaagent.RegisterRcaAgentReports(api, d.RcaAgentReportSvc)
-	build.RegisterPreflight(api, d.PreflightSvc)
-}
-
-// GenerateOpenAPIYAML builds the full OpenAPI document (all migrated features)
-// and returns it as YAML. Used by the `make openapi` generator and the
-// spec-freshness drift guard. Deps are nil — registration is pure.
-func GenerateOpenAPIYAML() ([]byte, error) {
-	apiMux := http.NewServeMux()
-	humaAPI := newHumaAPI(apiMux)
-	RegisterAllHuma(humaAPI, HumaDeps{})
-	return humaAPI.OpenAPI().YAML()
 }

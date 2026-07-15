@@ -35,8 +35,8 @@ import (
 //	───────────────────────────────────────────────────────────────────────────────────────────────────
 //	public         /api/v1              Thunder user JWT + org gate                handlers_*.go · tenant_gate.go
 //	               (jwt → orgensure)    (org from the verified token, never input)  ← packages/contracts/api/v1 (source of truth)
-//	internal S2S   /internal/v1/executions/  BFF Task-JWT or publisher-cc          internal.go · auth.ExecutionScopedInput
-//	               (per-op resolver)         (dual-token verify + INT-6 fence)      → api/internal-openapi.yaml (non-public)
+//	internal S2S   /internal/v1/executions/  BFF Task-JWT or publisher-cc          internal.go · runnerAuthGate
+//	               (deny-by-default gate)    (dual-token verify + INT-6 fence)      ← packages/contracts/api/internal/v1 (non-public)
 //	internal MCP   /internal/v1/mcp     BFF-signed JWT, aud aep-api-mcp            dependencies/mcp_server.go ·
 //	               (POST, JSON-RPC)     (org from ocOrgId claim, never input)       auth.AgentsScopedVerifier (no spec — JSON-RPC)
 //	               /mcp/playground-token  NONE — flag-gated only                   dependencies/playground_token.go
@@ -56,7 +56,7 @@ import (
 // never a trusted header. See docs/design/internal-s2s-api.md.
 //
 // "Where do I change X?" → credential verify/mint: internal/platform/auth ·
-// who-may-touch-what gates: humakit (public) + internal/platform/auth (internal) ·
+// who-may-touch-what gates: tenant_gate.go (public) + internal.go runnerAuthGate (internal) ·
 // what's exposed: this file.
 func mountSurfaces(params AppParams) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -69,12 +69,12 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	})
 
 	// Task-JWT public key set (JWKS) — unauthenticated discovery, fetched by
-	// every verifier before any auth. A plain handler (not a Huma op) so it stays
-	// off the /api/v1 server base path: the public spec is now base-pathed at
-	// /api/v1, and this endpoint deliberately lives outside that subtree.
+	// every verifier before any auth. A plain handler (not a contract op) so it
+	// stays off the /api/v1 server base path: the public contract is base-pathed
+	// at /api/v1, and this endpoint deliberately lives outside that subtree.
 	mux.HandleFunc("GET /auth/external/jwks.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if tt := params.HumaDeps.TaskTokens; tt != nil {
+		if tt := params.Deps.TaskTokens; tt != nil {
 			_ = json.NewEncoder(w).Encode(tt.JWKS())
 			return
 		}
@@ -93,7 +93,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// are served on the outer mux.
 	gateMode := tenant.ParseGateMode(params.Config.TenantGateMode)
 	slog.Info("tenant gate active", "mode", string(gateMode))
-	apiV1 := newAPIV1Handler(params.HumaDeps)
+	apiV1 := newAPIV1Handler(params.Deps)
 	registerContractDocs(mux)
 
 	// ── dev/test surface (/_dev/v1) ──────────────────────────────────────────
@@ -135,8 +135,8 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// verify a caller, so the path 404s instead of 503-ing forever. A nil
 	// MCPExternalResources/OrgEndpoints/ResourceTypes degrades the corresponding
 	// tool to an empty result (see dependencies.NewMCPHandler).
-	if params.HumaDeps.TaskTokens != nil {
-		mcpVerifier := auth.NewAgentsScopedVerifier(params.HumaDeps.TaskTokens)
+	if params.Deps.TaskTokens != nil {
+		mcpVerifier := auth.NewAgentsScopedVerifier(params.Deps.TaskTokens)
 		mcpHandler := dependencies.NewMCPHandler(
 			params.MCPExternalResources, params.MCPOrgEndpoints, params.MCPResourceTypes, params.MCPRemoteGit)
 		mux.Handle("POST "+internalV1+"/mcp", mcpVerifier.Middleware(mcpHandler))
@@ -151,7 +151,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 		// absence, matching the MCP mount's own conditional-mount posture).
 		if params.Config.PlaygroundTokenEnabled {
 			mux.Handle("POST "+internalV1+"/mcp/playground-token",
-				dependencies.NewPlaygroundTokenHandler(params.HumaDeps.TaskTokens))
+				dependencies.NewPlaygroundTokenHandler(params.Deps.TaskTokens))
 		}
 	}
 

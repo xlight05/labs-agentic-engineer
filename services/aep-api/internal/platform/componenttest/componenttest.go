@@ -25,12 +25,13 @@
 // mapping, and the no-claims 401 — in milliseconds, no infrastructure.
 //
 // NOTE on org scope: the public edge derives the active org SOLELY from the
-// verified token (humakit.OrgScopedInput — there is no {orgHandle} path param),
-// so a cross-org request is unrepresentable by construction (locked by
-// api/huma_guard_test.go). The runtime assertion this harness adds over the
-// arch-lock is therefore the gate's ENFORCE no-claims 401 (and that authed
-// requests reach the real handler); there is no path-based cross-org 404 to
-// sweep in the token-only model.
+// verified token (the deny-by-default tenant gate — there is no {orgHandle}
+// path param anywhere in the contract, locked by the arch guard in
+// api/tenant_gate_test.go), so a cross-org request is unrepresentable by
+// construction. The runtime assertion this harness adds over the arch-lock is
+// therefore the gate's ENFORCE no-claims 401 (and that authed requests reach
+// the real handler); there is no path-based cross-org 404 to sweep in the
+// token-only model.
 package componenttest
 
 import (
@@ -51,7 +52,7 @@ type Options struct {
 	// Deps carries the feature services for the code-first Huma API — the REAL
 	// service under test, with its out-of-process clients mocked. Fields left
 	// zero register nothing for that feature (its routes 404/nil-guard).
-	Deps api.HumaDeps
+	Deps api.Deps
 
 	// DB is optional and passed through to AppParams.DB. Note orgensure is a
 	// no-op in the harness REGARDLESS of DB: NewHandlerForTest never sets
@@ -65,7 +66,8 @@ type Options struct {
 
 // Harness is the assembled real handler plus request builders.
 type Harness struct {
-	// Handler is the production chain: fakeInboundAuth → orgensure → Huma(ENFORCE).
+	// Handler is the production chain: fakeInboundAuth → orgensure →
+	// contract validation → tenant gate (ENFORCE) → strict handlers.
 	Handler http.Handler
 	t       testing.TB
 }
@@ -125,7 +127,7 @@ func (r *Req) With(mut func(*auth.Claims)) *Req {
 
 // Get / Delete / Post / Put issue the request through the real handler and
 // return the recorder. Post/Put take a JSON body (required for required-body
-// ops — Huma hard-400s a zero-length body before resolvers run).
+// ops — the strict wrapper 400s an undecodable/empty body before handlers).
 func (r *Req) Get(path string) *httptest.ResponseRecorder { return r.do(http.MethodGet, path, "") }
 func (r *Req) Delete(path string) *httptest.ResponseRecorder {
 	return r.do(http.MethodDelete, path, "")

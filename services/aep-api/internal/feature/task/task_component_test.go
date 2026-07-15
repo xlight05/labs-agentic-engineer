@@ -14,12 +14,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Component tier for the tasks-github-native surface: the REAL Huma handler
-// (via componenttest, tenant gate in ENFORCE) over the new task routes, with
-// only the out-of-process edges faked (GitHub issues, executions rows, the
-// funnel dispatcher, the agents-service turn client). Proves the HTTP contract
-// end to end — derived-status shapes, the 202/409/400 status codes, the label
-// stamps, and the no-claims 401 the API-surface guard exists for.
+// Component tier for the task read surface: the REAL contract-first strict
+// handler (via componenttest, tenant gate in ENFORCE) over list-tasks /
+// get-task, with only the out-of-process edges faked (GitHub issues,
+// executions rows). Proves the HTTP contract end to end — derived-status
+// shapes, the 404 miss, and the no-claims 401 the API-surface guard exists
+// for. The command/plan HTTP operations the retired Huma surface carried
+// (plan-tasks, execute-task, hold-task, unhold-task, promote-task-from-issue)
+// are not in the committed contract, so their route tests are gone; the
+// one-active-plan-turn invariant keeps a service-level test below
+// (PlanService still backs the devflow validator).
 package task_test
 
 import (
@@ -56,13 +60,12 @@ const (
 // ---- faked edges -----------------------------------------------------------
 
 type fakeIssues struct {
-	mu     sync.Mutex
-	byNum  map[int]*gitrepo.IssueInfo
-	labels map[int][]string // recorded label adds
+	mu    sync.Mutex
+	byNum map[int]*gitrepo.IssueInfo
 }
 
 func newIssues(seed ...gitrepo.IssueInfo) *fakeIssues {
-	f := &fakeIssues{byNum: map[int]*gitrepo.IssueInfo{}, labels: map[int][]string{}}
+	f := &fakeIssues{byNum: map[int]*gitrepo.IssueInfo{}}
 	for i := range seed {
 		cp := seed[i]
 		f.byNum[cp.Number] = &cp
@@ -100,18 +103,12 @@ func (f *fakeIssues) EditIssueTitle(context.Context, string, string, int, string
 func (f *fakeIssues) AddLabels(_ context.Context, _, _ string, n int, labels []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.labels[n] = append(f.labels[n], labels...)
 	if i := f.byNum[n]; i != nil {
 		i.Labels = append(i.Labels, labels...)
 	}
 	return nil
 }
 func (f *fakeIssues) RemoveLabel(context.Context, string, string, int, string) error { return nil }
-func (f *fakeIssues) addedTo(n int) []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]string{}, f.labels[n]...)
-}
 
 type fakeRepos struct{}
 
@@ -139,24 +136,6 @@ func (f fakeExecs) LatestPerKindForRepoScoped(_ context.Context, _, _ string) (m
 func (f fakeExecs) ListByIssueScoped(_ context.Context, _, _ string, n int) ([]models.Execution, error) {
 	return f.history[n], nil
 }
-
-type fakeDispatcher struct {
-	mu      sync.Mutex
-	execute []int
-	signal  chan struct{}
-}
-
-func (f *fakeDispatcher) OnExecuteIntent(_ context.Context, _ string, n int) error {
-	f.mu.Lock()
-	f.execute = append(f.execute, n)
-	f.mu.Unlock()
-	select {
-	case f.signal <- struct{}{}:
-	default:
-	}
-	return nil
-}
-func (f *fakeDispatcher) Reevaluate(context.Context) error { return nil }
 
 // fakeVersions drives the plan versioned-spec gate.
 type fakeVersions struct {
@@ -198,23 +177,10 @@ func taskIssue(number int, component, state string, extra ...string) gitrepo.Iss
 
 // ---- harness ---------------------------------------------------------------
 
-type rig struct {
-	h    *componenttest.Harness
-	iss  *fakeIssues
-	disp *fakeDispatcher
-}
-
-func newRig(t *testing.T, iss *fakeIssues, execs fakeExecs, specVersions []artifacts.RequirementsVersionInfo) *rig {
+func newRig(t *testing.T, iss *fakeIssues, execs fakeExecs) *componenttest.Harness {
 	t.Helper()
-	disp := &fakeDispatcher{signal: make(chan struct{}, 8)}
 	reads := task.NewReads(iss, fakeRepos{}, execs, nil, nil)
-	commands := task.NewCommands(iss, fakeRepos{}, disp, nil)
-	plan := task.NewPlanService(fakeRepos{}, fakeVersions{spec: specVersions}, nil,
-		func(context.Context, string) (string, error) { return "sk-key", nil }, nil, iss, nil, nil)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{
-		TaskReads: reads, TaskCommands: commands, TaskPlan: plan,
-	}})
-	return &rig{h: h, iss: iss, disp: disp}
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{TaskReads: reads}})
 }
 
 // ---- tests -----------------------------------------------------------------
@@ -228,9 +194,9 @@ func TestList_DerivesStatusShapes(t *testing.T) {
 		1: {string(taskmeta.KindCoding): row("c1", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", -2), string(taskmeta.KindBuild): row("b1", taskmeta.KindBuild, taskmeta.ExecSucceeded, "", -1)},
 		2: {string(taskmeta.KindCoding): row("c2", taskmeta.KindCoding, taskmeta.ExecRunning, "", 0)},
 	}}
-	r := newRig(t, iss, execs, nil)
+	h := newRig(t, iss, execs)
 
-	rec := r.h.AsOrg(org).Get(tasks + "?state=open")
+	rec := h.AsOrg(org).Get(tasks + "?state=open")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: code %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -257,9 +223,9 @@ func TestGet_IncludesHistory(t *testing.T) {
 		latest:  map[int]map[string]*models.Execution{5: {string(taskmeta.KindCoding): row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
 		history: map[int][]models.Execution{5: {*row("a", taskmeta.KindCoding, taskmeta.ExecFailed, "", -1), *row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
 	}
-	r := newRig(t, iss, execs, nil)
+	h := newRig(t, iss, execs)
 
-	rec := r.h.AsOrg(org).Get(tasks + "/5")
+	rec := h.AsOrg(org).Get(tasks + "/5")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get: code %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -269,62 +235,22 @@ func TestGet_IncludesHistory(t *testing.T) {
 		t.Fatalf("get shape wrong: status=%q history=%d", d.DerivedStatus, len(d.ExecutionHistory))
 	}
 
-	if miss := r.h.AsOrg(org).Get(tasks + "/404"); miss.Code != http.StatusNotFound {
+	miss := h.AsOrg(org).Get(tasks + "/404")
+	if miss.Code != http.StatusNotFound {
 		t.Errorf("missing task: code %d, want 404", miss.Code)
 	}
-}
-
-func TestExecute_202StampsLabel_And409Closed(t *testing.T) {
-	iss := newIssues(taskIssue(7, "order-service", "open"), taskIssue(8, "order-service", "closed"))
-	r := newRig(t, iss, fakeExecs{}, nil)
-
-	rec := r.h.AsOrg(org).Post(tasks+"/7/execute", "")
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("execute open: code %d, want 202 (%s)", rec.Code, rec.Body.String())
-	}
-	if !hasAll(iss.addedTo(7), []string{taskmeta.LabelExecute}) {
-		t.Errorf("execute must stamp aep:execute, got %v", iss.addedTo(7))
-	}
-	select {
-	case <-r.disp.signal:
-	case <-time.After(2 * time.Second):
-		t.Fatal("execute did not dispatch through the funnel")
-	}
-
-	if closed := r.h.AsOrg(org).Post(tasks+"/8/execute", ""); closed.Code != http.StatusConflict {
-		t.Errorf("execute closed: code %d, want 409", closed.Code)
-	}
-}
-
-func TestHoldUnhold_204(t *testing.T) {
-	iss := newIssues(taskIssue(9, "order-service", "open"))
-	r := newRig(t, iss, fakeExecs{}, nil)
-
-	if rec := r.h.AsOrg(org).Post(tasks+"/9/hold", ""); rec.Code != http.StatusNoContent {
-		t.Fatalf("hold: code %d, want 204", rec.Code)
-	}
-	if !hasAll(iss.addedTo(9), []string{taskmeta.LabelHold}) {
-		t.Errorf("hold must stamp aep:hold, got %v", iss.addedTo(9))
-	}
-	if rec := r.h.AsOrg(org).Delete(tasks + "/9/hold"); rec.Code != http.StatusNoContent {
-		t.Errorf("unhold: code %d, want 204", rec.Code)
-	}
-}
-
-func TestPlan_NoSpecVersion_400(t *testing.T) {
-	r := newRig(t, newIssues(), fakeExecs{}, nil) // no versioned spec yet
-	rec := r.h.AsOrg(org).Post(tasks+"/plan", "")
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("plan without a versioned spec: code %d, want 400 (%s)", rec.Code, rec.Body.String())
+	if e := componenttest.DecodeEnvelope(t, miss.Body.String()); e.Code != "not_found" {
+		t.Errorf("missing task envelope code = %q, want not_found", e.Code)
 	}
 }
 
 func TestPlan_InProgress_409(t *testing.T) {
 	// The one-active-plan-turn invariant (§6): while a plan turn holds the
 	// per-project in-flight lock (blocked in the upstream Turn), a second
-	// StartPlan for the same project must be rejected with ErrPlanInProgress
-	// (which the HTTP layer maps to 409 {code:"plan_in_progress"}). The plan
-	// dispatch is workspace-shaped now, so the rig runs a real engine over
+	// StartPlan for the same project must be rejected with ErrPlanInProgress.
+	// plan-tasks left the public HTTP contract, but PlanService still backs the
+	// devflow validator, so the invariant is asserted at the service seam. The
+	// plan dispatch is workspace-shaped, so the rig runs a real engine over
 	// real file:// origins.
 	iss := newIssues()
 	bt := &blockingTurn{started: make(chan struct{}), release: make(chan struct{})}
@@ -390,8 +316,8 @@ func (b *blockingTurn) Turn(_ context.Context, _, _, _ string, _ agentsvc.TurnRe
 }
 
 func TestTasks_NoAuth_401(t *testing.T) {
-	r := newRig(t, newIssues(), fakeExecs{}, nil)
-	if rec := r.h.NoAuth().Get(tasks); rec.Code != http.StatusUnauthorized {
+	h := newRig(t, newIssues(), fakeExecs{})
+	if rec := h.NoAuth().Get(tasks); rec.Code != http.StatusUnauthorized {
 		t.Errorf("no-auth list: code %d, want 401", rec.Code)
 	}
 }

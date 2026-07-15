@@ -16,9 +16,10 @@
 
 // COMPONENT tier (bff-component-testing.md §4): the REAL collab feature behind
 // the REAL production chain — global middleware → faked auth at the
-// jwt.WithClaims seam → orgensure → Huma parsing/validation → the tenant gate
-// in ENFORCE → each handler's inline error mapping — driven in-process via the
-// componenttest harness. The requirements read/version/save-discard surface
+// jwt.WithClaims seam → orgensure → contract validation → the tenant gate
+// in ENFORCE → strict handlers (handlers_collab.go) with their inline error
+// mapping — driven in-process via the componenttest harness. The
+// requirements read/version/save-discard surface
 // (get-requirements, discard-requirements, list-requirements-versions,
 // get-requirements-at-version) was removed — superseded by the Files API
 // (list-files/read-file); only the collab-session + collab-validate surface
@@ -28,9 +29,9 @@
 // path param), so the only runtime auth assertion the tier adds is the gate's
 // no-claims 401 on an org-scoped op (proven once for the feature).
 //
-// GOLDEN FIELD SETS: the harvested goldens carry a Huma `$schema` link field
-// that the current handler (api/huma.go: SchemasPath="") no longer emits, so the
-// on-wire field set is compared with $schema excluded from both sides.
+// GOLDEN FIELD SETS: the harvested goldens carry a Huma-era `$schema` link
+// field that the strict handlers never emit, so the on-wire field set is
+// compared with $schema excluded from both sides.
 //
 // External test package: the harness imports api, which imports requirements — an
 // in-package test file would be an import cycle.
@@ -88,7 +89,7 @@ func (f *fakeCollabRepos) DeleteRepo(context.Context, string, string) error {
 // newReqHarness assembles the real chain around the REAL collab service.
 func newReqHarness(t *testing.T, repos gitrepo.RepoService) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		CollabRepo: repos,
 	}})
 }
@@ -162,12 +163,13 @@ func TestReqComponent_CollabSession_UnknownProjectIs404(t *testing.T) {
 }
 
 // TestReqComponent_CollabValidate_MissingRoom drives the server-to-server
-// carve-out's reachable input-validation branch. validate-collab-access is NOT
-// org-scoped (no OrgScopedInput), so per §3 its verifier auth is integration-owned
-// and NOT asserted as a gate here; the room-prefix/oracle branches need an
-// X-Room-Id header the in-process request builder can't set, so they stay
-// integration-owned too. What is reachable — an authed request with no room →
-// 400 — is pinned.
+// route's reachable input-validation branch. validate-collab-access sits
+// behind the deny-by-default tenant gate like every strict operation, and the
+// handler additionally keeps its own claims check (the Huma-era semantics,
+// load-bearing in gate LOG mode); the room-prefix/oracle branches need an
+// X-Room-Id header the in-process request builder can't set, so they ride the
+// raw-request test below. What is reachable here — an authed request with no
+// room → 400 — is pinned.
 func TestReqComponent_CollabValidate_MissingRoom(t *testing.T) {
 	t.Parallel()
 	h := newReqHarness(t, &fakeCollabRepos{})

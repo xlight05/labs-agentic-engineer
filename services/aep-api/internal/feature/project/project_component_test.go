@@ -75,7 +75,7 @@ func newProjectHarness(t *testing.T) (*componenttest.Harness, *ocmocks.ProjectCl
 	t.Helper()
 	oc := &ocmocks.ProjectClientMock{}
 	svc := project.NewProjectService(oc, nil, nil, nil, nil)
-	return componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{ProjectSvc: svc}}), oc
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}}), oc
 }
 
 func TestProjectComponent_ListAuthedReachesRealService(t *testing.T) {
@@ -196,7 +196,7 @@ func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 		DeleteProjectFunc: func(context.Context, string, string) error { return nil },
 	}
 	svc := project.NewProjectService(oc, conflictRepoSvc{}, nil, nil, nil)
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{ProjectSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}})
 
 	resp := h.AsOrg("acme").Post("/api/v1/projects", `{"name":"gym","repoName":"taken-repo"}`)
 	if resp.Code != 409 {

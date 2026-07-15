@@ -38,9 +38,9 @@ import (
 // clients); db may be nil (orgensure then no-ops). This lives in a
 // non-_test.go file on purpose so packages outside api (the componenttest
 // harness) can call it — it adds a seam, no production behavior.
-func NewHandlerForTest(deps HumaDeps, inboundAuth func(http.Handler) http.Handler, db *gorm.DB) http.Handler {
+func NewHandlerForTest(deps Deps, inboundAuth func(http.Handler) http.Handler, db *gorm.DB) http.Handler {
 	return NewHandler(AppParams{
-		HumaDeps:    deps,
+		Deps:        deps,
 		InboundAuth: inboundAuth,
 		DB:          db,
 		// Config left zero: TenantGateMode "" → tenant.ParseGateMode defaults to

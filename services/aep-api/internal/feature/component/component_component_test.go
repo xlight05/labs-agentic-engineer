@@ -16,11 +16,12 @@
 
 // COMPONENT tier (bff-component-testing.md §4): the REAL component + config
 // services behind the REAL production handler chain — global middleware → faked
-// auth at the jwt.WithClaims seam → orgensure → Huma parsing/validation → the
-// tenant gate in ENFORCE → each handler's error mapping — driven in-process via
-// the componenttest harness. Only out-of-process seams are mocked: the
-// OpenChoreo ComponentClient, the observability client, the config repository,
-// and the design tree behind a real ArtifactStore.
+// auth at the jwt.WithClaims seam → orgensure → contract validation → the
+// deny-by-default tenant gate in ENFORCE → strict handlers → each handler's
+// error mapping — driven in-process via the componenttest harness. Only
+// out-of-process seams are mocked: the OpenChoreo ComponentClient, the
+// observability client, the config repository, and the design tree behind a
+// real ArtifactStore.
 //
 // ORG SCOPE: the active org is derived SOLELY from the token (no {orgHandle}
 // path param), so the only runtime auth assertion this tier adds is the gate's
@@ -32,12 +33,18 @@
 // excluded from both sides.
 //
 // OC-SENTINEL MAPPING: componentService passes OpenChoreo sentinels through
-// untranslated, and mapComponentError now runs them through the shared ocerr
-// classifier — so an OC 404 / 401 / 403 / 409 surfaces as that status (matching
-// project), and a missing component (openchoreo.ErrNotFound) is a real 404. The
-// former get-component ErrComponentNotFound branch (unreachable — the service
-// never returns that feature-local sentinel) was removed with the fix.
+// untranslated, and mapComponentError (beside the strict handler,
+// api/handlers_component.go) runs them through the shared ocerr classifier — so
+// an OC 404 / 401 / 403 / 409 surfaces as that status (matching project), and a
+// missing component (openchoreo.ErrNotFound) is a real 404. The former
+// get-component ErrComponentNotFound branch (unreachable — the service never
+// returns that feature-local sentinel) was removed with the fix.
 // TestComponentComponent_ErrorMapping pins this.
+//
+// ERROR DIALECT: non-2xx bodies are the flat envelope {code, message,
+// details?} (the contract-first cutover's error-model break) — problem
+// `detail` became envelope `message`, `title` disappeared, and schema
+// violations are 400 validation_failed instead of Huma's 422.
 //
 // External test package: the harness imports api, which imports component — an
 // in-package test file would be an import cycle.
@@ -92,7 +99,7 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 		// The env-var mirror onto OC is unit-tested; disable it here (nil).
 		cfgSvc = component.NewConfigService(f.configRepo, nil)
 	}
-	return componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		ComponentSvc: compSvc,
 		ConfigSvc:    cfgSvc,
 	}})
@@ -336,8 +343,8 @@ func TestComponentComponent_OpenAPINoComponentIs404(t *testing.T) {
 	if resp.Code != 404 {
 		t.Fatalf("openapi missing: want 404, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "no OpenAPI spec for this component" {
-		t.Fatalf("404 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Code != "not_found" || e.Message != "no OpenAPI spec for this component" {
+		t.Fatalf("404 envelope: got %s", resp.Body.String())
 	}
 }
 
@@ -386,13 +393,16 @@ func TestComponentComponent_BuildLogs_HarvestedError500(t *testing.T) {
 	if resp.Code != 500 {
 		t.Fatalf("build logs error: want 500, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	got := componenttest.DecodeProblem(t, resp.Body.String())
+	// The golden is the harvested RFC-9457 problem; on the contract-first edge
+	// its status is the response code and its detail is the envelope message
+	// (title disappeared with the dialect).
+	got := componenttest.DecodeEnvelope(t, resp.Body.String())
 	var golden componenttest.Problem
 	if err := json.Unmarshal(readGolden(t, "get_component_build_logs.json"), &golden); err != nil {
 		t.Fatalf("decode golden: %v", err)
 	}
-	if got.Status != golden.Status || got.Title != golden.Title || got.Detail != golden.Detail {
-		t.Fatalf("build-logs 500 drifted from golden:\n got %+v\nwant %+v", got, golden)
+	if resp.Code != golden.Status || got.Message != golden.Detail {
+		t.Fatalf("build-logs 500 drifted from golden:\n got code=%d %+v\nwant %+v", resp.Code, got, golden)
 	}
 	if strings.Contains(resp.Body.String(), "observability service 500") {
 		t.Fatalf("500 body leaks internals: %s", resp.Body.String())
@@ -407,8 +417,8 @@ func TestComponentComponent_BuildLogs_NotConfigured503(t *testing.T) {
 	if resp.Code != 503 {
 		t.Fatalf("build logs not-configured: want 503, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "build logs service not available" {
-		t.Fatalf("503 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Message != "build logs service not available" {
+		t.Fatalf("503 message: got %q", e.Message)
 	}
 }
 
@@ -446,8 +456,8 @@ func TestComponentComponent_ConfigGet_ErrorIs500(t *testing.T) {
 	if resp.Code != 500 {
 		t.Fatalf("config get error: want 500, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); p.Detail != "failed to get config" {
-		t.Fatalf("500 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); e.Message != "failed to get config" {
+		t.Fatalf("500 message: got %q", e.Message)
 	}
 	if strings.Contains(resp.Body.String(), "connection refused") {
 		t.Fatalf("500 body leaks internals: %s", resp.Body.String())
@@ -492,8 +502,8 @@ func TestComponentComponent_ConfigUpdate_ValidationIs400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("empty key: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "cannot be empty") {
-		t.Fatalf("400 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "cannot be empty") {
+		t.Fatalf("400 message: got %q", e.Message)
 	}
 
 	// Duplicate key → 400 naming the key.
@@ -501,8 +511,8 @@ func TestComponentComponent_ConfigUpdate_ValidationIs400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("duplicate key: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "duplicate environment variable key: DB") {
-		t.Fatalf("400 detail: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "duplicate environment variable key: DB") {
+		t.Fatalf("400 message: got %q", e.Message)
 	}
 }
 
@@ -521,8 +531,8 @@ func TestComponentComponent_MalformedSlugIs400(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("malformed slug: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := componenttest.DecodeProblem(t, resp.Body.String()); !strings.Contains(p.Detail, "componentName") {
-		t.Fatalf("400 detail should name componentName: got %q", p.Detail)
+	if e := componenttest.DecodeEnvelope(t, resp.Body.String()); !strings.Contains(e.Message, "componentName") {
+		t.Fatalf("400 message should name componentName: got %q", e.Message)
 	}
 }
 
@@ -530,9 +540,9 @@ func TestComponentComponent_MalformedSlugIs400(t *testing.T) {
 
 // TestComponentComponent_ErrorMapping pins the FIXED behavior: every OpenChoreo
 // sentinel that reaches componentService is now translated to its HTTP status by
-// the shared ocerr classifier (component_huma.go's mapComponentError), matching
-// project. An opaque error still collapses to a fixed-message 500 with no
-// internal leak.
+// the shared ocerr classifier (api/handlers_component.go's mapComponentError),
+// matching project. An opaque error still collapses to a fixed-message 500 with
+// no internal leak.
 func TestComponentComponent_ErrorMapping(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -556,14 +566,11 @@ func TestComponentComponent_ErrorMapping(t *testing.T) {
 			if resp.Code != tc.wantStatus {
 				t.Fatalf("%s: got %d body=%s", tc.name, resp.Code, resp.Body.String())
 			}
-			p := componenttest.DecodeProblem(t, resp.Body.String())
-			if p.Status != tc.wantStatus {
-				t.Fatalf("%s: problem.status=%d, want %d", tc.name, p.Status, tc.wantStatus)
-			}
+			e := componenttest.DecodeEnvelope(t, resp.Body.String())
 			if tc.wantStatus == 500 {
 				// Opaque errors keep the fixed internal message and never leak.
-				if p.Detail != "failed to get component" {
-					t.Fatalf("500 detail: got %q", p.Detail)
+				if e.Message != "failed to get component" {
+					t.Fatalf("500 message: got %q", e.Message)
 				}
 				if strings.Contains(resp.Body.String(), "connection refused") {
 					t.Fatalf("500 must not leak internals: %s", resp.Body.String())
@@ -582,11 +589,11 @@ func TestComponentComponent_NoClaimsDeniedByEnforceGate(t *testing.T) {
 	if resp.Code != 401 {
 		t.Fatalf("no-claims: want the gate's ENFORCE 401, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	// The gate aggregates its resolver error into one RFC-9457 problem carrying
-	// "authentication required" — NOT the JWT middleware's pre-gate rejection
-	// (that path is integration-owned, see §3).
-	p := componenttest.DecodeProblem(t, resp.Body.String())
-	if p.Status != 401 || len(p.Errors) == 0 || !strings.Contains(p.Errors[0].Message, "authentication required") {
-		t.Fatalf("gate 401 problem shape: got %s", resp.Body.String())
+	// This is the GATE's 401 carrying "authentication required" — NOT the JWT
+	// middleware's pre-gate rejection (that path is integration-owned, see §3).
+	// The deny-by-default gate answers with the flat envelope.
+	e := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if e.Code != "unauthorized" || !strings.Contains(e.Message, "authentication required") {
+		t.Fatalf("gate 401 envelope shape: got %s", resp.Body.String())
 	}
 }

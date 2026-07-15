@@ -35,7 +35,7 @@ import (
 
 // ComponentStore is an exported handle around a real SkillService backed by
 // the gitfs engine over real bare origins. The component tier wires Svc into
-// api.HumaDeps and drives the real HTTP chain against it end-to-end.
+// api.Deps and drives the real HTTP chain against it end-to-end.
 type ComponentStore struct {
 	Svc  *SkillService
 	host *testGitHost

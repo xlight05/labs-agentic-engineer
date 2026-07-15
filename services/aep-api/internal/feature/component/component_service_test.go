@@ -28,11 +28,8 @@ package component
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
@@ -55,7 +52,7 @@ func TestComponentService_ListComponents_PassthroughAndError(t *testing.T) {
 	if err != nil || list == nil || len(list.Items) != 1 {
 		t.Fatalf("list happy: got list=%+v err=%v", list, err)
 	}
-	// The service forwards limit/cursor verbatim (the huma op pins 100/"").
+	// The service forwards limit/cursor verbatim (the HTTP op pins 100/"").
 	if c := oc.ListComponentsCalls(); len(c) != 1 || c[0].OrgName != "acme" || c[0].ProjectName != "web" || c[0].Limit != 100 {
 		t.Fatalf("OC ListComponents args: %+v", c)
 	}
@@ -119,7 +116,7 @@ func TestComponentService_ListBuilds_DelegatesToWorkflowRuns(t *testing.T) {
 	if err != nil || list == nil || len(list.Items) != 1 {
 		t.Fatalf("builds happy: %+v %v", list, err)
 	}
-	// ListBuilds is a thin alias over ListWorkflowRuns; the huma op pins limit 20.
+	// ListBuilds is a thin alias over ListWorkflowRuns; the HTTP op pins limit 20.
 	if c := oc.ListWorkflowRunsCalls(); len(c) != 1 || c[0].Limit != 20 {
 		t.Fatalf("OC ListWorkflowRuns args: %+v", c)
 	}
@@ -278,7 +275,7 @@ func TestComponentService_TriggerBuild_OCErrorPropagates(t *testing.T) {
 
 func TestComponentService_GetBuildLogs_NotConfigured(t *testing.T) {
 	t.Parallel()
-	// nil observability client ⇒ the local ErrLogsUnavailable sentinel (the huma
+	// nil observability client ⇒ the local ErrLogsUnavailable sentinel (the HTTP
 	// op maps it to 503).
 	svc := NewComponentService(&ocmocks.ComponentClientMock{}, nil, nil, nil, nil)
 	if _, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1"); !errors.Is(err, ErrLogsUnavailable) {
@@ -370,7 +367,7 @@ func TestComponentService_GetComponentOpenAPI_NotServiceReturnsTypedBody(t *test
 	t.Parallel()
 	// A web-application component (non-service) returns ErrComponentNotService
 	// PLUS a body carrying the type so the UI renders a typed empty state — the
-	// huma op maps this pair to a 409 that still ships componentType.
+	// HTTP op maps this pair to a 409 that still ships componentType.
 	svc := openAPISvc(t, designFiles("web-ui", "web-application", ""), nil)
 	spec, err := svc.GetComponentOpenAPI(context.Background(), "acme", "web", "web-ui")
 	if !errors.Is(err, ErrComponentNotService) {
@@ -393,46 +390,9 @@ func TestComponentService_GetComponentOpenAPI_ServiceReturnsSpec(t *testing.T) {
 	}
 }
 
-// --- mapComponentError sentinel mapping --------------------------------------
-
-// TestMapComponentError pins the mapper directly: every OpenChoreo sentinel that
-// componentService passes through is translated to its HTTP status via the
-// shared ocerr classifier, and anything that is not an OC sentinel collapses to
-// a fixed-message 500 that never leaks the internal cause.
-func TestMapComponentError(t *testing.T) {
-	t.Parallel()
-	var se huma.StatusError
-
-	ocCases := []struct {
-		err  error
-		want int
-	}{
-		{openchoreo.ErrUnauthorized, http.StatusUnauthorized},
-		{openchoreo.ErrForbidden, http.StatusForbidden},
-		{openchoreo.ErrNotFound, http.StatusNotFound},
-		{openchoreo.ErrConflict, http.StatusConflict},
-		{openchoreo.ErrBadRequest, http.StatusBadRequest},
-	}
-	for _, tc := range ocCases {
-		err := mapComponentError(tc.err, "failed to do thing")
-		if !errors.As(err, &se) || se.GetStatus() != tc.want {
-			t.Fatalf("mapComponentError(%v) → %v, want status %d", tc.err, err, tc.want)
-		}
-	}
-
-	// Anything that is not an OC sentinel → opaque 500 carrying the supplied
-	// internal message, never the raw error.
-	err := mapComponentError(errors.New("pg: connection refused"), "failed to list components")
-	if !errors.As(err, &se) || se.GetStatus() != http.StatusInternalServerError {
-		t.Fatalf("opaque error must map to 500, got %v", err)
-	}
-	if strings.Contains(err.Error(), "connection refused") {
-		t.Fatalf("500 must not leak internals: %v", err)
-	}
-	if !strings.Contains(err.Error(), "failed to list components") {
-		t.Fatalf("500 must carry the supplied internal message: %v", err)
-	}
-}
+// mapComponentError's sentinel mapping is pinned in the api package
+// (internal/api/handlers_component_test.go) — the mapper moved beside the
+// strict handler at the contract-first cutover.
 
 // TestComponentService_CreateComponent_PassthroughAndError mirrors its sibling
 // passthrough tests (review follow-up): CreateComponent has no HTTP surface —

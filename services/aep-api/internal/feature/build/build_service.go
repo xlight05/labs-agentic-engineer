@@ -27,20 +27,35 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sort"
 	"time"
-
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
-	"github.com/wso2/aep/aep-api/internal/platform/humakit"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// Service backs the two build endpoints.
+// EdgeError is the neutral transport error the build sequence returns for
+// edge-mapped failures; the api layer (handlers_build.go) copies it onto the
+// flat envelope. Neutral on purpose: this feature must not depend on an HTTP
+// framework. Details carries the spec gate's per-file breakdown
+// (field=path, message=CODE: msg).
+type EdgeError struct {
+	Status  int
+	Message string
+	Details []models.ErrorDetail
+}
+
+func (e *EdgeError) Error() string { return e.Message }
+
+// ErrBuildAlreadyRunning is the "a dev workflow is already running for this
+// project" sentinel the core build sequence returns. The HTTP edge maps it
+// to a 409; the non-HTTP StartProjectBuild entry point treats it as success
+// (idempotent trigger).
+var ErrBuildAlreadyRunning = errors.New("a build is already running for this project")
+
+// Service backs the build endpoints (strict entry points in strict.go).
 type Service struct {
 	runner WorkflowRunner
 	store  RunStore
@@ -132,8 +147,8 @@ type BuildStatusTask struct {
 
 // BuildStatus is the get-project-build response.
 type BuildStatus struct {
-	Status         string            `json:"status" enum:"started,in_progress,completed,failed"`
-	WorkflowStatus string            `json:"workflow_status"`
+	Status         string `json:"status" enum:"started,in_progress,completed,failed"`
+	WorkflowStatus string `json:"workflow_status"`
 	// Reason is the failure detail for a failed build (empty otherwise) — the
 	// devflow's recorded error, so the console can show WHY it failed.
 	Reason string            `json:"reason,omitempty"`
@@ -153,8 +168,8 @@ type BuildTally struct {
 // version tag. Status shares get-project-build's vocabulary; a list read has
 // no live workflow query, so "started" never occurs here.
 type BuildSummary struct {
-	Tag    string     `json:"tag"`
-	Status string     `json:"status" enum:"started,in_progress,completed,failed"`
+	Tag    string `json:"tag"`
+	Status string `json:"status" enum:"started,in_progress,completed,failed"`
 	// Reason is the failure detail for a failed build (empty otherwise) — the
 	// devflow's recorded error, surfaced beside the Failed badge in the console.
 	Reason      string     `json:"reason,omitempty"`
@@ -166,93 +181,6 @@ type BuildSummary struct {
 // BuildList is the list-project-builds response, newest build first.
 type BuildList struct {
 	Builds []BuildSummary `json:"builds"`
-}
-
-type buildInput struct {
-	humakit.OrgScopedInput
-	ProjectName string `path:"projectName" doc:"Project name (DNS-label slug)"`
-	Body        BuildRequest
-}
-
-type buildOutput struct {
-	Body BuildResponse
-}
-
-type getBuildInput struct {
-	humakit.OrgScopedInput
-	ProjectName string `path:"projectName" doc:"Project name (DNS-label slug)"`
-	Tag         string `path:"tag" doc:"Build tag"`
-}
-
-type getBuildOutput struct {
-	Body BuildStatus
-}
-
-type listBuildsInput struct {
-	humakit.OrgScopedInput
-	ProjectName string `path:"projectName" doc:"Project name (DNS-label slug)"`
-}
-
-type listBuildsOutput struct {
-	Body BuildList
-}
-
-// RegisterBuild registers the build surface on the code-first Huma API.
-func RegisterBuild(api huma.API, svc *Service) {
-	huma.Register(api, huma.Operation{
-		OperationID: "build-project",
-		Method:      http.MethodPost,
-		Path:        "/projects/{projectName}/build",
-		Summary:     "Trigger a project build",
-		Tags:        []string{"Projects"},
-		Security:    humakit.SecurityUserJWT,
-		// 200, not 202: the tag in the body is the meaningful result (the
-		// console REST client drops 202 bodies).
-	}, svc.build)
-
-	huma.Register(api, huma.Operation{
-		OperationID: "get-project-build",
-		Method:      http.MethodGet,
-		Path:        "/projects/{projectName}/build/{tag}",
-		Summary:     "Get project build status",
-		Tags:        []string{"Projects"},
-		Security:    humakit.SecurityUserJWT,
-	}, svc.get)
-
-	huma.Register(api, huma.Operation{
-		OperationID: "list-project-builds",
-		Method:      http.MethodGet,
-		Path:        "/projects/{projectName}/builds",
-		Summary:     "List project builds",
-		Description: "One entry per built spec version tag, newest first — each the tag's newest run with its frozen task tally.",
-		Tags:        []string{"Projects"},
-		Security:    humakit.SecurityUserJWT,
-	}, svc.list)
-}
-
-// ErrBuildAlreadyRunning is the "a dev workflow is already running for this
-// project" sentinel the core build sequence returns. The HTTP handler maps it
-// to a 409; the non-HTTP StartProjectBuild entry point treats it as success
-// (the provider-build trigger is idempotent — a running provider build already
-// satisfies the caller).
-var ErrBuildAlreadyRunning = errors.New("a build is already running for this project")
-
-// build = validate spec → cut v<N> → start the dev workflow (async) → {tag}.
-// It is the thin HTTP shell over startBuild: it maps the already-running
-// sentinel to a 409 and passes every other (already huma-mapped) error through
-// unchanged, then shapes the {tag} / {failures} response body.
-func (s *Service) build(ctx context.Context, in *buildInput) (*buildOutput, error) {
-	tag, failures, err := s.startBuild(ctx, in.OrgHandle, in.ProjectName, in.Body.Inputs)
-	if err != nil {
-		if errors.Is(err, ErrBuildAlreadyRunning) {
-			return nil, huma.Error409Conflict("a build is already running for this project")
-		}
-		return nil, err // startBuild already returns edge-mapped huma errors.
-	}
-	if len(failures) > 0 {
-		return &buildOutput{Body: BuildResponse{Failures: failures}}, nil
-	}
-	return &buildOutput{Body: BuildResponse{Tag: tag}}, nil
 }
 
 // StartProjectBuild is the non-HTTP entry point that starts a project build with
@@ -282,24 +210,24 @@ func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string
 // startBuild runs the whole build sequence shared by the HTTP handler and the
 // provider-build trigger. It returns the cut tag on success, OR per-input
 // failures (tag == "", no error — a fail-fast pre-tag result that cut no tag),
-// OR an error. Errors are already edge-mapped huma errors EXCEPT the
+// OR an error. Errors are already edge-mapped *EdgeError values EXCEPT the
 // ErrBuildAlreadyRunning sentinel, which each caller interprets for its own
 // context (409 vs. idempotent success). NOTE: inputs may carry raw secret
 // values — it must never be logged.
 func (s *Service) startBuild(ctx context.Context, orgID, projectID string, inputs []BuildInputItem) (string, []InputFailure, error) {
 	// An unstartable workflow must never claim a version tag — probe first.
 	if err := s.runner.Ready(); err != nil {
-		return "", nil, huma.Error503ServiceUnavailable("temporal_unavailable")
+		return "", nil, &EdgeError{Status: 503, Message: "temporal_unavailable"}
 	}
 	// One dev workflow per project at a time.
 	if running, lerr := s.store.RunningDevByProject(ctx, orgID, projectID); lerr != nil {
-		return "", nil, huma.Error500InternalServerError("lookup running build")
+		return "", nil, &EdgeError{Status: 500, Message: "lookup running build"}
 	} else if running != nil {
 		return "", nil, ErrBuildAlreadyRunning
 	}
 	repo, err := s.repos.RepoFullName(ctx, orgID, projectID)
 	if err != nil {
-		return "", nil, huma.Error404NotFound("project repository not found")
+		return "", nil, &EdgeError{Status: 404, Message: "project repository not found"}
 	}
 
 	// Apply the drawer inputs BEFORE the tag-cut: collect external specs +
@@ -318,7 +246,7 @@ func (s *Service) startBuild(ctx context.Context, orgID, projectID string, input
 		}
 		prov, pfails, perr := s.coord.BuildProvisionInputs(ctx, orgID, orgID, projectID, inputs)
 		if perr != nil {
-			return "", nil, huma.Error502BadGateway("stage inputs: " + perr.Error())
+			return "", nil, &EdgeError{Status: 502, Message: "stage inputs: " + perr.Error()}
 		}
 		if len(pfails) > 0 {
 			return "", pfails, nil
@@ -345,9 +273,9 @@ func (s *Service) startBuild(ctx context.Context, orgID, projectID string, input
 	})
 	if err != nil {
 		if errors.Is(err, ErrTemporalUnavailable) {
-			return "", nil, huma.Error503ServiceUnavailable("temporal_unavailable")
+			return "", nil, &EdgeError{Status: 503, Message: "temporal_unavailable"}
 		}
-		return "", nil, huma.Error500InternalServerError("start build workflow: " + err.Error())
+		return "", nil, &EdgeError{Status: 500, Message: "start build workflow: " + err.Error()}
 	}
 
 	// Record the run row NOW so a status GET issued right after this response
@@ -370,84 +298,6 @@ func (s *Service) startBuild(ctx context.Context, orgID, projectID string, input
 	slog.InfoContext(ctx, "build started",
 		"org", orgID, "project", projectID, "tag", res.Tag, "specStatus", res.Status)
 	return res.Tag, nil, nil
-}
-
-// get maps the dev workflow's live status (or its workflow_runs row when the
-// live query is unavailable) onto the contract's BuildStatus.
-func (s *Service) get(ctx context.Context, in *getBuildInput) (*getBuildOutput, error) {
-	workflowID := devflow.DevWorkflowID(in.OrgHandle, in.ProjectName, in.Tag)
-	// The workflow_runs row is the org fence: no row under the caller's org ⇒ 404.
-	row, err := s.store.GetByWorkflowID(ctx, in.OrgHandle, workflowID)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("lookup build")
-	}
-	if row == nil {
-		return nil, huma.Error404NotFound("build not found")
-	}
-
-	out := &getBuildOutput{}
-	st, qerr := s.runner.BuildStatus(ctx, workflowID)
-	if qerr != nil {
-		// Live query unavailable (Temporal down, run archived) — degrade the
-		// overall status to the indexed terminal row status, but STILL list the
-		// build's tasks from the durable lineage read (an archived run no longer
-		// answers a query, yet its planned issues are permanent).
-		out.Body = BuildStatus{
-			Status:         statusFromRow(row.Status),
-			WorkflowStatus: row.Status,
-			Reason:         row.Reason,
-			Tasks:          s.taskStatuses(ctx, in.OrgHandle, in.ProjectName, in.Tag, nil),
-		}
-		return out, nil
-	}
-	out.Body = BuildStatus{
-		Status:         statusFromPhase(st.Phase),
-		WorkflowStatus: st.Phase,
-		Reason:         row.Reason,
-		Tasks:          s.taskStatuses(ctx, in.OrgHandle, in.ProjectName, in.Tag, st.Tasks),
-	}
-	return out, nil
-}
-
-// list enumerates the project's builds from the workflow_runs index alone (no
-// live Temporal queries — the list must stay one cheap read). Rows arrive
-// newest-first; a same-tag rebuild writes a second (workflowID, runID) row, so
-// the first row seen per tag — its newest run — represents that build.
-func (s *Service) list(ctx context.Context, in *listBuildsInput) (*listBuildsOutput, error) {
-	rows, err := s.store.ListByProject(ctx, in.OrgHandle, in.ProjectName, models.WorkflowKindDev)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("list builds")
-	}
-	seen := make(map[string]bool, len(rows))
-	builds := make([]BuildSummary, 0, len(rows))
-	for _, row := range rows {
-		if row.Tag == "" || seen[row.Tag] {
-			continue
-		}
-		seen[row.Tag] = true
-		b := BuildSummary{
-			Tag:       row.Tag,
-			Status:    statusFromRow(row.Status),
-			Reason:    row.Reason,
-			StartedAt: row.CreatedAt,
-			Tasks: BuildTally{
-				Total:  int64(row.TasksTotal),
-				Done:   int64(row.TasksDone),
-				Failed: int64(row.TasksFailed),
-			},
-		}
-		// Active is computed, clamped so a lost total write can never render
-		// negative (same rule as the overview's build stage).
-		if active := row.TasksTotal - row.TasksDone - row.TasksFailed; active > 0 {
-			b.Tasks.Active = int64(active)
-		}
-		if row.Status != models.WorkflowStatusRunning {
-			completed := row.UpdatedAt
-			b.CompletedAt = &completed
-		}
-		builds = append(builds, b)
-	}
-	return &listBuildsOutput{Body: BuildList{Builds: builds}}, nil
 }
 
 // taskStatuses builds the version's task list, DURABLE-first: the source is the
@@ -515,33 +365,34 @@ func (s *Service) taskStatuses(ctx context.Context, orgID, projectID, tag string
 func mapPreTagError(err error) error {
 	switch {
 	case errors.Is(err, ErrEndUserAuthConflict):
-		return huma.Error409Conflict(err.Error())
+		return &EdgeError{Status: 409, Message: err.Error()}
 	case errors.Is(err, ErrResourceCatalogUnavailable):
-		return huma.Error503ServiceUnavailable(err.Error())
+		return &EdgeError{Status: 503, Message: err.Error()}
 	default:
-		return huma.Error500InternalServerError("apply build inputs: " + err.Error())
+		return &EdgeError{Status: 500, Message: "apply build inputs: " + err.Error()}
 	}
 }
 
 // mapTagError maps SaveSpec failures onto the edge vocabulary: the spec gate
-// is a 422 carrying per-file detail; missing/not-ready repos are 404/409.
+// is a 400 validation failure carrying per-file detail; missing/not-ready
+// repos are 404/409.
 func mapTagError(err error) error {
 	var se *artifacts.SpecValidationError
 	switch {
 	case errors.As(err, &se):
-		details := make([]error, 0, len(se.Files))
+		details := make([]models.ErrorDetail, 0, len(se.Files))
 		for _, f := range se.Files {
-			details = append(details, &huma.ErrorDetail{
-				Message:  f.Code + ": " + f.Message,
-				Location: f.Path,
+			details = append(details, models.ErrorDetail{
+				Field:   f.Path,
+				Message: f.Code + ": " + f.Message,
 			})
 		}
-		return huma.Error422UnprocessableEntity("spec validation failed", details...)
+		return &EdgeError{Status: 400, Message: "spec validation failed", Details: details}
 	case errors.Is(err, gitrepo.ErrRepoNotFound):
-		return huma.Error404NotFound("project repository not found")
+		return &EdgeError{Status: 404, Message: "project repository not found"}
 	case errors.Is(err, gitrepo.ErrRepoNotReady):
-		return huma.Error409Conflict("project repository is not ready yet")
+		return &EdgeError{Status: 409, Message: "project repository is not ready yet"}
 	default:
-		return huma.Error500InternalServerError("tag spec: " + err.Error())
+		return &EdgeError{Status: 500, Message: "tag spec: " + err.Error()}
 	}
 }

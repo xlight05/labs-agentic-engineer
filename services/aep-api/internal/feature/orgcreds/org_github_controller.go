@@ -41,7 +41,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/platform/humakit"
+	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 )
 
 // OrgGitHubController handles the per-org GitHub connect callback surface.
@@ -102,7 +102,7 @@ func NewOrgGitHubController(
 // authorize URL's redirect_uri still points here (org-config-consolidation.md
 // §2). Exported so that handler, in the sibling orgconfig package, can build
 // the same redirect_uri.
-const ConnectCallbackPath = humakit.APIV1 + "/org/credentials/github/connect/callback"
+const ConnectCallbackPath = httpkit.APIV1 + "/org/credentials/github/connect/callback"
 
 // HandleConnectCallback is the single callback for every App-mode connect
 // roundtrip. Three shapes arrive at this endpoint:

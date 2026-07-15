@@ -44,6 +44,14 @@ type collabUserClaims struct {
 	jwt.RegisteredClaims
 }
 
+// ParseDisplayIdentity is the exported entry point for the strict handlers
+// (api/handlers_collab.go); it is parseDisplayIdentity verbatim. The
+// unexported name stays for the retained Huma registration until its central
+// deletion (issue 003).
+func ParseDisplayIdentity(authHeader string) (name, email string) {
+	return parseDisplayIdentity(authHeader)
+}
+
 // parseDisplayIdentity extracts a display name + email from a Bearer token for
 // collab presence. Signature verification happens upstream; this is best-effort
 // projection and returns empty strings on any parse failure.

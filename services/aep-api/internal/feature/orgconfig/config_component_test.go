@@ -187,7 +187,7 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 		"http://localhost:8090", appClientID,
 	)
 
-	h := componenttest.New(t, componenttest.Options{Deps: api.HumaDeps{OrgConfigSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgConfigSvc: svc}})
 	return &configHarness{h: h, db: db, gh: gh, anth: anth}
 }
 

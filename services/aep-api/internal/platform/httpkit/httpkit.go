@@ -25,6 +25,14 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/validate"
 )
 
+// APIV1 is the client-facing edge's version prefix, declared ONCE. The
+// contract-first router mounts every public operation under it (it is the
+// committed contract's `servers` base URL), and raw routes that need the
+// absolute path (e.g. the GitHub OAuth redirect_uri) build on it directly.
+// A v2 is a one-edit change here. The internal S2S surface uses a separate
+// /internal/v1 root (api.internalV1).
+const APIV1 = "/api/v1"
+
 // Write400 writes a 400 Bad Request with the given client-facing message.
 func Write400(w http.ResponseWriter, msg string) {
 	WriteErrorResponse(w, http.StatusBadRequest, msg)

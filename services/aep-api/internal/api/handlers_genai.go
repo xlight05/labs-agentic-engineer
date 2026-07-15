@@ -1,0 +1,331 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/wso2/aep/aep-api/internal/api/gen"
+	"github.com/wso2/aep/aep-api/internal/feature/genai"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/models"
+)
+
+// GenAI feature on the strict interface — the committed-truth turn edge:
+//
+//	create-turn      POST …/agents/{conversationId}/messages → 202 {turnId}
+//	get-turn         GET  …/turns/{turnId}                   → status
+//	get-active-turn  GET  …/turns/active                     → status | 204
+//	stream-turn      GET  …/turns/{turnId}/stream?from=N     → SSE replay + tail
+//	get-conversation GET  …/agents/{conversationId}/messages → rehydrate
+//
+// The stream events are the raw agents StreamParts plus ONE aep-api terminal
+// event (turn-committed / turn-failed), each stamped with `id: <index>`; the
+// manifest part is backend plumbing and never appears. The pinned 409 bodies
+// ({"code":"turn_in_progress",…} / {"code":"requirements_missing"}) predate
+// the flat error envelope and are preserved verbatim via a custom response
+// type rather than the envelope writers.
+
+// genaiStreamKeepAliveEvery paces `: keep-alive` comments on an idle attached
+// stream so proxies keep the connection open and a dead client is noticed.
+const genaiStreamKeepAliveEvery = 15 * time.Second
+
+func (s *apiServer) CreateTurn(ctx context.Context, request gen.CreateTurnRequestObject) (gen.CreateTurnResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	if request.Body == nil {
+		return nil, errBadRequest("request body is required")
+	}
+	turnID, err := s.deps.GenAISvc.StartTurn(ctx, org, request.ProjectName, genai.TurnInput{
+		// An omitted useCase decodes to "" (the generated type is a plain
+		// string); the service normalizes "" → the generic turn. An explicit
+		// "" is enum-invalid and already rejected by the contract validator.
+		UseCase:        string(request.Body.UseCase),
+		ConversationID: request.ConversationID,
+		Instruction:    request.Body.Instruction,
+		Target:         request.Body.Target,
+		Collab:         request.Body.Collab,
+	})
+	if err != nil {
+		if conflict, ok := turnConflictOf(err); ok {
+			return conflict, nil
+		}
+		return nil, mapGenAITurnError(ctx, err)
+	}
+	return gen.CreateTurn202JSONResponse(models.TurnOutputBody{TurnID: turnID}), nil
+}
+
+func (s *apiServer) GetTurn(ctx context.Context, request gen.GetTurnRequestObject) (gen.GetTurnResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	st, err := s.deps.GenAISvc.TurnStatus(ctx, org, request.ProjectName, request.TurnID)
+	if err != nil {
+		return nil, mapGenAITurnError(ctx, err)
+	}
+	return gen.GetTurn200JSONResponse(turnStatusModel(st)), nil
+}
+
+func (s *apiServer) GetActiveTurn(ctx context.Context, request gen.GetActiveTurnRequestObject) (gen.GetActiveTurnResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	st, err := s.deps.GenAISvc.ActiveTurn(ctx, org, request.ProjectName)
+	if err != nil {
+		return nil, mapGenAITurnError(ctx, err)
+	}
+	if st == nil {
+		return gen.GetActiveTurn204Response{}, nil
+	}
+	return gen.GetActiveTurn200JSONResponse(turnStatusModel(st)), nil
+}
+
+func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnRequestObject) (gen.StreamTurnResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	// ?from replays from an absolute event index. The retired Huma edge also
+	// honored the SSE Last-Event-ID header as a resume cursor (?from wins);
+	// the committed contract does not declare that header parameter, so the
+	// strict interface cannot surface it — a contract defect to fix by adding
+	// the header param to stream-turn (cf. validate-collab-access, which does
+	// declare header params). Until then a header-only resume replays in full.
+	from := 0
+	if request.Params.From != nil && *request.Params.From >= 0 {
+		from = *request.Params.From
+	}
+	sub, err := s.deps.GenAISvc.AttachTurn(ctx, org, request.ProjectName, request.TurnID, from)
+	if err != nil {
+		return nil, mapGenAITurnError(ctx, err) // pre-stream 404 / 409
+	}
+	// The strict wrapper calls Visit after this handler returns — streaming
+	// happens there, so the run closure captures ctx (client-gone signal) and
+	// the subscription.
+	return turnStreamResponse{run: func(w io.Writer, flush func()) {
+		defer sub.Cancel()
+		streamTurnSubscription(ctx, w, flush, sub)
+	}}, nil
+}
+
+func (s *apiServer) GetConversation(ctx context.Context, request gen.GetConversationRequestObject) (gen.GetConversationResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	raw, err := s.deps.GenAISvc.Rehydrate(ctx, org, request.ProjectName, request.ConversationID)
+	if err != nil {
+		return nil, mapGenAIRehydrateError(err)
+	}
+	return conversationJSONResponse(raw), nil
+}
+
+// ---- responses ---------------------------------------------------------------
+
+// turnConflictResponse renders the pinned create-turn 409 bodies verbatim:
+// {"code":"turn_in_progress","activeTurnId":…} and {"code":"requirements_missing"}.
+// These shapes predate the flat error envelope and are pinned by the console,
+// so they bypass the envelope writers via a bespoke response type.
+type turnConflictResponse struct {
+	Code         string `json:"code"`
+	ActiveTurnID string `json:"activeTurnId,omitempty"`
+}
+
+func (r turnConflictResponse) VisitCreateTurnResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	return json.NewEncoder(w).Encode(r)
+}
+
+// turnConflictOf maps the two StartTurn conflict rejections onto their pinned
+// 409 bodies; every other error stays on the envelope path (mapGenAITurnError).
+func turnConflictOf(err error) (gen.CreateTurnResponseObject, bool) {
+	var inProgress *genai.TurnInProgressError
+	if errors.As(err, &inProgress) {
+		return turnConflictResponse{Code: "turn_in_progress", ActiveTurnID: inProgress.ActiveTurnID}, true
+	}
+	if errors.Is(err, genai.ErrRequirementsMissing) {
+		return turnConflictResponse{Code: "requirements_missing"}, true
+	}
+	return nil, false
+}
+
+// turnStreamResponse adapts the SSE loop onto the generated stream-turn
+// response interface: Visit stamps the event-stream preamble (sseStream) and
+// hands the body writer + flush to the captured run closure.
+type turnStreamResponse struct {
+	run func(w io.Writer, flush func())
+}
+
+func (r turnStreamResponse) VisitStreamTurnResponse(w http.ResponseWriter) error {
+	return sseStream(w, r.run)
+}
+
+// conversationJSONResponse writes the agents service's conversation JSON
+// verbatim. The generated 200 type (map[string]interface{}, from the
+// contract's free-form object schema) would re-encode the payload — losing
+// number fidelity and key order — so the raw passthrough keeps the byte-exact
+// body the retired Huma edge served.
+type conversationJSONResponse json.RawMessage
+
+func (r conversationJSONResponse) VisitGetConversationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write(r)
+	return err
+}
+
+// turnStatusModel converts the feature's read view into the contract schema
+// type (field-for-field; the JSON tags are identical).
+func turnStatusModel(st *genai.TurnStatus) models.TurnStatus {
+	return models.TurnStatus{
+		TurnID:         st.TurnID,
+		ConversationID: st.ConversationID,
+		UseCase:        st.UseCase,
+		Status:         st.Status,
+		CommitSha:      st.CommitSHA,
+		Reason:         st.Reason,
+		Paths:          st.Paths,
+		NoChanges:      st.NoChanges,
+		Message:        st.Message,
+		CreatedAt:      st.CreatedAt,
+		UpdatedAt:      st.UpdatedAt,
+	}
+}
+
+// ---- streaming ----------------------------------------------------------------
+
+// streamTurnSubscription writes a subscription as SSE: replayed then live
+// events, each as `id: <index>` + `data: <raw part>`, and — once the terminal
+// event has been written — the trailing `data: [DONE]`. A subscriber dropped
+// for falling behind (or an expired buffer) ends WITHOUT [DONE]; the client
+// resumes with ?from. Keep-alive comments pace idle waits.
+func streamTurnSubscription(ctx context.Context, w io.Writer, flush func(), sub *genai.TurnSubscription) {
+	writeEvent := func(ev genai.BrokerEvent) bool {
+		if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", ev.Index, ev.Data); err != nil {
+			return false
+		}
+		flush()
+		return true
+	}
+	done := func() {
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		flush()
+	}
+
+	for _, ev := range sub.Replay {
+		if !writeEvent(ev) {
+			return
+		}
+		if ev.Terminal {
+			done()
+			return
+		}
+	}
+	keepAlive := time.NewTicker(genaiStreamKeepAliveEvery)
+	defer keepAlive.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return // client went away
+		case <-keepAlive.C:
+			if _, err := io.WriteString(w, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flush()
+		case ev, ok := <-sub.C:
+			if !ok {
+				return // dropped subscriber / expired buffer — no [DONE]
+			}
+			if !writeEvent(ev) {
+				return
+			}
+			if ev.Terminal {
+				done()
+				return
+			}
+		}
+	}
+}
+
+// ---- error mapping --------------------------------------------------------------
+
+// mapGenAITurnError maps pre-202/pre-stream turn failures onto the envelope.
+// The two StartTurn conflict rejections are handled before this mapper
+// (turnConflictOf — their pinned bodies bypass the envelope); upstream agents
+// failures ride the shared edge policy (502 default, no overrides — dispatch
+// happens post-202, so upstream errors here are limited to rehydrate-like
+// paths).
+func mapGenAITurnError(ctx context.Context, err error) error {
+	if mapped, ok := mapAgentsUpstreamError(err, nil); ok {
+		return mapped
+	}
+	switch {
+	case errors.Is(err, genai.ErrProjectRepoNotFound):
+		return errNotFound("project repository not found")
+	case errors.Is(err, genai.ErrTurnNotFound):
+		return errNotFound("turn not found")
+	case errors.Is(err, genai.ErrInvalidUseCase):
+		return errBadRequest("invalid use case")
+	case errors.Is(err, genai.ErrInvalidConversationID):
+		return errBadRequest("invalid conversation id")
+	case errors.Is(err, genai.ErrEmptyInstruction):
+		return errBadRequest(genai.ErrEmptyInstruction.Error())
+	case errors.Is(err, genai.ErrCollabNoToken):
+		return errBadRequest(genai.ErrCollabNoToken.Error())
+	case errors.Is(err, genai.ErrNoAnthropicKey):
+		return errBadRequest(genai.ErrNoAnthropicKey.Error())
+	case errors.Is(err, genai.ErrTurnBufferTruncated):
+		return errConflict(genai.ErrTurnBufferTruncated.Error())
+	case errors.Is(err, genai.ErrSkillsRepoUnavailable):
+		// The org's _skills repo is unusable (row missing/unprovisionable or
+		// backing repo gone — e.g. deleted externally under a lingering row).
+		// A platform-side failure, not a client error: 503 with a clear
+		// message, cause in the logs. Recovery is a manual operator action
+		// today (drop the stale `_skills` row; the next resolve re-provisions).
+		slog.ErrorContext(ctx, "genai turn: org skills repository unavailable", "error", err)
+		return &apiError{http.StatusServiceUnavailable, "service_unavailable",
+			"org skills repository unavailable — contact your platform admin", nil}
+	default:
+		return genaiInternalError(ctx, "genai turn", err)
+	}
+}
+
+func mapGenAIRehydrateError(err error) error {
+	// The rehydrate handler does not thread its request ctx into the mapper;
+	// the internal-error log carries the cause, which is what matters here.
+	ctx := context.Background()
+	switch {
+	case errors.Is(err, genai.ErrConversationNotFound):
+		return errNotFound("conversation not found")
+	case errors.Is(err, genai.ErrProjectRepoNotFound):
+		return errNotFound("project repository not found")
+	case errors.Is(err, genai.ErrInvalidConversationID):
+		return errBadRequest("invalid conversation id")
+	default:
+		if mapped, ok := mapAgentsUpstreamError(err, nil); ok {
+			return mapped
+		}
+		return genaiInternalError(ctx, "genai rehydrate", err)
+	}
+}
+
+// genaiInternalError is the single opaque-500 exit for the genai edge: it logs
+// the underlying cause (nothing else in the default branch does — the client
+// sees only "internal error") and returns the pinned 500. Every default-500
+// path routes through here so a swallowed cause can never reach production
+// again.
+func genaiInternalError(ctx context.Context, scope string, err error) error {
+	slog.ErrorContext(ctx, "genai: unmapped internal error", "scope", scope, "error", err)
+	return errInternal("internal error")
+}

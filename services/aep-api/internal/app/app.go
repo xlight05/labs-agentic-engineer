@@ -764,7 +764,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		Config: cfg,
 		// Runner callbacks are the internal Huma surface (InternalDeps); only the
 		// connect-callback + webhook controllers remain raw handlers. Every other
-		// feature registers code-first via params.HumaDeps below.
+		// feature registers code-first via params.Deps below.
 		InternalDeps: api.InternalDeps{
 			CredsRefresh: credRefreshService,
 			RunnerAuth:   runnerAuth,
@@ -798,7 +798,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// Code-first OpenAPI (Huma) feature dependencies. api.NewHandler creates the
 	// Huma API on apiMux and registers every migrated feature via
 	// RegisterAllHuma. See docs/design/bff-openapi-huma-migration.md.
-	params.HumaDeps = api.HumaDeps{
+	params.Deps = api.Deps{
 		ProjectSvc:       projectService,
 		OrgSvc:           organizationService,
 		ComponentSvc:     componentService,
@@ -823,7 +823,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		FilesSvc:         filesSvc,
 		ArtifactSvc:      artifactSvcGit,
 		GenAISvc:         genaiSvc,
-		// BuildSvc is assigned below (params.HumaDeps.BuildSvc), after the
+		// BuildSvc is assigned below (params.Deps.BuildSvc), after the
 		// external-resource provisioner exists — its InputsCoordinator stages the
 		// drawer's external-config secrets through that provisioner's SM-API write.
 		GitHubAppSlug:     cfg.GitHubAppSlug,
@@ -854,11 +854,11 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// list/stepper read. Write side is a plain userJWT-secured endpoint (no
 	// separate service-auth scheme yet) — see rcaagent_huma.go.
 	rcaAgentReportRepo := repositories.NewRcaAgentReportRepository(db)
-	params.HumaDeps.RcaAgentReportSvc = rcaagent.NewRcaAgentReportService(rcaAgentReportRepo, executionRepo)
+	params.Deps.RcaAgentReportSvc = rcaagent.NewRcaAgentReportService(rcaAgentReportRepo, executionRepo)
 	params.MCPOrgEndpoints = orgEndpointCatalog
 	resourceTypeCatalog := resources.NewResourceTypeCatalog(resourceClient)
 	params.MCPResourceTypes = resourceTypeCatalog
-	params.HumaDeps.ResourceTypeCatalog = resourceTypeCatalog
+	params.Deps.ResourceTypeCatalog = resourceTypeCatalog
 	// Endpoint spec discovery: the read-only remote-git reader an agent uses to
 	// read a provider's OpenAPI file from its own repo (Contents + Code Search,
 	// no clone). It resolves the org's credential (token + owner) from
@@ -908,7 +908,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 			designComponents{store: artifactStore},
 		),
 	})
-	params.HumaDeps.BuildSvc = buildSvc
+	params.Deps.BuildSvc = buildSvc
 	platformProvisioner := resources.NewOCNativeProvisioner(resourceClient)
 	provisioningSvc := provisioning.NewService(provisioning.Deps{
 		Issues:    issueService,
@@ -924,12 +924,12 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		Access:    repositories.NewAccessRequestRepository(db),
 		Providers: orgEndpointCatalog,
 	})
-	params.HumaDeps.ProvisioningSvc = provisioningSvc
+	params.Deps.ProvisioningSvc = provisioningSvc
 	// The build dependency-drawer preflight (issue #164): walks the design at HEAD
 	// and emits a drawer item per dependency that still needs input, filtering out
 	// anything already provisioned OR in-flight (buildProvisionStatus collapses the
 	// provisioning tri-state onto the "already handled" bool).
-	params.HumaDeps.PreflightSvc = build.NewPreflightService(build.PreflightDeps{
+	params.Deps.PreflightSvc = build.NewPreflightService(build.PreflightDeps{
 		Design: designComponents{store: artifactStore},
 		Status: buildProvisionStatus{svc: provisioningSvc},
 	})

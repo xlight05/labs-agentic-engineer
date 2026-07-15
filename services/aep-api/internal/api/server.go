@@ -20,18 +20,16 @@ import (
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
-	"github.com/wso2/aep/aep-api/internal/platform/humakit"
+	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 )
 
 // apiServer implements the generated strict interface (gen.StrictServerInterface)
-// for the public /api/v1 edge. Migrated operations are real methods in the
-// per-feature handlers_*.go files; everything else falls through to the
-// embedded stubServer's 501 until its feature migrates (issue 003). Handlers
-// read the gate-bound org via tenant.BoundOrgFromContext and pass it to
-// services as an explicit argument — services never dig org out of context.
+// for the public /api/v1 edge — every operation of the committed contract, one
+// per-feature handlers_*.go file. Handlers read the gate-bound org via
+// tenant.BoundOrgFromContext and pass it to services as an explicit argument —
+// services never dig org out of context.
 type apiServer struct {
-	stubServer
-	deps HumaDeps
+	deps Deps
 }
 
 var _ gen.StrictServerInterface = (*apiServer)(nil)
@@ -48,7 +46,7 @@ var _ gen.StrictServerInterface = (*apiServer)(nil)
 //
 // The caller mounts the result under the outer jwt → orgensure → gate-mode
 // middleware (mountSurfaces), exactly where the Huma mux used to sit.
-func newAPIV1Handler(deps HumaDeps) http.Handler {
+func newAPIV1Handler(deps Deps) http.Handler {
 	strict := gen.NewStrictHandlerWithOptions(
 		&apiServer{deps: deps},
 		[]gen.StrictMiddlewareFunc{tenantGate},
@@ -60,7 +58,7 @@ func newAPIV1Handler(deps HumaDeps) http.Handler {
 
 	mux := http.NewServeMux()
 	gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
-		BaseURL:          humakit.APIV1,
+		BaseURL:          httpkit.APIV1,
 		BaseRouter:       mux,
 		ErrorHandlerFunc: writeRequestError,
 	})
@@ -71,7 +69,7 @@ func newAPIV1Handler(deps HumaDeps) http.Handler {
 	// Single-segment requests keep hitting the generated pattern (more
 	// specific); multi-segment ones land here. PathValue("path") serves both.
 	siw := &gen.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: writeRequestError}
-	mux.HandleFunc("GET "+humakit.APIV1+"/projects/{projectName}/files/{path...}", siw.ReadFile)
+	mux.HandleFunc("GET "+httpkit.APIV1+"/projects/{projectName}/files/{path...}", siw.ReadFile)
 
 	return requestValidator(mux)
 }
@@ -94,3 +92,19 @@ func registerContractDocs(mux *http.ServeMux) {
 		_, _ = w.Write([]byte(docsHTML))
 	})
 }
+
+// docsHTML is the Stoplight Elements docs UI, rendered against the committed
+// contract served at /openapi.yaml (with ./components.yaml beside it).
+const docsHTML = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>AEP BFF API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+  </head>
+  <body>
+    <elements-api apiDescriptionUrl="/openapi.yaml" router="hash" layout="sidebar"></elements-api>
+  </body>
+</html>`
