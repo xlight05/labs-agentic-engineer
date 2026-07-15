@@ -17,20 +17,15 @@
  */
 
 /**
- * Human-readable message for a failed BFF call.
- *
- * The BFF is cutting over from RFC 9457 problem-details ({title, detail})
- * to the flat {code, message} envelope; this reads both dialects during
- * the migration window. Once the backend cutover ships everywhere, drop
- * the detail/title fallback and read only `message`.
+ * Human-readable message for a failed BFF call. Every error response is the
+ * flat contract envelope {code, message, details?}; `message` is the
+ * user-facing text (fallback covers network failures and non-envelope
+ * bodies from intermediaries).
  */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === "object") {
-    const e = error as Record<string, unknown>;
-    for (const key of ["message", "detail", "title"] as const) {
-      const v = e[key];
-      if (typeof v === "string" && v.length > 0) return v;
-    }
+    const v = (error as Record<string, unknown>).message;
+    if (typeof v === "string" && v.length > 0) return v;
   }
   return fallback;
 }
