@@ -22,7 +22,8 @@ import "embed"
 // (packages/contracts/api/v1 — the source of truth). `make gen-api` refreshes
 // the vendor alongside the generated code; go:embed cannot reach across the
 // module boundary, same posture as skills/embedded. Consumed by the request
-// validator middleware and the /openapi.yaml + /components.yaml routes.
+// validator middleware and the contract arch-guard tests; deliberately NOT
+// served over HTTP — the contract is a build-time artifact.
 //
 //go:embed contract/openapi.yaml contract/components.yaml
 var ContractFS embed.FS

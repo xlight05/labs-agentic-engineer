@@ -47,7 +47,7 @@ import (
 //	dev/test       /_dev/v1             none — registration-gated to dev tier      dev.go · RegisterAllDev
 //	               (gated mount)        + on no HTTPRoute (loopback only)           (no spec)
 //
-//	discovery: /healthz, /auth/external/jwks.json, /openapi.yaml, /docs — public, no auth.
+//	discovery: /healthz, /auth/external/jwks.json — public, no auth.
 //
 // The reusable identity primitive underneath both S2S directions: the BFF is the
 // single issuer of org-bearing RS256 tokens (internal/platform/auth.TaskTokenManager
@@ -89,12 +89,12 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// into context, handed to services explicitly; carve-outs are enumerated in
 	// tenantGateCarveOuts. Requests are validated against the committed contract
 	// before any handler runs (validator.go). apiV1 mounts under the jwt +
-	// orgensure middleware applied to "/api/" below; the committed spec + docs
-	// are served on the outer mux.
+	// orgensure middleware applied to "/api/" below. The contract itself is
+	// not served over HTTP — it is a build-time artifact
+	// (packages/contracts/api/v1, embedded only for the validator).
 	gateMode := tenant.ParseGateMode(params.Config.TenantGateMode)
 	slog.Info("tenant gate active", "mode", string(gateMode))
 	apiV1 := newAPIV1Handler(params.Deps)
-	registerContractDocs(mux)
 
 	// ── dev/test surface (/_dev/v1) ──────────────────────────────────────────
 	// Local-only tooling, no request auth by design; safety is structural

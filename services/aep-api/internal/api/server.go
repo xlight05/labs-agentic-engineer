@@ -90,38 +90,3 @@ func capRequestBody(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-// registerContractDocs serves the committed contract (embedded, byte-for-byte)
-// and the docs UI on the outer mux — public, no JWT, same posture as before.
-// components.yaml is served beside openapi.yaml so $ref resolution works for
-// docs tooling fetching over HTTP.
-func registerContractDocs(mux *http.ServeMux) {
-	serveYAML := func(name string) http.HandlerFunc {
-		return func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/yaml")
-			_, _ = w.Write(mustReadContract(name))
-		}
-	}
-	mux.HandleFunc("GET /openapi.yaml", serveYAML("contract/openapi.yaml"))
-	mux.HandleFunc("GET /components.yaml", serveYAML("contract/components.yaml"))
-	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(docsHTML))
-	})
-}
-
-// docsHTML is the Stoplight Elements docs UI, rendered against the committed
-// contract served at /openapi.yaml (with ./components.yaml beside it).
-const docsHTML = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>AEP BFF API</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
-  </head>
-  <body>
-    <elements-api apiDescriptionUrl="/openapi.yaml" router="hash" layout="sidebar"></elements-api>
-  </body>
-</html>`
