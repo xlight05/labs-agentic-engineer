@@ -736,15 +736,11 @@ func Test202Flow_CommitLandsAndStreamReplays(t *testing.T) {
 	if !done2 || len(fromEvents) != 2 || fromEvents[0].id != 2 {
 		t.Errorf("from=2 replay = %+v done=%v", fromEvents, done2)
 	}
-	// CONTRACT DEFECT (stream-turn): the committed contract does not declare
-	// the Last-Event-ID header parameter, so the strict interface cannot see
-	// it — a header-only resume currently replays IN FULL (the Huma edge
-	// resumed at last+1). This pins today's best-effort behavior; restore the
-	// trimmed-replay assertion (len 2, first id 2) once the header param is
-	// added to the contract and honored again.
+	// Last-Event-ID names the last RECEIVED event — replay resumes at the
+	// next index (the SSE auto-reconnect contract, declared as a header param).
 	lastEvents, done3, _ := r.streamEvents(t, turnID, "", map[string]string{"Last-Event-ID": "1"})
-	if !done3 || len(lastEvents) != 4 || lastEvents[0].id != 0 {
-		t.Errorf("Last-Event-ID=1 replay (header undeclared → full) = %+v done=%v", lastEvents, done3)
+	if !done3 || len(lastEvents) != 2 || lastEvents[0].id != 2 {
+		t.Errorf("Last-Event-ID=1 replay = %+v done=%v", lastEvents, done3)
 	}
 	// from still wins over (the unread) Last-Event-ID.
 	winEvents, _, _ := r.streamEvents(t, turnID, "?from=3", map[string]string{"Last-Event-ID": "0"})

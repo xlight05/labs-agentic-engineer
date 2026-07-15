@@ -497,14 +497,14 @@ func TestListBuilds_NewestFirstOneEntryPerTag(t *testing.T) {
 	if v2.Tasks.Total != 4 || v2.Tasks.Done != 1 || v2.Tasks.Failed != 1 || v2.Tasks.Active != 2 {
 		t.Errorf("v2 tasks = %+v, want {4,1,1,2}", v2.Tasks)
 	}
-	if !v2.StartedAt.Equal(t0.Add(2*time.Hour)) || !v2.CompletedAt.IsZero() {
+	if !v2.StartedAt.Equal(t0.Add(2*time.Hour)) || v2.CompletedAt != nil {
 		t.Errorf("v2 times = %v/%v, want startedAt=+2h and no completedAt while running", v2.StartedAt, v2.CompletedAt)
 	}
 	v1 := builds[1]
 	if v1.Tag != "v1" || v1.Status != "completed" {
 		t.Errorf("builds[1] = %+v, want the completed v1 (newest run wins the tag)", v1)
 	}
-	if v1.CompletedAt.IsZero() || !v1.CompletedAt.Equal(t0.Add(90*time.Minute)) {
+	if v1.CompletedAt == nil || !v1.CompletedAt.Equal(t0.Add(90*time.Minute)) {
 		t.Errorf("v1 completedAt = %v, want the terminal row's updatedAt", v1.CompletedAt)
 	}
 }

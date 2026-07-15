@@ -99,6 +99,12 @@ func requestValidator(next http.Handler) http.Handler {
 // writeValidationError maps a kin-openapi request-validation failure onto the
 // envelope: 400 validation_failed with one details entry per schema violation.
 func writeValidationError(w http.ResponseWriter, err error) {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		writeErrorEnvelope(w, http.StatusRequestEntityTooLarge, "request_too_large",
+			"request body exceeds the size limit", nil)
+		return
+	}
 	var reqErr *openapi3filter.RequestError
 	if !errors.As(err, &reqErr) {
 		writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, err.Error(), nil)

@@ -81,6 +81,32 @@ components:
       - commitSha
       - files
       type: object
+    ApplyConflict:
+      additionalProperties: false
+      description: One file whose baseSha no longer matches HEAD.
+      properties:
+        baseSha:
+          type: string
+        currentSha:
+          type: string
+        path:
+          type: string
+      required:
+      - path
+      - baseSha
+      - currentSha
+      type: object
+    ApplyConflicts:
+      additionalProperties: false
+      description: apply-files 409 body — the full conflict set; nothing was applied.
+      properties:
+        conflicts:
+          items:
+            $ref: '#/components/schemas/ApplyConflict'
+          type: array
+      required:
+      - conflicts
+      type: object
     BuildInputItem:
       additionalProperties: false
       properties:
@@ -287,6 +313,8 @@ components:
         completedAt:
           format: date-time
           type: string
+          nullable: true
+          x-go-type: '*time.Time'
         reason:
           description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error,
             surfaced beside the Failed badge in the console.
@@ -407,6 +435,7 @@ components:
       - name
       type: object
     ComponentConfig:
+      nullable: true
       additionalProperties: false
       properties:
         componentName:
@@ -830,6 +859,8 @@ components:
         endedAt:
           format: date-time
           type: string
+          nullable: true
+          x-go-type: '*time.Time'
         id:
           type: string
         kind:
@@ -841,6 +872,8 @@ components:
         startedAt:
           format: date-time
           type: string
+          nullable: true
+          x-go-type: '*time.Time'
         status:
           type: string
       required:
@@ -1272,8 +1305,7 @@ components:
           type: array
           nullable: true
         params:
-          additionalProperties:
-            type: string
+          additionalProperties: {}
           description: Provisioning parameters (override the design defaults)
           type: object
       type: object
@@ -1541,6 +1573,13 @@ components:
     TaskDetail:
       additionalProperties: false
       properties:
+        blockedBy:
+          description: Names of the dependencies this task is waiting on; present when derivedStatus is
+            on_hold.
+          items:
+            type: string
+          type: array
+          nullable: true
         attention:
           items:
             type: string

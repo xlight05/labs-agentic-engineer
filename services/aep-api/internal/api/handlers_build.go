@@ -187,9 +187,7 @@ func toBuildList(l build.BuildList) models.BuildList {
 				Active: b.Tasks.Active,
 			},
 		}
-		if b.CompletedAt != nil {
-			s.CompletedAt = *b.CompletedAt
-		}
+		s.CompletedAt = b.CompletedAt // nil while running — omitted on the wire
 		builds = append(builds, s)
 	}
 	return models.BuildList{Builds: builds}

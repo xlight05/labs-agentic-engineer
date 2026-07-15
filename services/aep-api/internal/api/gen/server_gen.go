@@ -115,6 +115,9 @@ type ListTasksParamsState string
 type StreamTurnParams struct {
 	// From Replay from this absolute event index (wins over Last-Event-ID)
 	From *int `form:"from,omitempty" json:"from,omitempty"`
+
+	// LastEventID SSE auto-reconnect resume cursor: the last frame id the client saw; replay resumes after it. The from query param wins when both are present.
+	LastEventID *int `json:"Last-Event-ID,omitempty"`
 }
 
 // ListRcaAgentReportsParams defines parameters for ListRcaAgentReports.
@@ -2153,6 +2156,27 @@ func (siw *ServerInterfaceWrapper) StreamTurn(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID int
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StreamTurn(w, r, projectName, turnID, params)
 	}))
@@ -3922,6 +3946,20 @@ func (response GetComponentOpenapi200JSONResponse) VisitGetComponentOpenapiRespo
 	return err
 }
 
+type GetComponentOpenapi409JSONResponse externalRef0.ComponentOpenAPI
+
+func (response GetComponentOpenapi409JSONResponse) VisitGetComponentOpenapiResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetComponentOpenapidefaultJSONResponse struct {
 	Body       externalRef0.Error
 	StatusCode int
@@ -4078,6 +4116,20 @@ func (response ApplyFiles200JSONResponse) VisitApplyFilesResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyFiles409JSONResponse externalRef0.ApplyConflicts
+
+func (response ApplyFiles409JSONResponse) VisitApplyFilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

@@ -98,15 +98,14 @@ func (s *apiServer) GetActiveTurn(ctx context.Context, request gen.GetActiveTurn
 
 func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnRequestObject) (gen.StreamTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	// ?from replays from an absolute event index. The retired Huma edge also
-	// honored the SSE Last-Event-ID header as a resume cursor (?from wins);
-	// the committed contract does not declare that header parameter, so the
-	// strict interface cannot surface it — a contract defect to fix by adding
-	// the header param to stream-turn (cf. validate-collab-access, which does
-	// declare header params). Until then a header-only resume replays in full.
+	// ?from wins over Last-Event-ID; the header names the last RECEIVED
+	// event, so resumption starts at the next index.
 	from := 0
-	if request.Params.From != nil && *request.Params.From >= 0 {
+	switch {
+	case request.Params.From != nil && *request.Params.From >= 0:
 		from = *request.Params.From
+	case request.Params.LastEventID != nil:
+		from = *request.Params.LastEventID + 1
 	}
 	sub, err := s.deps.GenAISvc.AttachTurn(ctx, org, request.ProjectName, request.TurnID, from)
 	if err != nil {

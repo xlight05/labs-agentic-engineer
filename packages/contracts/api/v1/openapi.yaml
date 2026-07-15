@@ -1077,6 +1077,13 @@ paths:
               schema:
                 $ref: ./components.yaml#/components/schemas/ComponentOpenAPI
           description: OK
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ComponentOpenAPI
+          description: The component is not an API-exposing service; the body carries componentType
+            for the typed empty state.
         default:
           content:
             application/json:
@@ -1224,6 +1231,12 @@ paths:
               schema:
                 $ref: ./components.yaml#/components/schemas/ApplyResult
           description: OK
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/ApplyConflicts
+          description: One or more files moved past their baseSha — nothing applied.
         default:
           content:
             application/json:
@@ -1589,6 +1602,13 @@ paths:
         name: from
         schema:
           description: Replay from this absolute event index (wins over Last-Event-ID)
+          minimum: -1
+          type: integer
+      - description: 'SSE auto-reconnect resume cursor: the last frame id the client saw; replay
+          resumes after it. The from query param wins when both are present.'
+        in: header
+        name: Last-Event-ID
+        schema:
           type: integer
       responses:
         '200':

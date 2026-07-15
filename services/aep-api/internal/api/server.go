@@ -71,7 +71,24 @@ func newAPIV1Handler(deps Deps) http.Handler {
 	siw := &gen.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: writeRequestError}
 	mux.HandleFunc("GET "+httpkit.APIV1+"/projects/{projectName}/files/{path...}", siw.ReadFile)
 
-	return requestValidator(mux)
+	return capRequestBody(requestValidator(mux))
+}
+
+// maxBodyBytes is the edge-wide request-body ceiling (413 beyond it). 10 MiB
+// was the largest of the retired per-op caps (the files batch apply);
+// import-skill keeps its own tighter in-handler limit.
+const maxBodyBytes = 10 << 20
+
+// capRequestBody bounds every request body before the validator (the first
+// reader) touches it; an oversized body surfaces as *http.MaxBytesError and
+// answers 413 (writeValidationError's dedicated branch).
+func capRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // registerContractDocs serves the committed contract (embedded, byte-for-byte)

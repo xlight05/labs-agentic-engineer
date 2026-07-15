@@ -150,6 +150,18 @@ func (e TurnInputBodyUseCase) Valid() bool {
 	}
 }
 
+// ApplyConflict One file whose baseSha no longer matches HEAD.
+type ApplyConflict struct {
+	BaseSha    string `json:"baseSha"`
+	CurrentSha string `json:"currentSha"`
+	Path       string `json:"path"`
+}
+
+// ApplyConflicts apply-files 409 body — the full conflict set; nothing was applied.
+type ApplyConflicts struct {
+	Conflicts []ApplyConflict `json:"conflicts"`
+}
+
 // ApplyRequest defines model for ApplyRequest.
 type ApplyRequest struct {
 	Deletes []DeleteOp `json:"deletes,omitempty"`
@@ -257,7 +269,7 @@ type BuildStatusTaskStatus string
 
 // BuildSummary One entry of list-project-builds — a spec version tag's newest run. A list read has no live workflow query, so "started" never occurs here.
 type BuildSummary struct {
-	CompletedAt time.Time `json:"completedAt,omitempty"`
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
 
 	// Reason Failure detail for a failed build (empty otherwise) — the devflow's recorded error, surfaced beside the Failed badge in the console.
 	Reason    string             `json:"reason,omitempty"`
@@ -482,14 +494,14 @@ type ErrorDetail struct {
 
 // ExecutionView defines model for ExecutionView.
 type ExecutionView struct {
-	CreatedAt time.Time `json:"createdAt"`
-	EndedAt   time.Time `json:"endedAt,omitempty"`
-	ID        string    `json:"id"`
-	Kind      string    `json:"kind"`
-	Reason    string    `json:"reason,omitempty"`
-	RunName   string    `json:"runName,omitempty"`
-	StartedAt time.Time `json:"startedAt,omitempty"`
-	Status    string    `json:"status"`
+	CreatedAt time.Time  `json:"createdAt"`
+	EndedAt   *time.Time `json:"endedAt,omitempty"`
+	ID        string     `json:"id"`
+	Kind      string     `json:"kind"`
+	Reason    string     `json:"reason,omitempty"`
+	RunName   string     `json:"runName,omitempty"`
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+	Status    string     `json:"status"`
 }
 
 // ExternalResourceDTO defines model for ExternalResourceDTO.
@@ -659,7 +671,7 @@ type ProvisionBody struct {
 	Environments []string `json:"environments,omitempty"`
 
 	// Params Provisioning parameters (override the design defaults)
-	Params map[string]string `json:"params,omitempty"`
+	Params map[string]interface{} `json:"params,omitempty"`
 }
 
 // RcaAgentReportList defines model for RcaAgentReportList.
@@ -769,7 +781,10 @@ type TagList struct {
 
 // TaskDetail defines model for TaskDetail.
 type TaskDetail struct {
-	Attention        []string                 `json:"attention"`
+	Attention []string `json:"attention"`
+
+	// BlockedBy Names of the dependencies this task is waiting on; present when derivedStatus is on_hold.
+	BlockedBy        []string                 `json:"blockedBy,omitempty"`
 	Body             string                   `json:"body,omitempty"`
 	Component        string                   `json:"component,omitempty"`
 	DependsOn        []string                 `json:"dependsOn"`
