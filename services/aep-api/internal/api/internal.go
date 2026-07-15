@@ -85,7 +85,7 @@ func runnerAuthGate(authorizer *auth.RunnerAuthorizer) igen.StrictMiddlewareFunc
 	return func(f igen.StrictHandlerFunc, operationID string) igen.StrictHandlerFunc {
 		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
 			if authorizer == nil {
-				return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "runner auth not configured", nil}
+				return nil, errServiceUnavailable("runner auth not configured")
 			}
 			var executionID string
 			switch req := request.(type) {
@@ -120,7 +120,7 @@ func mapRunnerAuthError(err error) error {
 
 func (s *internalServer) RunnerRefreshCredentials(ctx context.Context, request igen.RunnerRefreshCredentialsRequestObject) (igen.RunnerRefreshCredentialsResponseObject, error) {
 	if s.deps.CredsRefresh == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "credentials refresh not configured", nil}
+		return nil, errServiceUnavailable("credentials refresh not configured")
 	}
 	org := tenant.BoundOrgFromContext(ctx)
 	resp, err := s.deps.CredsRefresh.Refresh(ctx, request.ExecutionID, org)

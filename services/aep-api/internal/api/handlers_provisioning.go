@@ -19,7 +19,6 @@ package api
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
@@ -38,7 +37,7 @@ import (
 
 // errProvisioningUnavailable is the nil-service guard's 503.
 func errProvisioningUnavailable() error {
-	return &apiError{http.StatusServiceUnavailable, "service_unavailable", "provisioning is not configured", nil}
+	return errServiceUnavailable("provisioning is not configured")
 }
 
 func (s *apiServer) ListExternalResources(ctx context.Context, _ gen.ListExternalResourcesRequestObject) (gen.ListExternalResourcesResponseObject, error) {
@@ -89,15 +88,9 @@ func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request gen.P
 	var params map[string]any
 	var envs []string
 	if request.Body != nil {
-		// The contract narrowed params to string values (ProvisionBody.params:
-		// additionalProperties string) where the service — and the retired Huma
-		// shape — accept mixed scalars; widen back for the untouched service.
-		if len(request.Body.Params) > 0 {
-			params = make(map[string]any, len(request.Body.Params))
-			for k, v := range request.Body.Params {
-				params[k] = v
-			}
-		}
+		// ProvisionBody.params is free-form in the contract (mixed scalars —
+		// string, number, boolean — exactly what the service accepts).
+		params = request.Body.Params
 		envs = request.Body.Environments
 	}
 	if err := s.deps.ProvisioningSvc.Provision(ctx, org, request.ProjectName, request.DepName, params, envs); err != nil {

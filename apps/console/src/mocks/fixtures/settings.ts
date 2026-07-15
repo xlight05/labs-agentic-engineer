@@ -65,8 +65,9 @@ export const importWarningsFixture = [
 export const skillsRepoUrl = "https://github.com/acme-dev/org-skills";
 
 export const importFileInvalidError: ApiError = {
-  code: "validation_failed",
-  message: "body.file: not a valid gzip AgentSkills tarball",
+  code: "bad_request",
+  message:
+    "skill validation failed: TARBALL_INVALID: not a valid gzip stream: unexpected EOF",
 };
 
 export const githubConnectedFixture: GitProviderProjection = {
@@ -93,17 +94,37 @@ export const llmConnectedFixture: LLMProjection = {
 
 export const gitProviderValidationError: ApiError = {
   code: "validation_failed",
-  message: "body.gitProvider: the provided PAT could not be validated against GitHub",
+  message: "the provided PAT could not be validated against GitHub",
+  details: [
+    {
+      field: "body.gitProvider",
+      message: "the provided PAT could not be validated against GitHub",
+    },
+  ],
 };
 
 export const llmValidationError: ApiError = {
   code: "validation_failed",
-  message: "body.llm: the provided API key was rejected by Anthropic",
+  message: "the provided API key was rejected by Anthropic",
+  details: [
+    {
+      field: "body.llm",
+      message: "the provided API key was rejected by Anthropic",
+    },
+  ],
 };
 
 export const gitProviderDisconnectRejected: ApiError = {
   code: "validation_failed",
-  message: "body.gitProvider: use POST /config/git-provider/disconnect to disconnect the git provider",
+  message:
+    "use POST /config/git-provider/disconnect to disconnect the git provider",
+  details: [
+    {
+      field: "body.gitProvider",
+      message:
+        "use POST /config/git-provider/disconnect to disconnect the git provider",
+    },
+  ],
 };
 
 export const configLoadError: ApiError = {

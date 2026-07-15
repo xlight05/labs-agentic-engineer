@@ -52,6 +52,9 @@ jobs:
       - name: Test
         run: make test
 
+      - name: Contract codegen freshness (aep-api)
+        run: make -C services/aep-api gen-api-check
+
       - name: Lint
         run: make lint
 

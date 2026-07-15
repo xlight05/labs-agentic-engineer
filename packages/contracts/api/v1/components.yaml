@@ -1039,6 +1039,75 @@ components:
       - dependency
       - reason
       type: object
+    CreateIssueRequest:
+      additionalProperties: false
+      description: Issue to file on the project's repo. dedupeKey makes creation
+        idempotent per open issue (label-encoded), for concurrent alert handlers.
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        labels:
+          items:
+            type: string
+          type: array
+          nullable: true
+        dedupeKey:
+          type: string
+      required:
+      - title
+      - body
+      type: object
+    IssueResult:
+      additionalProperties: false
+      description: Issue metadata after create. deduped=true means an open issue
+        with the same dedupeKey already existed — number/url refer to it.
+      properties:
+        number:
+          format: int64
+          type: integer
+        url:
+          type: string
+        nodeId:
+          type: string
+        deduped:
+          type: boolean
+      required:
+      - number
+      - url
+      - nodeId
+      type: object
+    IssueInfo:
+      additionalProperties: false
+      description: 'One issue from list/search. Field names are CAPITALIZED on
+        the wire (historical shape the deployed aep-mcp-server parses — do not
+        "fix" without a coordinated MCP-server release).'
+      properties:
+        Number:
+          format: int64
+          type: integer
+        Title:
+          type: string
+        Body:
+          type: string
+        URL:
+          type: string
+        State:
+          type: string
+        Labels:
+          items:
+            type: string
+          type: array
+          nullable: true
+      required:
+      - Number
+      - Title
+      - Body
+      - URL
+      - State
+      - Labels
+      type: object
     LLMProjection:
       additionalProperties: false
       properties:
@@ -1209,6 +1278,15 @@ components:
       - ts
       - seq
       - kind
+      type: object
+    PromoteFromIssueRequest:
+      additionalProperties: false
+      properties:
+        componentName:
+          description: Component this issue is about
+          type: string
+      required:
+      - componentName
       type: object
     Project:
       additionalProperties: false
@@ -1867,6 +1945,22 @@ components:
           nullable: true
       required:
       - envVars
+      type: object
+    TurnConflict:
+      additionalProperties: false
+      description: create-turn 409 body. turn_in_progress carries the active
+        turn's id; requirements_missing means the design use-case has no
+        requirements to work from.
+      properties:
+        code:
+          enum:
+          - turn_in_progress
+          - requirements_missing
+          type: string
+        activeTurnId:
+          type: string
+      required:
+      - code
       type: object
     UpdateSkillInput:
       additionalProperties: false

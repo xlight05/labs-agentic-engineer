@@ -17,9 +17,7 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -31,8 +29,11 @@ import (
 // Task reads (list-tasks / get-task) on the strict interface. Org comes from
 // the gate-bound context and is passed to the service explicitly. The command
 // and plan operations the retired Huma surface also carried (plan-tasks,
-// execute-task, hold-task, unhold-task, promote-task-from-issue) are NOT in
-// the committed contract and were deliberately dropped from the HTTP edge.
+// execute-task, hold-task, unhold-task) are NOT in the committed contract and
+// were deliberately dropped from the HTTP edge (parked proposal in
+// packages/contracts/workflows). promote-task-from-issue STAYS: it is the
+// dispatch leg of the SRE/RCA alert handoff, called by the deployed
+// aep-mcp-server (AE-HANDOFF-DESIGN.md).
 
 func (s *apiServer) ListTasks(ctx context.Context, request gen.ListTasksRequestObject) (gen.ListTasksResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
@@ -87,24 +88,10 @@ func (r getTaskJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
 	return writeJSONBody(w, http.StatusOK, task.TaskDetail(r))
 }
 
-// writeJSONBody mirrors the generated JSON visitors: encode to a buffer first
-// (an encoding failure then surfaces as the strict wrapper's 500 envelope, not
-// a half-written body), then stamp headers and copy.
-func writeJSONBody(w http.ResponseWriter, status int, body any) error {
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 // errTasksNotConfigured is the nil-service guard the Huma registration carried
 // (503 "tasks not configured") — kept verbatim on the strict edge.
 func errTasksNotConfigured() error {
-	return &apiError{http.StatusServiceUnavailable, "service_unavailable", "tasks not configured", nil}
+	return errServiceUnavailable("tasks not configured")
 }
 
 // mapTaskReadError translates the read-path sentinels into the envelope,
@@ -115,6 +102,36 @@ func mapTaskReadError(err error) error {
 		return errNotFound("task not found")
 	case errors.Is(err, task.ErrProjectRepoNotFound):
 		return errNotFound(task.ErrProjectRepoNotFound.Error())
+	default:
+		return errInternal("internal error")
+	}
+}
+
+// PromoteTaskFromIssue turns an ad-hoc GitHub issue into a coding Task and
+// dispatches it through the funnel (async 202, empty body). The second half
+// of the SRE/RCA handoff: aep-mcp-server calls this right after create-issue.
+func (s *apiServer) PromoteTaskFromIssue(ctx context.Context, request gen.PromoteTaskFromIssueRequestObject) (gen.PromoteTaskFromIssueResponseObject, error) {
+	if s.deps.TaskCommands == nil {
+		return nil, errServiceUnavailable("tasks not configured")
+	}
+	org := tenant.BoundOrgFromContext(ctx)
+	if err := s.deps.TaskCommands.PromoteAndExecute(ctx, org, request.ProjectName, request.Body.ComponentName, int(request.IssueNumber)); err != nil {
+		return nil, mapTaskCommandError(err)
+	}
+	return gen.PromoteTaskFromIssue202Response{}, nil
+}
+
+// mapTaskCommandError mirrors the retired mapCommandError ladder.
+func mapTaskCommandError(err error) error {
+	switch {
+	case errors.Is(err, task.ErrTaskNotFound):
+		return errNotFound("task not found")
+	case errors.Is(err, task.ErrProjectRepoNotFound):
+		return errNotFound(task.ErrProjectRepoNotFound.Error())
+	case errors.Is(err, task.ErrIssueClosed):
+		return errConflict("issue is closed")
+	case errors.Is(err, task.ErrComponentNameRequired):
+		return errBadRequest(task.ErrComponentNameRequired.Error())
 	default:
 		return errInternal("internal error")
 	}

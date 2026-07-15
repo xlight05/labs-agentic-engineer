@@ -38,7 +38,7 @@ import (
 
 func (s *apiServer) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
 	if s.deps.TaskStream == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "task stream not configured", nil}
+		return nil, errServiceUnavailable("task stream not configured")
 	}
 	org := tenant.BoundOrgFromContext(ctx)
 	run, err := s.deps.TaskStream.OpenTaskLogStream(ctx, org, request.ProjectName, int(request.IssueNumber))

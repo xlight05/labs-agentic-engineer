@@ -762,9 +762,9 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// Controllers
 	params := api.AppParams{
 		Config: cfg,
-		// Runner callbacks are the internal Huma surface (InternalDeps); only the
-		// connect-callback + webhook controllers remain raw handlers. Every other
-		// feature registers code-first via params.Deps below.
+		// Runner callbacks are the internal contract-first surface (InternalDeps);
+		// only the connect-callback + webhook controllers remain raw handlers.
+		// Every other feature is served by the strict handlers via params.Deps.
 		InternalDeps: api.InternalDeps{
 			CredsRefresh: credRefreshService,
 			RunnerAuth:   runnerAuth,
@@ -795,9 +795,8 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		cfg.GitHubAppClientID,
 	)
 
-	// Code-first OpenAPI (Huma) feature dependencies. api.NewHandler creates the
-	// Huma API on apiMux and registers every migrated feature via
-	// RegisterAllHuma. See docs/design/bff-openapi-huma-migration.md.
+	// Strict-handler feature dependencies — everything the contract-first
+	// /api/v1 edge serves (internal/api/handlers_*.go).
 	params.Deps = api.Deps{
 		ProjectSvc:       projectService,
 		OrgSvc:           organizationService,
@@ -807,14 +806,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		IssueSvc:         issueService,
 		TaskReads:        taskReads,
 		TaskCommands:     taskCommands,
-		TaskPlan:         taskPlan,
 		TaskStream:       taskStreamSvc,
-		ComponentClient:  componentClient,
-		IDPSvc:           idpService,
-		CredentialSvc:    credService,
-		DisconnectSvc:    disconnectSvc,
-		BearerSvc:        bearerSvc,
-		AnthropicSvc:     anthropicCredService,
 		OrgConfigSvc:     orgConfigSvc,
 		TaskTokens:       taskTokens,
 		SkillSvc:         skillSvc,
@@ -826,9 +818,6 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		// BuildSvc is assigned below (params.Deps.BuildSvc), after the
 		// external-resource provisioner exists — its InputsCoordinator stages the
 		// drawer's external-config secrets through that provisioner's SM-API write.
-		GitHubAppSlug:     cfg.GitHubAppSlug,
-		BFFPublicURL:      cfg.BFFPublicURL,
-		GitHubAppClientID: cfg.GitHubAppClientID,
 	}
 
 	// Dependency-management MCP discovery readers (agnostic subset — Phase 4 of
@@ -852,7 +841,7 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// Alerts (console issues #154, #155, BE handshake #156): org-scoped store
 	// for RCA-agent reports the console's notification bell and Alerts
 	// list/stepper read. Write side is a plain userJWT-secured endpoint (no
-	// separate service-auth scheme yet) — see rcaagent_huma.go.
+	// separate service-auth scheme yet) — see handlers_rcaagent.go.
 	rcaAgentReportRepo := repositories.NewRcaAgentReportRepository(db)
 	params.Deps.RcaAgentReportSvc = rcaagent.NewRcaAgentReportService(rcaAgentReportRepo, executionRepo)
 	params.MCPOrgEndpoints = orgEndpointCatalog

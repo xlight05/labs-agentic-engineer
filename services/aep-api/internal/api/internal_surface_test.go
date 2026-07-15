@@ -30,9 +30,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"maps"
 	"net/http"
 	"net/http/httptest"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -104,14 +105,14 @@ func TestInternalSurface_RunnerRefresh_Lockstep(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("body: %v\n%s", err, rec.Body.String())
 	}
-	if got, want := sortedKeysOf(body), []string{"expiresAt", "identity", "taskId", "token"}; !equalStrings(got, want) {
+	if got, want := slices.Sorted(maps.Keys(body)), []string{"expiresAt", "identity", "taskId", "token"}; !slices.Equal(got, want) {
 		t.Fatalf("top-level keys drifted: got %v want %v", got, want)
 	}
 	var identity map[string]json.RawMessage
 	if err := json.Unmarshal(body["identity"], &identity); err != nil {
 		t.Fatalf("identity: %v", err)
 	}
-	if got, want := sortedKeysOf(identity), []string{"Email", "Login", "Name"}; !equalStrings(got, want) {
+	if got, want := slices.Sorted(maps.Keys(identity)), []string{"Email", "Login", "Name"}; !slices.Equal(got, want) {
 		t.Fatalf("identity keys drifted (capitalized, runner lockstep): got %v want %v", got, want)
 	}
 }
@@ -137,25 +138,4 @@ func TestInternalSurface_AuthPosture(t *testing.T) {
 	if rec.Code != 403 {
 		t.Fatalf("mismatched execution: want 403, got %d body=%s", rec.Code, rec.Body.String())
 	}
-}
-
-func sortedKeysOf[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

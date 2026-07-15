@@ -32,7 +32,7 @@ import (
 // operation is org-scoped — the tenant gate bound the token org before these
 // run, and the handlers pass it to the service explicitly.
 //
-// Error dialect: build.Run delegates to the same startBuild the non-HTTP
+// Error dialect: build.Run is the same sequence the non-HTTP
 // StartProjectBuild trigger uses, whose error sites still speak the huma-era
 // edge vocabulary (one live copy — no fork until the central *_huma.go
 // deletion). mapBuildRunError translates those onto the flat envelope; the
@@ -82,7 +82,7 @@ func (s *apiServer) ListProjectBuilds(ctx context.Context, request gen.ListProje
 func (s *apiServer) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.PreflightSvc == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "build preflight is not configured", nil}
+		return nil, errServiceUnavailable("build preflight is not configured")
 	}
 	pf, err := s.deps.PreflightSvc.Preflight(ctx, org, request.ProjectName)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *apiServer) GetBuildPreflight(ctx context.Context, request gen.GetBuildP
 }
 
 // mapBuildRunError translates build.Run's failures onto the envelope: the
-// already-running sentinel is a 409, and every startBuild *build.EdgeError
+// already-running sentinel is a 409, and every build.Run *build.EdgeError
 // carries its status, message, and per-file spec-gate details across (a 400
 // with details is the validation_failed dialect).
 func mapBuildRunError(err error) error {
@@ -107,7 +107,7 @@ func mapBuildRunError(err error) error {
 	case http.StatusBadRequest:
 		return &apiError{http.StatusBadRequest, CodeValidationFailed, ee.Message, ee.Details}
 	case http.StatusServiceUnavailable:
-		return &apiError{http.StatusServiceUnavailable, "service_unavailable", ee.Message, nil}
+		return errServiceUnavailable(ee.Message)
 	case http.StatusBadGateway:
 		return errBadGateway(ee.Message)
 	default:

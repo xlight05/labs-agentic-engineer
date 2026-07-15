@@ -18,9 +18,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
@@ -79,29 +77,25 @@ func (s *apiServer) ApplyFiles(ctx context.Context, request gen.ApplyFilesReques
 	res, conflicts, err := s.deps.FilesSvc.Apply(ctx, org, request.ProjectName, applyRequestFromWire(*request.Body))
 	if err != nil {
 		if errors.Is(err, files.ErrApplyConflict) {
-			return applyConflictResponse{Conflicts: conflicts}, nil
+			return applyConflictsToWire(conflicts), nil
 		}
 		return nil, mapFilesError(err)
 	}
 	return gen.ApplyFiles200JSONResponse(applyResultToWire(res)), nil
 }
 
-// applyConflictResponse renders apply-files' 409 verbatim as
-// {"conflicts":[...]} — the frozen conflict contract the FE's baseSha CAS flow
-// consumes (byte-identical to the Huma-era applyConflictError body). Nothing
-// was applied when this is returned. The contract models only the 200 and the
-// default Error envelope for apply-files, so this shape rides a hand-written
-// ResponseObject; the bytes are pinned by files_component_test.go.
-type applyConflictResponse struct {
-	Conflicts []files.Conflict `json:"conflicts"`
-}
-
-func (r applyConflictResponse) VisitApplyFilesResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusConflict)
-	return json.NewEncoder(w).Encode(struct {
-		Conflicts []files.Conflict `json:"conflicts"`
-	}{r.Conflicts})
+// applyConflictsToWire projects the service conflicts onto the contract's
+// declared 409 body (ApplyConflicts — the FE's baseSha CAS flow consumes it;
+// nothing was applied when this is returned). files_component_test.go pins the
+// field set + values.
+func applyConflictsToWire(conflicts []files.Conflict) gen.ApplyFiles409JSONResponse {
+	out := models.ApplyConflicts{Conflicts: make([]models.ApplyConflict, 0, len(conflicts))}
+	for _, c := range conflicts {
+		out.Conflicts = append(out.Conflicts, models.ApplyConflict{
+			Path: c.Path, BaseSha: c.BaseSHA, CurrentSha: c.CurrentSHA,
+		})
+	}
+	return gen.ApplyFiles409JSONResponse(out)
 }
 
 // applyRequestFromWire converts the generated body into the service's shape.

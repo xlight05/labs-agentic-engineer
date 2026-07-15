@@ -129,6 +129,24 @@ func (e TaskStreamEventType) Valid() bool {
 	}
 }
 
+// Defines values for TurnConflictCode.
+const (
+	RequirementsMissing TurnConflictCode = "requirements_missing"
+	TurnInProgress      TurnConflictCode = "turn_in_progress"
+)
+
+// Valid indicates whether the value is a known member of the TurnConflictCode enum.
+func (e TurnConflictCode) Valid() bool {
+	switch e {
+	case RequirementsMissing:
+		return true
+	case TurnInProgress:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TurnInputBodyUseCase.
 const (
 	DesignGenerate       TurnInputBodyUseCase = "design-generate"
@@ -371,6 +389,14 @@ type ConsumerDTO struct {
 	ProjectID     string `json:"projectId"`
 }
 
+// CreateIssueRequest Issue to file on the project's repo. dedupeKey makes creation idempotent per open issue (label-encoded), for concurrent alert handlers.
+type CreateIssueRequest struct {
+	Body      string   `json:"body"`
+	DedupeKey string   `json:"dedupeKey,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Title     string   `json:"title"`
+}
+
 // CreateProjectRequest defines model for CreateProjectRequest.
 type CreateProjectRequest struct {
 	DeploymentPipeline string `json:"deploymentPipeline,omitempty"`
@@ -543,6 +569,24 @@ type InputFailure struct {
 	Reason     string `json:"reason"`
 }
 
+// IssueInfo One issue from list/search. Field names are CAPITALIZED on the wire (historical shape the deployed aep-mcp-server parses — do not "fix" without a coordinated MCP-server release).
+type IssueInfo struct {
+	Body   string   `json:"Body"`
+	Labels []string `json:"Labels"`
+	Number int64    `json:"Number"`
+	State  string   `json:"State"`
+	Title  string   `json:"Title"`
+	URL    string   `json:"URL"`
+}
+
+// IssueResult Issue metadata after create. deduped=true means an open issue with the same dedupeKey already existed — number/url refer to it.
+type IssueResult struct {
+	Deduped bool   `json:"deduped,omitempty"`
+	NodeID  string `json:"nodeId"`
+	Number  int64  `json:"number"`
+	URL     string `json:"url"`
+}
+
 // Lineage defines model for Lineage.
 type Lineage struct {
 	DesignTag string `json:"designTag,omitempty"`
@@ -663,6 +707,12 @@ type ProjectStatus struct {
 
 	// SpecStatus "", draft, approved
 	SpecStatus string `json:"specStatus"`
+}
+
+// PromoteFromIssueRequest defines model for PromoteFromIssueRequest.
+type PromoteFromIssueRequest struct {
+	// ComponentName Component this issue is about
+	ComponentName string `json:"componentName"`
 }
 
 // ProvisionBody defines model for ProvisionBody.
@@ -866,6 +916,15 @@ type TimelineEvent struct {
 	Tool          string `json:"tool,omitempty"`
 	TS            string `json:"ts"`
 }
+
+// TurnConflict create-turn 409 body. turn_in_progress carries the active turn's id; requirements_missing means the design use-case has no requirements to work from.
+type TurnConflict struct {
+	ActiveTurnID string           `json:"activeTurnId,omitempty"`
+	Code         TurnConflictCode `json:"code"`
+}
+
+// TurnConflictCode defines model for TurnConflict.Code.
+type TurnConflictCode string
 
 // TurnInputBody defines model for TurnInputBody.
 type TurnInputBody struct {

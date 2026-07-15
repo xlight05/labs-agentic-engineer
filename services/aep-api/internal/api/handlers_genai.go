@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
@@ -31,6 +32,9 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
 )
+
+// createTurnMaxInstructionBytes mirrors the retired startTurnMaxBodyBytes.
+const createTurnMaxInstructionBytes = 64 << 10
 
 // GenAI feature on the strict interface — the committed-truth turn edge:
 //
@@ -52,6 +56,14 @@ import (
 const genaiStreamKeepAliveEvery = 15 * time.Second
 
 func (s *apiServer) CreateTurn(ctx context.Context, request gen.CreateTurnRequestObject) (gen.CreateTurnResponseObject, error) {
+	// The retired edge capped this body at 64 KiB (it carries no file content —
+	// useCase + instruction + target); the edge-wide 10 MiB cap alone would be
+	// a 160x loosening on a payload that is buffered whole and forwarded to
+	// the agents service.
+	if request.Body != nil && len(request.Body.Instruction) > createTurnMaxInstructionBytes {
+		return nil, &apiError{http.StatusRequestEntityTooLarge, "request_too_large",
+			"instruction exceeds the size limit", nil}
+	}
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body == nil {
 		return nil, errBadRequest("request body is required")
@@ -105,7 +117,11 @@ func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnReques
 	case request.Params.From != nil && *request.Params.From >= 0:
 		from = *request.Params.From
 	case request.Params.LastEventID != nil:
-		from = *request.Params.LastEventID + 1
+		// Opaque per the SSE spec: malformed values are ignored (full replay),
+		// matching the retired edge's lenient Atoi.
+		if last, err := strconv.Atoi(*request.Params.LastEventID); err == nil {
+			from = last + 1
+		}
 	}
 	sub, err := s.deps.GenAISvc.AttachTurn(ctx, org, request.ProjectName, request.TurnID, from)
 	if err != nil {
@@ -131,30 +147,19 @@ func (s *apiServer) GetConversation(ctx context.Context, request gen.GetConversa
 
 // ---- responses ---------------------------------------------------------------
 
-// turnConflictResponse renders the pinned create-turn 409 bodies verbatim:
-// {"code":"turn_in_progress","activeTurnId":…} and {"code":"requirements_missing"}.
-// These shapes predate the flat error envelope and are pinned by the console,
-// so they bypass the envelope writers via a bespoke response type.
-type turnConflictResponse struct {
-	Code         string `json:"code"`
-	ActiveTurnID string `json:"activeTurnId,omitempty"`
-}
-
-func (r turnConflictResponse) VisitCreateTurnResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusConflict)
-	return json.NewEncoder(w).Encode(r)
-}
-
-// turnConflictOf maps the two StartTurn conflict rejections onto their pinned
-// 409 bodies; every other error stays on the envelope path (mapGenAITurnError).
+// turnConflictOf maps the two StartTurn conflict rejections onto the
+// contract's 409 TurnConflict body ({"code":"turn_in_progress","activeTurnId"}
+// / {"code":"requirements_missing"} — declared in the contract, generated
+// type); every other error stays on the envelope path (mapGenAITurnError).
 func turnConflictOf(err error) (gen.CreateTurnResponseObject, bool) {
 	var inProgress *genai.TurnInProgressError
 	if errors.As(err, &inProgress) {
-		return turnConflictResponse{Code: "turn_in_progress", ActiveTurnID: inProgress.ActiveTurnID}, true
+		return gen.CreateTurn409JSONResponse(models.TurnConflict{
+			Code: models.TurnInProgress, ActiveTurnID: inProgress.ActiveTurnID,
+		}), true
 	}
 	if errors.Is(err, genai.ErrRequirementsMissing) {
-		return turnConflictResponse{Code: "requirements_missing"}, true
+		return gen.CreateTurn409JSONResponse(models.TurnConflict{Code: models.RequirementsMissing}), true
 	}
 	return nil, false
 }

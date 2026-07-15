@@ -19,10 +19,12 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -65,10 +67,10 @@ func TestMapGenAITurnError_Table(t *testing.T) {
 }
 
 // TestTurnConflictOf_PinnedBodies pins the two StartTurn conflict rejections'
-// wire shapes — verbatim survivors of the envelope cutover: 409 with
-// {"code":"turn_in_progress","activeTurnId":…} / {"code":"requirements_missing"}
-// (NOT the flat {code,message} envelope). Any other error stays on the
-// envelope path.
+// wire shapes — 409 with {"code":"turn_in_progress","activeTurnId":…} /
+// {"code":"requirements_missing"} (NOT the flat {code,message} envelope;
+// declared in the contract as TurnConflict and served via the generated
+// type). Field set + values are the contract; JSON key order is not.
 func TestTurnConflictOf_PinnedBodies(t *testing.T) {
 	resp, ok := turnConflictOf(fmt.Errorf("start turn: %w", &genai.TurnInProgressError{ActiveTurnID: "t1"}))
 	if !ok {
@@ -81,8 +83,12 @@ func TestTurnConflictOf_PinnedBodies(t *testing.T) {
 	if rec.Code != 409 {
 		t.Errorf("turn-in-progress status = %d, want 409", rec.Code)
 	}
-	if got := strings.TrimSpace(rec.Body.String()); got != `{"code":"turn_in_progress","activeTurnId":"t1"}` {
-		t.Errorf("turn-in-progress body = %s", got)
+	var inProgress map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &inProgress); err != nil {
+		t.Fatalf("turn-in-progress body not JSON: %v", err)
+	}
+	if !reflect.DeepEqual(inProgress, map[string]string{"code": "turn_in_progress", "activeTurnId": "t1"}) {
+		t.Errorf("turn-in-progress body = %s", rec.Body.String())
 	}
 
 	resp, ok = turnConflictOf(genai.ErrRequirementsMissing)
@@ -96,8 +102,12 @@ func TestTurnConflictOf_PinnedBodies(t *testing.T) {
 	if rec.Code != 409 {
 		t.Errorf("requirements-missing status = %d, want 409", rec.Code)
 	}
-	if got := strings.TrimSpace(rec.Body.String()); got != `{"code":"requirements_missing"}` {
-		t.Errorf("requirements-missing body = %s", got)
+	var missing map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &missing); err != nil {
+		t.Fatalf("requirements-missing body not JSON: %v", err)
+	}
+	if !reflect.DeepEqual(missing, map[string]string{"code": "requirements_missing"}) {
+		t.Errorf("requirements-missing body = %s", rec.Body.String())
 	}
 
 	if _, ok := turnConflictOf(genai.ErrTurnNotFound); ok {

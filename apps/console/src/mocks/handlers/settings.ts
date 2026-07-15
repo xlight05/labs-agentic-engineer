@@ -18,6 +18,8 @@
 
 import { http, HttpResponse } from "msw";
 import type { components } from "../../generated/aep-api";
+
+type ApiError = components["schemas"]["Error"];
 import {
   configLoadError,
   gitProviderDisconnectRejected,
@@ -55,7 +57,7 @@ function scenario(): SettingsScenario {
   );
 }
 
-function errorJson(body: object, status: number) {
+function errorJson(body: ApiError, status: number) {
   return HttpResponse.json(body, { status });
 }
 

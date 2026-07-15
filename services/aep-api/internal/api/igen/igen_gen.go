@@ -39,7 +39,7 @@ type ErrorDetail struct {
 	Message string `json:"message"`
 }
 
-// Identity Git commit identity. Field names are capitalized on the wire (historical runner lockstep — do not "fix").
+// Identity Git commit identity. Field names are CAPITALIZED on the wire (historical lockstep — changing them needs a coordinated runner release). KNOWN GAP: the runner's credhelper currently reads lowercase keys, so its identity-drift rewrite never fires; fix belongs runner-side (case-tolerant parse), not here.
 type Identity struct {
 	Email string `json:"Email"`
 	Login string `json:"Login"`

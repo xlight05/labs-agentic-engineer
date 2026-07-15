@@ -194,9 +194,9 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 // --- decode helpers ---------------------------------------------------------
 
 type cfgProblem struct {
-	Code    string `json:"code"`
-	Detail  string `json:"message"`
-	Errors  []struct {
+	Code   string `json:"code"`
+	Detail string `json:"message"`
+	Errors []struct {
 		Message  string `json:"message"`
 		Location string `json:"field"`
 	} `json:"details"`
@@ -461,7 +461,7 @@ func TestConfigComponent_C3_ProbeFailsOldKeyStaysActive(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("probe fail: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeCfgProblem(t, resp.Body.String()); len(p.Errors) == 0 || p.Errors[0].Location != "body.llm" {
+	if p := componenttest.DecodeEnvelope(t, resp.Body.String()); len(p.Details) == 0 || p.Details[0].Field != "body.llm" {
 		t.Fatalf("400 must point at body.llm: %s", resp.Body.String())
 	}
 	// The old key is untouched.
@@ -546,7 +546,7 @@ func TestConfigComponent_D2_PatProbeFails(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("probe fail: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeCfgProblem(t, resp.Body.String()); len(p.Errors) == 0 || p.Errors[0].Location != "body.gitProvider" {
+	if p := componenttest.DecodeEnvelope(t, resp.Body.String()); len(p.Details) == 0 || p.Details[0].Field != "body.gitProvider" {
 		t.Fatalf("400 must point at body.gitProvider: %s", resp.Body.String())
 	}
 	// Nothing persisted.
@@ -574,8 +574,8 @@ func TestConfigComponent_D4_NullPointsAtDisconnect(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("gitProvider null: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	p := decodeCfgProblem(t, resp.Body.String())
-	if len(p.Errors) == 0 || p.Errors[0].Location != "body.gitProvider" || !strings.Contains(p.Detail, "disconnect") {
+	p := componenttest.DecodeEnvelope(t, resp.Body.String())
+	if len(p.Details) == 0 || p.Details[0].Field != "body.gitProvider" || !strings.Contains(p.Message, "disconnect") {
 		t.Fatalf("400 must point at the disconnect action: %s", resp.Body.String())
 	}
 }
@@ -598,7 +598,7 @@ func TestConfigComponent_D5_PatOverAppIsConflict(t *testing.T) {
 	if resp.Code != 409 {
 		t.Fatalf("pat-over-app: want 409, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeCfgProblem(t, resp.Body.String()); len(p.Errors) == 0 || p.Errors[0].Location != "body.gitProvider" {
+	if p := componenttest.DecodeEnvelope(t, resp.Body.String()); len(p.Details) == 0 || p.Details[0].Field != "body.gitProvider" {
 		t.Fatalf("409 must point at body.gitProvider: %s", resp.Body.String())
 	}
 }
@@ -647,7 +647,7 @@ func TestConfigComponent_E3_NullRejected(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("idp null: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeCfgProblem(t, resp.Body.String()); len(p.Errors) == 0 || p.Errors[0].Location != "body.idp" {
+	if p := componenttest.DecodeEnvelope(t, resp.Body.String()); len(p.Details) == 0 || p.Details[0].Field != "body.idp" {
 		t.Fatalf("400 must point at body.idp: %s", resp.Body.String())
 	}
 }
@@ -720,7 +720,7 @@ func TestConfigComponent_F3_AtomicityLLMNotPersistedWhenGitFails(t *testing.T) {
 	if resp.Code != 400 {
 		t.Fatalf("atomic fail: want 400, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if p := decodeCfgProblem(t, resp.Body.String()); len(p.Errors) == 0 || p.Errors[0].Location != "body.gitProvider" {
+	if p := componenttest.DecodeEnvelope(t, resp.Body.String()); len(p.Details) == 0 || p.Details[0].Field != "body.gitProvider" {
 		t.Fatalf("400 must point at body.gitProvider: %s", resp.Body.String())
 	}
 	// The valid llm section must NOT have been persisted (probe-before-persist).

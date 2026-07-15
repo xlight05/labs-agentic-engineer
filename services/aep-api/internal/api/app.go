@@ -36,9 +36,9 @@ import (
 // internalV1 is the path root for the BFF's internal / server-to-server
 // surface: runner-pod callbacks and dev-only helpers. It is deliberately
 // distinct from the client-facing /api/v1 edge namespace (user-JWT,
-// gateway-advertised, defined in the *_huma.go feature files) so each prefix
-// tells the truth about its audience and auth regime, with the version in a
-// fixed slot right after the audience root. These routes mount on the outer
+// gateway-advertised, served contract-first from packages/contracts/api/v1)
+// so each prefix tells the truth about its audience and auth regime, with the
+// version in a fixed slot right after the audience root. These routes mount on the outer
 // mux, escaping the /api/ user-JWT wrapper, and authenticate via their own
 // Task-JWT / publisher-cc posture inside the handler. Never gateway-advertised.
 const internalV1 = "/internal/v1"
@@ -47,23 +47,21 @@ const internalV1 = "/internal/v1"
 type AppParams struct {
 	Config config.Config
 
-	// Deps carries the feature services for the code-first Huma API. main.go
-	// fills it; NewHandler creates the Huma API on apiMux and registers every
-	// migrated feature via RegisterAllHuma. See
-	// docs/design/bff-openapi-huma-migration.md.
+	// Deps carries the feature services the strict handlers call
+	// (internal/api/handlers_*.go — the generated router serves the committed
+	// contract, packages/contracts/api/v1). main.go fills it.
 	Deps Deps
 
-	// Controllers still wired as raw handlers (deferred-from-Huma set):
-	// OrgGitHubController (App-mode connect callback), WebhookController (GitHub
-	// webhook HMAC). The runner callbacks are now the internal Huma surface
-	// (InternalDeps + RegisterAllInternal). See docs/design/internal-s2s-api.md.
+	// Controllers still wired as raw handlers: OrgGitHubController (App-mode
+	// connect callback), WebhookController (GitHub webhook HMAC). The runner
+	// callbacks are the internal contract-first surface (InternalDeps). See
+	// docs/design/internal-s2s-api.md.
 	OrgGitHubController orgcreds.OrgGitHubController
 	WebhookController   webhook.WebhookController
 
-	// InternalDeps carries the services for the internal S2S Huma surface
-	// (runner skills + path-scoped credentials refresh). NewHandler builds the
-	// internal Huma API on its own mux and registers them via RegisterAllInternal;
-	// each op authenticates by construction via auth.ExecutionScopedInput.
+	// InternalDeps carries the services + authorizer for the internal S2S
+	// surface (path-scoped runner credentials refresh), served contract-first
+	// from packages/contracts/api/internal/v1 behind runnerAuthGate.
 	InternalDeps InternalDeps
 
 	ConfigRepo repositories.ConfigRepository

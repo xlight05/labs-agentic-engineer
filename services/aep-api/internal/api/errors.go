@@ -29,15 +29,15 @@ import (
 // details appears only on field-level validation errors. This replaced the
 // RFC 9457 problem-details dialect at the contract-first cutover.
 const (
-	CodeValidationFailed = "validation_failed"
-	CodeBadRequest       = "bad_request"
-	CodeUnauthorized     = "unauthorized"
-	CodeForbidden        = "forbidden"
-	CodeNotFound         = "not_found"
-	CodeConflict         = "conflict"
-	CodeInternal         = "internal_error"
-	CodeBadGateway       = "bad_gateway"
-	CodeNotImplemented   = "not_implemented"
+	CodeValidationFailed   = "validation_failed"
+	CodeBadRequest         = "bad_request"
+	CodeUnauthorized       = "unauthorized"
+	CodeForbidden          = "forbidden"
+	CodeNotFound           = "not_found"
+	CodeConflict           = "conflict"
+	CodeInternal           = "internal_error"
+	CodeBadGateway         = "bad_gateway"
+	CodeServiceUnavailable = "service_unavailable"
 )
 
 // apiError is the transport error the strict handlers and middleware return;
@@ -67,11 +67,8 @@ func errInternal(msg string) error {
 func errBadGateway(msg string) error {
 	return &apiError{http.StatusBadGateway, CodeBadGateway, msg, nil}
 }
-
-// errNotImplemented is what every unmigrated stub returns until its feature
-// moves onto the strict interface (contract-first migration, issue 003).
-func errNotImplemented(op string) error {
-	return &apiError{http.StatusNotImplemented, CodeNotImplemented, "operation not yet implemented: " + op, nil}
+func errServiceUnavailable(msg string) error {
+	return &apiError{http.StatusServiceUnavailable, CodeServiceUnavailable, msg, nil}
 }
 
 // errFromStatus maps a sentinel-classified HTTP status (e.g. an OpenChoreo

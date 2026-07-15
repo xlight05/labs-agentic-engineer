@@ -71,8 +71,11 @@ components:
       x-go-type-import:
         path: github.com/wso2/aep/aep-api/internal/feature/orgcreds
     Identity:
-      description: Git commit identity. Field names are capitalized on the
-        wire (historical runner lockstep — do not "fix").
+      description: 'Git commit identity. Field names are CAPITALIZED on the
+        wire (historical lockstep — changing them needs a coordinated runner
+        release). KNOWN GAP: the runner''s credhelper currently reads
+        lowercase keys, so its identity-drift rewrite never fires; fix belongs
+        runner-side (case-tolerant parse), not here.'
       type: object
       additionalProperties: false
       properties:

@@ -477,6 +477,13 @@ paths:
               schema:
                 $ref: ./components.yaml#/components/schemas/TurnOutputBody
           description: Accepted
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/TurnConflict
+          description: A turn is already running for this project, or the design
+            use-case has no requirements yet.
         default:
           content:
             application/json:
@@ -1285,6 +1292,82 @@ paths:
       summary: Read a spec file at HEAD
       tags:
       - Files
+  /projects/{projectName}/issues:
+    get:
+      operationId: list-issues
+      summary: List/search GitHub issues on a project's repo
+      tags:
+      - Issues
+      security:
+      - userJWT: []
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          type: string
+      - description: Comma-separated GitHub labels to filter by
+        in: query
+        name: labels
+        schema:
+          type: string
+      - description: Keyword search over issue title/body, ranked by distinct-term
+          overlap (title weighted double), capped at 25. Recall-biased — used to
+          surface related issues before filing a new one.
+        in: query
+        name: q
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: ./components.yaml#/components/schemas/IssueInfo
+                type: array
+                nullable: true
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
+    post:
+      operationId: create-issue
+      summary: Create a GitHub issue on a project's repo
+      tags:
+      - Issues
+      security:
+      - userJWT: []
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ./components.yaml#/components/schemas/CreateIssueRequest
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/IssueResult
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
   /projects/{projectName}/spec/collab-session:
     get:
       operationId: get-spec-collab-session
@@ -1512,6 +1595,43 @@ paths:
       summary: Stream a Task's live state (status + executions + unified timeline) as SSE
       tags:
       - Tasks
+  /projects/{projectName}/tasks/{issueNumber}/promote-from-issue:
+    post:
+      operationId: promote-task-from-issue
+      summary: Turn an ad-hoc GitHub issue into a coding Task and dispatch it (async)
+      tags:
+      - Tasks
+      security:
+      - userJWT: []
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          type: string
+      - description: GitHub issue number to promote and dispatch
+        in: path
+        name: issueNumber
+        required: true
+        schema:
+          format: int64
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: ./components.yaml#/components/schemas/PromoteFromIssueRequest
+        required: true
+      responses:
+        '202':
+          description: Accepted — the funnel dispatches out-of-band.
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: ./components.yaml#/components/schemas/Error
+          description: Error
   /projects/{projectName}/turns/active:
     get:
       operationId: get-active-turn
@@ -1605,11 +1725,12 @@ paths:
           minimum: -1
           type: integer
       - description: 'SSE auto-reconnect resume cursor: the last frame id the client saw; replay
-          resumes after it. The from query param wins when both are present.'
+          resumes after it. Opaque per the SSE spec — non-numeric values are ignored (full replay).
+          The from query param wins when both are present.'
         in: header
         name: Last-Event-ID
         schema:
-          type: integer
+          type: string
       responses:
         '200':
           content:

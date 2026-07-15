@@ -21,12 +21,10 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
-	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/internal/platform/validate"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -73,7 +71,7 @@ func (s *apiServer) ListSkills(ctx context.Context, _ gen.ListSkillsRequestObjec
 func (s *apiServer) CreateSkill(ctx context.Context, request gen.CreateSkillRequestObject) (gen.CreateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "skill mutation not configured", nil}
+		return nil, errServiceUnavailable("skill mutation not configured")
 	}
 	in := skills.CreateSkillInput{
 		Name:       request.Body.Name,
@@ -90,7 +88,7 @@ func (s *apiServer) CreateSkill(ctx context.Context, request gen.CreateSkillRequ
 func (s *apiServer) ImportSkill(ctx context.Context, request gen.ImportSkillRequestObject) (gen.ImportSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillImportSvc == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "skill import not configured", nil}
+		return nil, errServiceUnavailable("skill import not configured")
 	}
 	file, err := multipartFormFilePart(request.Body, "file")
 	if err != nil {
@@ -144,8 +142,8 @@ func (s *apiServer) SyncSkills(ctx context.Context, _ gen.SyncSkillsRequestObjec
 
 func (s *apiServer) GetSkill(ctx context.Context, request gen.GetSkillRequestObject) (gen.GetSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	if err := validate.Slug(request.Name); err != nil {
-		return nil, errBadRequest("name: " + err.Error())
+	if err := requireSlug("name", request.Name); err != nil {
+		return nil, err
 	}
 	sk, err := s.deps.SkillSvc.Resolve(ctx, org, request.Name)
 	if err != nil {
@@ -160,10 +158,10 @@ func (s *apiServer) GetSkill(ctx context.Context, request gen.GetSkillRequestObj
 func (s *apiServer) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequestObject) (gen.UpdateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "skill mutation not configured", nil}
+		return nil, errServiceUnavailable("skill mutation not configured")
 	}
-	if err := validate.Slug(request.Name); err != nil {
-		return nil, errBadRequest("name: " + err.Error())
+	if err := requireSlug("name", request.Name); err != nil {
+		return nil, err
 	}
 	in := skills.UpdateSkillInput{
 		SkillMD:    request.Body.SkillMd,
@@ -179,10 +177,10 @@ func (s *apiServer) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequ
 func (s *apiServer) DeleteSkill(ctx context.Context, request gen.DeleteSkillRequestObject) (gen.DeleteSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "skill mutation not configured", nil}
+		return nil, errServiceUnavailable("skill mutation not configured")
 	}
-	if err := validate.Slug(request.Name); err != nil {
-		return nil, errBadRequest("name: " + err.Error())
+	if err := requireSlug("name", request.Name); err != nil {
+		return nil, err
 	}
 	if err := s.deps.SkillMutationSvc.Delete(ctx, org, org, request.Name); err != nil {
 		return nil, mapSkillError(err)

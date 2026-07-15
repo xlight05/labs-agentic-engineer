@@ -18,7 +18,6 @@ package api
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
@@ -35,7 +34,7 @@ import (
 
 func (s *apiServer) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
 	if s.deps.ResourceTypeCatalog == nil {
-		return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "resource-type catalog is not configured", nil}
+		return nil, errServiceUnavailable("resource-type catalog is not configured")
 	}
 	types, err := s.deps.ResourceTypeCatalog.List(ctx)
 	if err != nil {

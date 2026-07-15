@@ -27,26 +27,13 @@ import (
 
 // This file is the strict-server (contract-first) entry surface of the build
 // service: exported, org-explicit methods the internal/api handlers call
-// (handlers_build.go). Run delegates to startBuild — the single live copy of
-// the build sequence, shared with the non-HTTP StartProjectBuild trigger — so
-// its errors keep startBuild's huma-era edge vocabulary until the *_huma.go
-// shells are deleted centrally (the api-layer mapper translates them onto the
-// flat envelope). Status and List are the ports of the retired Huma get/list
-// shells with domain errors; the Huma copies in build_huma.go are dead at
-// runtime and go with the central deletion.
+// (handlers_build.go). Run IS the build sequence (build_service.go), shared
+// with the non-HTTP StartProjectBuild trigger; its edge-mapped failures are
+// *EdgeError values the api-layer mapper copies onto the flat envelope.
 
 // ErrBuildNotFound reports an unknown build tag under the caller's org. The
 // workflow_runs row is the org fence, so a cross-org read lands here too.
 var ErrBuildNotFound = errors.New("build not found")
-
-// Run is the strict build-project entry: validate spec → cut v<N> → start the
-// dev workflow (async). It returns the cut tag on success, OR per-input
-// failures (tag == "", no error — a fail-fast pre-tag result that cut no tag),
-// OR an error: the ErrBuildAlreadyRunning sentinel, or one of startBuild's
-// edge-mapped errors. NOTE: inputs may carry raw secret values — never log.
-func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []BuildInputItem) (string, []InputFailure, error) {
-	return s.startBuild(ctx, orgID, projectID, inputs)
-}
 
 // Status maps the dev workflow's live status (or its workflow_runs row when
 // the live query is unavailable) onto the contract's BuildStatus — the strict

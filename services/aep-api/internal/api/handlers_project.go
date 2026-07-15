@@ -26,7 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/internal/platform/validate"
 )
 
 // Projects feature on the strict interface. Every operation is org-scoped:
@@ -58,8 +57,8 @@ func (s *apiServer) CreateProject(ctx context.Context, request gen.CreateProject
 	// here so GitHub can't silently normalize it into a repo whose actual
 	// name diverges from what we store.
 	if request.Body.RepoName != "" {
-		if err := validate.Slug(request.Body.RepoName); err != nil {
-			return nil, errBadRequest("repoName: " + err.Error())
+		if err := requireSlug("repoName", request.Body.RepoName); err != nil {
+			return nil, err
 		}
 	}
 	p, err := s.deps.ProjectSvc.CreateProject(ctx, org, request.Body)

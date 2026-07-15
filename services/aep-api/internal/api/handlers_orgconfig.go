@@ -66,7 +66,7 @@ func (s *apiServer) StartGitProviderConnect(ctx context.Context, request gen.Sta
 	authorizeURL, err := s.deps.OrgConfigSvc.StartGitHubConnect(ctx, org, actor, installationID)
 	if err != nil {
 		if errors.Is(err, orgconfig.ErrGitHubAppNotConfigured) {
-			return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "github app oauth client not configured", nil}
+			return nil, errServiceUnavailable("github app oauth client not configured")
 		}
 		return nil, errInternal("could not start connect")
 	}
@@ -98,7 +98,7 @@ func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ gen.RotateIdpCl
 	newSecret, err := s.deps.OrgConfigSvc.RotateIDPClientSecret(ctx, org, actor)
 	if err != nil {
 		if errors.Is(err, idp.ErrIDPThunderUnavailable) {
-			return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "Thunder admin client not configured", nil}
+			return nil, errServiceUnavailable("Thunder admin client not configured")
 		}
 		return nil, errInternal("failed to regenerate client secret")
 	}

@@ -397,7 +397,12 @@ func TestComponentComponent_BuildLogs_HarvestedError500(t *testing.T) {
 	// its status is the response code and its detail is the envelope message
 	// (title disappeared with the dialect).
 	got := componenttest.DecodeEnvelope(t, resp.Body.String())
-	var golden componenttest.Problem
+	// The harvested golden is an RFC-9457 problem — decode just the two
+	// fields the dialect mapping preserves (status → code, detail → message).
+	var golden struct {
+		Status int    `json:"status"`
+		Detail string `json:"detail"`
+	}
 	if err := json.Unmarshal(readGolden(t, "get_component_build_logs.json"), &golden); err != nil {
 		t.Fatalf("decode golden: %v", err)
 	}

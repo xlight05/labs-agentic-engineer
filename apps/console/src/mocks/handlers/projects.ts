@@ -1,5 +1,7 @@
 import { http, HttpResponse } from "msw";
 import type { components } from "../../generated/aep-api";
+
+type ApiError = components["schemas"]["Error"];
 import {
   deleteProjectError,
   duplicateProjectError,
@@ -95,7 +97,7 @@ export const projectsHandlers = [
         {
           code: "not_found",
           message: `Project ${String(params.projectName)} not found`,
-        },
+        } satisfies ApiError,
         { status: 404 },
       );
     }
@@ -116,7 +118,7 @@ export const projectsHandlers = [
         {
           code: "not_found",
           message: `Project ${name} not found`,
-        },
+        } satisfies ApiError,
         { status: 404 },
       );
     }

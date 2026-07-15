@@ -17,7 +17,6 @@
 package api
 
 import (
-	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -28,10 +27,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
-	"github.com/wso2/aep/aep-api/internal/feature/idp"
 	"github.com/wso2/aep/aep-api/internal/feature/organization"
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/rcaagent"
@@ -40,9 +37,11 @@ import (
 )
 
 // Deps carries every feature service the strict handlers (handlers_*.go)
-// call. main.go (internal/app) fills it with the real services; component
-// tests fill only what the feature under test needs (untouched fields
-// nil-guard or 503 in their handlers).
+// call — nothing more: a field here means at least one handler reads it
+// (fields whose only consumers were the retired Huma registrations were
+// dropped at the extraction). main.go (internal/app) fills it with the real
+// services; component tests fill only what the feature under test needs
+// (untouched fields nil-guard or 503 in their handlers).
 type Deps struct {
 	ProjectSvc          project.ProjectService
 	OrgSvc              organization.OrganizationService
@@ -54,14 +53,7 @@ type Deps struct {
 	ResourceTypeCatalog dependencies.ResourceTypeLister
 	TaskReads           *task.Reads
 	TaskCommands        *task.Commands
-	TaskPlan            *task.PlanService
 	TaskStream          *execution.TaskStreamService
-	ComponentClient     openchoreo.ComponentClient
-	IDPSvc              idp.IDPService
-	CredentialSvc       *orgcreds.CredentialService
-	DisconnectSvc       *orgcreds.OrgDisconnectService
-	BearerSvc           *orgcreds.BearerService
-	AnthropicSvc        *orgcreds.AnthropicCredentialService
 	OrgConfigSvc        *orgconfig.Service
 	TaskTokens          *auth.TaskTokenManager
 	SkillSvc            *skills.SkillService
@@ -73,7 +65,4 @@ type Deps struct {
 	BuildSvc            *build.Service
 	RcaAgentReportSvc   rcaagent.RcaAgentReportService
 	PreflightSvc        *build.PreflightService
-	GitHubAppSlug       string
-	BFFPublicURL        string
-	GitHubAppClientID   string
 }

@@ -23,14 +23,29 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/getkin/kin-openapi/routers"
 	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
 
 	"github.com/wso2/aep/aep-api/internal/api/gen"
 	"github.com/wso2/aep/aep-api/models"
 )
+
+// contractRouter memoizes the parsed contract + kin router: both are
+// read-only after construction (kin's schema-pattern cache is its own
+// package-level sync.Map), and every handler construction — production once,
+// but one per componenttest harness — would otherwise re-parse ~105 KB of
+// YAML and rebuild the route tree.
+var contractRouter = sync.OnceValue(func() routers.Router {
+	router, err := legacyrouter.NewRouter(loadContract())
+	if err != nil {
+		panic(fmt.Sprintf("contract router: %v", err))
+	}
+	return router
+})
 
 // loadContract parses the embedded committed contract (both documents) into a
 // kin-openapi model. It panics on failure: the contract is compiled into the
@@ -69,11 +84,7 @@ func mustReadContract(name string) []byte {
 //     no-op): authN is the outer JWKS middleware's job and authZ (tenant
 //     gate) runs deny-by-default inside the strict chain.
 func requestValidator(next http.Handler) http.Handler {
-	doc := loadContract()
-	router, err := legacyrouter.NewRouter(doc)
-	if err != nil {
-		panic(fmt.Sprintf("contract router: %v", err))
-	}
+	router := contractRouter()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route, pathParams, err := router.FindRoute(r)
 		if err != nil {
@@ -86,6 +97,13 @@ func requestValidator(next http.Handler) http.Handler {
 			Route:      route,
 			Options: &openapi3filter.Options{
 				AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+				// Multipart bodies (skill import): kin would io.ReadAll the
+				// whole upload and schema-decode every part — including the
+				// binary tarball — only to check the file field is present,
+				// which the handler's own 400 already enforces. The strict
+				// wrapper re-parses the multipart anyway; skip the redundant
+				// 2-3x in-memory copies.
+				ExcludeRequestBody: hasMultipartBody(route),
 			},
 		}
 		if err := openapi3filter.ValidateRequest(r.Context(), input); err != nil {
@@ -94,6 +112,16 @@ func requestValidator(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// hasMultipartBody reports whether the matched operation declares a
+// multipart/form-data request body.
+func hasMultipartBody(route *routers.Route) bool {
+	if route == nil || route.Operation == nil || route.Operation.RequestBody == nil || route.Operation.RequestBody.Value == nil {
+		return false
+	}
+	_, ok := route.Operation.RequestBody.Value.Content["multipart/form-data"]
+	return ok
 }
 
 // writeValidationError maps a kin-openapi request-validation failure onto the

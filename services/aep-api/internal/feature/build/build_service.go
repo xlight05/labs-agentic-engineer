@@ -191,7 +191,7 @@ type BuildList struct {
 // ErrBuildAlreadyRunning is treated as success (nil). Any other failure
 // propagates so the funnel logs it and the sweep heals later.
 func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string) error {
-	_, failures, err := s.startBuild(ctx, orgID, projectID, nil)
+	_, failures, err := s.Run(ctx, orgID, projectID, nil)
 	if err != nil {
 		if errors.Is(err, ErrBuildAlreadyRunning) {
 			return nil
@@ -207,14 +207,14 @@ func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string
 	return nil
 }
 
-// startBuild runs the whole build sequence shared by the HTTP handler and the
-// provider-build trigger. It returns the cut tag on success, OR per-input
+// Run is the whole build sequence — the strict build-project entry
+// (handlers_build.go) and the provider-build trigger share it. It returns the cut tag on success, OR per-input
 // failures (tag == "", no error — a fail-fast pre-tag result that cut no tag),
 // OR an error. Errors are already edge-mapped *EdgeError values EXCEPT the
 // ErrBuildAlreadyRunning sentinel, which each caller interprets for its own
 // context (409 vs. idempotent success). NOTE: inputs may carry raw secret
 // values — it must never be logged.
-func (s *Service) startBuild(ctx context.Context, orgID, projectID string, inputs []BuildInputItem) (string, []InputFailure, error) {
+func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []BuildInputItem) (string, []InputFailure, error) {
 	// An unstartable workflow must never claim a version tag — probe first.
 	if err := s.runner.Ready(); err != nil {
 		return "", nil, &EdgeError{Status: 503, Message: "temporal_unavailable"}

@@ -1,3 +1,6 @@
+import type { components } from "../../generated/aep-api";
+
+type ApiError = components["schemas"]["Error"];
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import {
   componentDeployments,
@@ -90,7 +93,7 @@ export const projectHandlers = [
         {
           code: "not_found",
           message: `no task #${String(params.issueNumber)}`,
-        },
+        } satisfies ApiError,
         { status: 404 },
       );
     }

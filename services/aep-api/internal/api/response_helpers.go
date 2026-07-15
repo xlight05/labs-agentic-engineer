@@ -17,16 +17,30 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 )
 
 // ----------------------------------------------------------------------------
-// Response helpers shared by the org-scoped credential routes.
+// The package's ONE JSON response writer. Buffered: an encode failure
+// surfaces as an error BEFORE headers commit (the strict wrapper then serves
+// its 500 envelope) instead of a half-written body.
 // ----------------------------------------------------------------------------
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+func writeJSONBody(w http.ResponseWriter, status int, body any) error {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		return err
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+// writeJSON is writeJSONBody for raw-route callers with nowhere to send an
+// error (dev routes, the envelope writers).
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	_ = writeJSONBody(w, status, body)
 }

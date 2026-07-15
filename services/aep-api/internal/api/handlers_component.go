@@ -18,7 +18,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -102,7 +101,7 @@ func (s *apiServer) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRe
 	logs, err := s.deps.ComponentSvc.GetBuildLogs(ctx, org, request.ProjectName, request.ComponentName, request.BuildName)
 	if err != nil {
 		if errors.Is(err, component.ErrLogsUnavailable) {
-			return nil, &apiError{http.StatusServiceUnavailable, "service_unavailable", "build logs service not available", nil}
+			return nil, errServiceUnavailable("build logs service not available")
 		}
 		return nil, mapComponentError(err, "failed to get build logs")
 	}
@@ -130,20 +129,6 @@ func (s *apiServer) ListDeployments(ctx context.Context, request gen.ListDeploym
 // have a guaranteed OpenAPI 3.0 doc; non-service components return 409 with
 // the componentType so the UI can render a typed empty state.
 
-// getComponentOpenapi409JSONResponse preserves the legacy 409-with-body quirk:
-// a non-service component answers 409 whose body is the ComponentOpenAPI
-// (carrying componentType), NOT the error envelope. The contract models only
-// the 200 + default-error shapes for this operation, so the response type
-// lives here beside the handler rather than in gen (contract defect noted at
-// the port).
-type getComponentOpenapi409JSONResponse models.ComponentOpenAPI
-
-func (response getComponentOpenapi409JSONResponse) VisitGetComponentOpenapiResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusConflict)
-	return json.NewEncoder(w).Encode(models.ComponentOpenAPI(response))
-}
-
 func (s *apiServer) GetComponentOpenapi(ctx context.Context, request gen.GetComponentOpenapiRequestObject) (gen.GetComponentOpenapiResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
@@ -155,9 +140,14 @@ func (s *apiServer) GetComponentOpenapi(ctx context.Context, request gen.GetComp
 			return nil, errNotFound("no OpenAPI spec for this component")
 		}
 		if errors.Is(err, component.ErrComponentNotService) {
-			// Hand the type back (409) so the client can say "this is a
-			// web-app, not a service". The body still carries componentType.
-			return getComponentOpenapi409JSONResponse(*spec), nil
+			// Hand the type back (409, contract-declared) so the client can
+			// say "this is a web-app, not a service". The body still carries
+			// componentType. Guard nil: only the concrete service happens to
+			// pair the sentinel with a non-nil spec.
+			if spec == nil {
+				return nil, errConflict("component does not expose an API")
+			}
+			return gen.GetComponentOpenapi409JSONResponse(*spec), nil
 		}
 		return nil, mapComponentError(err, "failed to get OpenAPI spec")
 	}
@@ -173,10 +163,7 @@ func (s *apiServer) GetComponentOpenapi(ctx context.Context, request gen.GetComp
 type getComponentConfigNull200Response struct{}
 
 func (getComponentConfigNull200Response) VisitGetComponentConfigResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, err := w.Write([]byte("null\n"))
-	return err
+	return writeJSONBody(w, http.StatusOK, nil) // literal null body
 }
 
 func (s *apiServer) GetComponentConfig(ctx context.Context, request gen.GetComponentConfigRequestObject) (gen.GetComponentConfigResponseObject, error) {

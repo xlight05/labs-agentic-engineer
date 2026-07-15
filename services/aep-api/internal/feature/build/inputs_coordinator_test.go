@@ -105,7 +105,7 @@ func TestBuildProvisionInputs_StagesSecretsAndSplits(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, fails)
 	require.Len(t, pins, 1)
-	require.Equal(t, map[string]string{"STRIPE_ORG": "org_1"}, pins[0].Config)                    // non-secret only
+	require.Equal(t, map[string]string{"STRIPE_ORG": "org_1"}, pins[0].Config) // non-secret only
 	require.Equal(t, map[string]string{"development": "sm://acme/shop/stripe"}, pins[0].SecretRefByEnv)
 	require.Equal(t, map[string]string{"STRIPE_KEY": "sk_live"}, stager.lastSecrets["development"]) // secret staged, not returned
 }

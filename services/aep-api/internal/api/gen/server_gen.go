@@ -93,6 +93,15 @@ type ListFilesParams struct {
 	Prefix *string `form:"prefix,omitempty" json:"prefix,omitempty"`
 }
 
+// ListIssuesParams defines parameters for ListIssues.
+type ListIssuesParams struct {
+	// Labels Comma-separated GitHub labels to filter by
+	Labels *string `form:"labels,omitempty" json:"labels,omitempty"`
+
+	// Q Keyword search over issue title/body, ranked by distinct-term overlap (title weighted double), capped at 25. Recall-biased — used to surface related issues before filing a new one.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
 // GetSpecCollabSessionParams defines parameters for GetSpecCollabSession.
 type GetSpecCollabSessionParams struct {
 	// Authorization Bearer token; the display identity is decoded from it
@@ -116,8 +125,8 @@ type StreamTurnParams struct {
 	// From Replay from this absolute event index (wins over Last-Event-ID)
 	From *int `form:"from,omitempty" json:"from,omitempty"`
 
-	// LastEventID SSE auto-reconnect resume cursor: the last frame id the client saw; replay resumes after it. The from query param wins when both are present.
-	LastEventID *int `json:"Last-Event-ID,omitempty"`
+	// LastEventID SSE auto-reconnect resume cursor: the last frame id the client saw; replay resumes after it. Opaque per the SSE spec — non-numeric values are ignored (full replay). The from query param wins when both are present.
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
 }
 
 // ListRcaAgentReportsParams defines parameters for ListRcaAgentReports.
@@ -161,6 +170,12 @@ type CollectExternalResourceValuesJSONRequestBody = externalRef0.SaveValuesBody
 
 // ApplyFilesJSONRequestBody defines body for ApplyFiles for application/json ContentType.
 type ApplyFilesJSONRequestBody = externalRef0.ApplyRequest
+
+// CreateIssueJSONRequestBody defines body for CreateIssue for application/json ContentType.
+type CreateIssueJSONRequestBody = externalRef0.CreateIssueRequest
+
+// PromoteTaskFromIssueJSONRequestBody defines body for PromoteTaskFromIssue for application/json ContentType.
+type PromoteTaskFromIssueJSONRequestBody = externalRef0.PromoteFromIssueRequest
 
 // CreateRcaAgentReportJSONRequestBody defines body for CreateRcaAgentReport for application/json ContentType.
 type CreateRcaAgentReportJSONRequestBody = externalRef0.CreateRcaAgentReportRequest
@@ -290,6 +305,12 @@ type ServerInterface interface {
 	// Read a spec file at HEAD
 	// (GET /projects/{projectName}/files/{path})
 	ReadFile(w http.ResponseWriter, r *http.Request, projectName string, path string)
+	// List/search GitHub issues on a project's repo
+	// (GET /projects/{projectName}/issues)
+	ListIssues(w http.ResponseWriter, r *http.Request, projectName string, params ListIssuesParams)
+	// Create a GitHub issue on a project's repo
+	// (POST /projects/{projectName}/issues)
+	CreateIssue(w http.ResponseWriter, r *http.Request, projectName string)
 	// Get the collaboration session descriptor for the spec workspace
 	// (GET /projects/{projectName}/spec/collab-session)
 	GetSpecCollabSession(w http.ResponseWriter, r *http.Request, projectName string, params GetSpecCollabSessionParams)
@@ -308,6 +329,9 @@ type ServerInterface interface {
 	// Stream a Task's live state (status + executions + unified timeline) as SSE
 	// (GET /projects/{projectName}/tasks/{issueNumber}/log)
 	StreamTaskLog(w http.ResponseWriter, r *http.Request, projectName string, issueNumber int64)
+	// Turn an ad-hoc GitHub issue into a coding Task and dispatch it (async)
+	// (POST /projects/{projectName}/tasks/{issueNumber}/promote-from-issue)
+	PromoteTaskFromIssue(w http.ResponseWriter, r *http.Request, projectName string, issueNumber int64)
 	// Get the project's running turn (204 when none)
 	// (GET /projects/{projectName}/turns/active)
 	GetActiveTurn(w http.ResponseWriter, r *http.Request, projectName string)
@@ -1774,6 +1798,99 @@ func (siw *ServerInterfaceWrapper) ReadFile(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ListIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListIssues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectName" -------------
+	var projectName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectName", r.PathValue("projectName"), &projectName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectName", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, UserJWTScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIssuesParams
+
+	// ------------- Optional query parameter "labels" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "labels", r.URL.Query(), &params.Labels, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "labels"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "labels", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIssues(w, r, projectName, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateIssue operation middleware
+func (siw *ServerInterfaceWrapper) CreateIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectName" -------------
+	var projectName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectName", r.PathValue("projectName"), &projectName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectName", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, UserJWTScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateIssue(w, r, projectName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSpecCollabSession operation middleware
 func (siw *ServerInterfaceWrapper) GetSpecCollabSession(w http.ResponseWriter, r *http.Request) {
 
@@ -2037,6 +2154,47 @@ func (siw *ServerInterfaceWrapper) StreamTaskLog(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// PromoteTaskFromIssue operation middleware
+func (siw *ServerInterfaceWrapper) PromoteTaskFromIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectName" -------------
+	var projectName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectName", r.PathValue("projectName"), &projectName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectName", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "issueNumber" -------------
+	var issueNumber int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issueNumber", r.PathValue("issueNumber"), &issueNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issueNumber", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, UserJWTScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PromoteTaskFromIssue(w, r, projectName, issueNumber)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetActiveTurn operation middleware
 func (siw *ServerInterfaceWrapper) GetActiveTurn(w http.ResponseWriter, r *http.Request) {
 
@@ -2160,14 +2318,14 @@ func (siw *ServerInterfaceWrapper) StreamTurn(w http.ResponseWriter, r *http.Req
 
 	// ------------- Optional header parameter "Last-Event-ID" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
-		var LastEventID int
+		var LastEventID string
 		n := len(valueList)
 		if n != 1 {
 			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""})
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
 			return
@@ -2646,12 +2804,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/files", wrapper.ListFiles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectName}/files/apply", wrapper.ApplyFiles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/files/{path}", wrapper.ReadFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/issues", wrapper.ListIssues)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectName}/issues", wrapper.CreateIssue)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/spec/collab-session", wrapper.GetSpecCollabSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/status", wrapper.GetProjectStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/tags", wrapper.ListProjectTags)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/tasks", wrapper.ListTasks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/tasks/{issueNumber}", wrapper.GetTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/tasks/{issueNumber}/log", wrapper.StreamTaskLog)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/projects/{projectName}/tasks/{issueNumber}/promote-from-issue", wrapper.PromoteTaskFromIssue)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/turns/active", wrapper.GetActiveTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/turns/{turnId}", wrapper.GetTurn)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/projects/{projectName}/turns/{turnId}/stream", wrapper.StreamTurn)
@@ -3298,6 +3459,20 @@ func (response CreateTurn202JSONResponse) VisitCreateTurnResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTurn409JSONResponse externalRef0.TurnConflict
+
+func (response CreateTurn409JSONResponse) VisitCreateTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4191,6 +4366,86 @@ func (response ReadFiledefaultJSONResponse) VisitReadFileResponse(w http.Respons
 	return err
 }
 
+type ListIssuesRequestObject struct {
+	ProjectName string `json:"projectName"`
+	Params      ListIssuesParams
+}
+
+type ListIssuesResponseObject interface {
+	VisitListIssuesResponse(w http.ResponseWriter) error
+}
+
+type ListIssues200JSONResponse []externalRef0.IssueInfo
+
+func (response ListIssues200JSONResponse) VisitListIssuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIssuesdefaultJSONResponse struct {
+	Body       externalRef0.Error
+	StatusCode int
+}
+
+func (response ListIssuesdefaultJSONResponse) VisitListIssuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIssueRequestObject struct {
+	ProjectName string `json:"projectName"`
+	Body        *CreateIssueJSONRequestBody
+}
+
+type CreateIssueResponseObject interface {
+	VisitCreateIssueResponse(w http.ResponseWriter) error
+}
+
+type CreateIssue200JSONResponse externalRef0.IssueResult
+
+func (response CreateIssue200JSONResponse) VisitCreateIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateIssuedefaultJSONResponse struct {
+	Body       externalRef0.Error
+	StatusCode int
+}
+
+func (response CreateIssuedefaultJSONResponse) VisitCreateIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSpecCollabSessionRequestObject struct {
 	ProjectName string `json:"projectName"`
 	Params      GetSpecCollabSessionParams
@@ -4447,6 +4702,41 @@ type StreamTaskLogdefaultJSONResponse struct {
 }
 
 func (response StreamTaskLogdefaultJSONResponse) VisitStreamTaskLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteTaskFromIssueRequestObject struct {
+	ProjectName string `json:"projectName"`
+	IssueNumber int64  `json:"issueNumber"`
+	Body        *PromoteTaskFromIssueJSONRequestBody
+}
+
+type PromoteTaskFromIssueResponseObject interface {
+	VisitPromoteTaskFromIssueResponse(w http.ResponseWriter) error
+}
+
+type PromoteTaskFromIssue202Response struct {
+}
+
+func (response PromoteTaskFromIssue202Response) VisitPromoteTaskFromIssueResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type PromoteTaskFromIssuedefaultJSONResponse struct {
+	Body       externalRef0.Error
+	StatusCode int
+}
+
+func (response PromoteTaskFromIssuedefaultJSONResponse) VisitPromoteTaskFromIssueResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5158,6 +5448,12 @@ type StrictServerInterface interface {
 	// Read a spec file at HEAD
 	// (GET /projects/{projectName}/files/{path})
 	ReadFile(ctx context.Context, request ReadFileRequestObject) (ReadFileResponseObject, error)
+	// List/search GitHub issues on a project's repo
+	// (GET /projects/{projectName}/issues)
+	ListIssues(ctx context.Context, request ListIssuesRequestObject) (ListIssuesResponseObject, error)
+	// Create a GitHub issue on a project's repo
+	// (POST /projects/{projectName}/issues)
+	CreateIssue(ctx context.Context, request CreateIssueRequestObject) (CreateIssueResponseObject, error)
 	// Get the collaboration session descriptor for the spec workspace
 	// (GET /projects/{projectName}/spec/collab-session)
 	GetSpecCollabSession(ctx context.Context, request GetSpecCollabSessionRequestObject) (GetSpecCollabSessionResponseObject, error)
@@ -5176,6 +5472,9 @@ type StrictServerInterface interface {
 	// Stream a Task's live state (status + executions + unified timeline) as SSE
 	// (GET /projects/{projectName}/tasks/{issueNumber}/log)
 	StreamTaskLog(ctx context.Context, request StreamTaskLogRequestObject) (StreamTaskLogResponseObject, error)
+	// Turn an ad-hoc GitHub issue into a coding Task and dispatch it (async)
+	// (POST /projects/{projectName}/tasks/{issueNumber}/promote-from-issue)
+	PromoteTaskFromIssue(ctx context.Context, request PromoteTaskFromIssueRequestObject) (PromoteTaskFromIssueResponseObject, error)
 	// Get the project's running turn (204 when none)
 	// (GET /projects/{projectName}/turns/active)
 	GetActiveTurn(ctx context.Context, request GetActiveTurnRequestObject) (GetActiveTurnResponseObject, error)
@@ -6312,6 +6611,66 @@ func (sh *strictHandler) ReadFile(w http.ResponseWriter, r *http.Request, projec
 	}
 }
 
+// ListIssues operation middleware
+func (sh *strictHandler) ListIssues(w http.ResponseWriter, r *http.Request, projectName string, params ListIssuesParams) {
+	var request ListIssuesRequestObject
+
+	request.ProjectName = projectName
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIssues(ctx, request.(ListIssuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIssues")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIssuesResponseObject); ok {
+		if err := validResponse.VisitListIssuesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateIssue operation middleware
+func (sh *strictHandler) CreateIssue(w http.ResponseWriter, r *http.Request, projectName string) {
+	var request CreateIssueRequestObject
+
+	request.ProjectName = projectName
+
+	var body CreateIssueJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateIssue(ctx, request.(CreateIssueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateIssue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateIssueResponseObject); ok {
+		if err := validResponse.VisitCreateIssueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetSpecCollabSession operation middleware
 func (sh *strictHandler) GetSpecCollabSession(w http.ResponseWriter, r *http.Request, projectName string, params GetSpecCollabSessionParams) {
 	var request GetSpecCollabSessionRequestObject
@@ -6465,6 +6824,40 @@ func (sh *strictHandler) StreamTaskLog(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StreamTaskLogResponseObject); ok {
 		if err := validResponse.VisitStreamTaskLogResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PromoteTaskFromIssue operation middleware
+func (sh *strictHandler) PromoteTaskFromIssue(w http.ResponseWriter, r *http.Request, projectName string, issueNumber int64) {
+	var request PromoteTaskFromIssueRequestObject
+
+	request.ProjectName = projectName
+	request.IssueNumber = issueNumber
+
+	var body PromoteTaskFromIssueJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PromoteTaskFromIssue(ctx, request.(PromoteTaskFromIssueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PromoteTaskFromIssue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PromoteTaskFromIssueResponseObject); ok {
+		if err := validResponse.VisitPromoteTaskFromIssueResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -48,30 +48,6 @@ func DecodeEnvelope(t testing.TB, body string) Envelope {
 	return e
 }
 
-// Problem is the RFC-9457 body shape Huma served for every error. It remains
-// only for tests of features not yet migrated to the contract-first edge —
-// delete with the last *_huma.go (issue 003/005).
-type Problem struct {
-	Title  string `json:"title"`
-	Status int    `json:"status"`
-	Detail string `json:"detail"`
-	Errors []struct {
-		Message  string `json:"message"`
-		Location string `json:"location"`
-	} `json:"errors"`
-}
-
-// DecodeProblem parses an RFC-9457 problem body, failing the test on anything
-// that isn't one.
-func DecodeProblem(t testing.TB, body string) Problem {
-	t.Helper()
-	var p Problem
-	if err := json.Unmarshal([]byte(body), &p); err != nil {
-		t.Fatalf("not an RFC-9457 problem body: %v\n%s", err, body)
-	}
-	return p
-}
-
 // GoldenFieldSet reads a harvested golden JSON object (testdata/harvest/golden)
 // and returns its sorted top-level keys — the low-maintenance on-wire contract
 // assertion: pin the FIELD SET, not volatile values.

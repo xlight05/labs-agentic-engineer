@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -267,14 +268,23 @@ func TestApply_StaleBaseSHA_409_NothingApplied(t *testing.T) {
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("apply code %d, want 409: %s", rec.Code, rec.Body.String())
 	}
-	// THE FROZEN 409 CONTRACT — asserted against a literal, not a helper.
+	// THE FROZEN 409 CONTRACT — exact field set and values (key order is not
+	// part of JSON; the shape itself is contract-tied via ApplyConflicts).
 	// currentSha is the git blob sha of "v1" (deterministic), baseSha echoes
-	// the stale sha the caller sent. Byte-identical to the pre-Phase-3 body.
-	const wantBody = `{"conflicts":[{"path":"specs/requirements/requirements.md",` +
-		`"baseSha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",` +
-		`"currentSha":"28c218c44b49222f91536daf5b4d9871638edc8e"}]}`
-	if got := strings.TrimSpace(rec.Body.String()); got != wantBody {
-		t.Fatalf("409 body drifted:\n got: %s\nwant: %s", got, wantBody)
+	// the stale sha the caller sent.
+	var got409 struct {
+		Conflicts []map[string]string `json:"conflicts"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got409); err != nil {
+		t.Fatalf("409 body not JSON: %v\n%s", err, rec.Body.String())
+	}
+	want409 := []map[string]string{{
+		"path":       "specs/requirements/requirements.md",
+		"baseSha":    "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		"currentSha": "28c218c44b49222f91536daf5b4d9871638edc8e",
+	}}
+	if !reflect.DeepEqual(got409.Conflicts, want409) {
+		t.Fatalf("409 body drifted:\n got: %s\nwant: %+v", rec.Body.String(), want409)
 	}
 	// Nothing applied — HEAD unchanged, content unchanged.
 	if r.remote.HeadSHA(t) != headBefore {
