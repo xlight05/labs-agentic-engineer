@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/async"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -149,14 +150,14 @@ func (s *Service) CreateProject(ctx context.Context, orgName string, req *apigen
 	// first design run doesn't pay repo-creation latency. Async + best-effort;
 	// reads self-heal via ensureSkillsRepo if this never ran. §6.3/§10.3.
 	if s.skillsProv != nil {
-		go func(orgID string) {
+		async.Go(context.Background(), "skills provisioning", func(context.Context) {
 			bg, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			if perr := s.skillsProv.EnsureProvisioned(bg, orgID); perr != nil {
+			if perr := s.skillsProv.EnsureProvisioned(bg, orgName); perr != nil {
 				slog.WarnContext(bg, "skills repo provisioning failed (will self-heal on read)",
-					"org", orgID, "error", perr)
+					"org", orgName, "error", perr)
 			}
-		}(orgName)
+		})
 	}
 
 	// Provision + clone the platform-owned git repo (async — polling via GetRepoStatus).

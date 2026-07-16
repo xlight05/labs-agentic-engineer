@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/app"
 	"github.com/wso2/aep/aep-api/internal/config"
+	"github.com/wso2/aep/aep-api/internal/platform/async"
 	"github.com/wso2/aep/aep-api/internal/platform/obs"
 )
 
@@ -82,12 +83,13 @@ func main() {
 	}()
 
 	// Background watchers. State lives in Postgres, so a restart resumes from
-	// the next tick — a plain goroutine per watcher is enough. All share
-	// watcherCtx, cancelled on shutdown.
+	// the next tick. Each runs under async.Go's panic barrier so a panicking
+	// watcher is recovered + logged instead of taking down the whole process
+	// (a bare `go w.Run` used to). All share watcherCtx, cancelled on shutdown.
 	watcherCtx, cancelWatcher := context.WithCancel(context.Background())
 	defer cancelWatcher()
 	for _, w := range application.Watchers {
-		go w.Run(watcherCtx)
+		async.Go(watcherCtx, fmt.Sprintf("watcher:%T", w), w.Run)
 	}
 	slog.Info("background watchers started", "count", len(application.Watchers))
 

@@ -32,6 +32,9 @@ type RefetchLimiter struct {
 	rate    float64 // tokens per second
 	burst   float64 // bucket capacity
 	buckets map[string]*tokenBucket
+	// now is the clock; nil means time.Now. Tests inject a fixed-time function
+	// to assert token refill over time without a wall-clock sleep.
+	now func() time.Time
 }
 
 type tokenBucket struct {
@@ -52,6 +55,7 @@ func NewRefetchLimiter(rate, burst float64) *RefetchLimiter {
 		rate:    rate,
 		burst:   burst,
 		buckets: map[string]*tokenBucket{},
+		now:     time.Now,
 	}
 }
 
@@ -60,7 +64,7 @@ func NewRefetchLimiter(rate, burst float64) *RefetchLimiter {
 func (r *RefetchLimiter) Allow(key string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := time.Now()
+	now := r.now()
 	b, ok := r.buckets[key]
 	if !ok {
 		b = &tokenBucket{tokens: r.burst, last: now}

@@ -62,6 +62,9 @@ type GitServiceSecretProvider struct {
 	ttl     time.Duration
 	mu      sync.RWMutex
 	cache   map[string]secretCacheEntry
+	// now is the clock; nil means time.Now. Tests inject a fixed-time function
+	// to assert refetch-after-expiry without a wall-clock sleep.
+	now func() time.Time
 }
 
 type secretCacheEntry struct {
@@ -79,6 +82,7 @@ func NewGitServiceSecretProvider(fetcher SecretFetcher, ttl time.Duration) *GitS
 		fetcher: fetcher,
 		ttl:     ttl,
 		cache:   map[string]secretCacheEntry{},
+		now:     time.Now,
 	}
 }
 
@@ -116,7 +120,7 @@ func (p *GitServiceSecretProvider) lookup(ocOrgID string) ([][]byte, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	entry, ok := p.cache[ocOrgID]
-	if !ok || time.Now().After(entry.expireAt) {
+	if !ok || p.now().After(entry.expireAt) {
 		return nil, false
 	}
 	return entry.secrets, true
@@ -127,6 +131,6 @@ func (p *GitServiceSecretProvider) store(ocOrgID string, secrets [][]byte) {
 	defer p.mu.Unlock()
 	p.cache[ocOrgID] = secretCacheEntry{
 		secrets:  secrets,
-		expireAt: time.Now().Add(p.ttl),
+		expireAt: p.now().Add(p.ttl),
 	}
 }

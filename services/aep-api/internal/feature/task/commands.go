@@ -26,6 +26,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/async"
 )
 
 // Commands is the write surface for the reactive control labels (§5): execute
@@ -175,13 +176,15 @@ func (c *Commands) resolveTaskIssue(ctx context.Context, orgID, projectID string
 }
 
 // dispatchAsync runs a funnel call out-of-band with a bounded detached context
-// so it survives the request return (the effect is async, §9.1).
+// so it survives the request return (the effect is async, §9.1). async.Go adds
+// the panic barrier so a panic in the funnel path fails just this dispatch, not
+// the process.
 func (c *Commands) dispatchAsync(fn func(context.Context) error, what string, issueNumber int) {
-	go func() {
+	async.Go(context.Background(), "task command "+what, func(context.Context) {
 		bg, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 2*time.Minute)
 		defer cancel()
 		if err := fn(bg); err != nil && !errors.Is(err, context.Canceled) {
 			slog.WarnContext(bg, "task command "+what+" failed", "issue", issueNumber, "error", err)
 		}
-	}()
+	})
 }

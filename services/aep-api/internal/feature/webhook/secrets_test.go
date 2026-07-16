@@ -74,13 +74,16 @@ func TestGitServiceSecretProvider_RefetchAfterExpiry(t *testing.T) {
 	t.Parallel()
 	f := &countingFetcher{secrets: [][]byte{[]byte("k1")}}
 	p := NewGitServiceSecretProvider(f, 20*time.Millisecond)
+	base := time.Unix(1_700_000_000, 0)
+	clock := base
+	p.now = func() time.Time { return clock }
 	ctx := context.Background()
 
 	if _, err := p.Secrets(ctx, "org-1", SecretOpts{}); err != nil {
 		t.Fatalf("first Secrets: %v", err)
 	}
-	// Sleep past the TTL so lookup misses and the provider refetches.
-	time.Sleep(40 * time.Millisecond)
+	// Advance the clock past the TTL so lookup misses and the provider refetches.
+	clock = base.Add(40 * time.Millisecond)
 	if _, err := p.Secrets(ctx, "org-1", SecretOpts{}); err != nil {
 		t.Fatalf("post-expiry Secrets: %v", err)
 	}

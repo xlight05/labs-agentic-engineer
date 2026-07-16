@@ -129,6 +129,9 @@ type RoutingCache struct {
 	ttl           time.Duration
 	installations map[int64]routingCacheEntry
 	repos         map[string]routingCacheEntry
+	// now is the clock; nil means time.Now. Tests inject a fixed-time function
+	// to assert TTL expiry without a wall-clock sleep.
+	now func() time.Time
 }
 
 type routingCacheEntry struct {
@@ -145,6 +148,7 @@ func NewRoutingCache(ttl time.Duration) *RoutingCache {
 		ttl:           ttl,
 		installations: map[int64]routingCacheEntry{},
 		repos:         map[string]routingCacheEntry{},
+		now:           time.Now,
 	}
 }
 
@@ -152,7 +156,7 @@ func (c *RoutingCache) getInstallation(id int64) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	e, ok := c.installations[id]
-	if !ok || time.Now().After(e.expireAt) {
+	if !ok || c.now().After(e.expireAt) {
 		return "", false
 	}
 	return e.value, true
@@ -161,14 +165,14 @@ func (c *RoutingCache) getInstallation(id int64) (string, bool) {
 func (c *RoutingCache) putInstallation(id int64, val string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.installations[id] = routingCacheEntry{value: val, expireAt: time.Now().Add(c.ttl)}
+	c.installations[id] = routingCacheEntry{value: val, expireAt: c.now().Add(c.ttl)}
 }
 
 func (c *RoutingCache) getRepo(fullName string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	e, ok := c.repos[strings.ToLower(fullName)]
-	if !ok || time.Now().After(e.expireAt) {
+	if !ok || c.now().After(e.expireAt) {
 		return "", false
 	}
 	return e.value, true
@@ -177,7 +181,7 @@ func (c *RoutingCache) getRepo(fullName string) (string, bool) {
 func (c *RoutingCache) putRepo(fullName, val string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.repos[strings.ToLower(fullName)] = routingCacheEntry{value: val, expireAt: time.Now().Add(c.ttl)}
+	c.repos[strings.ToLower(fullName)] = routingCacheEntry{value: val, expireAt: c.now().Add(c.ttl)}
 }
 
 // String dumps cache stats for the debug endpoint (if/when added).

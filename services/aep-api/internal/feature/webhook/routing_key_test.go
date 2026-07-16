@@ -204,9 +204,12 @@ func TestResolveOcOrgID_LookupErrorNotCached(t *testing.T) {
 
 func TestRoutingCache_TTLExpiry(t *testing.T) {
 	t.Parallel()
-	// Wall-clock TTL (no injectable clock): a short, then-slept window proves the
-	// entry expires. Get returns !ok once time.Now() passes expireAt.
+	// Injected fixed clock: advance past the TTL to prove expiry — no wall-clock
+	// sleep. Get returns !ok once the clock passes expireAt.
+	base := time.Unix(1_700_000_000, 0)
+	clock := base
 	cache := NewRoutingCache(20 * time.Millisecond)
+	cache.now = func() time.Time { return clock }
 
 	cache.putInstallation(7, "org-x")
 	if v, ok := cache.getInstallation(7); !ok || v != "org-x" {
@@ -218,7 +221,7 @@ func TestRoutingCache_TTLExpiry(t *testing.T) {
 		t.Fatalf("repo cache must be case-insensitive, got (%q, %v)", v, ok)
 	}
 
-	time.Sleep(40 * time.Millisecond)
+	clock = base.Add(40 * time.Millisecond) // advance past the 20ms TTL
 
 	if _, ok := cache.getInstallation(7); ok {
 		t.Fatal("installation entry must expire past its TTL")

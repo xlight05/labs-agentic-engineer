@@ -44,10 +44,14 @@ func TestRefetchLimiter_BurstThenDeny(t *testing.T) {
 
 func TestRefetchLimiter_RefillsOverTime(t *testing.T) {
 	t.Parallel()
-	// rate=100/s ⇒ one token per 10ms. Back-to-back calls (sub-ms apart) refill a
-	// negligible fraction, so the bucket reads empty right after draining; a 50ms
-	// sleep (5 tokens' worth, capped at burst) then refills it past one token.
+	// rate=100/s ⇒ one token per 10ms. With the clock frozen, back-to-back calls
+	// refill nothing, so the bucket reads empty right after draining; advancing the
+	// injected clock 50ms (5 tokens' worth, capped at burst) refills it past one.
+	base := time.Unix(1_700_000_000, 0)
+	clock := base
 	l := NewRefetchLimiter(100, 1)
+	l.now = func() time.Time { return clock }
+
 	if !l.Allow("k") {
 		t.Fatal("the single burst token must be allowed")
 	}
@@ -55,10 +59,10 @@ func TestRefetchLimiter_RefillsOverTime(t *testing.T) {
 		t.Fatal("bucket must be empty immediately after draining the burst")
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	clock = base.Add(50 * time.Millisecond)
 
 	if !l.Allow("k") {
-		t.Fatal("bucket must refill past one token after the sleep")
+		t.Fatal("bucket must refill past one token after advancing the clock")
 	}
 }
 
