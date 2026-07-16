@@ -16,7 +16,7 @@
 
 package orgcreds
 
-// UNIT tier (bff-component-testing.md §2): the pure, DB-free surface of the
+// UNIT tier: the pure, DB-free surface of the
 // credential service — projectionFromRow's field mapping, the typed errors'
 // messages and the PAT-validation probes
 // (fetchPATIdentity / validatePATMembership / probePATRepoRead) driven against

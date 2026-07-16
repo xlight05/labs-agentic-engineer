@@ -15,7 +15,7 @@
 // under the License.
 
 // Package artifactstest holds the exported hand fakes for the artifacts
-// feature's cross-feature seam (bff-component-testing.md §6): sibling features
+// feature's cross-feature seam: sibling features
 // that consume artifacts (project, requirements, design, task, …) fake it
 // here, one pattern, instead of re-rolling ad-hoc fakes per test file.
 //

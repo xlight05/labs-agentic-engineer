@@ -28,8 +28,8 @@ import (
 // clients/github today — MUST reproduce it; IsRepoNameConflict /
 // IsHTTPStatus (wire.go) are the caller-side checks).
 //
-// ErrTagAlreadyExists / ErrRefNotFastForward are aliases of the gitfs values
-// (docs/design/shared-volume-clone-architecture.md D1): the message strings
+// ErrTagAlreadyExists / ErrRefNotFastForward are aliases of the gitfs values:
+// the message strings
 // survived the REST→mount migration unchanged, so `errors.Is` checks and log
 // lines stayed stable.
 var (

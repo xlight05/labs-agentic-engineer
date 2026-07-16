@@ -23,7 +23,7 @@ package auth
 // Task-JWT or publisher-cc) on /internal — "a request cannot act on an org it
 // does not own", checked before any handler. It lives beside the token
 // verifiers (TaskTokenManager, PublisherTokenVerifier) it drives — one auth
-// home. See docs/design/internal-s2s-api.md §3.
+// home.
 
 import (
 	"context"

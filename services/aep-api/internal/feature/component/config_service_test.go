@@ -16,7 +16,7 @@
 
 package component
 
-// UNIT tier (bff-component-testing.md §2): configService with a faked
+// UNIT tier: configService with a faked
 // ConfigRepository (and a faked sibling ComponentService for the mirror seam) —
 // no HTTP, no DB. Proves the validation branches, the DB-canonical write, the
 // best-effort mirror onto OC, and the deploy-read shape. The SQL round-trip +

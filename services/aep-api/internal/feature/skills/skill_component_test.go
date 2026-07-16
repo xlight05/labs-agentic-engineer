@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the REAL skills services behind
+// COMPONENT tier: the REAL skills services behind
 // the REAL production handler chain — global middleware → faked auth at the
 // auth.WithClaims seam → orgensure → contract validation → the deny-by-default
 // tenant gate in ENFORCE → strict handlers → mapSkillError — driven in-process

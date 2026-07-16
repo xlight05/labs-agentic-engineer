@@ -20,8 +20,7 @@ package artifacts
 // commit). Save creates no commit — the accepted draft is already on `main`.
 // Push-CAS on origin arbitrates concurrent writers; Mutate owns the bounded
 // fast-forward retry (design D5 — the retired REST path's org-keyed leaky
-// bucket is not ported). See docs/design/shared-volume-clone-architecture.md
-// §6, §10. (Discard's revert-commit primitive, revertSubtreeToTag, was
+// bucket is not ported). (Discard's revert-commit primitive, revertSubtreeToTag, was
 // removed with DiscardRequirements/DiscardDesign — dead once the
 // requirements/design read+discard HTTP surface was removed.)
 

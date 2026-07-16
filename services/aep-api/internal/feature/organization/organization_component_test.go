@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): list-organizations driven
+// COMPONENT tier: list-organizations driven
 // through the REAL production chain (faked auth at the jwt.WithClaims seam →
 // orgensure → Huma parsing → mapOrganizationError) via the componenttest
 // harness, with only the out-of-process NamespaceClient mocked. The happy-path
@@ -28,7 +28,7 @@
 // tokenless request is NOT rejected with a gate 401; it reaches the handler
 // (pinned positively in TestOrganizationComponent_CarveOut_NoGate below). The
 // verifier's real tokenless/forged rejection is a DIFFERENT code path and is
-// owned by the integration tier (bff-component-testing.md §3). The one 401 that
+// owned by the integration tier. The one 401 that
 // IS assertable here (TestOrganizationComponent_ErrorMapping) is the
 // error-MAPPING 401 the service raises when OC itself answers unauthorized — not
 // an auth-gate 401.

@@ -14,8 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package genai is the BFF's committed-truth LLM turn surface
-// (docs/design/shared-volume-clone-architecture.md §6, D13–D20). A turn is
+// Package genai is the BFF's committed-truth LLM turn surface. A turn is
 // started with POST …/turns → 202 {turnId} and runs detached server-side: the
 // runner snapshots the project repo + the org's _skills repo onto the shared
 // workspace volume, dispatches the agents service with a WorkspaceRef (IDs +

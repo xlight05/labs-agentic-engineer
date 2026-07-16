@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the REAL provisioning service
+// COMPONENT tier: the REAL provisioning service
 // behind the REAL production handler chain — faked auth → contract validation
 // → the deny-by-default tenant gate in ENFORCE → the strict handlers
 // (handlers_provisioning.go) and their mapProvisionError dialect — driven

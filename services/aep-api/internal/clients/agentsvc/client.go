@@ -18,7 +18,7 @@
 // (services/agents) — the sole agents backend for all generation and task
 // planning flows.
 //
-// Contract (docs/design/shared-volume-clone-architecture.md §12, D9):
+// Contract:
 //   - POST /conversations/{id}/turns  body {instruction, workspace,
 //     filesChangedExternally?, toolset?}  → raw StreamPart SSE frames +
 //     [DONE] with `: keep-alive` comments; pre-stream statuses 400/403/409.

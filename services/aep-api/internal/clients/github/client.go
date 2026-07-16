@@ -19,8 +19,7 @@
 // A single *Client satisfies gitrepo.Host — the REST surface (repo / issue /
 // pull-request / webhook / app-installation) in client.go. The git-object
 // (Git-Data) surface is gone: all repo content reads/writes run on the
-// disk-backed Workspace engine (internal/platform/gitfs, see
-// docs/design/shared-volume-clone-architecture.md §9 for what stays REST).
+// disk-backed Workspace engine (internal/platform/gitfs).
 // GitHub Projects v2 is dropped (tasks-github-native §4): Tasks are plain
 // GitHub issues, so there is no GraphQL board surface.
 //

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the platform-resource-type
+// COMPONENT tier: the platform-resource-type
 // discovery endpoint through the REAL production handler chain — faked auth →
 // contract validation → the deny-by-default tenant gate in ENFORCE → the
 // strict handler (handlers_dependencies.go) — with only the resource-type

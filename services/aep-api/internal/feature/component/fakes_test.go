@@ -15,7 +15,7 @@
 // under the License.
 
 // In-package (package component) hand fakes for the component/config unit +
-// dbtest + watcher tiers (bff-component-testing.md §6). Only the methods a case
+// dbtest + watcher tiers. Only the methods a case
 // programs are set; the rest panic loudly so an unexpected call fails the test
 // rather than returning a silent zero value. The component tier (external
 // package component_test) carries its own copies — see component_component_test.go.

@@ -16,8 +16,7 @@
 
 package artifacts
 
-// Shared harness for the artifact tests. The gittest tier
-// (docs/design/aep-api-target-structure.md — "Git testing") runs the REAL code
+// Shared harness for the artifact tests. The gittest tier runs the REAL code
 // paths, not mocked git:
 //
 //   - a real bare repo whose `main` tip IS the draft "working tree"

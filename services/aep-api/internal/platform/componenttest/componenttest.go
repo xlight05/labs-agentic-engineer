@@ -14,9 +14,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package componenttest is the in-process component-tier harness
-// (docs/design/bff-component-testing.md §4). It assembles the REAL BFF /api
-// handler via api.NewHandlerForTest — the same mountSurfaces assembly
+// Package componenttest is the in-process component-tier harness. It
+// assembles the REAL BFF /api handler via api.NewHandlerForTest — the same
+// mountSurfaces assembly
 // production uses — with exactly one seam swapped: the JWKS verifier is
 // replaced by fakeInboundAuth, so the real tenant gate runs in ENFORCE with no
 // Thunder/JWKS. A test supplies the feature's real service (with its
@@ -49,7 +49,8 @@ import (
 
 // Options configures the harness. Fill only what the feature under test needs.
 type Options struct {
-	// Deps carries the feature services for the code-first Huma API — the REAL
+	// Deps carries the feature services for the generated strict-server
+	// (internal/api/gen, generated from packages/contracts/api/v1) — the REAL
 	// service under test, with its out-of-process clients mocked. Fields left
 	// zero register nothing for that feature (its routes 404/nil-guard).
 	Deps api.Deps

@@ -16,7 +16,7 @@
 
 package webhook
 
-// RECEIVER tier (bff-component-testing.md §7 — the webhook feature owns this):
+// RECEIVER tier (the webhook feature owns this):
 // the REAL raw http.HandlerFunc driven with net/http/httptest, end to end
 // through the receiver pipeline: routing → HMAC → dedup INSERT → dispatch →
 // mark-processed → ack. "HMAC valid→200, bad/missing signature→401, duplicate

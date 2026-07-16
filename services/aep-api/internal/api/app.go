@@ -54,8 +54,7 @@ type AppParams struct {
 
 	// Controllers still wired as raw handlers: OrgGitHubController (App-mode
 	// connect callback), WebhookController (GitHub webhook HMAC). The runner
-	// callbacks are the internal contract-first surface (InternalDeps). See
-	// docs/design/internal-s2s-api.md.
+	// callbacks are the internal contract-first surface (InternalDeps).
 	OrgGitHubController orgcreds.OrgGitHubController
 	WebhookController   webhook.WebhookController
 
@@ -76,12 +75,12 @@ type AppParams struct {
 	ThunderJWKS *jwtassertion.JWKSCache
 
 	// InboundAuth, when non-nil, REPLACES the JWKS-backed jwt.Middleware on the
-	// public /api/ edge (the single seam bff-component-testing.md §8.2 calls for).
+	// public /api/ edge.
 	// Production leaves it nil → mountSurfaces builds the real RS256/JWKS verifier
 	// from ThunderJWKS. A component test sets it to a claims-injector so the real
 	// tenant gate runs in ENFORCE with no Thunder/JWKS; ThunderJWKS is then unused
-	// (and may be nil). It only substitutes the verifier — orgensure and the Huma
-	// gate chain are untouched.
+	// (and may be nil). It only substitutes the verifier — orgensure and the
+	// deny-by-default tenant gate chain are untouched.
 	InboundAuth func(http.Handler) http.Handler
 
 	// Runner-facing and agents-facing surfaces. Callers use the gitrepo +

@@ -49,7 +49,7 @@ func ParseGateMode(s string) GateMode {
 // request context — stamped once per request by the composition root's
 // middleware (api.mountSurfaces) — instead of a process-global, so concurrently
 // built handlers (production + N parallel component-test harnesses) can never
-// race on it. bff-component-testing.md §8.3.
+// race on it.
 type gateModeCtxKey struct{}
 
 // WithGateMode returns a copy of ctx carrying the given gate mode.

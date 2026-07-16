@@ -25,8 +25,7 @@ import (
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// The Workspace / SnapshotProvider domain ports
-// (docs/design/shared-volume-clone-architecture.md §5, D1): the local
+// The Workspace / SnapshotProvider domain ports: the local
 // git-object surface that replaced the per-object REST walkers. The definitions
 // live in internal/platform/gitfs — internal/platform must stay feature-free
 // (internal/arch), so the domain re-exports them as aliases. Consumers keep

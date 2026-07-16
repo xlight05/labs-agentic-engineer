@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UNIT tier (bff-component-testing.md §2): the REAL Service with every
+// UNIT tier: the REAL Service with every
 // port mocked — no HTTP, no DB. Proves the service's logic branches under the
 // tasks-github-native model: sentinel translation, CreateProject's best-effort
 // side-effect chain, the delete cascade (repo cleanup + executions purge — NO

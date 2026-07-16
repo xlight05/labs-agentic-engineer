@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package agentfold is the Go half of the D14 fold-parity contract
-// (docs/design/shared-volume-clone-architecture.md): it re-implements the
+// Package agentfold is the Go half of the D14 fold-parity contract: it
+// re-implements the
 // TS FileBundle fold (packages/agent-stream/src/bundle.ts + change.ts) so
 // aep-api can reconstruct a turn's file mutations from the agent SSE stream
 // and commit them, gated by the terminal integrity manifest. Every op

@@ -14,9 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package gitfs is the git-object engine over the shared workspace volume
-// (docs/design/shared-volume-clone-architecture.md §5, §15): one bare mirror
-// per repo (`git clone --mirror`, never checked out), plumbing reads
+// Package gitfs is the git-object engine over the shared workspace volume: one
+// bare mirror per repo (`git clone --mirror`, never checked out), plumbing reads
 // (rev-parse / ls-tree / cat-file / archive), plumbing writes via a throwaway
 // index (read-tree / update-index / write-tree / commit-tree /
 // `push --force-with-lease`), annotated tags, local diffs, and immutable

@@ -16,7 +16,7 @@
 
 package orgcreds
 
-// DBTEST tier (bff-component-testing.md §2 "store"; skips under -short, runs on
+// DBTEST tier ("store"; skips under -short, runs on
 // `make test-db`): the REAL CredentialService over a pristine per-test Postgres
 // (dbtest.New) with the REAL AES-GCM credential store (credentials.NewDBStore)
 // and a fake GitHub. This is where the SQL-shaped behavior lives — the Connect

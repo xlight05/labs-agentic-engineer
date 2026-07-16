@@ -33,7 +33,7 @@ import (
 // surface is ABSENT in every real env — fail-safe, not fail-open), and (2)
 // /_dev is on no HTTPRoute, reachable only on the local/loopback interface the
 // dev scripts use. Separating it here keeps the gate explicit and the handler
-// bodies out of NewHandler. See docs/design/internal-s2s-api.md §3.4.
+// bodies out of NewHandler.
 func RegisterAllDev(mux *http.ServeMux, p AppParams) {
 	if !(p.Config.TestMode && p.Config.DeploymentTier == "dev") {
 		return // registration gate — the surface does not exist in real envs
@@ -71,14 +71,14 @@ func devResyncHandler(params AppParams) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		if params.DB == nil || params.CredService == nil || params.AnthropicCredService == nil {
-			http.Error(w, `{"error":"resync surface not wired"}`, http.StatusServiceUnavailable)
+			writeErrorEnvelope(w, http.StatusServiceUnavailable, CodeServiceUnavailable, "resync surface not wired", nil)
 			return
 		}
 
 		orgIDs, err := collectResyncOrgs(ctx, params.DB, r.URL.Query().Get("org"))
 		if err != nil {
 			slog.ErrorContext(ctx, "sm-api resync: org list failed", "error", err)
-			http.Error(w, `{"error":"org list failed"}`, http.StatusInternalServerError)
+			writeErrorEnvelope(w, http.StatusInternalServerError, CodeInternal, "org list failed", nil)
 			return
 		}
 

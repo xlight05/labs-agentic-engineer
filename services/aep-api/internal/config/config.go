@@ -299,8 +299,7 @@ type AgentsSvcConfig struct {
 	JWTIssuer   string
 }
 
-// WorkspaceConfig holds the shared git-workspaces mount settings
-// (docs/design/shared-volume-clone-architecture.md §13–§14): the mount root
+// WorkspaceConfig holds the shared git-workspaces mount settings: the mount root
 // where bare repo mirrors + per-SHA snapshots live, plus the disk-lifecycle
 // (reaper) knobs. aep-api is the sole writer of the mount; the agents service
 // consumes read-only snapshots from the same volume.

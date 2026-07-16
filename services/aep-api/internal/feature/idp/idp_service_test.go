@@ -16,7 +16,7 @@
 
 package idp
 
-// UNIT tier (bff-component-testing.md §2): the REAL idpService logic that is
+// UNIT tier: the REAL idpService logic that is
 // reachable with NO database and NO Thunder — the pure helpers
 // (coalesceActor, profileSummary, secretRefPath) and the entry-guard /
 // error-classification branches that fire BEFORE any I/O. Every mutating

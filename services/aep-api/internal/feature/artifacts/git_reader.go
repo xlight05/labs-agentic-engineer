@@ -16,8 +16,7 @@
 
 package artifacts
 
-// Workspace-mount bundle reads (docs/design/shared-volume-clone-architecture.md
-// §5, §15). The per-project local clone is gone: the "working tree" is the
+// Workspace-mount bundle reads. The per-project local clone is gone: the "working tree" is the
 // untagged tip of `main`, and every read is one `Workspace.ReadBundle` against
 // the shared bare mirror — at the branch tip for the live draft, at a `v*` tag
 // for an approved version (the engine peels annotated tags), or at an exact

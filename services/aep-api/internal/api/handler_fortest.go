@@ -23,8 +23,8 @@ import (
 )
 
 // NewHandlerForTest assembles the REAL production handler graph for the
-// in-process component tier (docs/design/bff-component-testing.md §8.1). It is
-// the exported seam the componenttest harness calls: the same NewHandler /
+// in-process component tier. It is the exported seam the componenttest
+// harness calls: the same NewHandler /
 // mountSurfaces assembly production uses, with exactly two substitutions —
 //
 //   - inboundAuth REPLACES the JWKS-backed jwt.Middleware on the /api/ edge

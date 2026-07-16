@@ -19,7 +19,7 @@ package skills
 // Repo-backed skills store. The per-org `org-skills` GitHub repo is the
 // single source of truth (docs/design/skills-repo-storage.md); the store
 // reads and writes it through the Workspace port over the shared-volume
-// mirror (docs/design/shared-volume-clone-architecture.md, Phase 1):
+// mirror (Phase 1):
 //
 //   - reads are one ReadBundle at the branch tip (fetch + local plumbing —
 //     REST-parity freshness; no cache tier);

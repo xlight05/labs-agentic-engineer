@@ -17,10 +17,9 @@
 // Package files is the generic, specs/-scoped Files API
 // (docs/design/agents-generation-migration.md §4, §12.2). It replaces the
 // per-project local working tree: reads are served from the workspace-mounted
-// bare mirror at the branch tip via the gitrepo.Workspace port
-// (docs/design/shared-volume-clone-architecture.md §5 — ls-tree/cat-file blob
-// shas are the same git blob shas the GitHub tree API returned, so the FE's
-// baseSha CAS flow is unaffected), and the single write is an atomic,
+// bare mirror at the branch tip via the gitrepo.Workspace port (ls-tree/
+// cat-file blob shas are the same git blob shas the GitHub tree API returned,
+// so the FE's baseSha CAS flow is unaffected), and the single write is an atomic,
 // all-or-nothing `apply`: one Workspace.Mutate that stages the whole batch as
 // one commit and pushes it to origin under `--force-with-lease` (origin stays
 // the CAS arbiter; Mutate owns the bounded fast-forward retry).

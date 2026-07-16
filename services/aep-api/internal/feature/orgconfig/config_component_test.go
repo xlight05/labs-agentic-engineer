@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4), Component+DB flavor: the REAL
+// COMPONENT tier, Component+DB flavor: the REAL
 // orgconfig.Service over the REAL Anthropic/GitHub/IDP services, all sharing ONE
 // pristine dbtest Postgres + real AES-GCM store, with only the out-of-process
 // probes (Anthropic /v1/messages, api.github.com) faked at the HTTP boundary —

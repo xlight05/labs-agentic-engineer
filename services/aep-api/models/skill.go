@@ -67,8 +67,7 @@ const SkillsRepoSentinelProjectID = "_skills"
 
 // SkillsRepoDirName is the pinned on-disk directory leaf for the per-org
 // skills repo on the shared workspace volume:
-// repos/<orgId>/_skills/org-skills/ (design shared-volume-clone-architecture
-// §4). It is deliberately NOT the row's repo_slug: the slug is owner-prefixed
+// repos/<orgId>/_skills/org-skills/. It is deliberately NOT the row's repo_slug: the slug is owner-prefixed
 // (lower(<owner>-<repo>)) and would change if the org reconnects under a
 // different GitHub owner, while the agents service — which never receives a
 // path — derives the skills snapshot dir structurally from this fixed leaf

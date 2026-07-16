@@ -28,8 +28,7 @@ type TagInfo = gitfs.TagInfo
 
 // GitOpsService is the git-object gateway consumed by the artifacts, files,
 // genai, skills, and task stores: the Workspace port (the disk-backed mirror
-// engine, docs/design/shared-volume-clone-architecture.md §5), the credential
-// resolver, and the save-identity helper.
+// engine), the credential resolver, and the save-identity helper.
 type GitOpsService interface {
 	ResolveSaveIdentities(cred credentials.Credential) (*GitIdentity, *GitIdentity)
 	// Workspace is the mount-backed git engine (reads, Mutate, tags, diff).

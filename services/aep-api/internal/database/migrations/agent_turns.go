@@ -24,12 +24,12 @@ import (
 )
 
 // RunAgentTurns creates the one-active-turn-per-project partial unique index
-// on the agent_turns table (docs/design/shared-volume-clone-architecture.md,
-// D18): at most one running turn per (org_id, project_id), across every use
-// case. Turn start is INSERT ... ON CONFLICT DO NOTHING against this index,
-// so racing POSTs resolve to exactly one admitted turn and the loser reads
-// the active row for its 409 {activeTurnId}. AutoMigrate creates the table
-// from the model but cannot express a partial (WHERE-clause) index.
+// on the agent_turns table: at most one running turn per (org_id, project_id),
+// across every use case. Turn start is INSERT ... ON CONFLICT DO NOTHING
+// against this index, so racing POSTs resolve to exactly one admitted turn
+// and the loser reads the active row for its 409 {activeTurnId}. AutoMigrate
+// creates the table from the model but cannot express a partial (WHERE-clause)
+// index.
 //
 // Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS is a no-op on re-run, and the
 // step no-ops entirely if the table is not present yet.

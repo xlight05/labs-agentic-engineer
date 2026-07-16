@@ -18,8 +18,8 @@ package models
 
 import "time"
 
-// AgentTurn is one committed-truth generation turn (design D16/D17 of
-// docs/design/shared-volume-clone-architecture.md): the durable record behind
+// AgentTurn is one committed-truth generation turn (design D16/D17): the
+// durable record behind
 // the 202-then-attach turn API. The row is the one-active-turn-per-project
 // guard (D18) — a partial unique index ux_agent_turns_active on
 // (org_id, project_id) WHERE status = 'running' (created by the agent_turns

@@ -16,7 +16,7 @@
 
 package orgcreds
 
-// UNIT tier (bff-component-testing.md §2): the REAL AnthropicCredentialService
+// UNIT tier: the REAL AnthropicCredentialService
 // logic with no DB and the only out-of-process dependency — the Anthropic
 // /v1/messages probe — faked at the HTTP boundary (WithAnthropicAPIBase →
 // httptest). Proves the key-shape guard, the prefix/last4 preview the golden

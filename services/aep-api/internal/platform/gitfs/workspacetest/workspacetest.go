@@ -15,8 +15,7 @@
 // under the License.
 
 // Package workspacetest is the reusable fixture for tests that exercise the
-// gitfs Workspace engine against a REAL bare origin
-// (docs/design/shared-volume-clone-architecture.md §15): a gittest.Remote
+// gitfs Workspace engine against a REAL bare origin: a gittest.Remote
 // serving as the file:// origin (arrange/assert via genuine git plumbing —
 // Seed/Tag/HeadSHA/FileAt/Tags) plus an Engine rooted in t.TempDir(). It
 // supersedes the gittest Git-Data HTTP fake for consumers ported onto the

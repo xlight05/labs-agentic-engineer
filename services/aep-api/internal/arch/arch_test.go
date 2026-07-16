@@ -456,7 +456,7 @@ func TestGormImportAllowlist(t *testing.T) {
 // top-level roots: internal/ (everything), cmd/ (mains), skills/ (go:embed
 // must anchor to the source file), and the deliberately-flat models/ +
 // repositories/ shared kernel (their relocation is an explicitly gated,
-// separate decision — see aep-api-target-structure.md "What moves").
+// separate decision).
 func TestInternalOnlyLayout(t *testing.T) {
 	allowedRoots := map[string]bool{
 		"internal": true, "cmd": true, "skills": true,

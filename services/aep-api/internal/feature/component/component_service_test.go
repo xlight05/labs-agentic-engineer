@@ -16,7 +16,7 @@
 
 package component
 
-// UNIT tier (bff-component-testing.md §2): the REAL componentService with every
+// UNIT tier: the REAL componentService with every
 // out-of-process port mocked/faked — no HTTP, no DB. Proves the service's logic
 // branches: passthrough + error propagation for the OC-delegating reads, the
 // TriggerBuild build-secret pre-stage chain (incl. its best-effort GetRepo

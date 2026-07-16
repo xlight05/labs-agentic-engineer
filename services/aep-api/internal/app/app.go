@@ -1157,8 +1157,7 @@ func (a buildSecretStagerAdapter) StageBuildSecret(ctx context.Context, ocOrgID,
 // returns it as gitrepo.Host. This is the only place a concrete provider client
 // is constructed; every gitrepo domain service narrows Host to its own
 // capability port. Deliberately a plain switch — NOT a registry or capability
-// framework (see docs/design/aep-api-target-structure.md, "Explicitly NOT a
-// framework"). A GitLab impl later is one new clients/gitlab package + one case.
+// framework. A GitLab impl later is one new clients/gitlab package + one case.
 // cfg.Validate() already rejects unknown providers at boot; the default arm is
 // defensive.
 func buildGitHost(cfg config.Config) (gitrepo.Host, error) {

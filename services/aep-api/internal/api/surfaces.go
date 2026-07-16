@@ -53,7 +53,7 @@ import (
 // single issuer of org-bearing RS256 tokens (internal/platform/auth.TaskTokenManager
 // — Issue inbound, IssueServiceToken outbound), all verified against the one
 // JWKS at /auth/external/jwks.json. Org always travels in a verified claim,
-// never a trusted header. See docs/design/internal-s2s-api.md.
+// never a trusted header.
 //
 // "Where do I change X?" → credential verify/mint: internal/platform/auth ·
 // who-may-touch-what gates: tenant_gate.go (public) + internal.go runnerAuthGate (internal) ·
@@ -99,7 +99,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// ── dev/test surface (/_dev/v1) ──────────────────────────────────────────
 	// Local-only tooling, no request auth by design; safety is structural
 	// (registration gate to the dev tier + on no HTTPRoute). All gating + handler
-	// bodies live in dev.go. See docs/design/internal-s2s-api.md §3.4.
+	// bodies live in dev.go.
 	RegisterAllDev(mux, params)
 
 	// ── external-inbound (webhook + connect-callback) ────────────────────────
@@ -120,8 +120,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// middleware. Every operation passes the deny-by-default runnerAuthGate
 	// (BFF Task-JWT or publisher-cc verified against the path execution id)
 	// and is never gateway-advertised. All runner callbacks are keyed to the
-	// execution id — tasks-github-native §9.2. See
-	// docs/design/internal-s2s-api.md §3.
+	// execution id — tasks-github-native §9.2.
 	mux.Handle(internalV1+"/executions/", newInternalV1Handler(params.InternalDeps))
 
 	// ── internal MCP discovery (POST /internal/v1/mcp) ───────────────────────
@@ -162,7 +161,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	//
 	// The inbound verifier is injectable (params.InboundAuth) so a component test
 	// can swap the JWKS-backed verifier for a claims-injector and run the real
-	// gate in ENFORCE with no Thunder — bff-component-testing.md §8.2. Production
+	// gate in ENFORCE with no Thunder. Production
 	// leaves InboundAuth nil and gets the real RS256/JWKS middleware built here;
 	// only that seam differs, orgensure + the Huma gate are identical.
 	jwt := params.InboundAuth
@@ -179,7 +178,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// humakit.OrgScopedInput.Resolve reads it per-request (ENFORCE default when
 	// unstamped). Request-scoped instead of a package global so concurrently
 	// built handlers (prod + parallel component-test harnesses) can never race
-	// on the mode. bff-component-testing.md §8.3.
+	// on the mode.
 	stampGateMode := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r.WithContext(tenant.WithGateMode(r.Context(), gateMode)))

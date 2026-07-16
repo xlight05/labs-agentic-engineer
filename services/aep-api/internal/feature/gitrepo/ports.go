@@ -118,8 +118,7 @@ type WebhookOps interface {
 // feature/orgcreds — the validator's PAT/App liveness probes and the
 // discover-then-bind connect + disconnect cascade.
 //
-// Unlike the four ports above, this surface is GitHub-specific by nature (per
-// the provider-coupling map in docs/design/aep-api-target-structure.md); it is
+// Unlike the four ports above, this surface is GitHub-specific by nature; it is
 // its own future seam if a second provider becomes real. It is grouped here so
 // orgcreds holds one narrow port rather than the whole Host.
 type AppInstallOps interface {

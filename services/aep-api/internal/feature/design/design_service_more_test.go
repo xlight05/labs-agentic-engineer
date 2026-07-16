@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UNIT tier (bff-component-testing.md §2): the REAL designService with every
+// UNIT tier: the REAL designService with every
 // out-of-process seam faked — the artifact service (wrapped by the REAL
 // artifacts.NewArtifactStore decorator, so the store's split/assemble logic runs
 // for real). No HTTP, no DB — design has no SQL-shaped behavior (persistence

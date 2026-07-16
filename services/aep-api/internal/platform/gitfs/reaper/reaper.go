@@ -15,8 +15,7 @@
 // under the License.
 
 // Package reaper is the single disk-lifecycle authority for the shared
-// workspace mount (docs/design/shared-volume-clone-architecture.md §14, D12).
-// git_repositories is authoritative and the mount is a rebuildable cache in
+// workspace mount. git_repositories is authoritative and the mount is a rebuildable cache in
 // every part, so the synchronous delete hooks (TrashRepo / TrashOrg) are
 // best-effort and CORRECTNESS lives here, in the background sweep. Four
 // passes per tick, each isolated (one failing never stops the next):

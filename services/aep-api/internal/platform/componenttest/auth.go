@@ -35,12 +35,13 @@ const hdrClaims = "X-Componenttest-Claims"
 const TestBearer = "componenttest-bearer"
 
 // fakeInboundAuth is the component tier's stand-in for the production
-// JWKS-backed auth.Middleware (bff-component-testing.md §3). It does NOT verify a
+// JWKS-backed auth.Middleware. It does NOT verify a
 // token — it projects the harness-supplied claims into the request context at
 // the exact auth.WithClaims seam a verified Thunder token would use, then runs
-// the request through the rest of the real chain (orgensure → Huma gate in
-// ENFORCE). No header (NoAuth) ⇒ no claims ⇒ an org-scoped op 401s at the gate's
-// no-claims branch — the same code path production runs, minus the signature.
+// the request through the rest of the real chain (orgensure → the
+// deny-by-default tenant gate in ENFORCE). No header (NoAuth) ⇒ no claims ⇒ an
+// org-scoped op 401s at the gate's no-claims branch — the same code path
+// production runs, minus the signature.
 func fakeInboundAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if raw := r.Header.Get(hdrClaims); raw != "" {

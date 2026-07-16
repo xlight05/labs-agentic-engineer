@@ -16,7 +16,7 @@
 
 package organization
 
-// UNIT tier (bff-component-testing.md §2): the DB-FREE branches of the org
+// UNIT tier: the DB-FREE branches of the org
 // service and its pure error-mapping helpers, exercised with a mocked
 // NamespaceClient. The SQL-shaped behaviour of EnsureForOuHandle (verify →
 // backfill → cache/singleflight over real rows) lives at the dbtest tier in

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the REAL collab feature behind
+// COMPONENT tier: the REAL collab feature behind
 // the REAL production chain — global middleware → faked auth at the
 // jwt.WithClaims seam → orgensure → contract validation → the tenant gate
 // in ENFORCE → strict handlers (handlers_collab.go) with their inline error

@@ -34,7 +34,7 @@ import (
 // operation passes runnerAuthGate, which verifies the caller's BFF Task-JWT or
 // publisher-cc bearer against the execution named in the path (the INT-6
 // fence) and binds the verified org into the context. The spec is non-public —
-// never gateway-advertised. See docs/design/internal-s2s-api.md §3.
+// never gateway-advertised.
 //
 // RUNNER LOCKSTEP: the credentials-refresh response body is the orgcreds
 // service's own struct (igen.RefreshResponse is an alias via x-go-type), so

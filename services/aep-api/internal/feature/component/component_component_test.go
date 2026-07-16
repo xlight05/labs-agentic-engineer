@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the REAL component + config
+// COMPONENT tier: the REAL component + config
 // services behind the REAL production handler chain — global middleware → faked
 // auth at the jwt.WithClaims seam → orgensure → contract validation → the
 // deny-by-default tenant gate in ENFORCE → strict handlers → each handler's

@@ -14,9 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package gittest is the real-git test harness
-// (docs/design/aep-api-target-structure.md — "Git testing (the gittest tier)").
-// It gives git-flow tests a real git origin without Docker or network, so the
+// Package gittest is the real-git test harness. It gives git-flow tests a
+// real git origin without Docker or network, so the
 // save/discard/versioning flows run against genuine git object-store
 // semantics in the fast `make test` lane.
 //

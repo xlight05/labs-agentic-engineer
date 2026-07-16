@@ -17,8 +17,7 @@
 // Package artifacts is the requirements + design version store. It holds NO
 // local per-project state: reads are served from the workspace-mounted bare
 // mirror via the gitrepo.Workspace port (at the branch tip for the live draft,
-// at a `v*` tag for an approved version — docs/design/
-// shared-volume-clone-architecture.md §5), a save is the hard semantic gate
+// at a `v*` tag for an approved version), a save is the hard semantic gate
 // followed by an annotated tag via Workspace.Tag (no commit — the accepted
 // draft is already on `main` via the Files API), and a discard is one revert
 // Mutate back to the last tag, pushed under origin's push-CAS. The feature

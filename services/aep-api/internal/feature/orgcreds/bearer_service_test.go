@@ -16,7 +16,7 @@
 
 package orgcreds
 
-// UNIT tier (bff-component-testing.md §2): the HS256 connect-state bearer —
+// UNIT tier: the HS256 connect-state bearer —
 // issue→verify round-trip and every rejection branch (expiry, tampered
 // signature, wrong signing key, malformed, wrong kind, missing ocOrgId, no
 // key). Pure crypto/JWT, no HTTP or DB. Pinned ahead of the file split.

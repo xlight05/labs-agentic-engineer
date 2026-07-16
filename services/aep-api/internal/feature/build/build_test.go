@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// COMPONENT tier (bff-component-testing.md §4): the REAL build service behind
+// COMPONENT tier: the REAL build service behind
 // the REAL production handler chain — faked auth at the claims seam →
 // contract validation → the deny-by-default tenant gate in ENFORCE → the
 // strict handlers (handlers_build.go) — driven in-process via the

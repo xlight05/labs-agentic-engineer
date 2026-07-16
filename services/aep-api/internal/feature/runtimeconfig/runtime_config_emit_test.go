@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UNIT tier (bff-component-testing.md §2) for the runtime-config emit pipeline.
+// UNIT tier for the runtime-config emit pipeline.
 // runtimeconfig is BACKEND-ONLY: it has no *_huma.go (no HTTP surface — it is
 // driven by the codingagent dispatch cascade, not a router route) and no SQL,
 // so there is deliberately NO component tier and NO dbtest here — the correct

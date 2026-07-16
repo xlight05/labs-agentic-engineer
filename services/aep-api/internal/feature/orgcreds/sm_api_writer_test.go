@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UNIT + DBTEST tiers for SMAPIWriter (bff-component-testing.md §2): the
+// UNIT + DBTEST tiers for SMAPIWriter: the
 // SM-API client is faked at its edge (secretmanagersvc.SecretManagementClient
 // — CreateSecret/DeleteSecret are the only two methods on SMAPIWriter's path;
 // the rest panic on a stray call). The Write* happy path cannot be driven all
