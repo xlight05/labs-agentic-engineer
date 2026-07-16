@@ -66,8 +66,8 @@ import (
 	// template/base connections with (Config.DriverName below).
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/wso2/aep/aep-api/internal/database"
 	"github.com/wso2/aep/aep-api/internal/database/migrations"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -203,19 +203,6 @@ func startContainer() {
 // so every clone has the exact production schema.
 type runAllMigrator struct{}
 
-// baseModels mirrors the AutoMigrate set cmd/aep-api/main.go passes to
-// database.Open before RunAll — the tables RunAll's ALTERs assume already exist.
-// Keep it in sync with main.go's database.Open(...) call.
-var baseModels = []any{
-	&models.ComponentConfig{},
-	&models.WebhookDelivery{},
-	&models.WebhookPayload{},
-	&models.Organization{},
-	&models.Execution{},
-	&models.AgentTurn{},
-	&models.DevflowRun{},
-}
-
 // Migrate provisions the template exactly as the app provisions a fresh DB at
 // boot: AutoMigrate the base models, self-heal grants, then run every ordered
 // migration via migrations.RunAll. pgtestdb calls this once, on the empty
@@ -228,7 +215,7 @@ func (runAllMigrator) Migrate(ctx context.Context, sqlDB *sql.DB, _ pgtestdb.Con
 	if err != nil {
 		return fmt.Errorf("open gorm on template: %w", err)
 	}
-	if err := db.AutoMigrate(baseModels...); err != nil {
+	if err := db.AutoMigrate(database.BaseModels()...); err != nil {
 		return fmt.Errorf("auto-migrate base models: %w", err)
 	}
 	_ = migrations.RunBootstrapGrants(ctx, db) // non-fatal self-heal, as in main

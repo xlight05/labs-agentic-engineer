@@ -383,6 +383,75 @@ func TestTaskmetaIsPure(t *testing.T) {
 	}
 }
 
+// gormImporters is the frozen allowlist of module-internal packages permitted
+// to import gorm.io/gorm directly. The DB seam is being migrated feature-by-
+// feature into repositories/ (the aep-api testability plan, step 11), so this
+// list may only SHRINK: a NEW direct gorm importer fails (route persistence
+// through a repository — the real repository over dbtest is the DB test seam),
+// and a STALE entry — a package that no longer imports gorm — also fails, so
+// every migration trims exactly one row and the list stays honest.
+var gormImporters = map[string]bool{
+	// Composition + kernel (structurally hold gorm; not feature slices).
+	"internal/api":                    true,
+	"internal/app":                    true,
+	"internal/credentials":            true,
+	"internal/database":               true,
+	"internal/database/migrations":    true,
+	"repositories":                    true,
+	"internal/platform/dbtest":        true,
+	"internal/platform/componenttest": true,
+	// Features with raw gorm still to migrate into repositories/ (step 11).
+	"internal/feature/codingagent":   true,
+	"internal/feature/component":     true,
+	"internal/feature/genai":         true,
+	"internal/feature/idp":           true,
+	"internal/feature/organization":  true,
+	"internal/feature/orgcreds":      true,
+	"internal/feature/runtimeconfig": true,
+	"internal/feature/webhook":       true,
+}
+
+// TestGormImportAllowlist asserts the set of packages that DIRECTLY import
+// gorm.io/gorm is exactly gormImporters. It is the ratchet behind the raw-gorm
+// → repositories/ migration: coupling to the ORM cannot spread to a new package
+// without a failing test, and the list can only shrink as features move their
+// persistence behind repositories.
+func TestGormImportAllowlist(t *testing.T) {
+	out, err := exec.Command("go", "list", "-f",
+		`{{.ImportPath}}{{range .Imports}} {{.}}{{end}}`, mod+"/...").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list %s/...: %v\n%s", mod, err, out)
+	}
+	remaining := map[string]bool{}
+	for k := range gormImporters {
+		remaining[k] = true
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		short := strings.TrimPrefix(fields[0], mod+"/")
+		direct := false
+		for _, imp := range fields[1:] {
+			if imp == "gorm.io/gorm" {
+				direct = true
+				break
+			}
+		}
+		if !direct {
+			continue
+		}
+		if !gormImporters[short] {
+			t.Errorf("NEW direct gorm.io/gorm importer %q — route persistence through repositories/ (a repository over dbtest is the DB test seam); if this genuinely belongs in the kernel, add it to gormImporters with rationale in the PR", short)
+		}
+		delete(remaining, short)
+	}
+	for stale := range remaining {
+		t.Errorf("allowlist package %q no longer imports gorm.io/gorm — remove it from gormImporters (the list may only shrink)", stale)
+	}
+}
+
 // TestInternalOnlyLayout asserts no Go source lives outside the sanctioned
 // top-level roots: internal/ (everything), cmd/ (mains), skills/ (go:embed
 // must anchor to the source file), and the deliberately-flat models/ +

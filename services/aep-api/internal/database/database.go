@@ -23,7 +23,28 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/wso2/aep/aep-api/models"
 )
+
+// BaseModels is the single source of truth for the AutoMigrate set that must
+// exist before migrations.RunAll runs its ALTERs — the tables RunAll assumes
+// already exist. Both the production boot path (cmd/aep-api/main.go) and the
+// dbtest template migrator build the schema from this one list, so the two can
+// never drift. Tasks are GitHub issues now (no component_tasks table), and
+// org_credentials lives in git-service — the BFF neither auto-migrates nor reads
+// it locally.
+func BaseModels() []any {
+	return []any{
+		&models.ComponentConfig{},
+		&models.WebhookDelivery{},
+		&models.WebhookPayload{},
+		&models.Organization{},
+		&models.Execution{},
+		&models.AgentTurn{},
+		&models.DevflowRun{},
+	}
+}
 
 // Open connects to the PostgreSQL database and auto-migrates the given models.
 func Open(dsn string, models ...any) (*gorm.DB, error) {

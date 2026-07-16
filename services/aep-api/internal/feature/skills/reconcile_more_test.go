@@ -213,7 +213,7 @@ func TestEnsureProvisioned_Guards(t *testing.T) {
 }
 
 // The unified embedded library: every skill vendored from repo-root skills/
-// loads with its kind read from frontmatter — platform for the 6 generation
+// loads with its kind read from frontmatter — platform for the 7 generation
 // skills (stamped metadata.aep.kind: platform), org for the 4 unmarked stack
 // skills (absent → org). One loader, one source tree.
 func TestLoadEmbeddedLibrary(t *testing.T) {
@@ -223,14 +223,14 @@ func TestLoadEmbeddedLibrary(t *testing.T) {
 		t.Fatalf("loadEmbeddedLibrary: %v", err)
 	}
 	by := nameSet(got)
-	if len(got) != 10 {
-		t.Fatalf("library size = %d, want 10: %v", len(got), keysOf(by))
+	if len(got) != 11 {
+		t.Fatalf("library size = %d, want 11: %v", len(got), keysOf(by))
 	}
 	wantKinds := map[string]string{
 		"api-management": "org", "go": "org", "react-webapp": "org", "thunder-authentication": "org",
-		"excalidraw-wireframes": "platform", "high-level-architecture": "platform",
-		"openapi-conventions": "platform", "task-breakdown": "platform", "task-planning": "platform",
-		"validation-criteria": "platform",
+		"cell-architecture-dsl": "platform", "excalidraw-wireframes": "platform",
+		"high-level-architecture": "platform", "openapi-conventions": "platform",
+		"task-breakdown": "platform", "task-planning": "platform", "validation-criteria": "platform",
 	}
 	for name, kind := range wantKinds {
 		sk, ok := by[name]

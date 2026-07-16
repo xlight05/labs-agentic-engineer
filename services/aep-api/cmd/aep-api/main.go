@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/database"
 	"github.com/wso2/aep/aep-api/internal/platform/obs"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // main is the process entry point and owns only process lifecycle: load+validate
@@ -47,19 +46,10 @@ func main() {
 
 	setupLogger(cfg.LogLevel)
 
-	// Database. Executions + ComponentConfig + webhook tables. Tasks are GitHub
-	// issues now (no component_tasks table — dropped by the tasks-github-native
-	// migration). org_credentials lives in git-service — the BFF does not
-	// auto-migrate or read it locally.
-	db, err := database.Open(cfg.DatabaseURL,
-		&models.ComponentConfig{},
-		&models.WebhookDelivery{},
-		&models.WebhookPayload{},
-		&models.Organization{},
-		&models.Execution{},
-		&models.AgentTurn{},
-		&models.DevflowRun{},
-	)
+	// Database. The base AutoMigrate set is database.BaseModels() — the single
+	// source of truth shared with the dbtest template migrator so the two never
+	// drift.
+	db, err := database.Open(cfg.DatabaseURL, database.BaseModels()...)
 	if err != nil {
 		slog.Error("database init failed", "error", err)
 		os.Exit(1)
