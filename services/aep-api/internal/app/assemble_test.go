@@ -1,0 +1,167 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// The assembly-test tier: proves app.Assemble(cfg, Fake()) builds the real
+// service graph in-process, with zero I/O, in milliseconds. This is what makes
+// the composition root's "the harness can build the same graph with faked deps"
+// promise true — Build's ~1,000 lines were previously exercised by nothing but a
+// live process boot. These tests pin, per config-gated mode: the graph assembles
+// without error, the watcher slice is registered at the right count, and the
+// Degradations() matrix reports exactly which optional capabilities are off.
+package app
+
+import (
+	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/config"
+)
+
+// baseCfg is the minimal config that Assemble accepts. GitProvider must be
+// "github" (buildGitHost rejects anything else), and the OpenChoreo clients use
+// a must-construct pattern that panics on an empty BaseURL — so the structurally-
+// required (non-degradable) fields are set to dummy non-empty values. Everything
+// OPTIONAL is left at its zero value, so the graph assembles in its maximally-
+// degraded mode. Assemble never calls config.Validate, so the required-at-boot
+// fields (JWKSURL, TaskTokenSigningKey) are irrelevant here.
+func baseCfg() config.Config {
+	c := config.Config{GitProvider: "github"}
+	c.PlatformAPI.BaseURL = "http://openchoreo.test"
+	return c
+}
+
+func TestAssemble_MinimalConfigBuildsTheGraph(t *testing.T) {
+	app, err := Assemble(baseCfg(), Fake())
+	if err != nil {
+		t.Fatalf("Assemble(minimal, Fake()) = %v, want nil", err)
+	}
+	if app.Handler == nil {
+		t.Fatal("assembled app has a nil Handler")
+	}
+	if len(app.Watchers) != 7 {
+		t.Fatalf("minimal watcher count = %d, want 7 (the unconditional watchers)", len(app.Watchers))
+	}
+	for i, w := range app.Watchers {
+		if w == nil {
+			t.Fatalf("watcher %d is nil", i)
+		}
+	}
+}
+
+// TestAssemble_WatcherRegistration pins the two conditional watchers: the
+// JobWatcher rides on CLUSTER_GATEWAY_PROXY_URL, and the devflow worker rides on
+// TEMPORAL_HOSTPORT. The base is 7.
+func TestAssemble_WatcherRegistration(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*config.Config)
+		want   int
+	}{
+		{"base", func(*config.Config) {}, 7},
+		{"+cluster-gateway-proxy adds JobWatcher", func(c *config.Config) {
+			c.ClusterGatewayProxyURL = "http://cgw"
+		}, 8},
+		{"+temporal adds the devflow worker", func(c *config.Config) {
+			c.Temporal.HostPort = "temporal:7233"
+		}, 8},
+		{"+both", func(c *config.Config) {
+			c.ClusterGatewayProxyURL = "http://cgw"
+			c.Temporal.HostPort = "temporal:7233"
+		}, 9},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := baseCfg()
+			tt.mutate(&cfg)
+			app, err := Assemble(cfg, Fake())
+			if err != nil {
+				t.Fatalf("Assemble = %v", err)
+			}
+			if len(app.Watchers) != tt.want {
+				t.Fatalf("watcher count = %d, want %d", len(app.Watchers), tt.want)
+			}
+		})
+	}
+}
+
+func hasCapability(degs []Degradation, capability string) bool {
+	for _, d := range degs {
+		if d.Capability == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAssemble_Degradations walks the config-gated degraded modes off the
+// assembled app's Degradations() report — the enumerable matrix that replaces a
+// capability/Profile abstraction.
+func TestAssemble_Degradations(t *testing.T) {
+	t.Run("minimal config reports the full degraded set", func(t *testing.T) {
+		app, err := Assemble(baseCfg(), Fake())
+		if err != nil {
+			t.Fatalf("Assemble = %v", err)
+		}
+		degs := app.Degradations()
+		// Every optional capability is off, including the undocumented
+		// no-dispatch-path state (neither dispatch path wired).
+		for _, want := range []string{
+			"m2m-service-auth", "build-logs", "sm-api-secret-writes",
+			"cluster-gateway-proxy", "mcp-discovery", "idp-mutations",
+			"connect-oauth-state", "coding-dispatch-proxy", "coding-dispatch-k8s",
+			"coding-dispatch-any", "rca-agent-key-push", "devflow-temporal",
+		} {
+			if !hasCapability(degs, want) {
+				t.Errorf("minimal config: expected degradation %q, missing from %+v", want, degs)
+			}
+		}
+	})
+
+	t.Run("cloud proxy dispatch clears the dispatch degradations", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.ClusterGatewayProxyURL = "http://cgw"
+		cfg.SecretManagerAPIURL = "http://sm-api"
+		app, err := Assemble(cfg, Fake())
+		if err != nil {
+			t.Fatalf("Assemble = %v", err)
+		}
+		degs := app.Degradations()
+		for _, gone := range []string{
+			"cluster-gateway-proxy", "sm-api-secret-writes",
+			"coding-dispatch-proxy", "coding-dispatch-any",
+		} {
+			if hasCapability(degs, gone) {
+				t.Errorf("with proxy+sm-api: %q should NOT be degraded, got %+v", gone, degs)
+			}
+		}
+		// The direct K8s path is still off (Fake has no in-cluster client), but a
+		// dispatch path exists, so the no-dispatch-path state is cleared.
+		if !hasCapability(degs, "coding-dispatch-k8s") {
+			t.Errorf("with a nil k8s client the direct-dispatch degradation should remain")
+		}
+	})
+
+	t.Run("temporal enabled clears the devflow degradation", func(t *testing.T) {
+		cfg := baseCfg()
+		cfg.Temporal.HostPort = "temporal:7233"
+		app, err := Assemble(cfg, Fake())
+		if err != nil {
+			t.Fatalf("Assemble = %v", err)
+		}
+		if hasCapability(app.Degradations(), "devflow-temporal") {
+			t.Errorf("with TEMPORAL_HOSTPORT set, devflow-temporal must not be degraded")
+		}
+	})
+}

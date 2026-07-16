@@ -28,7 +28,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/app"
 	"github.com/wso2/aep/aep-api/internal/config"
-	"github.com/wso2/aep/aep-api/internal/database"
 	"github.com/wso2/aep/aep-api/internal/platform/obs"
 )
 
@@ -46,26 +45,24 @@ func main() {
 
 	setupLogger(cfg.LogLevel)
 
-	// Database. The base AutoMigrate set is database.BaseModels() — the single
-	// source of truth shared with the dbtest template migrator so the two never
-	// drift.
-	db, err := database.Open(cfg.DatabaseURL, database.BaseModels()...)
+	// Resolve performs every boot side effect (DB open + migrations, OpenBao key
+	// loads, the dev seed, k8s in-cluster init, workspace fsck) and returns the
+	// resolved Infra bundle. Assemble then wires the service graph purely from
+	// config + that bundle — no I/O — so the same real handler is reachable from
+	// an assembly test with a faked Infra.
+	infra, err := app.Resolve(context.Background(), cfg)
 	if err != nil {
-		slog.Error("database init failed", "error", err)
+		slog.Error("infra resolve failed", "error", err)
 		os.Exit(1)
 	}
 
-	// Schema bootstrap + migrations (grants + RunAll). Kept out of Build so the
-	// composition root stays a pure assembly.
-	if err := app.Bootstrap(context.Background(), db, cfg); err != nil {
-		slog.Error("bootstrap failed", "error", err)
-		os.Exit(1)
-	}
-
-	application, err := app.Build(cfg, db)
+	application, err := app.Assemble(cfg, infra)
 	if err != nil {
 		slog.Error("app init failed", "error", err)
 		os.Exit(1)
+	}
+	for _, deg := range application.Degradations() {
+		slog.Warn("capability degraded", "capability", deg.Capability, "reason", deg.Reason)
 	}
 
 	server := &http.Server{

@@ -239,6 +239,19 @@ func (c Config) Validate() error {
 	if c.GitProvider != "github" {
 		errs = append(errs, fmt.Sprintf("unknown GIT_PROVIDER %q — supported: github", c.GitProvider))
 	}
+	// Required config — fail fast at boot instead of soft-warning and surfacing
+	// the failure later at runtime. Both planes (docker-compose + Helm) always set
+	// these; an empty value means a misconfigured deployment, not a valid mode.
+	if c.JWKSURL == "" {
+		// Without JWKS the inbound verifier rejects every /api/ request (401);
+		// there is no unsigned-claim fallback.
+		errs = append(errs, "JWKS_URL is required — the inbound JWT verifier cannot start without it")
+	}
+	if c.TaskTokenSigningKey == "" {
+		// Without the RS256 signing key every task dispatch (and the runner
+		// callbacks that verify against the published JWKS) fails.
+		errs = append(errs, "BFF_TASK_SIGNING_KEY (or _PATH) is required — task dispatch cannot start without it")
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("configuration errors:\n%s", strings.Join(errs, "\n"))
 	}

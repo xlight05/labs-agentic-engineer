@@ -14,16 +14,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package app is the composition root: it assembles the entire service graph
-// (HTTP handler + background watchers) from config + an open DB, and owns the
-// imperative first-boot steps (Bootstrap) main runs before serving. It lives
-// under internal/ — not package main — so a component test can import it and
-// assemble the same real handler with faked deps (the harness IS Build).
+// Package app is the composition root. Assemble wires the entire service graph
+// (HTTP handler + background watchers) from config + a resolved Infra bundle,
+// doing NO I/O of its own — deterministic and millisecond-fast, so an assembly
+// test can build the same real graph with a faked Infra (app.Assemble(cfg,
+// app.Fake())). Resolve (infra.go) performs every boot side effect — DB open +
+// migrations, the OpenBao key loads, the dev seed, k8s in-cluster init, the
+// workspace fsck — and hands Assemble the results. main runs Resolve → Assemble
+// → serve.
 package app
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,13 +33,10 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
-	k8sclient "github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/clients/oauth"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -76,7 +75,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
-	"github.com/wso2/aep/aep-api/internal/seed"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -89,21 +87,30 @@ type Watcher interface {
 }
 
 // App is the assembled service graph: the HTTP handler plus the background
-// watchers to launch. Bootstrap side effects (migrations, grants) already ran
-// before Build; App holds only what main needs to serve and to shut down.
+// watchers to launch. Boot side effects (migrations, OpenBao, seed) already ran
+// in Resolve; App holds only what main needs to serve and to shut down, plus the
+// degradation report of which optional capabilities are off.
 type App struct {
-	Handler  http.Handler
-	Watchers []Watcher
+	Handler      http.Handler
+	Watchers     []Watcher
+	degradations []Degradation
 }
 
-// Build wires the entire service graph from config + an open DB and returns
-// the HTTP handler + background watchers. It performs NO process-lifecycle work
-// (no os.Exit, no signal handling, no migrations) — every failure is returned —
-// so a component test can assemble the same real handler with faked deps.
-// Wiring order is load-bearing: several constructors read the value a prior one
-// produced; the comments call out the couplings.
-func Build(cfg config.Config, db *gorm.DB) (*App, error) {
+// Assemble wires the entire service graph from config + a resolved Infra and
+// returns the HTTP handler + background watchers. It performs NO I/O and NO
+// process-lifecycle work (no os.Exit, no signals, no network, no clock, no
+// filesystem) — every dependency that needed boot-time I/O arrives pre-resolved
+// in `in` (see Resolve) — so an assembly test builds the same real graph in
+// milliseconds with Fake(). Wiring order is load-bearing: several constructors
+// read the value a prior one produced; the comments call out the couplings.
+func Assemble(cfg config.Config, in Infra) (*App, error) {
 	var err error
+	db := in.DB
+	credStore := in.CredStore
+	minter := in.Minter
+	appClientSecret := in.AppClientSecret
+	wpClient := in.K8sClient
+	workspaceEngine := in.Workspace
 
 	// Skills are repo-backed now (one private org-skills repo per org —
 	// docs/design/skills-repo-storage.md). The store needs gitOpsService +
@@ -236,82 +243,10 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		slog.Warn("CLUSTER_GATEWAY_PROXY_URL not set — coding-agent live streaming + JobWatcher disabled; dispatch uses the direct K8s Job path")
 	}
 
-	// Credentials + git-service services and controllers.
-	credKey, err := base64.StdEncoding.DecodeString(cfg.CredentialEncryptionKey)
-	if err != nil || len(credKey) != 32 {
-		// config.Validate guarantees this decodes to 32 bytes; kept as defense.
-		return nil, fmt.Errorf("CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key: %w", err)
-	}
-	credStore, err := credentials.NewDBStore(db, credKey)
-	if err != nil {
-		return nil, fmt.Errorf("credential store init: %w", err)
-	}
-	slog.Info("credential store: postgres (aes-256-gcm)")
-
-	wpClient, err := k8sclient.NewInClusterClient()
-	if err != nil {
-		slog.Warn("k8s client init failed — mint-build will skip Secret writes; builds will fail at clone", "error", err)
-		wpClient = nil
-	}
-
-	// App-token minter — best-effort App-key load. With no App key the minter
-	// answers in no-app mode; the connect surface lights up the App path
-	// lazily on first use.
-	loadCtx, cancelLoad := context.WithTimeout(context.Background(), 10*time.Second)
-	appKey, err := credentials.LoadAppKeyFromOpenBao(loadCtx, credStore)
-	cancelLoad()
-	if err != nil {
-		slog.Warn("app key load failed; App-mode credentials will return ErrAppNotConfigured", "error", err)
-		appKey = nil
-	}
-	minter, err := credentials.NewAppTokenMinter(appKey)
-	if err != nil {
-		return nil, fmt.Errorf("app token minter init: %w", err)
-	}
-	minter.WithOpenBao(credStore)
-
-	// Dev-only app-platform seed (App private key + client_secret + webhook
-	// HMAC). No-op outside DEPLOYMENT_TIER=dev.
-	{
-		c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		if err := seed.AppPlatformFromEnv(c, credStore, cfg); err != nil {
-			cancel()
-			return nil, fmt.Errorf("app platform seed: %w", err)
-		}
-		cancel()
-	}
-	if appKey == nil {
-		retryCtx, cancelRetry := context.WithTimeout(context.Background(), 10*time.Second)
-		if reloaded, rerr := credentials.LoadAppKeyFromOpenBao(retryCtx, credStore); rerr == nil && reloaded != nil {
-			cancelRetry()
-			minter, err = credentials.NewAppTokenMinter(reloaded)
-			if err != nil {
-				return nil, fmt.Errorf("app token minter re-init: %w", err)
-			}
-			minter.WithOpenBao(credStore)
-			slog.Info("github app loaded post-seed", "appId", reloaded.AppID)
-		} else {
-			cancelRetry()
-		}
-	}
-	if minter.AppID() != 0 {
-		idCtx, cancelID := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := minter.LoadAppBotIdentity(idCtx, "https://api.github.com"); err != nil {
-			slog.Warn("app bot identity load failed; will retry on first connect", "error", err)
-		}
-		cancelID()
-	}
-	var appClientSecret string
-	if minter.AppID() != 0 {
-		csCtx, cancelCS := context.WithTimeout(context.Background(), 10*time.Second)
-		if cs, err := minter.LoadAppClientSecret(csCtx); err != nil {
-			slog.Warn("app oauth client_secret load failed; bind path disabled", "error", err)
-		} else {
-			appClientSecret = cs
-		}
-		cancelCS()
-	}
-
+	// Credentials + git-service services and controllers. The credential store,
+	// the App-token minter (post OpenBao key-load / dev seed / bot-identity load),
+	// and the App OAuth client_secret are all resolved in Resolve and arrive via
+	// Infra — Assemble does no OpenBao/network I/O.
 	credResolver := credentials.NewOrgResolver(db, credStore, minter)
 
 	// One git host, selected by GIT_PROVIDER, threaded into every gitrepo
@@ -321,18 +256,11 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		return nil, err
 	}
 
-	// Workspace engine — the disk-backed git plumbing over the shared
-	// /workspaces mount (docs/design/shared-volume-clone-architecture.md).
-	// Fail fast on an unusable root: the volume is mounted in compose/k8s,
-	// and dev runs override AEP_WORKSPACE_ROOT. It backs the disk-lifecycle
-	// pieces (the two best-effort trash hooks below + the reaper watcher) and
-	// the GitOpsService Workspace port (skills today; files/artifacts/genai
-	// in Phases 2–3).
-	workspaceEngine, err := gitfs.New(cfg.Workspace.Root)
-	if err != nil {
-		return nil, fmt.Errorf("workspace engine init (root %q): %w", cfg.Workspace.Root, err)
-	}
-	slog.Info("workspace engine", "root", workspaceEngine.Root())
+	// Workspace engine (resolved in Resolve, arrives via Infra) — the disk-backed
+	// git plumbing over the shared /workspaces mount. It backs the disk-lifecycle
+	// pieces (the two best-effort trash hooks below + the reaper watcher) and the
+	// GitOpsService Workspace port.
+	//
 	// Both hooks are phase 1 of the two-phase delete (O(1) rename into
 	// trash/) and best-effort by contract: failures are logged, never
 	// surfaced — the reaper's orphan pass is the correctness backstop.
@@ -487,11 +415,10 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// componentService takes repoSvc + buildCredSvc so TriggerBuild can
 	// pre-stage the per-WorkflowRun build Secret in workflows-<orgID>
 	// before the WorkflowRun is created (see
-	// docs/design/build-credential-injection.md).
-	var buildStager component.BuildSecretStager
-	if buildCredService != nil {
-		buildStager = buildSecretStagerAdapter{svc: buildCredService}
-	}
+	// docs/design/build-credential-injection.md). buildCredService is never nil
+	// (NewBuildCredentialsService always returns a value; its gitSecrets are
+	// nil-safe internally), so the stager is always wired.
+	buildStager := buildSecretStagerAdapter{svc: buildCredService}
 	componentService := component.NewComponentService(componentClient, observClient, artifactStore, repoService, buildStager)
 	configService := component.NewConfigService(configRepo, componentService)
 	designService := design.NewDesignService(artifactStore, artifactSvcGit)
@@ -675,11 +602,8 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 	// Build-secret staging so the post-merge build clones a PRIVATE project repo
 	// (the local plane sets GITHUB_REPO_VISIBILITY=private). Reuses the same
 	// per-org build GitSecret stager feature/component uses for manual builds.
-	// nil stager → builds clone unauthenticated (public repos).
-	if buildStager != nil {
-		codingExecutor.WithBuildSecrets(buildStager, 0)
-		slog.Info("coding executor: build-secret staging enabled (private-repo builds)")
-	}
+	codingExecutor.WithBuildSecrets(buildStager, 0)
+	slog.Info("coding executor: build-secret staging enabled (private-repo builds)")
 	// Coding-dispatch pre-flight: provision the OpenChoreo Component CR from the
 	// design facts before the coding run, so the merged-PR build has a Component
 	// to build (else "Component not found"). Ported from the legacy dispatch
@@ -718,11 +642,8 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		WithWorkflowSignaler(devflowSignaler).
 		WithTaskNotifier(taskStreamHub)
 	// A build that fails at git-clone-auth within budget is re-minted + re-tried
-	// (§7). Only meaningful when a credential can be staged; otherwise a git-auth
-	// failure is terminal like any other.
-	if buildStager != nil {
-		execWatcher.WithBuildRetrier(codingExecutor, codingExecutor.AuthRetryBudget())
-	}
+	// (§7): the build-secret stager is always wired, so the retrier is too.
+	execWatcher.WithBuildRetrier(codingExecutor, codingExecutor.AuthRetryBudget())
 
 	// NOTE: the trait_sync drift watcher enumerated (org,project,component) from
 	// the component_tasks table to periodically reconcile the api-configuration
@@ -1106,7 +1027,79 @@ func Build(cfg config.Config, db *gorm.DB) (*App, error) {
 		slog.Info("devflow: temporal worker watcher registered", "hostPort", cfg.Temporal.HostPort)
 	}
 
-	return &App{Handler: handler, Watchers: watchers}, nil
+	return &App{
+		Handler:      handler,
+		Watchers:     watchers,
+		degradations: computeDegradations(cfg, in),
+	}, nil
+}
+
+// Degradation is one optional capability the assembled graph is running WITHOUT,
+// with the config that would enable it. It is pure data, re-derived from cfg +
+// Infra by computeDegradations: the if-cfg.X gates stay greppable two-liners in
+// Assemble, and one assembly test enumerates the whole degraded-mode matrix off
+// Degradations() — no capability/Profile abstraction.
+type Degradation struct {
+	Capability string // stable slug (e.g. "build-logs", "coding-dispatch-any")
+	Reason     string // which config is missing and what it turns off
+}
+
+// Degradations reports every optional capability the assembled app is running
+// without, and why. Required config (JWKSURL, TaskTokenSigningKey) is not listed:
+// config.Validate boot-fails on it, so it can never be a degradation here.
+func (a *App) Degradations() []Degradation { return a.degradations }
+
+func computeDegradations(cfg config.Config, in Infra) []Degradation {
+	var d []Degradation
+	off := func(capability, reason string) { d = append(d, Degradation{capability, reason}) }
+
+	if cfg.ServiceAuth.TokenURL == "" || cfg.ServiceAuth.ClientID == "" {
+		off("m2m-service-auth", "SERVICE_AUTH_TOKEN_URL / SERVICE_AUTH_CLIENT_ID not set — OC calls carry no M2M token")
+	}
+	if cfg.Observability.BaseURL == "" {
+		off("build-logs", "OBSERVABILITY_API_URL not set — build logs disabled")
+	}
+	if cfg.SecretManagerAPIURL == "" {
+		off("sm-api-secret-writes", "SECRET_MANAGER_API_URL not set — Phase-1 secret writes + external-secret cleanup disabled")
+	}
+	if cfg.ClusterGatewayProxyURL == "" {
+		off("cluster-gateway-proxy", "CLUSTER_GATEWAY_PROXY_URL not set — coding-agent live streaming + JobWatcher disabled")
+	}
+	if cfg.AEPInternalBaseURL == "" {
+		off("mcp-discovery", "AEP_INTERNAL_BASE_URL not set — design-turn MCP discovery omitted")
+	}
+	thunderBase := cfg.ThunderAdmin.BaseURL
+	if thunderBase == "" {
+		thunderBase = cfg.ServiceAuth.TokenURL
+	}
+	if cfg.ThunderAdmin.ClientID == "" || cfg.ThunderAdmin.ClientSecret == "" || thunderBase == "" {
+		off("idp-mutations", "THUNDER_ADMIN_URL / THUNDER_SYSTEM_CLIENT_ID / THUNDER_SYSTEM_CLIENT_SECRET not set — per-org publisher IDP mutations 503")
+	}
+	if cfg.OAuthStateSigningKey == "" {
+		off("connect-oauth-state", "OAUTH_STATE_SIGNING_KEY not set — GitHub App connect-state JWTs will fail to mint")
+	}
+	// Dispatch paths: the cloud proxy path needs cluster-gateway-proxy + SM-API;
+	// the direct K8s-Job path needs the in-cluster client + runner image + platform
+	// URL. Neither wired ⇒ the undocumented no-dispatch-path state: coding /
+	// validation runs cannot be launched at all.
+	proxyDispatch := cfg.ClusterGatewayProxyURL != "" && cfg.SecretManagerAPIURL != ""
+	k8sDispatch := in.K8sClient != nil && cfg.AgentRunnerImage != "" && cfg.AgentPlatformURL != ""
+	if !proxyDispatch {
+		off("coding-dispatch-proxy", "cluster-gateway-proxy + SM-API not both set — cloud proxy dispatch path off")
+	}
+	if !k8sDispatch {
+		off("coding-dispatch-k8s", "in-cluster k8s client / AGENT_RUNNER_IMAGE / AGENT_PLATFORM_URL not all set — direct K8s-Job dispatch off")
+	}
+	if !proxyDispatch && !k8sDispatch {
+		off("coding-dispatch-any", "NO dispatch path wired — coding/validation runs cannot be launched")
+	}
+	if cfg.RCAAgentAnthropicPushNamespace == "" || cfg.RCAAgentAnthropicPushSecretName == "" {
+		off("rca-agent-key-push", "RCA_AGENT_ANTHROPIC_PUSH_* not set — org Anthropic key not pushed to a consumer ExternalSecret")
+	}
+	if !cfg.Temporal.Enabled() {
+		off("devflow-temporal", "TEMPORAL_HOSTPORT not set — devflow worker watcher not registered")
+	}
+	return d
 }
 
 // codingDispatcher adapts the execution funnel + repository onto the devflow

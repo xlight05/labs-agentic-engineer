@@ -21,13 +21,26 @@ import (
 	"testing"
 )
 
+var validKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
+
+// validConfig returns a Config that passes Validate — every required field set.
+// Each test starts from it and mutates the one field it exercises.
+func validConfig() Config {
+	return Config{
+		CredentialEncryptionKey: validKey,
+		GitProvider:             "github",
+		JWKSURL:                 "https://thunder.example/oauth2/jwks",
+		TaskTokenSigningKey:     "-----BEGIN KEY-----\nx\n-----END KEY-----",
+	}
+}
+
 func TestConfigValidate_CredentialEncryptionKey(t *testing.T) {
 	tests := []struct {
 		name    string
 		key     string
 		wantErr bool
 	}{
-		{"valid 32-byte key", base64.StdEncoding.EncodeToString(make([]byte, 32)), false},
+		{"valid 32-byte key", validKey, false},
 		{"empty", "", true},
 		{"not base64", "!!!not-base64!!!", true},
 		{"16 bytes (too short)", base64.StdEncoding.EncodeToString(make([]byte, 16)), true},
@@ -35,8 +48,9 @@ func TestConfigValidate_CredentialEncryptionKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Config{CredentialEncryptionKey: tt.key, GitProvider: "github"}.Validate()
-			if (err != nil) != tt.wantErr {
+			c := validConfig()
+			c.CredentialEncryptionKey = tt.key
+			if err := c.Validate(); (err != nil) != tt.wantErr {
 				t.Fatalf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
@@ -44,7 +58,6 @@ func TestConfigValidate_CredentialEncryptionKey(t *testing.T) {
 }
 
 func TestConfigValidate_GitProvider(t *testing.T) {
-	validKey := base64.StdEncoding.EncodeToString(make([]byte, 32))
 	tests := []struct {
 		name     string
 		provider string
@@ -56,10 +69,35 @@ func TestConfigValidate_GitProvider(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Config{CredentialEncryptionKey: validKey, GitProvider: tt.provider}.Validate()
-			if (err != nil) != tt.wantErr {
+			c := validConfig()
+			c.GitProvider = tt.provider
+			if err := c.Validate(); (err != nil) != tt.wantErr {
 				t.Fatalf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
 	}
+}
+
+// TestConfigValidate_RequiredFields pins the fail-fast contract: an empty JWKSURL
+// or TaskTokenSigningKey is a boot error, not a soft-warn that surfaces later.
+func TestConfigValidate_RequiredFields(t *testing.T) {
+	t.Run("both set is valid", func(t *testing.T) {
+		if err := validConfig().Validate(); err != nil {
+			t.Fatalf("Validate() = %v, want nil", err)
+		}
+	})
+	t.Run("missing JWKS_URL fails", func(t *testing.T) {
+		c := validConfig()
+		c.JWKSURL = ""
+		if err := c.Validate(); err == nil {
+			t.Fatal("Validate() = nil, want error for empty JWKS_URL")
+		}
+	})
+	t.Run("missing task signing key fails", func(t *testing.T) {
+		c := validConfig()
+		c.TaskTokenSigningKey = ""
+		if err := c.Validate(); err == nil {
+			t.Fatal("Validate() = nil, want error for empty TaskTokenSigningKey")
+		}
+	})
 }
