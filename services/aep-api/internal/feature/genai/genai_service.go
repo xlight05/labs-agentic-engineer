@@ -191,27 +191,6 @@ func turnStatusOf(t *models.AgentTurn) *TurnStatus {
 
 // ---- service ---------------------------------------------------------------
 
-// GenAIService is the typed entry point behind the turn/status/stream/rehydrate
-// endpoints.
-type GenAIService interface {
-	// StartTurn validates + snapshots + guards, detaches the turn runner, and
-	// returns the turn id (the 202 body). Pre-202 failures are the typed
-	// errors above (incl. *TurnInProgressError).
-	StartTurn(ctx context.Context, orgID, projectID string, in TurnInput) (string, error)
-	// TurnStatus returns one turn's status; ErrTurnNotFound for unknown or
-	// foreign ids (the row fence is (org, project, id)).
-	TurnStatus(ctx context.Context, orgID, projectID, turnID string) (*TurnStatus, error)
-	// ActiveTurn returns the project's running turn, or nil when none.
-	ActiveTurn(ctx context.Context, orgID, projectID string) (*TurnStatus, error)
-	// AttachTurn subscribes to a turn's part stream from an absolute event
-	// index. ErrTurnNotFound (404) for unknown/foreign/expired turns;
-	// ErrTurnBufferTruncated (409) when a mid-run overflow makes replay
-	// impossible.
-	AttachTurn(ctx context.Context, orgID, projectID, turnID string, from int) (*TurnSubscription, error)
-	// Rehydrate returns the chat conversation's messages JSON (chat only).
-	Rehydrate(ctx context.Context, orgID, projectID, conversationID string) (json.RawMessage, error)
-}
-
 // MCPTokenMinter mints a short-lived BFF-signed identity token (aud
 // aep-api-mcp) carrying orgID, for the agents service to call back into the
 // BFF's internal MCP discovery surface on a generation turn.
@@ -244,7 +223,11 @@ type ServiceDeps struct {
 	TurnFinishHook func(ctx context.Context, orgID, projectID, turnID, useCase, outcome string)
 }
 
-type service struct {
+// Service is the typed entry point behind the turn/status/stream/rehydrate
+// endpoints. api.Deps holds it as a concrete *genai.Service — there is one
+// implementation and no test fake (the old GenAIService interface had no
+// substitution; the component tier exercises the real service).
+type Service struct {
 	repos      RepoResolver
 	git        GitReader
 	keys       AnthropicKeyResolver
@@ -259,8 +242,8 @@ type service struct {
 }
 
 // NewService wires the genai service.
-func NewService(d ServiceDeps) GenAIService {
-	return &service{
+func NewService(d ServiceDeps) *Service {
+	return &Service{
 		repos:      d.Repos,
 		git:        d.Git,
 		keys:       d.Keys,
@@ -275,7 +258,7 @@ func NewService(d ServiceDeps) GenAIService {
 	}
 }
 
-func (s *service) StartTurn(ctx context.Context, orgID, projectID string, in TurnInput) (string, error) {
+func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in TurnInput) (string, error) {
 	// useCase is optional. An ABSENT value runs the generic turn (useCaseGeneral):
 	// generic steering + commit message, no requirements/design gate. A PRESENT
 	// value must be one of the three real flows (the wire enum already fences
@@ -427,7 +410,7 @@ func (s *service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 	return row.ID, nil
 }
 
-func (s *service) TurnStatus(ctx context.Context, orgID, projectID, turnID string) (*TurnStatus, error) {
+func (s *Service) TurnStatus(ctx context.Context, orgID, projectID, turnID string) (*TurnStatus, error) {
 	t, err := s.turns.Get(ctx, orgID, projectID, turnID)
 	if err != nil {
 		return nil, fmt.Errorf("get turn: %w", err)
@@ -438,7 +421,7 @@ func (s *service) TurnStatus(ctx context.Context, orgID, projectID, turnID strin
 	return turnStatusOf(t), nil
 }
 
-func (s *service) ActiveTurn(ctx context.Context, orgID, projectID string) (*TurnStatus, error) {
+func (s *Service) ActiveTurn(ctx context.Context, orgID, projectID string) (*TurnStatus, error) {
 	t, err := s.turns.GetActive(ctx, orgID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("get active turn: %w", err)
@@ -449,7 +432,7 @@ func (s *service) ActiveTurn(ctx context.Context, orgID, projectID string) (*Tur
 	return turnStatusOf(t), nil
 }
 
-func (s *service) AttachTurn(ctx context.Context, orgID, projectID, turnID string, from int) (*TurnSubscription, error) {
+func (s *Service) AttachTurn(ctx context.Context, orgID, projectID, turnID string, from int) (*TurnSubscription, error) {
 	// Tenant fence first: the broker is keyed by turn id alone, so ownership
 	// is checked against the durable row before any buffer is exposed.
 	t, err := s.turns.Get(ctx, orgID, projectID, turnID)
@@ -471,7 +454,7 @@ func (s *service) AttachTurn(ctx context.Context, orgID, projectID, turnID strin
 	return sub, nil
 }
 
-func (s *service) Rehydrate(ctx context.Context, orgID, projectID, conversationID string) (json.RawMessage, error) {
+func (s *Service) Rehydrate(ctx context.Context, orgID, projectID, conversationID string) (json.RawMessage, error) {
 	if !validConversationID(conversationID) {
 		return nil, ErrInvalidConversationID
 	}
@@ -494,7 +477,7 @@ func (s *service) Rehydrate(ctx context.Context, orgID, projectID, conversationI
 	return raw, nil
 }
 
-func (s *service) resolveRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (s *Service) resolveRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
 	if s == nil || s.repos == nil {
 		return nil, ErrProjectRepoNotFound
 	}
@@ -517,7 +500,7 @@ func (s *service) resolveRepo(ctx context.Context, orgID, projectID string) (*mo
 	return repo, nil
 }
 
-func (s *service) resolveKey(ctx context.Context, orgID string) (string, error) {
+func (s *Service) resolveKey(ctx context.Context, orgID string) (string, error) {
 	if s.keys == nil {
 		return "", ErrNoAnthropicKey
 	}
@@ -534,7 +517,7 @@ func (s *service) resolveKey(ctx context.Context, orgID string) (string, error) 
 // latestRequirementsTag lists the v* tags and returns the highest `v<N>` spec
 // tag name, or "" when none exists yet (a first-build project) — the design
 // turn's lineage stamp, no longer a gate.
-func (s *service) latestRequirementsTag(ctx context.Context, ref gitrepo.RepoRef) (string, error) {
+func (s *Service) latestRequirementsTag(ctx context.Context, ref gitrepo.RepoRef) (string, error) {
 	tags, err := s.git.Workspace().ListTags(ctx, ref, "v")
 	if err != nil {
 		return "", fmt.Errorf("list requirement tags: %w", err)
@@ -559,7 +542,7 @@ func (s *service) latestRequirementsTag(ctx context.Context, ref gitrepo.RepoRef
 
 // requireRequirementsContent is the design-generate gate: the requirements
 // main doc must be non-empty at the turn's base ref.
-func (s *service) requireRequirementsContent(ctx context.Context, ref gitrepo.RepoRef, at string) error {
+func (s *Service) requireRequirementsContent(ctx context.Context, ref gitrepo.RepoRef, at string) error {
 	const mainDoc = "specs/requirements/requirements.md"
 	files, _, err := s.git.Workspace().ReadBundle(ctx, ref, at, func(rel string) bool {
 		return rel == mainDoc
@@ -579,7 +562,7 @@ func (s *service) requireRequirementsContent(ctx context.Context, ref gitrepo.Re
 // credential's save identity (falls back to the AEP bot). When no claims are
 // present (should not happen on the authed edge), both fall back to the
 // committer.
-func (s *service) captureIdentities(ctx context.Context, ref gitrepo.RepoRef) (author, committer *gitrepo.GitIdentity) {
+func (s *Service) captureIdentities(ctx context.Context, ref gitrepo.RepoRef) (author, committer *gitrepo.GitIdentity) {
 	_, committer = s.git.ResolveSaveIdentities(ref.Cred)
 	author = committer
 	if claims := auth.ClaimsFromContext(ctx); claims != nil && claims.Subject != "" {

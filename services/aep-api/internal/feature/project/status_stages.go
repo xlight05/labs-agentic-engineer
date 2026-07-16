@@ -77,7 +77,7 @@ type bindingsReader interface {
 // SetStageSources wires the build/deploy stage inputs at the composition
 // root. On a ready repo GetProjectStatus fails when either is missing — the
 // stages are contract-required and never silently fabricated (D7).
-func (s *projectService) SetStageSources(runs devRunRows, bindings bindingsReader) {
+func (s *Service) SetStageSources(runs devRunRows, bindings bindingsReader) {
 	s.runReader = runs
 	s.bindingsReader = bindings
 }
@@ -86,7 +86,7 @@ func (s *projectService) SetStageSources(runs devRunRows, bindings bindingsReade
 // fields from three concurrently-read sources — strict join: any source
 // failing fails the whole read (the console's poller keeps last-good data
 // and retries; the endpoint never fabricates emptiness).
-func (s *projectService) populateStages(ctx context.Context, orgName, projectName string, status *apigen.ProjectStatus) error {
+func (s *Service) populateStages(ctx context.Context, orgName, projectName string, status *apigen.ProjectStatus) error {
 	if s.artifactSvc == nil || s.runReader == nil || s.bindingsReader == nil {
 		return fmt.Errorf("project status: stage sources not wired")
 	}

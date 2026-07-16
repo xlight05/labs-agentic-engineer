@@ -389,9 +389,3 @@ func (c *Client) parseError(resp *http.Response) error {
 	}
 	return fmt.Errorf("sm-api: status %d: %s", resp.StatusCode, msg)
 }
-
-// Register installs this provider in the secretmanagersvc registry under
-// ProviderName. Callers invoke once at startup.
-func Register(cfg Config) {
-	secretmanagersvc.Register(ProviderName, NewProvider(cfg))
-}

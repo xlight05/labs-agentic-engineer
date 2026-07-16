@@ -868,9 +868,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		Design: designComponents{store: artifactStore},
 		Status: buildProvisionStatus{svc: provisioningSvc},
 	})
-	// Mint aep:provision gate issues on design approval (before planning gates any
-	// consumer coding task on them).
-	designService.SetProvisionIssueMinter(provisioningSvc)
 	// Mint the project's single aep:validation Task in the PLANNING pass: the
 	// plan session mints it right after the plan tap creates the implementation
 	// issues, so it is born in the same phase as them (and never pollutes the
@@ -889,8 +886,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	designService.SetFileCommitter(designFilesCommitter{files: filesSvc})
 	// Grant cascade → design: commit the exposesAPI.orgPublished durability marker
 	// on a provider component when its cross-project access request is granted.
-	// The reverse edge (design→provisioning) is SetProvisionIssueMinter above;
-	// both are setter-wired here so the mutual dependency stays at the root.
+	// Setter-wired at the root (provisioning holds a narrow design port).
 	provisioningSvc.SetOrgPublishMarker(designService)
 	// Provider-build auto-kick (issue #164, Task 4): the automated org-service
 	// visibility flow starts a not-yet-published provider project's build so it

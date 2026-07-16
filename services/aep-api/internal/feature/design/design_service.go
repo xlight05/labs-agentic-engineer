@@ -92,10 +92,11 @@ var (
 // frontend drafts committed via the Files API, and generation is the unified
 // genai turn endpoint. The read + version HTTP surface (get-design-bundle,
 // get-design-bundle-at-tag, discard-design-changes, list-design-versions) was
-// removed outright — superseded by the Files API (list-files/read-file).
-// What remains: SaveAndProceed (hard gate → tag at HEAD, then task
-// reconciliation), CollectSpec (dependency spec collection), and the two
-// steps the thin POST /build path reuses pre-tag — DeriveEndUserAuthAtHead
+// removed outright — superseded by the Files API (list-files/read-file). The
+// hard save gate (SaveAndProceed → tag at HEAD) was retired with it: tagging is
+// the single-tag POST /build flow now, so the design feature is a write helper,
+// not a gate. What remains: CollectSpec (dependency spec collection), and the
+// two steps the thin POST /build path reuses pre-tag — DeriveEndUserAuthAtHead
 // and RegisterExternalResources (issue #164). There is no exported
 // interface — every caller holds the concrete type; the composition root
 // adapts the two build-path methods onto narrow consumer interfaces
@@ -103,11 +104,9 @@ var (
 type designService struct {
 	store               *artifacts.ArtifactStore
 	artifactSvc         artifacts.ArtifactService
-	taskSvc             taskReconciler            // for SaveAndProceed reconciliation; may be nil in tests
-	externalResourceReg externalResourceRegistrar // for SaveAndProceed external-resource registration; may be nil
-	provisionMinter     provisionIssueMinter      // for SaveAndProceed aep:provision gate minting; may be nil
+	externalResourceReg externalResourceRegistrar // for RegisterExternalResources; may be nil
 	fileCommitter       designFileCommitter       // for CollectSpec's committed-truth spec write; may be nil
-	resourceCatalog     resourceMarkerCatalog     // for SaveAndProceed end-user-auth derivation; may be nil (fails closed when platform-resource deps exist)
+	resourceCatalog     resourceMarkerCatalog     // for DeriveEndUserAuthAtHead end-user-auth derivation; may be nil (fails closed when platform-resource deps exist)
 }
 
 // DesignFileWrite is one file in a CollectSpec atomic commit. Path is the full
@@ -146,15 +145,6 @@ type resourceMarkerCatalog interface {
 	MarkersByName(ctx context.Context) (map[string]resources.TypeMarkers, error)
 }
 
-// provisionIssueMinter is design_service's narrow consumer port for the
-// provisioning feature: on a design tag-cut it ensures one aep:provision gate
-// issue per distinct external / platform-resource dependency exists
-// (dependency-management §3.6). *provisioning.Service satisfies it. Wired via
-// SetProvisionIssueMinter at the composition root; nil is a no-op.
-type provisionIssueMinter interface {
-	EnsureProvisionIssues(ctx context.Context, orgID, projectID, designTag string) (map[string]int, error)
-}
-
 // externalResourceRegistrar is design_service's narrow consumer port for the
 // dependency-management external-resource catalog. *repositories.ExternalResourceRepository
 // satisfies it; defined here (consumer side) so design needn't import the
@@ -162,15 +152,6 @@ type provisionIssueMinter interface {
 // composition root.
 type externalResourceRegistrar interface {
 	Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) (*models.ExternalResource, error)
-}
-
-// taskReconciler is design_service's narrow consumer port for the task
-// feature's reconciliation hook. The full task.TaskService satisfies it.
-// Defining it here keeps design_service from importing the task package
-// (the reconcile edge is one-way: main wires task.TaskService into this
-// setter).
-type taskReconciler interface {
-	ReconcilePendingForDesignChange(ctx context.Context, orgID, projectID string) error
 }
 
 func NewDesignService(
@@ -183,22 +164,11 @@ func NewDesignService(
 	}
 }
 
-func (s *designService) SetTaskService(taskSvc taskReconciler) {
-	s.taskSvc = taskSvc
-}
-
 // SetExternalResourceRegistry wires the external-resource catalog so `external`
-// dependencies are registered (best-effort) whenever a design is tagged. A nil
-// registry is a documented no-op (mirrors SetTaskService).
+// dependencies are registered (best-effort) whenever RegisterExternalResources
+// runs. A nil registry is a documented no-op.
 func (s *designService) SetExternalResourceRegistry(reg externalResourceRegistrar) {
 	s.externalResourceReg = reg
-}
-
-// SetProvisionIssueMinter wires the provisioning feature so external /
-// platform-resource dependency gate issues are minted (best-effort) whenever a
-// design is tagged. A nil minter is a documented no-op.
-func (s *designService) SetProvisionIssueMinter(m provisionIssueMinter) {
-	s.provisionMinter = m
 }
 
 // SetFileCommitter wires the committed-truth Files commit surface CollectSpec
@@ -208,10 +178,10 @@ func (s *designService) SetFileCommitter(c designFileCommitter) {
 	s.fileCommitter = c
 }
 
-// SetResourceCatalog wires the CRT marker lookup SaveAndProceed uses to decide
-// which platform-resource dependencies stamp end-user auth. A nil catalog makes
-// the save fail closed (ErrResourceCatalogUnavailable) whenever the design
-// declares a platform-resource dependency; auth-free saves are unaffected.
+// SetResourceCatalog wires the CRT marker lookup DeriveEndUserAuthAtHead uses to
+// decide which platform-resource dependencies stamp end-user auth. A nil catalog
+// makes the derivation fail closed (ErrResourceCatalogUnavailable) whenever the
+// design declares a platform-resource dependency; auth-free designs are unaffected.
 func (s *designService) SetResourceCatalog(c resourceMarkerCatalog) {
 	s.resourceCatalog = c
 }
@@ -440,238 +410,3 @@ func (s *designService) MarkOrgPublished(ctx context.Context, orgID, projectID, 
 	slog.InfoContext(ctx, "committed orgPublished marker", "org", orgID, "project", projectID, "component", component)
 	return nil
 }
-
-// SaveAndProceed runs the hard save gate and cuts the next `v<N>-<M>` tag,
-// where N is the latest requirements version. commitSHA, when non-empty, pins
-// every read + the tag to the commit the caller's files-apply just created —
-// re-resolving HEAD here loses to GitHub's ref-read lag (a publish's save saw
-// the pre-apply tree seconds after the apply landed). Surfaces
-// ErrSpecNotApproved (409) when no requirements tag exists yet, and design
-// reconciliation runs afterwards so pending tasks for removed components
-// auto-close.
-func (s *designService) SaveAndProceed(ctx context.Context, orgID, projectID, commitSHA string) (*models.Design, error) {
-	if s.artifactSvc == nil {
-		return nil, fmt.Errorf("git client not configured")
-	}
-
-	readDesign := func() (*artifacts.DesignFile, error) {
-		if commitSHA != "" {
-			return s.store.ReadDesignAt(ctx, orgID, projectID, commitSHA)
-		}
-		return s.store.ReadDesign(ctx, orgID, projectID)
-	}
-	designFile, err := readDesign()
-	if err != nil {
-		if artifacts.IsNotFound(err) {
-			slog.WarnContext(ctx, "design save: design not found (pre-gate read) — 404",
-				"project", projectID, "commitSha", commitSHA, "error", err)
-			return nil, artifacts.ErrDesignNotFound
-		}
-		return nil, fmt.Errorf("read design: %w", err)
-	}
-	if designFile == nil {
-		// With no pinned commit, an empty read right after a files-apply that
-		// wrote the design is a stale HEAD caught in the act — see the adjacent
-		// "bundle read at head" DEBUG line for the commit it resolved.
-		slog.WarnContext(ctx, "design save: no design at read commit (empty or missing design.md) — 404",
-			"project", projectID, "commitSha", commitSHA)
-		return nil, artifacts.ErrDesignNotFound
-	}
-
-	// Auto-fetch-on-save (dependency-management): before the gate, fetch any
-	// `external` dependency the architect flagged with a specUrl hint but no
-	// specPath yet, through CollectSpec (SSRF-guarded fetch → validate/normalize
-	// → atomic commit of the spec + the design.json specPath edit that clears the
-	// needs-spec gate). A fetch failure is non-fatal: the gate then blocks the
-	// save until the spec is supplied by hand. Each success commits to main,
-	// advancing HEAD past any pinned commit, so we re-read at HEAD afterwards.
-	fetched := false
-	for ci := range designFile.Components {
-		comp := designFile.Components[ci]
-		for di := range comp.Dependencies {
-			dep := comp.Dependencies[di]
-			if dep.Kind != models.DependencyKindExternal || dep.SpecUrl == "" || dep.SpecPath != "" {
-				continue
-			}
-			if _, ferr := s.CollectSpec(ctx, orgID, projectID, comp.Name, dep.Name, nil, dep.SpecUrl); ferr != nil {
-				slog.WarnContext(ctx, "design save: auto-fetch spec failed (non-fatal — gate may block)",
-					"project", projectID, "component", comp.Name, "dependency", dep.Name, "error", ferr)
-				continue
-			}
-			fetched = true
-		}
-	}
-	if fetched {
-		// HEAD advanced past the (possibly pinned) commit — re-read at HEAD so the
-		// gate + tag observe the freshly committed specPaths.
-		commitSHA = ""
-		designFile, err = s.store.ReadDesign(ctx, orgID, projectID)
-		if err != nil {
-			return nil, fmt.Errorf("re-read design after auto-fetch: %w", err)
-		}
-		if designFile == nil {
-			return nil, artifacts.ErrDesignNotFound
-		}
-	}
-
-	// Derive exposesAPI.auth from an end-user-auth platform-resource dependency
-	// (auth-as-platform-resource): a service component that declares a
-	// platform-resource dependency whose CRT carries the end-user-auth role
-	// marker gets exposesAPI.auth stamped end-user-required, persisted to its
-	// design.json BEFORE the tag-cut so the derived value is already on disk the
-	// next time the design is read (EnsureComponent's create-time trait
-	// derivation, component.TraitSyncService, the Explorer) — same
-	// re-read-after-commit convention as auto-fetch-on-save above. The CRT
-	// marker map is fetched ONCE, and only when the design declares a
-	// platform-resource dependency (auth-free saves never touch the catalog);
-	// when it declares one but the catalog is unreachable, the save fails closed
-	// with ErrResourceCatalogUnavailable rather than silently skipping the
-	// derivation. An explicit conflicting service-required is rejected as
-	// ErrEndUserAuthConflict and the save is blocked, mirroring the
-	// unresolved-dependency proceed-gate immediately below. This SAME marker
-	// map is also the one the skill-attach step below keys on (Task G4) — one
-	// catalog fetch serves both consumers in this pass.
-	markers, mErr := s.resourceMarkersForAuthDerivation(ctx, designFile)
-	if mErr != nil {
-		return nil, mErr
-	}
-	derivedCommit, derr := s.persistEndUserAuthDerivation(ctx, orgID, projectID, designFile, markers)
-	if derr != nil {
-		return nil, derr
-	}
-	if derivedCommit {
-		commitSHA = ""
-		designFile, err = s.store.ReadDesign(ctx, orgID, projectID)
-		if err != nil {
-			return nil, fmt.Errorf("re-read design after auth derivation: %w", err)
-		}
-		if designFile == nil {
-			return nil, artifacts.ErrDesignNotFound
-		}
-	}
-
-	// Generic conditional skill attachment (Task G4 — attach_skills.go): every
-	// platform-resource dependency whose CRT carries the `aep.wso2.com/skill`
-	// annotation gets that skill name ensured in the design's skillsApplied,
-	// append-only, persisted to root design.md BEFORE the tag-cut. Reuses the
-	// SAME marker map fetched above for the auth derivation — no second catalog
-	// call, no behavior change when there is no platform-resource dependency or
-	// none of its types carry the annotation.
-	skillsCommit, skErr := s.persistSkillsApplied(ctx, orgID, projectID, designFile, markers)
-	if skErr != nil {
-		return nil, skErr
-	}
-	if skillsCommit {
-		commitSHA = ""
-		designFile, err = s.store.ReadDesign(ctx, orgID, projectID)
-		if err != nil {
-			return nil, fmt.Errorf("re-read design after skill attach: %w", err)
-		}
-		if designFile == nil {
-			return nil, artifacts.ErrDesignNotFound
-		}
-	}
-
-	// Proceed-gate (dependency-management Phase 5): block the tag-cut when a
-	// dependency is still non-actionable. The design was just read through
-	// ReadDesign/ReadDesignAt → AssembleDesignFrom → resolveOrgServices, so
-	// org-service statuses are computed against the live catalog. Only the
-	// tag-cut gates — committed-truth has no autosave path.
-	if compName, depName, status, blocked := firstUnresolvedDependency(designFile.Components); blocked {
-		slog.InfoContext(ctx, "design save: proceed-gate blocked — unresolved dependency",
-			"project", projectID, "component", compName, "dependency", depName, "status", status)
-		return nil, fmt.Errorf("%w: component %q dep %q (status: %s)",
-			ErrUnresolvedDependency, compName, depName, status)
-	}
-
-	res, err := s.artifactSvc.SaveDesign(ctx, orgID, projectID, artifacts.SaveRequest{
-		Message:   "Update design",
-		CommitSHA: commitSHA,
-	})
-	if err != nil {
-		// Translate the "no requirements baseline" case into the design
-		// feature's not-approved sentinel so callers + UIs render the same
-		// message they already do for spec-not-approved.
-		if errors.Is(err, artifacts.ErrNoRequirementsBaseline) {
-			return nil, ErrSpecNotApproved
-		}
-		return nil, fmt.Errorf("save design: %w", err)
-	}
-
-	versions, err := s.artifactSvc.ListDesignVersions(ctx, orgID, projectID)
-	if err != nil {
-		slog.WarnContext(ctx, "list versions after save failed", "error", err)
-	}
-
-	slog.InfoContext(ctx, "design save completed",
-		"project", projectID, "tag", res.Tag, "status", res.Status)
-
-	// Register every distinct `external` dependency in the tagged design into the
-	// org's external-resource catalog (best-effort; never fails the save).
-	s.registerExternalResources(ctx, orgID, designFile)
-
-	// Mint one aep:provision gate issue per distinct external / platform-resource
-	// dependency so consumer coding tasks hold until each is provisioned
-	// (best-effort; never fails the save).
-	if s.provisionMinter != nil {
-		if _, merr := s.provisionMinter.EnsureProvisionIssues(ctx, orgID, projectID, res.Tag); merr != nil {
-			slog.WarnContext(ctx, "provision issue minting after design save failed", "error", merr)
-		}
-	}
-
-	// The project's aep:validation Task is NOT minted here: it is born in the
-	// planning pass (task.PlanSession mints it right after the plan tap creates
-	// the implementation issues), so it lands in the same phase as them and
-	// never appears in the plan turn's existing-task context.
-
-	if s.taskSvc != nil {
-		if rerr := s.taskSvc.ReconcilePendingForDesignChange(ctx, orgID, projectID); rerr != nil {
-			slog.WarnContext(ctx, "task reconciliation after design save failed", "error", rerr)
-		}
-	}
-
-	return &models.Design{
-		ProjectID:  projectID,
-		OrgID:      orgID,
-		Overview:   designFile.Overview,
-		Components: designFile.Components,
-		Status:     "approved",
-		Version:    res.DesignRevision,
-		Versions:   mapDesignVersions(versions),
-		SourceSpec: fmt.Sprintf("v%d", res.RequirementsVersion),
-	}, nil
-}
-
-// firstUnresolvedDependency returns the first dependency (in component then
-// dependency order) that blocks the proceed tag-cut, plus a short status
-// string for the error message. It gates exactly two conditions and no others:
-//
-//   - an `org-service` dependency that is not namespace-visible — its computed
-//     Status (from artifacts.resolveOrgServices) is unresolved, blocked, or
-//     ambiguous. An empty Status (the resolver was never wired → fail-open)
-//     does NOT block, and `resolved` does not block.
-//   - an `external` dependency that declares needsSpec but has no collected
-//     spec yet (SpecPath empty).
-//
-// external-values (config-only external) and platform-resource dependencies
-// are deliberately NOT gated here — they are dispatch-gated in Phase 6. ok is
-// false when every dependency is actionable (the common case).
-func firstUnresolvedDependency(components []models.DesignComponent) (componentName, depName, status string, ok bool) {
-	for _, c := range components {
-		for _, dep := range c.Dependencies {
-			switch dep.Kind {
-			case models.DependencyKindOrgService:
-				switch dep.Status {
-				case models.DependencyStatusUnresolved, models.DependencyStatusBlocked, models.DependencyStatusAmbiguous:
-					return c.Name, dep.Name, dep.Status, true
-				}
-			case models.DependencyKindExternal:
-				if dep.NeedsSpec && strings.TrimSpace(dep.SpecPath) == "" {
-					return c.Name, dep.Name, "needs-spec", true
-				}
-			}
-		}
-	}
-	return "", "", "", false
-}
-

@@ -115,10 +115,12 @@ func NewHandler(params AppParams) http.Handler {
 	// surfaces.go.
 	mux := mountSurfaces(params)
 
-	// Global middleware stack (outermost applied last).
+	// Global middleware stack (outermost applied last). AddCorrelationID resolves
+	// the correlation ID into the context; the global obs.ContextHandler then
+	// stamps it onto every slog record, so no per-request logger needs to be
+	// stashed.
 	var handler http.Handler = mux
 	handler = auth.ExtractAuthToken()(handler)
-	handler = obs.RequestLogger()(handler)
 	handler = obs.AddCorrelationID()(handler)
 	handler = obs.RecovererOnPanic()(handler)
 

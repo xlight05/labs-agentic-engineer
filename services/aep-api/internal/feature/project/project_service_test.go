@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// UNIT tier (bff-component-testing.md §2): the REAL projectService with every
+// UNIT tier (bff-component-testing.md §2): the REAL Service with every
 // port mocked — no HTTP, no DB. Proves the service's logic branches under the
 // tasks-github-native model: sentinel translation, CreateProject's best-effort
 // side-effect chain, the delete cascade (repo cleanup + executions purge — NO
@@ -604,7 +604,7 @@ func (f fakeBindingsReader) ListProjectReleaseBindings(context.Context, string, 
 	return f.items, f.err
 }
 
-// statusFixture builds a projectService wired for GetProjectStatus tests: a
+// statusFixture builds a Service wired for GetProjectStatus tests: a
 // ready repo row + the three poll sources (git snapshot, dev run rows, dev
 // bindings) as fakes.
 type statusFixture struct {
@@ -621,7 +621,7 @@ type statusFixture struct {
 	execs         repositories.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
 }
 
-func (fx statusFixture) service() *projectService {
+func (fx statusFixture) service() *Service {
 	fakeArtifacts := &artifactstest.FakeArtifactService{
 		StatusSnapshotFunc: func(context.Context, string, string) (*artifacts.StatusSnapshot, error) {
 			if fx.snapErr != nil {

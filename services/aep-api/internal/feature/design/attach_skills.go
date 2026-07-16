@@ -17,10 +17,6 @@
 package design
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
@@ -85,62 +81,4 @@ func attachAnnotatedSkills(designFile *artifacts.DesignFile, markers map[string]
 		}
 	}
 	return changed
-}
-
-// persistSkillsApplied runs attachAnnotatedSkills over designFile and, when it
-// added at least one skill to at least one component, commits the changed
-// components' design.json files (re-rendered via artifacts.SplitDesign) to
-// main via the committed-truth write surface, mirroring
-// persistEndUserAuthDerivation's render-CAS-commit shape for the derive_auth
-// seam — a single atomic multi-file commit when more than one component
-// changed. It runs from SaveAndProceed in the SAME pass and over the SAME
-// marker map resourceMarkersForAuthDerivation already fetched — no second
-// catalog call.
-//
-// Returns (true, nil) when a commit landed — the caller must re-resolve HEAD
-// (its designFile + any pinned commitSHA are now stale), the same convention
-// the auto-fetch-on-save and auth-derivation steps already follow. A nil
-// fileCommitter (degraded boot) is a best-effort no-op after a successful
-// in-memory attach: the changed components' SkillsApplied still reflect the
-// addition for THIS response, but nothing is persisted.
-func (s *designService) persistSkillsApplied(ctx context.Context, orgID, projectID string, designFile *artifacts.DesignFile, markers map[string]resources.TypeMarkers) (bool, error) {
-	changed := attachAnnotatedSkills(designFile, markers)
-	if len(changed) == 0 {
-		return false, nil
-	}
-	if s.fileCommitter == nil {
-		return false, nil // degraded boot — in-memory attach still reflects for this response
-	}
-
-	// Render the whole design; pick out the changed components' design.json files.
-	rendered, rerr := artifacts.SplitDesign(designFile)
-	if rerr != nil {
-		return false, fmt.Errorf("render design: %w", rerr)
-	}
-
-	writes := make([]DesignFileWrite, 0, len(changed))
-	for _, name := range changed {
-		rel := "components/" + name + "/design.json"
-		content, ok := rendered[rel]
-		if !ok {
-			return false, fmt.Errorf("render design: %q missing from split", rel)
-		}
-		full := artifacts.DesignDir + "/" + rel
-		_, sha, exists, rerr := s.fileCommitter.ReadFile(ctx, orgID, projectID, full)
-		if rerr != nil {
-			return false, fmt.Errorf("read %q for CAS: %w", full, rerr)
-		}
-		if !exists {
-			return false, fmt.Errorf("%q missing on disk", full)
-		}
-		writes = append(writes, DesignFileWrite{Path: full, Content: content, BaseSHA: sha})
-	}
-
-	if err := s.fileCommitter.Commit(ctx, orgID, projectID, writes,
-		"Attach CRT-annotated skills to component designs"); err != nil {
-		return false, err
-	}
-	slog.InfoContext(ctx, "design save: per-component skill auto-attach persisted",
-		"org", orgID, "project", projectID, "components", changed)
-	return true, nil
 }

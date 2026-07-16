@@ -102,7 +102,7 @@ func (e *baseMovedError) Error() string {
 // attached viewers are unblocked — and returns. The happy path (and every
 // handled terminal) is finished inside runTurn itself; this only fires when
 // runTurn unwinds via panic before its own finishTurn ran.
-func (s *service) runTurnSafe(ctx context.Context, job turnJob) {
+func (s *Service) runTurnSafe(ctx context.Context, job turnJob) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("genai: turn runner panicked — recovered, failing the turn",
@@ -119,7 +119,7 @@ func (s *service) runTurnSafe(ctx context.Context, job turnJob) {
 
 // runTurn drives one detached turn to its terminal state. ctx is already
 // detached from the request (context.WithoutCancel).
-func (s *service) runTurn(ctx context.Context, job turnJob) {
+func (s *Service) runTurn(ctx context.Context, job turnJob) {
 	runCtx, cancel := context.WithTimeout(ctx, turnRunTimeout)
 	defer cancel()
 	term := s.executeTurn(runCtx, job)
@@ -137,7 +137,7 @@ func (s *service) runTurn(ctx context.Context, job turnJob) {
 // / base URL are not wired, when the turn is neither a design-generate nor a
 // collab room-scoped turn, or when minting fails — a turn without MCP is
 // byte-identical to today, so this is best-effort.
-func (s *service) mcpForTurn(ctx context.Context, job turnJob) *agentsvc.MCPBlock {
+func (s *Service) mcpForTurn(ctx context.Context, job turnJob) *agentsvc.MCPBlock {
 	if s.mcpTokens == nil || s.mcpBaseURL == "" {
 		return nil
 	}
@@ -162,7 +162,7 @@ func (s *service) mcpForTurn(ctx context.Context, job turnJob) *agentsvc.MCPBloc
 }
 
 // executeTurn produces the turn's terminal state (never panics the goroutine).
-func (s *service) executeTurn(ctx context.Context, job turnJob) TurnTerminal {
+func (s *Service) executeTurn(ctx context.Context, job turnJob) TurnTerminal {
 	instruction := job.instruction
 	filesChangedExternally := false
 	// D20: filesChangedExternally is server-derived — the last terminal turn
@@ -352,7 +352,7 @@ func (s *service) executeTurn(ctx context.Context, job turnJob) TurnTerminal {
 }
 
 // commitFold lands the verified fold as one commit on main (D13/D15).
-func (s *service) commitFold(ctx context.Context, job turnJob, fold *agentfold.Fold) TurnTerminal {
+func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.Fold) TurnTerminal {
 	touched := fold.Touched()
 	paths := make([]string, 0, len(touched))
 	for path := range touched {
@@ -435,7 +435,7 @@ func (s *service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 // finishTurn stamps the terminal row state and emits the ONE terminal stream
 // event. A row that is no longer running (swept mid-run) keeps the sweep's
 // verdict — the runner does not overwrite it or emit a competing terminal.
-func (s *service) finishTurn(ctx context.Context, job turnJob, term TurnTerminal) {
+func (s *Service) finishTurn(ctx context.Context, job turnJob, term TurnTerminal) {
 	ok, err := s.turns.Finish(ctx, job.turnID, term)
 	if err != nil {
 		slog.ErrorContext(ctx, "genai: finish turn row failed", "turn", job.turnID, "error", err)
@@ -464,7 +464,7 @@ func (s *service) finishTurn(ctx context.Context, job turnJob, term TurnTerminal
 // path the agents snapshot walk dropped (non-.md/.dsl/design.json, dot-led
 // segment, binary) must read as exists=false here even though it is in git,
 // or NO_SUCH_FILE parity breaks (agentfold snapshot_filter contract).
-func (s *service) turnBaseReader(ref gitrepo.RepoRef, baseRef string) agentfold.BaseReader {
+func (s *Service) turnBaseReader(ref gitrepo.RepoRef, baseRef string) agentfold.BaseReader {
 	return func(ctx context.Context, path string) ([]byte, bool, error) {
 		content, _, err := s.git.Workspace().ReadFile(ctx, ref, baseRef, path)
 		if errors.Is(err, gitrepo.ErrPathNotFound) {

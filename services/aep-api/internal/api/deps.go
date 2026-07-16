@@ -43,7 +43,7 @@ import (
 // services; component tests fill only what the feature under test needs
 // (untouched fields nil-guard or 503 in their handlers).
 type Deps struct {
-	ProjectSvc          project.ProjectService
+	ProjectSvc          *project.Service
 	OrgSvc              organization.OrganizationService
 	ComponentSvc        component.ComponentService
 	ConfigSvc           component.ConfigService
@@ -61,7 +61,7 @@ type Deps struct {
 	SkillImportSvc      *skills.SkillImportService
 	FilesSvc            files.FilesService
 	ArtifactSvc         artifacts.ArtifactService
-	GenAISvc            genai.GenAIService
+	GenAISvc            *genai.Service
 	BuildSvc            *build.Service
 	RcaAgentReportSvc   rcaagent.RcaAgentReportService
 	PreflightSvc        *build.PreflightService
