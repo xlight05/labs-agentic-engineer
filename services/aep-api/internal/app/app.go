@@ -147,30 +147,10 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	}
 
 	// orgUUIDResolver maps an OC namespace (the org handle the BFF puts in the
-	// request URL) to the org's UUID, for the X-Impersonate-Org header on M2M
-	// OC calls. Reads the local organizations side-car; prefers the
-	// Thunder-issued ouId.
-	orgUUIDResolver := func(ctx context.Context, namespace string) (string, error) {
-		// Authoritative path: a user-initiated request carries the caller's
-		// Thunder org UUID in the JWT (ouId). When the JWT's handle matches the
-		// namespace we're about to impersonate, use ouId directly — no DB
-		// dependency, and it's the same value Thunder embeds. Async paths
-		// (webhooks, watchers) have no JWT and fall through to the side-car.
-		if claims := authn.ClaimsFromContext(ctx); claims != nil && claims.OuId != "" && authn.ResolveOuHandle(claims) == namespace {
-			return claims.OuId, nil
-		}
-		// Side-car path: the organizations row is keyed by the org handle (the
-		// same value the BFF puts in OC URLs). orgensure backfills it with the
-		// Thunder UUID on the first authed request from the org.
-		var org models.Organization
-		if err := db.WithContext(ctx).Where("name = ?", namespace).First(&org).Error; err != nil {
-			return "", fmt.Errorf("resolve impersonation org for namespace %q: %w", namespace, err)
-		}
-		if org.ThunderOrgUUID != nil {
-			return org.ThunderOrgUUID.String(), nil
-		}
-		return org.UUID.String(), nil
-	}
+	// request URL) to the org's UUID for the X-Impersonate-Org header on M2M OC
+	// calls: JWT-first (the caller's own ouId), else the organizations side-car.
+	// The decision logic lives in the named, tested impersonationResolver.
+	orgUUIDResolver := impersonationResolver{sidecar: orgSideCar{db: db}}.Resolve
 
 	// OpenChoreo clients. Each one resolves the OC namespace as the OC
 	// org handle directly (== ouHandle); there is no override map. Migrated

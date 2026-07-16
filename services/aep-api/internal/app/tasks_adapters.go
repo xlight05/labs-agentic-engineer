@@ -28,7 +28,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
@@ -230,19 +229,10 @@ type repoNamer struct {
 	db    *gorm.DB
 }
 
+// RepoFullName delegates to the shared repoFullNameLookup implementation (they
+// resolve identically); repoNamer only adds the reverse ByFullName lookup below.
 func (r repoNamer) RepoFullName(ctx context.Context, orgID, projectID string) (string, error) {
-	gr, err := r.repos.GetByOrgAndProjectID(ctx, orgID, projectID)
-	if err != nil {
-		return "", err
-	}
-	if gr == nil {
-		return "", gitrepo.ErrRepoNotFound
-	}
-	owner, name, err := gitrepo.ParseOwnerRepo(gr.RepoURL)
-	if err != nil {
-		return "", err
-	}
-	return owner + "/" + name, nil
+	return repoFullNameLookup{repos: r.repos}.RepoFullName(ctx, orgID, projectID)
 }
 
 // ByFullName is the reverse lookup (`<owner>/<repo>` → org/project) the
