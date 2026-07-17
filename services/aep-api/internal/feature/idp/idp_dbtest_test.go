@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 	"gorm.io/gorm"
 )
 
@@ -57,7 +58,7 @@ var idpDBPlatform = PlatformIDPConfig{
 func idpDBService(t *testing.T, thunder thundersvc.Client) (*idpService, *gorm.DB) {
 	t.Helper()
 	db := dbtest.New(t)
-	return NewIDPService(db, thunder, idpDBPlatform), db
+	return NewIDPService(repositories.NewIDPRepository(db), repositories.NewOrganizationRepository(db), thunder, idpDBPlatform), db
 }
 
 // auditActions returns the ordered action list for an org from idp_audit_events
@@ -140,7 +141,7 @@ func TestGetOrCreateProfile_SelfHealsPlatformFields_DB(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed a profile with the OLD cluster config.
-	old := NewIDPService(gormDB, &fakeThunder{}, PlatformIDPConfig{
+	old := NewIDPService(repositories.NewIDPRepository(gormDB), repositories.NewOrganizationRepository(gormDB), &fakeThunder{}, PlatformIDPConfig{
 		Issuer:  "http://old-issuer:8080",
 		JWKSURL: "http://old-jwks:8090/oauth2/jwks",
 	})
@@ -150,7 +151,7 @@ func TestGetOrCreateProfile_SelfHealsPlatformFields_DB(t *testing.T) {
 
 	// A service running the NEW cluster config self-heals the cached fields on
 	// the next GetOrCreate (issuer/jwks are cluster config, not per-org data).
-	fresh := NewIDPService(gormDB, &fakeThunder{}, PlatformIDPConfig{
+	fresh := NewIDPService(repositories.NewIDPRepository(gormDB), repositories.NewOrganizationRepository(gormDB), &fakeThunder{}, PlatformIDPConfig{
 		Issuer:  "http://new-issuer:8080",
 		JWKSURL: "http://new-jwks:8090/oauth2/jwks",
 	})
@@ -598,7 +599,7 @@ func equalStrings(a, b []string) bool {
 // ============================================================================
 func TestGetOrCreateProfile_SelfHealPreservesCustomIssuer_DB(t *testing.T) {
 	t.Parallel()
-	svc, _ := idpDBService(t, nil)
+	svc, gormDB := idpDBService(t, nil)
 	ctx := context.Background()
 
 	// A BYO org: kind=custom with its own issuer/jwks.
@@ -632,7 +633,7 @@ func TestGetOrCreateProfile_SelfHealPreservesCustomIssuer_DB(t *testing.T) {
 
 	// Complementary: a platform-kind org whose cached fields drifted from the
 	// current cluster config still self-heals (the gate lets platform through).
-	seed := NewIDPService(svc.db, nil, PlatformIDPConfig{
+	seed := NewIDPService(repositories.NewIDPRepository(gormDB), repositories.NewOrganizationRepository(gormDB), nil, PlatformIDPConfig{
 		Issuer:  "http://old-issuer:8080",
 		JWKSURL: "http://old-jwks:8090/oauth2/jwks",
 	})

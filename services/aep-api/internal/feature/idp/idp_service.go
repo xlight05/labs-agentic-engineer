@@ -24,11 +24,10 @@ import (
 	"log/slog"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // IDPService manages per-organisation IDP profiles + the matching
@@ -114,21 +113,23 @@ type PlatformIDPConfig struct {
 }
 
 type idpService struct {
-	db       *gorm.DB
+	repo     repositories.IDPRepository
+	orgRepo  repositories.OrganizationRepository
 	thunder  thundersvc.Client
 	platform PlatformIDPConfig
 	smAPI    *orgcreds.SMAPIWriter
 }
 
-// NewIDPService builds the service. `thunder` may be nil in unit tests
-// — the service rejects EnsureOrgPublisher / RevokeOrgPublisher /
-// RegenerateClientSecret with ErrIDPThunderUnavailable when so. Read
-// methods (GetProfile, GetOrCreateProfile) keep working. Returns the
-// concrete type so WithSMAPIWriter can chain at the composition root;
-// the concrete value still satisfies the IDPService interface for
-// consumers that store it as such.
-func NewIDPService(db *gorm.DB, thunder thundersvc.Client, platform PlatformIDPConfig) *idpService {
-	return &idpService{db: db, thunder: thunder, platform: platform}
+// NewIDPService builds the service. `repo` persists the idp tables; `orgRepo`
+// serves the org → Thunder OU lookup the publisher-provisioning path needs
+// (reused, not duplicated). `thunder` may be nil in unit tests — the service
+// rejects EnsureOrgPublisher / RevokeOrgPublisher / RegenerateClientSecret
+// with ErrIDPThunderUnavailable when so. Read methods (GetProfile,
+// GetOrCreateProfile) keep working. Returns the concrete type so
+// WithSMAPIWriter can chain at the composition root; the concrete value still
+// satisfies the IDPService interface for consumers that store it as such.
+func NewIDPService(repo repositories.IDPRepository, orgRepo repositories.OrganizationRepository, thunder thundersvc.Client, platform PlatformIDPConfig) *idpService {
+	return &idpService{repo: repo, orgRepo: orgRepo, thunder: thunder, platform: platform}
 }
 
 // WithSMAPIWriter attaches the SM-API writer so EnsureOrgPublisher /
@@ -152,15 +153,11 @@ func (s *idpService) GetProfile(ctx context.Context, orgID string) (*models.Orga
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID required")
 	}
-	var profile models.OrganizationIDPProfile
-	err := s.db.WithContext(ctx).Where("org_id = ?", orgID).First(&profile).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
+	profile, err := s.repo.GetProfileByOrgID(ctx, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("idp_service.GetProfile: %w", err)
 	}
-	return &profile, nil
+	return profile, nil
 }
 
 func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error) {
@@ -185,12 +182,12 @@ func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*mod
 		if existing.Kind == "platform" &&
 			s.platform.JWKSURL != "" &&
 			(existing.JWKSURL != s.platform.JWKSURL || existing.Issuer != s.platform.Issuer) {
-			if err := s.db.WithContext(ctx).Model(existing).Where("org_id = ?", orgID).
-				Updates(map[string]interface{}{
+			if err := s.repo.UpdateProfileColumns(ctx, existing, orgID,
+				map[string]interface{}{
 					"jwks_url":   s.platform.JWKSURL,
 					"issuer":     s.platform.Issuer,
 					"updated_at": time.Now().UTC(),
-				}).Error; err != nil {
+				}); err != nil {
 				slog.WarnContext(ctx, "idp_service: platform field self-heal failed (continuing)",
 					"orgID", orgID, "error", err)
 			} else {
@@ -209,7 +206,7 @@ func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*mod
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
-	if err := s.db.WithContext(ctx).Create(&profile).Error; err != nil {
+	if err := s.repo.CreateProfile(ctx, &profile); err != nil {
 		// Race: another goroutine may have created the row between our
 		// SELECT and INSERT. Re-read.
 		if again, gerr := s.GetProfile(ctx, orgID); gerr == nil && again != nil {
@@ -225,8 +222,8 @@ func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*mod
 // the org's OU. Returns "" when the org row or its Thunder UUID is missing —
 // the Thunder client then falls back to the default OU.
 func (s *idpService) lookupOrgOUID(ctx context.Context, orgHandle string) string {
-	var org models.Organization
-	if err := s.db.WithContext(ctx).Where("name = ?", orgHandle).First(&org).Error; err != nil {
+	org, err := s.orgRepo.GetByName(ctx, orgHandle)
+	if err != nil || org == nil {
 		slog.DebugContext(ctx, "idp lookupOrgOUID: no org row", "orgHandle", orgHandle, "error", err)
 		return ""
 	}
@@ -281,9 +278,7 @@ func (s *idpService) EnsureOrgPublisher(ctx context.Context, orgID, actor string
 	if created && clientSecret != "" {
 		updates["publisher_client_secret"] = clientSecret
 	}
-	if err := s.db.WithContext(ctx).Model(profile).
-		Where("org_id = ?", orgID).
-		Updates(updates).Error; err != nil {
+	if err := s.repo.UpdateProfileColumns(ctx, profile, orgID, updates); err != nil {
 		s.audit(ctx, orgID, models.IDPAuditEnsurePublisher, actor, beforeJSON, nil, err)
 		return "", "", false, fmt.Errorf("idp_service.EnsureOrgPublisher persist: %w", err)
 	}
@@ -337,14 +332,13 @@ func (s *idpService) RevokeOrgPublisher(ctx context.Context, orgID, actor string
 		return false, fmt.Errorf("idp_service.RevokeOrgPublisher: %w", terr)
 	}
 
-	if err := s.db.WithContext(ctx).Model(profile).
-		Where("org_id = ?", orgID).
-		Updates(map[string]interface{}{
+	if err := s.repo.UpdateProfileColumns(ctx, profile, orgID,
+		map[string]interface{}{
 			"publisher_client_id":     "",
 			"publisher_client_secret": "",
 			"publisher_secret_ref":    "",
 			"updated_at":              time.Now().UTC(),
-		}).Error; err != nil {
+		}); err != nil {
 		s.audit(ctx, orgID, models.IDPAuditRevokePublisher, actor, beforeJSON, nil, err)
 		return deleted, fmt.Errorf("idp_service.RevokeOrgPublisher persist: %w", err)
 	}
@@ -389,12 +383,11 @@ func (s *idpService) RegenerateClientSecret(ctx context.Context, orgID, actor st
 		return "", fmt.Errorf("idp_service.RegenerateClientSecret: %w", terr)
 	}
 
-	if err := s.db.WithContext(ctx).Model(profile).
-		Where("org_id = ?", orgID).
-		Updates(map[string]interface{}{
+	if err := s.repo.UpdateProfileColumns(ctx, profile, orgID,
+		map[string]interface{}{
 			"publisher_client_secret": newSecret,
 			"updated_at":              time.Now().UTC(),
-		}).Error; err != nil {
+		}); err != nil {
 		s.audit(ctx, orgID, models.IDPAuditRegenerateSecret, actor, beforeJSON, nil, err)
 		return "", fmt.Errorf("idp_service.RegenerateClientSecret persist: %w", err)
 	}
@@ -474,9 +467,7 @@ func (s *idpService) UpdateProfile(ctx context.Context, orgID, actor string, req
 		updates["publisher_secret_ref"] = ""
 	}
 
-	if err := s.db.WithContext(ctx).Model(existing).
-		Where("org_id = ?", orgID).
-		Updates(updates).Error; err != nil {
+	if err := s.repo.UpdateProfileColumns(ctx, existing, orgID, updates); err != nil {
 		s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
 		return nil, fmt.Errorf("idp_service.UpdateProfile persist: %w", err)
 	}
@@ -541,9 +532,7 @@ func (s *idpService) SetProfile(ctx context.Context, orgID, actor, kind, issuer,
 		updates["publisher_secret_ref"] = ""
 	}
 
-	if err := s.db.WithContext(ctx).Model(existing).
-		Where("org_id = ?", orgID).
-		Updates(updates).Error; err != nil {
+	if err := s.repo.UpdateProfileColumns(ctx, existing, orgID, updates); err != nil {
 		s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
 		return nil, fmt.Errorf("idp_service.SetProfile persist: %w", err)
 	}
@@ -571,7 +560,7 @@ func (s *idpService) audit(ctx context.Context, orgID, action, actor string, bef
 	if opErr != nil {
 		row.ErrorMessage = opErr.Error()
 	}
-	if err := s.db.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := s.repo.CreateAuditEvent(ctx, &row); err != nil {
 		slog.WarnContext(ctx, "idp_service: audit insert failed",
 			"orgID", orgID, "action", action, "error", err)
 	}

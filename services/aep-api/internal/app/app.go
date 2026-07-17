@@ -498,7 +498,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// EnsureOrgPublisher / RegenerateClientSecret so the dispatcher's
 	// PUBLISHER_CLIENT_SECRET ExternalSecret can materialise it into runner
 	// pods without the BFF holding the plaintext.
-	idpService := idp.NewIDPService(db, thunderAdminClient, idp.PlatformIDPConfig{
+	idpService := idp.NewIDPService(repositories.NewIDPRepository(db), orgRepo, thunderAdminClient, idp.PlatformIDPConfig{
 		Issuer:  cfg.PlatformIDP.Issuer,
 		JWKSURL: cfg.PlatformIDP.JWKSURL,
 	}).WithSMAPIWriter(smWriter)

@@ -177,7 +177,7 @@ func TestMethods_RejectEmptyOrgIDBeforeIO(t *testing.T) {
 	t.Parallel()
 	// nil db + nil thunder: any I/O would panic, so a clean "orgID required"
 	// error proves the guard fires first on every method.
-	svc := NewIDPService(nil, nil, PlatformIDPConfig{})
+	svc := NewIDPService(nil, nil, nil, PlatformIDPConfig{})
 	ctx := context.Background()
 
 	assertOrgIDRequired := func(name string, err error) {
@@ -211,7 +211,7 @@ func TestMutations_ThunderNilYieldsSentinel(t *testing.T) {
 	t.Parallel()
 	// nil db proves the sentinel is returned BEFORE any profile read/write:
 	// each Thunder-backed mutation checks s.thunder == nil first.
-	svc := NewIDPService(nil, nil, PlatformIDPConfig{})
+	svc := NewIDPService(nil, nil, nil, PlatformIDPConfig{})
 	ctx := context.Background()
 
 	if _, _, _, err := svc.EnsureOrgPublisher(ctx, "acme", "actor"); !errors.Is(err, ErrIDPThunderUnavailable) {
@@ -229,7 +229,7 @@ func TestEnsure_EmptyOrgIDBeatsThunderNilCheck(t *testing.T) {
 	t.Parallel()
 	// Ordering pin: orgID is validated before the thunder-nil check, so an
 	// empty org yields "orgID required", NOT the thunder sentinel.
-	svc := NewIDPService(nil, nil, PlatformIDPConfig{})
+	svc := NewIDPService(nil, nil, nil, PlatformIDPConfig{})
 	_, _, _, err := svc.EnsureOrgPublisher(context.Background(), "", "actor")
 	if err == nil || errors.Is(err, ErrIDPThunderUnavailable) || !strings.Contains(err.Error(), "orgID required") {
 		t.Fatalf("empty orgID must beat the thunder-nil check, got %v", err)
@@ -242,7 +242,7 @@ func TestUpdateProfile_InvalidKindRejectedBeforeIO(t *testing.T) {
 	t.Parallel()
 	// nil db + nil thunder: the kind guard runs before GetOrCreateProfile, so
 	// an invalid kind returns cleanly without a panic.
-	svc := NewIDPService(nil, nil, PlatformIDPConfig{})
+	svc := NewIDPService(nil, nil, nil, PlatformIDPConfig{})
 	_, err := svc.UpdateProfile(context.Background(), "acme", "actor", UpdateProfileRequest{Kind: "bogus"})
 	if err == nil || !strings.Contains(err.Error(), `invalid kind "bogus"`) {
 		t.Fatalf("want an invalid-kind error, got %v", err)
