@@ -17,6 +17,7 @@
 package arch
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -555,5 +556,113 @@ func TestGormRulesHandOffCleanly(t *testing.T) {
 		if got := inTargetDomain(c.pkg); got != c.domain {
 			t.Errorf("inTargetDomain(%q) = %v, want %v", c.pkg, got, c.domain)
 		}
+	}
+}
+
+// ── Rule: a domain aggregator declares no methods ───────────────────────────
+
+// methodsDeclaredIn returns "Type.Method" for every method declared in the Go
+// files directly under dir (tests excluded).
+func methodsDeclaredIn(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range goFilesIn(t, dir) {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), f, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", f, err)
+		}
+		for _, decl := range parsed.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+				continue
+			}
+			expr := fn.Recv.List[0].Type
+			if star, isPtr := expr.(*ast.StarExpr); isPtr {
+				expr = star.X
+			}
+			name := "?"
+			if id, ok := expr.(*ast.Ident); ok {
+				name = id.Name
+			}
+			out = append(out, name+"."+fn.Name.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// aggregatorMethodViolations returns methods declared in any domain's httpapi
+// package. An aggregator must ONLY embed.
+func aggregatorMethodViolations(t *testing.T, root string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	for _, d := range domains {
+		dir := filepath.Join(root, d, "httpapi")
+		if _, err := os.Stat(dir); err != nil {
+			continue
+		}
+		for _, m := range methodsDeclaredIn(t, dir) {
+			bad = append(bad, d+"/httpapi: "+m)
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestAggregatorsDeclareNoMethods pins the third precondition of the edge nets
+// (§19.1) — the one NEITHER other net can catch.
+//
+// A domain's httpapi aggregator embeds slice handlers, so a slice's op reaches
+// the edge at depth-2. A method declared ON the aggregator sits at depth-1 and
+// silently shadows its own slice: green build, slice dead.
+//
+//   - The legacyShim cannot catch it: the shim only makes a same-depth TIE an
+//     `ambiguous selector`, and depth-1 vs depth-2 is not a tie.
+//   - The method-origin reflection gate cannot catch it either, once the op has
+//     been cut from legacy — which is exactly what a completed migration looks
+//     like. embedsProviding reports the domain embed (true — it does provide the
+//     method, just the aggregator's own), the ledger agrees, and everything
+//     passes. After P9 deletes legacy, it could never catch it at all.
+//
+// Only the source says who DECLARED what, which is why this mirrors
+// TestApiServerDeclaresNoMethods one level down.
+func TestAggregatorsDeclareNoMethods(t *testing.T) {
+	if bad := aggregatorMethodViolations(t, "..", domainsOnDisk(t, "..")); len(bad) > 0 {
+		t.Errorf("a domain aggregator declares methods: %v\n"+
+			"An aggregator only EMBEDS. A method here sits at depth-1 and silently shadows the "+
+			"slice's own at depth-2 — the build stays green and the slice becomes dead code. "+
+			"Move the body into the slice.", bad)
+	}
+}
+
+// TestAggregatorRuleFires proves it, since a rule with nothing to find is a rule
+// nobody knows works.
+func TestAggregatorRuleFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/httpapi/aggregate.go": "package httpapi\n\n" +
+			"type Handlers struct{ *sliceHandler }\n\n" +
+			"// the shadowing method: depth-1, beats the slice's own at depth-2\n" +
+			"func (h *Handlers) ListRcaAgentReports() string { return \"shadowed\" }\n",
+	})
+	bad := aggregatorMethodViolations(t, root, []string{"ops"})
+	if len(bad) != 1 || !strings.Contains(bad[0], "Handlers.ListRcaAgentReports") {
+		t.Fatalf("the aggregator rule did not fire on a planted shadowing method: got %v", bad)
+	}
+}
+
+// TestAggregatorRuleDoesNotOverfire is the mirror: a pure aggregator is clean.
+func TestAggregatorRuleDoesNotOverfire(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/httpapi/aggregate.go": "package httpapi\n\n" +
+			"type Handlers struct{ *sliceHandler }\n\n" +
+			"func New() *Handlers { return nil }\n", // a plain func is not a method
+	})
+	if bad := aggregatorMethodViolations(t, root, []string{"ops"}); len(bad) != 0 {
+		t.Fatalf("the aggregator rule fired on a pure aggregator: %v", bad)
 	}
 }

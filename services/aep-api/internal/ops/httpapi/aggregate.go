@@ -14,22 +14,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package httpapi aggregates the ops domain's slice handlers into the one type
-// the edge embeds, and composes the domain from its Deps.
-//
-// # Why the composition lives here and not in the domain root
-//
-// §2 puts module.go in the domain root and §8 has it return *httpapi.Handlers.
-// That cannot compile: the root would import httpapi, httpapi imports the
-// slices, and the slices import the root — a cycle. This package is the only
-// place that can see both the root and the slices, so it is where the domain is
-// assembled. The root keeps the Deps TYPE (it names only ports, so no cycle).
-//
-// # Why it declares no methods
-//
-// It only embeds. A method declared here would sit at depth-1 from the edge and
-// silently beat a legacy method at depth-2 — a green build serving the wrong
-// body. See docs/design/domain-oriented-architecture.md §19.1.
 package httpapi
 
 import (

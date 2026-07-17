@@ -393,12 +393,21 @@ unchanged.
   only to dodge the feature-import ban move to their domain or become shared `gen` types; `wp_naming.go`
   moves to `platform/tenant`.
 
-> **The dual-purpose types cost a wire/domain split** *(found by building P1; applies to every
-> `x-go-type: models.X` schema — today `AccessRequest`, `ComponentConfig`, `ConfigPatch`,
-> `ConfigProjection`, `EnvVar`, `RcaAgentReport`)*.
+> **The dual-purpose types cost a wire/domain split** *(found by building P1)*.
 >
-> Six schemas point `x-go-type` at a hand-written `models/` type, so the gorm model **is** the wire type
-> and `gen` imports `models`. Re-pointing that at the owning domain is **not available**: `gen` is
+> **Eight** schemas still point `x-go-type` at a hand-written `models/` type (`RcaAgentReport` was the
+> ninth until P1 split it). Verify the live list before planning a phase — `grep -c 'x-go-type: models\.'
+> packages/contracts/api/v1/openapi.yaml` — because it shrinks by one every time a domain takes its
+> entity, and a stale list understates the work:
+>
+> | Schema | Domain that inherits it |
+> |---|---|
+> | `ComponentConfig`, `EnvVar` | `projects` (P7) |
+> | `AccessRequest` | `dependencies` (P8) |
+> | `ConfigPatch`, `ConfigProjection`, `GitProviderProjection`, `IDPProjection`, `LLMProjection` | **`organization` (P3) — five, the largest share** |
+>
+> For each, the gorm model (or hand-written tri-state type) **is** the wire type and `gen` imports
+> `models`. Re-pointing that at the owning domain is **not available**: `gen` is
 > imported by `clients/*` (bound for `platform/clients`) and by every domain's `httpapi`, so
 > `gen → <domain>` would make the kernel import a domain and give every domain a transitive dependency
 > on that one. **`gen` stays a leaf** ([§2](#2-the-target-top-level-tree)).

@@ -32,12 +32,13 @@ import (
 // slice that reached for the ORM would have escaped the seam that lets it be
 // tested without a database.
 
-// ErrReportNotFound is returned by GetReport when no report exists for the given
-// (org, id) — the slice maps it to a 404.
-var ErrReportNotFound = errors.New("rca agent report not found")
-
-// ErrInvalidReport is returned when a create request fails validation — the
-// slice maps it to a 400.
+// ErrInvalidReport wraps a create request that fails validation; the
+// createreport slice maps it to a 400.
+//
+// There is deliberately NO ErrReportNotFound: Get reports absence as (nil, nil),
+// and the getreport slice turns that into the 404. The pre-P1 code carried such
+// a sentinel, and porting it would have shipped an exported error nothing
+// returns and nothing checks — which the next domain would then copy.
 var ErrInvalidReport = errors.New("invalid rca agent report")
 
 // Repository is the org-scoped store backing the console's Alerts notification
