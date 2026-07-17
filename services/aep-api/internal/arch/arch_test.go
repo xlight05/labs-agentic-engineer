@@ -118,9 +118,10 @@ var featureEdgeAllowlist = map[string][]string{
 	// Reevaluate hook, the design reader, the repo locator — is a consumer-side port
 	// wired at the composition root, so it holds only these two feature edges.
 	"provisioning": {"dependencies/resources", "gitrepo"},
-	// rcaagent (console issues #154, #155, BE handshake #156) is a
-	// self-contained CRUD feature — no cross-feature imports.
-	"rcaagent": {},
+	// (rcaagent MIGRATED to internal/ops in P1 — the first feature to become a
+	// domain. Its row is gone because the feature is gone; the allowlist may only
+	// shrink from here as each phase lands.)
+	//
 	// requirements now holds only the collab-session/collab-validate surface
 	// (the requirements read/version/save-discard HTTP surface was removed —
 	// superseded by the Files API); it holds no cross-feature edges.

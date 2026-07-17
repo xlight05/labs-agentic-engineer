@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// RunPhase10RcaAgentReports creates rca_agent_reports (models.RcaAgentReport)
+// RunPhase10RcaAgentReports creates rca_agent_reports (ops.RcaAgentReport)
 // — the store backing the console's Alerts notification bell and Alerts
 // list/stepper (issues #154, #155, BE handshake #156). Raw SQL per the house
 // migration rule; idempotent via the existence guard.

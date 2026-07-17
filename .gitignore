@@ -49,3 +49,6 @@ learning/
 **/.vitest-attachments/
 .scratch/
 .agents/worktrees/
+
+# Scheduled-task runtime lock (machine-local: pid + sessionId)
+.agents/scheduled_tasks.lock

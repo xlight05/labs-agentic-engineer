@@ -54,6 +54,9 @@ import (
 // an embedded type is its unqualified type name).
 const embedLegacy = "legacyShim"
 
+// One const per landed domain — the field name of its embed in apiServer.
+const embedOps = "opsHandlers" // P1
+
 // opOwner maps every operation of the committed contract to the apiServer
 // embedded FIELD NAME expected to supply it. P0: every op is still legacy.
 var opOwner = map[string]string{
@@ -62,7 +65,7 @@ var opOwner = map[string]string{
 	"CollectExternalResourceValues": embedLegacy,
 	"CreateIssue":                   embedLegacy,
 	"CreateProject":                 embedLegacy,
-	"CreateRcaAgentReport":          embedLegacy,
+	"CreateRcaAgentReport":          embedOps,
 	"CreateSkill":                   embedLegacy,
 	"CreateTurn":                    embedLegacy,
 	"DeleteExternalResource":        embedLegacy,
@@ -82,7 +85,7 @@ var opOwner = map[string]string{
 	"GetProject":                    embedLegacy,
 	"GetProjectBuild":               embedLegacy,
 	"GetProjectStatus":              embedLegacy,
-	"GetRcaAgentReport":             embedLegacy,
+	"GetRcaAgentReport":             embedOps,
 	"GetSkill":                      embedLegacy,
 	"GetSpecCollabSession":          embedLegacy,
 	"GetTask":                       embedLegacy,
@@ -100,7 +103,7 @@ var opOwner = map[string]string{
 	"ListProjectBuilds":             embedLegacy,
 	"ListProjectTags":               embedLegacy,
 	"ListProjects":                  embedLegacy,
-	"ListRcaAgentReports":           embedLegacy,
+	"ListRcaAgentReports":           embedOps,
 	"ListSkillUpdates":              embedLegacy,
 	"ListSkills":                    embedLegacy,
 	"ListTasks":                     embedLegacy,

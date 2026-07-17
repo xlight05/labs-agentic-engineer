@@ -64,12 +64,13 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
-	"github.com/wso2/aep/aep-api/internal/feature/rcaagent"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
+	"github.com/wso2/aep/aep-api/internal/ops"
+	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
@@ -764,12 +765,23 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	)
 	externalResourceRepo := repositories.NewExternalResourceRepository(db)
 	params.MCPExternalResources = externalResourceRepo
-	// Alerts (console issues #154, #155, BE handshake #156): org-scoped store
-	// for RCA-agent reports the console's notification bell and Alerts
-	// list/stepper read. Write side is a plain userJWT-secured endpoint (no
-	// separate service-auth scheme yet) — see handlers_rcaagent.go.
-	rcaAgentReportRepo := repositories.NewRcaAgentReportRepository(db)
-	params.Deps.RcaAgentReportSvc = rcaagent.NewRcaAgentReportService(rcaAgentReportRepo, executionRepo)
+	// ops — the Incident RCA domain (P1, the first landed domain). Alerts
+	// (console issues #154, #155, BE handshake #156): the org-scoped store for
+	// RCA-agent reports the console's notification bell and Alerts list/stepper
+	// read. Write side is a plain userJWT-secured endpoint (no separate
+	// service-auth scheme yet).
+	//
+	// This is the whole domain's wiring: its ports in, its handlers out. The
+	// handlers are embedded directly into the edge's composite — the edge holds
+	// no ops service.
+	opsHandlers, err := opshttpapi.New(ops.Deps{
+		Reports: ops.NewRepository(db),
+		Execs:   opsExecutionBridge{execs: executionRepo},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("assemble ops domain: %w", err)
+	}
+	params.Deps.Ops = opsHandlers
 	params.MCPOrgEndpoints = orgEndpointCatalog
 	resourceTypeCatalog := resources.NewResourceTypeCatalog(resourceClient)
 	params.MCPResourceTypes = resourceTypeCatalog

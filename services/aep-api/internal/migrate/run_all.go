@@ -127,7 +127,7 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		// `tasks_github_native` (cascade-drops any legacy component_tasks-keyed
 		// table). Supersedes the guarded phase3_coding_agent_logs no-op above.
 		ctxStep("coding_agent_logs", RunCodingAgentLogs),
-		// rca_agent_reports (models.RcaAgentReport): the store backing the
+		// rca_agent_reports (ops.RcaAgentReport): the store backing the
 		// console's Alerts notification bell and Alerts list/stepper
 		// (issues #154, #155, BE handshake #156). One idempotent CREATE TABLE
 		// + its (org_id, created_at) list index.

@@ -340,7 +340,9 @@ type Handlers struct {
 // The embedded field name is the type's UNQUALIFIED name, so embedding
 // *organization.Handlers and *spec.Handlers directly is `Handlers redeclared`.
 // Local aliases give distinct field names while each domain keeps the clean type
-// name — promotion and reflection both see through them.
+// name — promotion and reflection both see through them. The SAME collision
+// happens one level down (every slice names its type `Handler`), so a domain's
+// aggregator needs the same aliases.
 type (
     organizationHandlers = organization.Handlers
     specHandlers         = spec.Handlers
@@ -390,6 +392,30 @@ unchanged.
 - The global `models/` and `repositories/` packages **dissolve**. Pure-DTO types that lived in `models/`
   only to dodge the feature-import ban move to their domain or become shared `gen` types; `wp_naming.go`
   moves to `platform/tenant`.
+
+> **The dual-purpose types cost a wire/domain split** *(found by building P1; applies to every
+> `x-go-type: models.X` schema — today `AccessRequest`, `ComponentConfig`, `ConfigPatch`,
+> `ConfigProjection`, `EnvVar`, `RcaAgentReport`)*.
+>
+> Six schemas point `x-go-type` at a hand-written `models/` type, so the gorm model **is** the wire type
+> and `gen` imports `models`. Re-pointing that at the owning domain is **not available**: `gen` is
+> imported by `clients/*` (bound for `platform/clients`) and by every domain's `httpapi`, so
+> `gen → <domain>` would make the kernel import a domain and give every domain a transitive dependency
+> on that one. **`gen` stays a leaf** ([§2](#2-the-target-top-level-tree)).
+>
+> So an entity's move costs a **split**: the domain keeps the gorm model, the contract drops the alias
+> and `gen` generates the wire type, and the domain root owns the one projection between them
+> (`<domain>/wire.go` — not a slice, since all slices need it). Verified byte-identical on
+> `RcaAgentReport`, with two caveats worth knowing before P2:
+> - **JSON key order changes** (struct order → alphabetical). Benign — key order is not semantic — but a
+>   byte-diff of a response body is not the right way to check a phase.
+> - **Presence must be re-checked field by field.** `prefer-skip-optional-pointer` gives an optional
+>   field `omitempty`, so a hand-written `json:"dispatched"` (always sent) silently becomes omitted when
+>   false. The fix is to mark it `required` — an accuracy fix that ripples to the console's generated
+>   types and its fixtures. **A "backend" phase can require a console change.**
+>
+> The dividend: the wire type has no `OrgID`, so the tenant key cannot be serialised into a response —
+> previously that was one deleted `json:"-"` tag away.
 - **Cross-domain data access is only through the owner's typed port** — never a second package reaching
   the same table. Concretely:
   - `ops` reads `Execution` via a `delivery` read-port.
@@ -414,7 +440,7 @@ unchanged.
 **Decision: per-domain `Module` with typed `Deps`; a thin root; no DI framework.**
 
 ```go
-// internal/delivery/module.go
+// internal/delivery/module.go — the domain ROOT holds the Deps TYPE only
 type Deps struct {
     Repo    sourcecontrol.RepoPort      // ports it NEEDS, as typed interfaces
     Specs   spec.ArtifactPort
@@ -422,13 +448,23 @@ type Deps struct {
     Secrets secrets.RunnerSecretPort
     Infra   platform.Infra              // the resolved boot bundle (DB, clients…)
 }
+
+// internal/delivery/httpapi/aggregate.go — and the domain is ASSEMBLED here
 type Module struct {
-    Funnel     delivery.FunnelPort       // ports it OFFERS to other domains
-    Handlers   *httpapi.Handlers
-    Watchers   []platform.Watcher
+    Funnel   delivery.FunnelPort         // ports it OFFERS to other domains
+    Handlers *Handlers
+    Watchers []platform.Watcher
 }
-func Module(d Deps) (*Module, error) { /* pure wiring; constructor injection only */ }
+func New(d delivery.Deps) (*Module, error) { /* pure wiring; constructor injection only */ }
 ```
+
+> **Why the assembly is not in the root** *(found by building P1)*. The obvious shape —
+> `module.go` in the domain root returning `*httpapi.Handlers` — **cannot compile**: the root would
+> import `httpapi`, `httpapi` imports the slices, and the slices import the root. A cycle. The
+> aggregator package is the only place that can see both the root and the slices, so it is where the
+> domain is assembled; the root keeps the `Deps` **type** (it names only ports, so no cycle) and its
+> `Validate`. Note also that `type Module` + `func Module` in one package is `Module redeclared` — the
+> constructor is `New`.
 
 ```go
 // internal/app/assemble.go  (thin; wiring order is a topological sort, not incidental)

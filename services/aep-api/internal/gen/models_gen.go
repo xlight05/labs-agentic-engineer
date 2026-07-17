@@ -803,7 +803,36 @@ type ProvisionBody struct {
 }
 
 // RcaAgentReport An RCA report from the OpenChoreo SRE/RCA-agent handoff (console issues
-type RcaAgentReport = models.RcaAgentReport
+type RcaAgentReport struct {
+	// Classification code-level, config-level, mixed, or none — set by the handoff agent
+	Classification string    `json:"classification"`
+	Component      string    `json:"component,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+
+	// Deployed Whether the resulting fix has been deployed (Verify Fix threshold, not merely PR-merged)
+	Deployed   bool       `json:"deployed"`
+	DeployedAt *time.Time `json:"deployedAt,omitempty"`
+
+	// Diagnosis Full RCA diagnosis + remediation content (markdown)
+	Diagnosis string `json:"diagnosis"`
+
+	// Dispatched Whether the coding agent has been dispatched for the linked issue (false in issue-only/manual-dispatch mode until a human dispatches)
+	Dispatched bool   `json:"dispatched"`
+	ID         string `json:"id"`
+
+	// IssueExcerpt Short excerpt of the linked GitHub issue; absent when no issue was created
+	IssueExcerpt string `json:"issueExcerpt,omitempty"`
+
+	// IssueNumber GitHub issue number created by the handoff; also the Task key (see /projects/{projectName}/tasks/{issueNumber}); absent when the handoff was config-only
+	IssueNumber *int64 `json:"issueNumber,omitempty"`
+	IssueTitle  string `json:"issueTitle,omitempty"`
+	IssueURL    string `json:"issueUrl,omitempty"`
+	Project     string `json:"project"`
+
+	// Summary Short RCA summary; the console truncates this further for list rows
+	Summary string `json:"summary"`
+	Title   string `json:"title"`
+}
 
 // RcaAgentReportList defines model for RcaAgentReportList.
 type RcaAgentReportList struct {

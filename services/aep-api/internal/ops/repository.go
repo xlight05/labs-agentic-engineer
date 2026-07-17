@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package repositories
+package ops
 
 import (
 	"context"
@@ -24,59 +24,55 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/gen"
-
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
-// ErrRcaAgentReportNotFound is returned when no report exists for the given
-// (org, id).
-var ErrRcaAgentReportNotFound = errors.New("rca agent report not found")
+// This is the ONE file in the domain permitted to import gorm
+// (TestGormFencedToDomainRepository). Slices use the Repository interface; a
+// slice that reached for the ORM would have escaped the seam that lets it be
+// tested without a database.
 
-// RcaAgentReportRepository is the org-scoped store backing the console's
-// Alerts notification bell and Alerts list/stepper (issues #154, #155).
-type RcaAgentReportRepository struct {
-	db *gorm.DB
+// ErrReportNotFound is returned by GetReport when no report exists for the given
+// (org, id) — the slice maps it to a 404.
+var ErrReportNotFound = errors.New("rca agent report not found")
+
+// ErrInvalidReport is returned when a create request fails validation — the
+// slice maps it to a 400.
+var ErrInvalidReport = errors.New("invalid rca agent report")
+
+// Repository is the org-scoped store backing the console's Alerts notification
+// bell and Alerts list/stepper (issues #154, #155). Narrow enough to fake in a
+// slice's unit tests without a database.
+type Repository interface {
+	// Create inserts report, populating its server-assigned ID and CreatedAt.
+	Create(ctx context.Context, report *RcaAgentReport) error
+	// Get returns one report by (org, id), or (nil, nil) when absent.
+	Get(ctx context.Context, orgID, id string) (*RcaAgentReport, error)
+	// List returns up to limit reports for orgID, newest first, continuing after
+	// cursor; the second result is the cursor for the next page ("" when last).
+	List(ctx context.Context, orgID, cursor string, limit int) ([]RcaAgentReport, string, error)
 }
 
-// NewRcaAgentReportRepository returns a repository backed by db.
-func NewRcaAgentReportRepository(db *gorm.DB) *RcaAgentReportRepository {
-	return &RcaAgentReportRepository{db: db}
-}
+type repository struct{ db *gorm.DB }
 
-// Create inserts a new report for orgID, returning it with its
-// server-assigned ID and CreatedAt populated.
-func (r *RcaAgentReportRepository) Create(ctx context.Context, orgID string, in *gen.CreateRcaAgentReportRequest) (*models.RcaAgentReport, error) {
-	if orgID == "" {
-		return nil, fmt.Errorf("rca_agent_reports: orgID is required")
+// NewRepository returns the gorm-backed Repository.
+func NewRepository(db *gorm.DB) Repository { return &repository{db: db} }
+
+func (r *repository) Create(ctx context.Context, report *RcaAgentReport) error {
+	if report == nil {
+		return fmt.Errorf("rca_agent_reports: report is required")
 	}
-	report := &models.RcaAgentReport{
-		OrgID:          orgID,
-		Project:        in.Project,
-		Component:      in.Component,
-		Title:          in.Title,
-		Summary:        in.Summary,
-		Classification: in.Classification,
-		Diagnosis:      in.Diagnosis,
-		IssueNumber:    in.IssueNumber,
-		IssueURL:       in.IssueURL,
-		IssueTitle:     in.IssueTitle,
-		IssueExcerpt:   in.IssueExcerpt,
-		Dispatched:     in.Dispatched,
-		Deployed:       in.Deployed,
-		DeployedAt:     in.DeployedAt,
+	if report.OrgID == "" {
+		return fmt.Errorf("rca_agent_reports: orgID is required")
 	}
 	if err := r.db.WithContext(ctx).Create(report).Error; err != nil {
-		return nil, fmt.Errorf("rca_agent_reports: create: %w", err)
+		return fmt.Errorf("rca_agent_reports: create: %w", err)
 	}
-	return report, nil
+	return nil
 }
 
-// Get returns a single report by (org, id), or (nil, nil) when absent.
-func (r *RcaAgentReportRepository) Get(ctx context.Context, orgID, id string) (*models.RcaAgentReport, error) {
-	var report models.RcaAgentReport
+func (r *repository) Get(ctx context.Context, orgID, id string) (*RcaAgentReport, error) {
+	var report RcaAgentReport
 	err := r.db.WithContext(ctx).Where("org_id = ? AND id = ?", orgID, id).First(&report).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -87,16 +83,11 @@ func (r *RcaAgentReportRepository) Get(ctx context.Context, orgID, id string) (*
 	return &report, nil
 }
 
-// List returns up to limit reports for orgID, newest first, optionally
-// continuing after cursor (an opaque watermark from a previous page's
-// NextCursor). Returns the page plus the cursor for the next page, or "" on
-// the last page.
-//
-// The sort key is (created_at DESC, id DESC): id is a stable tie-breaker so
-// rows sharing the same created_at (possible with now() defaults / bulk
-// inserts) are never skipped or duplicated across page boundaries. The cursor
-// encodes both fields.
-func (r *RcaAgentReportRepository) List(ctx context.Context, orgID string, cursor string, limit int) ([]models.RcaAgentReport, string, error) {
+// List paginates by keyset. The sort key is (created_at DESC, id DESC): id is a
+// stable tie-breaker so rows sharing a created_at (possible with now() defaults
+// or bulk inserts) are never skipped or duplicated across page boundaries. The
+// cursor encodes both fields.
+func (r *repository) List(ctx context.Context, orgID, cursor string, limit int) ([]RcaAgentReport, string, error) {
 	if orgID == "" {
 		return nil, "", fmt.Errorf("rca_agent_reports: orgID is required")
 	}
@@ -113,7 +104,7 @@ func (r *RcaAgentReportRepository) List(ctx context.Context, orgID string, curso
 			q = q.Where("created_at < ? OR (created_at = ? AND id < ?)", ts, ts, id)
 		}
 	}
-	var reports []models.RcaAgentReport
+	var reports []RcaAgentReport
 	// Fetch one extra row to detect whether a next page exists without a
 	// separate COUNT query.
 	if err := q.Order("created_at DESC, id DESC").Limit(limit + 1).Find(&reports).Error; err != nil {
@@ -130,8 +121,8 @@ func (r *RcaAgentReportRepository) List(ctx context.Context, orgID string, curso
 
 const rfc3339NanoLayout = "2006-01-02T15:04:05.999999999Z07:00"
 
-// encodeReportCursor packs the (created_at, id) keyset watermark into one
-// opaque base64 token.
+// encodeReportCursor packs the (created_at, id) keyset watermark into one opaque
+// base64 token.
 func encodeReportCursor(createdAt time.Time, id string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(createdAt.Format(rfc3339NanoLayout) + "|" + id))
 }

@@ -3491,9 +3491,6 @@ components:
           type: object
       type: object
     RcaAgentReport:
-      x-go-type: models.RcaAgentReport
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
       additionalProperties: false
       description: An RCA report from the OpenChoreo SRE/RCA-agent handoff (console issues
       properties:
@@ -3511,6 +3508,7 @@ components:
         deployedAt:
           type: string
           format: date-time
+          x-go-type: '*time.Time'
         diagnosis:
           description: Full RCA diagnosis + remediation content (markdown)
           type: string
@@ -3528,6 +3526,7 @@ components:
             absent when the handoff was config-only
           format: int64
           type: integer
+          x-go-type: '*int64'
         issueTitle:
           type: string
         issueUrl:
@@ -3547,6 +3546,7 @@ components:
       - summary
       - classification
       - diagnosis
+      - dispatched
       - deployed
       type: object
     RcaAgentReportList:

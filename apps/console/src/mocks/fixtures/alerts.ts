@@ -63,6 +63,7 @@ export const seedAlerts: RcaAgentReport[] = [
     classification: "config-level",
     diagnosis:
       "## Diagnosis\n\nThe inventory-service pod's memory limit (256Mi) is undersized for the nightly batch sync job's peak working set (~420Mi).\n\n## Remediation\n\nApplied: raised the pod's memory limit to 512Mi via a ResourceChange. No code change needed.",
+    dispatched: false,
     deployed: false,
   },
   {
@@ -174,6 +175,7 @@ export const seedAlerts: RcaAgentReport[] = [
     classification: "config-level",
     diagnosis:
       "## Diagnosis\n\nThe storage bucket's default content-type was left at its pre-migration value (application/octet-stream) for objects uploaded without an explicit content-type header.\n\n## Remediation\n\nApplied: corrected the bucket's default content-type policy. No code change needed.",
+    dispatched: false,
     deployed: false,
   },
   {
@@ -206,6 +208,7 @@ export const seedAlerts: RcaAgentReport[] = [
     classification: "none",
     diagnosis:
       "## Diagnosis\n\nLocation-update latency during the observed window matches expected queuing behavior for the current fleet size and ingest rate; no defect found.\n\n## Remediation\n\nNone — informational only.",
+    dispatched: false,
     deployed: false,
   },
   {

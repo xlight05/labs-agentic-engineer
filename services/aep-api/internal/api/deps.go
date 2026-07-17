@@ -17,6 +17,7 @@
 package api
 
 import (
+	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -31,7 +32,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
-	"github.com/wso2/aep/aep-api/internal/feature/rcaagent"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 )
@@ -63,6 +63,11 @@ type Deps struct {
 	ArtifactSvc         artifacts.ArtifactService
 	GenAISvc            *genai.Service
 	BuildSvc            *build.Service
-	RcaAgentReportSvc   rcaagent.RcaAgentReportService
 	PreflightSvc        *build.PreflightService
+
+	// Ops is the FIRST landed domain (P1): its handlers are embedded straight
+	// into apiServer, so the edge holds no ops service and no ops handler file.
+	// Every later domain arrives the same way, and this bag shrinks to nothing
+	// by P9 — it is the legacy handlers' dependency bag, not the edge's.
+	Ops *opshttpapi.Handlers
 }

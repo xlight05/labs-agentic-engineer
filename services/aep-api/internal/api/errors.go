@@ -22,54 +22,45 @@ import (
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 )
 
 // The flat error envelope every non-2xx response carries (contract schema
 // Error): {code, message, details?}. code is a stable machine-readable slug;
 // details appears only on field-level validation errors. This replaced the
 // RFC 9457 problem-details dialect at the contract-first cutover.
+//
+// The envelope itself now lives in platform/apierr, because a domain SLICE must
+// be able to return a 404 without importing the edge (which would be a cycle —
+// the edge composes slices). What stays here is the writers: the one place that
+// turns an *apierr.Error into wire bytes. The aliases below keep the legacy
+// handlers reading as they did; they die with legacyHandlers in P9.
 const (
-	CodeValidationFailed   = "validation_failed"
-	CodeBadRequest         = "bad_request"
-	CodeUnauthorized       = "unauthorized"
-	CodeForbidden          = "forbidden"
-	CodeNotFound           = "not_found"
-	CodeConflict           = "conflict"
-	CodeInternal           = "internal_error"
-	CodeBadGateway         = "bad_gateway"
-	CodeServiceUnavailable = "service_unavailable"
+	CodeValidationFailed   = apierr.CodeValidationFailed
+	CodeBadRequest         = apierr.CodeBadRequest
+	CodeUnauthorized       = apierr.CodeUnauthorized
+	CodeForbidden          = apierr.CodeForbidden
+	CodeNotFound           = apierr.CodeNotFound
+	CodeConflict           = apierr.CodeConflict
+	CodeInternal           = apierr.CodeInternal
+	CodeBadGateway         = apierr.CodeBadGateway
+	CodeServiceUnavailable = apierr.CodeServiceUnavailable
 )
 
-// apiError is the transport error the strict handlers and middleware return;
-// the central writers below turn it into the envelope. It replaces the Huma
-// error constructors (humakit.ErrorFromStatus, huma.ErrorNNN*).
-type apiError struct {
-	Status  int
-	Code    string
-	Message string
-	Details []gen.ErrorDetail
-}
+// apiError is the transport error the strict handlers and middleware return.
+// An ALIAS, not a new type: the writers must recognise the errors a domain slice
+// constructs via platform/apierr and the ones legacy handlers construct here as
+// the same thing, or one of the two would fall through to a bare 500.
+type apiError = apierr.Error
 
-func (e *apiError) Error() string { return e.Message }
-
-func errBadRequest(msg string) error {
-	return &apiError{http.StatusBadRequest, CodeBadRequest, msg, nil}
-}
-func errUnauthorized(msg string) error {
-	return &apiError{http.StatusUnauthorized, CodeUnauthorized, msg, nil}
-}
-func errForbidden(msg string) error { return &apiError{http.StatusForbidden, CodeForbidden, msg, nil} }
-func errNotFound(msg string) error  { return &apiError{http.StatusNotFound, CodeNotFound, msg, nil} }
-func errConflict(msg string) error  { return &apiError{http.StatusConflict, CodeConflict, msg, nil} }
-func errInternal(msg string) error {
-	return &apiError{http.StatusInternalServerError, CodeInternal, msg, nil}
-}
-func errBadGateway(msg string) error {
-	return &apiError{http.StatusBadGateway, CodeBadGateway, msg, nil}
-}
-func errServiceUnavailable(msg string) error {
-	return &apiError{http.StatusServiceUnavailable, CodeServiceUnavailable, msg, nil}
-}
+func errBadRequest(msg string) error         { return apierr.BadRequest(msg) }
+func errUnauthorized(msg string) error       { return apierr.Unauthorized(msg) }
+func errForbidden(msg string) error          { return apierr.Forbidden(msg) }
+func errNotFound(msg string) error           { return apierr.NotFound(msg) }
+func errConflict(msg string) error           { return apierr.Conflict(msg) }
+func errInternal(msg string) error           { return apierr.Internal(msg) }
+func errBadGateway(msg string) error         { return apierr.BadGateway(msg) }
+func errServiceUnavailable(msg string) error { return apierr.ServiceUnavailable(msg) }
 
 // errFromStatus maps a sentinel-classified HTTP status (e.g. an OpenChoreo
 // pass-through classified by ocerr.Status) onto the envelope, mirroring the

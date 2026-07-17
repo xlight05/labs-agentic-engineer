@@ -20,6 +20,7 @@ import (
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 )
 
@@ -66,8 +67,15 @@ type legacyShim struct{ *legacyHandlers }
 // that moves an op silently fails the test.
 type apiServer struct {
 	legacyShim
-	// One *<domain>/httpapi.Handlers embed lands here per domain phase (P1–P8).
+	// One embed per landed domain phase (P1–P8).
+	*opsHandlers // P1 — ops (Incident RCA)
 }
+
+// An embedded field is named by its UNQUALIFIED type name, so every domain's
+// *httpapi.Handlers would collide as "Handlers". Local aliases give distinct
+// field names while each domain keeps the clean, unstuttering type name (§6).
+// One alias per landed domain.
+type opsHandlers = opshttpapi.Handlers
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
 // nil sub-handler inside a Module still satisfies this and panics at runtime.
@@ -89,7 +97,10 @@ var _ gen.StrictServerInterface = (*apiServer)(nil)
 // middleware (mountSurfaces), exactly where the Huma mux used to sit.
 func newAPIV1Handler(deps Deps) http.Handler {
 	strict := gen.NewStrictHandlerWithOptions(
-		&apiServer{legacyShim: legacyShim{&legacyHandlers{deps: deps}}},
+		&apiServer{
+			legacyShim:  legacyShim{&legacyHandlers{deps: deps}},
+			opsHandlers: deps.Ops,
+		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc:  writeRequestError,
