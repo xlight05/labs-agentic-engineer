@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -56,7 +56,7 @@ func openPRNumber(row *models.Execution) int {
 // ok is false when the issue is not a Task (no aep:task marker) or its block is
 // absent/mangled — the funnel/sweep skip those (unlabeled issues are inert;
 // mangled blocks are the events handler's aep:attention responsibility).
-func factsFromIssue(issue gitrepo.IssueInfo, orgID, projectID, repoFullName string) (TaskFacts, taskmeta.Block, bool) {
+func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullName string) (TaskFacts, taskmeta.Block, bool) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask {
 		return TaskFacts{}, taskmeta.Block{}, false

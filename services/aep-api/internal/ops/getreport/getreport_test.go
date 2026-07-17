@@ -29,7 +29,9 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-type fakeRepo struct{ byID map[string]*ops.RcaAgentReport }
+type fakeRepo struct {
+	byID map[string]*ops.RcaAgentReport
+}
 
 func (f *fakeRepo) Create(context.Context, *ops.RcaAgentReport) error { return nil }
 func (f *fakeRepo) Get(_ context.Context, _, id string) (*ops.RcaAgentReport, error) {
@@ -62,8 +64,8 @@ func issueReport(id string) *ops.RcaAgentReport {
 	return &ops.RcaAgentReport{
 		ID: id, OrgID: "acme", Project: "proj", Title: "t", Summary: "s",
 		Classification: "code-level", Diagnosis: "d",
-		IssueNumber:    &n,
-		IssueURL:       "https://github.com/acme/proj/issues/42",
+		IssueNumber: &n,
+		IssueURL:    "https://github.com/acme/proj/issues/42",
 	}
 }
 

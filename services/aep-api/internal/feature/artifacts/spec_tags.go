@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // GET /projects/{p}/tags (#117). The spec is versioned as ONE incrementing
@@ -66,7 +66,7 @@ func (s *artifactService) ListSpecVersionTags(ctx context.Context, orgID, projec
 
 	type versionTag struct {
 		n    int
-		info gitrepo.TagInfo
+		info sourcecontrol.TagInfo
 	}
 	var versions []versionTag
 	for _, t := range tags {
@@ -97,7 +97,7 @@ func (s *artifactService) ListSpecVersionTags(ctx context.Context, orgID, projec
 
 // specTreesEqual compares the specs/ subtrees of two blob listings by
 // path→blob-sha — content-identical trees compare equal without any reads.
-func specTreesEqual(a, b []gitrepo.Entry) bool {
+func specTreesEqual(a, b []sourcecontrol.Entry) bool {
 	as, bs := specTreeShas(a), specTreeShas(b)
 	if len(as) != len(bs) {
 		return false
@@ -110,7 +110,7 @@ func specTreesEqual(a, b []gitrepo.Entry) bool {
 	return true
 }
 
-func specTreeShas(entries []gitrepo.Entry) map[string]string {
+func specTreeShas(entries []sourcecontrol.Entry) map[string]string {
 	out := map[string]string{}
 	for _, e := range entries {
 		if strings.HasPrefix(e.Path, specTreePrefix) {

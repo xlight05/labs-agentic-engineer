@@ -44,7 +44,7 @@
 //     this package for the same reason and is left uncovered here.
 //
 // ResolveUserInstallations talks to GitHub exclusively through the
-// gitrepo.AppInstallOps port, so it is faked at that edge like any other
+// sourcecontrol.AppInstallOps port, so it is faked at that edge like any other
 // out-of-process dependency — no HTTP or minter trickery needed.
 package orgcreds
 
@@ -61,9 +61,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // --- key + minter helpers -----------------------------------------------------
@@ -321,27 +321,27 @@ func TestFetchAppBotIdentity(t *testing.T) {
 
 // --- ResolveUserInstallations --------------------------------------------------
 
-// fakeAppInstallOps hand-fakes gitrepo.AppInstallOps. ResolveUserInstallations
+// fakeAppInstallOps hand-fakes sourcecontrol.AppInstallOps. ResolveUserInstallations
 // only calls ExchangeOAuthCode, GetUserInstallations, and ListAppInstallations;
 // the other two methods are not on its path, so a call to one is a test bug —
 // they panic.
 type fakeAppInstallOps struct {
 	exchangeFn     func(ctx context.Context, clientID, clientSecret, code, redirectURI string) (string, error)
 	userInstallsFn func(ctx context.Context, userToken string) ([]int64, error)
-	listAppFn      func(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error)
+	listAppFn      func(ctx context.Context, minter *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error)
 }
 
-var _ gitrepo.AppInstallOps = (*fakeAppInstallOps)(nil)
+var _ sourcecontrol.AppInstallOps = (*fakeAppInstallOps)(nil)
 
-func (f *fakeAppInstallOps) GetUser(context.Context, secrets.Credential) (*gitrepo.GitHubUser, error) {
+func (f *fakeAppInstallOps) GetUser(context.Context, secrets.Credential) (*sourcecontrol.GitHubUser, error) {
 	panic("fakeAppInstallOps: GetUser is not on the ResolveUserInstallations path")
 }
 
-func (f *fakeAppInstallOps) GetAppInstallation(context.Context, *secrets.AppTokenMinter, int64) (*gitrepo.AppInstallationInfo, error) {
+func (f *fakeAppInstallOps) GetAppInstallation(context.Context, *secrets.AppTokenMinter, int64) (*sourcecontrol.AppInstallationInfo, error) {
 	panic("fakeAppInstallOps: GetAppInstallation is not on the ResolveUserInstallations path")
 }
 
-func (f *fakeAppInstallOps) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+func (f *fakeAppInstallOps) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error) {
 	if f.listAppFn != nil {
 		return f.listAppFn(ctx, minter)
 	}
@@ -460,7 +460,7 @@ func TestResolveUserInstallations_ValidationAndUpstreamErrors(t *testing.T) {
 		t.Parallel()
 		gh := &fakeAppInstallOps{
 			userInstallsFn: func(context.Context, string) ([]int64, error) { return []int64{1}, nil },
-			listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+			listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error) {
 				return nil, errors.New("github: 503")
 			},
 		}
@@ -499,8 +499,8 @@ func TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB(t *testing
 		userInstallsFn: func(context.Context, string) ([]int64, error) {
 			return []int64{1, 2, 3, 4}, nil // user administers 1-4, not 5
 		},
-		listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
-			return []gitrepo.AppInstallationSummary{
+		listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error) {
+			return []sourcecontrol.AppInstallationSummary{
 				{InstallationID: 1, AccountLogin: "acme-org", AccountType: "Organization"},
 				{InstallationID: 2, AccountLogin: "other-org", AccountType: "Organization"},
 				{InstallationID: 3, AccountLogin: "other-org-disconnected", AccountType: "Organization"},

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -32,11 +32,11 @@ func (f fakeRepoLister) ListAll(context.Context) ([]RepoRef, error) { return f.r
 
 // countingPRReader records how many live PR fetches the healer makes.
 type countingPRReader struct {
-	states map[int]*gitrepo.PullRequestState
+	states map[int]*sourcecontrol.PullRequestState
 	calls  int
 }
 
-func (f *countingPRReader) GetPullRequestState(_ context.Context, _, _ string, number int) (*gitrepo.PullRequestState, error) {
+func (f *countingPRReader) GetPullRequestState(_ context.Context, _, _ string, number int) (*sourcecontrol.PullRequestState, error) {
 	f.calls++
 	return f.states[number], nil
 }
@@ -54,8 +54,8 @@ func TestSweep_PRReconcile_HealsClosedIssue(t *testing.T) {
 	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"3")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
-	prs := &countingPRReader{states: map[int]*gitrepo.PullRequestState{3: {State: "closed", Merged: true, MergeCommitSHA: "sha3"}}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
+	prs := &countingPRReader{states: map[int]*sourcecontrol.PullRequestState{3: {State: "closed", Merged: true, MergeCommitSHA: "sha3"}}}
 	exec := &fakeExecutor{store: store, startOK: true}
 	events := newEventsWithPR(store, issues, exec, prs)
 	sweep := NewSweep(events.funnel, events, store, oneRepo(), issues, time.Minute)
@@ -82,8 +82,8 @@ func TestSweep_PRReconcile_SettledTaskNoAPICall(t *testing.T) {
 	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha3"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
-	prs := &countingPRReader{states: map[int]*gitrepo.PullRequestState{}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
+	prs := &countingPRReader{states: map[int]*sourcecontrol.PullRequestState{}}
 	exec := &fakeExecutor{store: store, startOK: true}
 	events := newEventsWithPR(store, issues, exec, prs)
 	sweep := NewSweep(events.funnel, events, store, oneRepo(), issues, time.Minute)
@@ -105,7 +105,7 @@ func TestSweep_PRReconcile_SettledTaskNoAPICall(t *testing.T) {
 func attnSweep(t *testing.T, store *fakeStore, issues *fakeIssues) *Sweep {
 	t.Helper()
 	exec := &fakeExecutor{store: store, startOK: true}
-	events := newEventsWithPR(store, issues, exec, &countingPRReader{states: map[int]*gitrepo.PullRequestState{}})
+	events := newEventsWithPR(store, issues, exec, &countingPRReader{states: map[int]*sourcecontrol.PullRequestState{}})
 	return NewSweep(events.funnel, events, store, oneRepo(), issues, time.Minute)
 }
 
@@ -118,7 +118,7 @@ func TestSweep_ClearsStaleAttention_WhenHealthy(t *testing.T) {
 	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
 	if err := attnSweep(t, store, issues).Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestSweep_KeepsAttention_WhenLatestExecutionFailed(t *testing.T) {
 	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecFailed), "boom")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
 	if err := attnSweep(t, store, issues).Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestSweep_SkipsAttentionClear_WhenBlockInvalid(t *testing.T) {
 	// Task labels present (marker + class + attention) but the body has no valid
 	// machine block — a live attention reason, so clearing is skipped.
 	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), taskmeta.LabelAttention)
-	issues := newFakeIssues([]gitrepo.IssueInfo{{Number: 2, Title: "T", Body: "no machine block here", State: "open", Labels: labels}})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{{Number: 2, Title: "T", Body: "no machine block here", State: "open", Labels: labels}})
 	if err := attnSweep(t, store, issues).Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestSweep_AttentionAbsent_NoGitHubCall(t *testing.T) {
 	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), "")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")}) // no attention label
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")}) // no attention label
 	if err := attnSweep(t, store, issues).Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}

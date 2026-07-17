@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -107,7 +107,7 @@ func TestReads_ListByTag_FiltersByBlockLineage(t *testing.T) {
 	// the version lives only in its machine block. Tag scoping must still
 	// find it — the block is the durable truth, the label just its mirror.
 	legacyBlock := taskmeta.Block{Component: "billing-service", Origin: taskmeta.OriginSpecPlan, SpecTag: "v3", DesignTag: "design-v1"}
-	issues.seed(gitrepo.IssueInfo{
+	issues.seed(sourcecontrol.IssueInfo{
 		Number: 4,
 		Title:  "Implement billing-service",
 		Body:   taskmeta.ComposeBody(legacyBlock, taskmeta.Human{Rationale: "orig"}),

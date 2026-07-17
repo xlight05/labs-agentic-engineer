@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // A wrapped Workspace.Mutate CAS-exhaustion (ErrRefNotFastForward) is a
@@ -30,7 +30,7 @@ import (
 // the 500 the default arm would otherwise produce. (Ported from the files
 // feature's Huma-era internal test at the contract-first cutover.)
 func TestMapFilesError_CASExhaustionMapsTo409(t *testing.T) {
-	err := mapFilesError(fmt.Errorf("apply: mutate: %w", gitrepo.ErrRefNotFastForward))
+	err := mapFilesError(fmt.Errorf("apply: mutate: %w", sourcecontrol.ErrRefNotFastForward))
 	var ae *apiError
 	if !errors.As(err, &ae) {
 		t.Fatalf("mapped error %T is not an *apiError", err)

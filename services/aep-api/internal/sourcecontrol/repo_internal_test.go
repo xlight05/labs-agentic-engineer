@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo
+package sourcecontrol
 
 // White-box tests for repoService's unexported helpers. These stay in
 // package gitrepo (not the external gitrepo_test package the client-driving

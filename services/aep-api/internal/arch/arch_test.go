@@ -53,23 +53,23 @@ const mod = "github.com/wso2/aep/aep-api"
 // decision: extend this list in the same PR and say why, or (usually better)
 // cut the edge with a consumer-side port per the house pattern.
 var featureEdgeAllowlist = map[string][]string{
-	"artifacts": {"gitrepo"},
+	"artifacts": {},
 	// build is the public single-tag build surface (build-project /
 	// get-project-build). It deliberately composes the machinery it fronts:
 	// artifacts (SpecSaveResult + SpecValidationError — the 422 detail must
 	// survive errors.As across the port boundary), devflow (workflow name/id/
 	// status vocabulary + the Temporal runtime the runner wraps), task
-	// (TaskView for the status title join), gitrepo (typed repo errors).
-	// Heavy collaborators (SaveSpec, workflow_runs, repo lookup) stay behind
-	// consumer-side ports wired at the composition root.
-	"build": {"artifacts", "devflow", "gitrepo", "task"},
+	// (TaskView for the status title join). Heavy collaborators (SaveSpec,
+	// workflow_runs, repo lookup) stay behind consumer-side ports wired at the
+	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
+	"build": {"artifacts", "devflow", "task"},
 	// codingagent is the funnel's one registered executor: it implements the
 	// execution.Executor port (hence the execution edge) and reaches every other
 	// service — identities, anthropic, repos, OC — through consumer ports wired
 	// at the composition root. It also holds the devflow signaler (nil-safe) so
 	// the coding/build/deploy watchers can signal a waiting TaskFlow workflow.
 	"codingagent": {"execution", "devflow"},
-	"component":   {"artifacts", "gitrepo"},
+	"component":   {"artifacts"},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
 	// endpoints subpackages (external/platform provisioner cores; the org
@@ -94,14 +94,14 @@ var featureEdgeAllowlist = map[string][]string{
 	// depend on IT (the signaler), never the reverse.
 	"devflow": {},
 	// execution is the platform-owned half of the Task/Execution split: it reads
-	// GitHub Task facts (gitrepo) and, on PR events, signals a waiting devflow
+	// GitHub Task facts (via the sourcecontrol domain since P2) and, on PR events,
+	// signals a waiting devflow
 	// TaskFlow workflow (devflow, nil-safe). Design at HEAD is read through a
 	// consumer-side port, not a direct artifacts import. It NEVER imports
 	// feature/task — the §1 split is a package boundary.
-	"execution":    {"gitrepo", "devflow"},
-	"files":        {"gitrepo"},
-	"genai":        {"gitrepo"},
-	"gitrepo":      {},
+	"execution":    {"devflow"},
+	"files":        {},
+	"genai":        {},
 	"idp":          {"orgcreds"},
 	"organization": {},
 	// orgconfig is the consolidated /config surface (org-config-consolidation.md):
@@ -110,14 +110,14 @@ var featureEdgeAllowlist = map[string][]string{
 	// the atomic multi-section PATCH across both services — so the concrete edges
 	// are the deliberate design, not incidental coupling.
 	"orgconfig": {"idp", "orgcreds"},
-	"orgcreds":  {"gitrepo"},
-	"project":   {"artifacts", "gitrepo"},
+	"orgcreds":  {},
+	"project":   {"artifacts"},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
-	// §3.6): it drives the provisioner cores (dependencies/resources) and GitHub gate
-	// issues (gitrepo). Every other collaborator — the executions store, the funnel
-	// Reevaluate hook, the design reader, the repo locator — is a consumer-side port
-	// wired at the composition root, so it holds only these two feature edges.
-	"provisioning": {"dependencies/resources", "gitrepo"},
+	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
+	// issues now come from the sourcecontrol domain (P2). Every other collaborator —
+	// the executions store, the funnel Reevaluate hook, the design reader, the repo
+	// locator — is a consumer-side port wired at the composition root.
+	"provisioning": {"dependencies/resources"},
 	// (rcaagent MIGRATED to internal/ops in P1 — the first feature to become a
 	// domain. Its row is gone because the feature is gone; the allowlist may only
 	// shrink from here as each phase lands.)
@@ -131,16 +131,16 @@ var featureEdgeAllowlist = map[string][]string{
 	// resources package's single source of truth for the per-env binding name
 	// (ExternalResourceBindingName) rather than re-deriving the convention.
 	"runtimeconfig": {"artifacts", "dependencies/resources"},
-	"skills":        {"artifacts", "gitrepo"},
+	"skills":        {"artifacts"},
 	// task is the GitHub-facing half: it never imports feature/execution (the §1
 	// split) — the funnel is reached through the task.Dispatcher consumer port.
-	"task": {"artifacts", "gitrepo"},
+	"task": {"artifacts"},
 	// validation mints the project's aep:validation Task issue on design approval
-	// (validation-phase). Its only feature edge is gitrepo (the issue wire types
-	// in its ports); the design-component and criteria-file reads are consumer-
-	// side ports wired at the composition root, so artifacts/files stay out.
-	"validation": {"gitrepo"},
-	"webhook":    {"gitrepo", "orgcreds"},
+	// (validation-phase). It holds NO feature edge: the issue wire types come from
+	// the sourcecontrol domain (P2), and the design-component and criteria-file
+	// reads are consumer-side ports wired at the composition root.
+	"validation": {},
+	"webhook":    {"orgcreds"},
 }
 
 // depCache memoizes each package's transitive import set so the boundary

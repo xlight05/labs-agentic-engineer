@@ -30,21 +30,21 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // GitGateway is the git surface + credential resolver + save identities the
 // artifact store drives. Everything — bundle reads, the save tag, the discard
 // revert — goes through the Workspace port (the mounted bare mirror); the
 // feature holds no REST Git-Data dependency. The concrete
-// *gitrepo.gitOpsService satisfies it structurally — the same port the files
+// *sourcecontrol.gitOpsService satisfies it structurally — the same port the files
 // feature consumes. No clone primitives.
 type GitGateway interface {
 	// Workspace is the mount-backed git engine serving all reads and writes.
-	Workspace() gitrepo.Workspace
+	Workspace() sourcecontrol.Workspace
 	Resolver() secrets.Resolver
-	ResolveSaveIdentities(cred secrets.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
+	ResolveSaveIdentities(cred secrets.Credential) (*sourcecontrol.GitIdentity, *sourcecontrol.GitIdentity)
 }
 
 // The repo-relative directory prefixes the two bundles live under (trailing
@@ -72,7 +72,7 @@ func designBundleFilter(rel string) bool {
 // RELATIVE to prefix, filtered by keep. One ReadBundle call — the engine
 // freshens the mirror and streams blobs via plumbing; there is no per-blob
 // fan-out to bound anymore.
-func (s *artifactService) readBundleAt(ctx context.Context, ref gitrepo.RepoRef, at, prefix string, keep bundleFilter) (map[string]string, error) {
+func (s *artifactService) readBundleAt(ctx context.Context, ref sourcecontrol.RepoRef, at, prefix string, keep bundleFilter) (map[string]string, error) {
 	files, _, err := s.git.Workspace().ReadBundle(ctx, ref, at, func(path string) bool {
 		rel, ok := strings.CutPrefix(path, prefix)
 		return ok && rel != "" && keep(rel)
@@ -89,7 +89,7 @@ func (s *artifactService) readBundleAt(ctx context.Context, ref gitrepo.RepoRef,
 
 // readBundleAtCommit reads the artifact bundle at an exact commit (the publish
 // flow's pinned read — no ref resolution involved beyond object lookup).
-func (s *artifactService) readBundleAtCommit(ctx context.Context, ref gitrepo.RepoRef, commitSHA, prefix string, keep bundleFilter) (map[string]string, error) {
+func (s *artifactService) readBundleAtCommit(ctx context.Context, ref sourcecontrol.RepoRef, commitSHA, prefix string, keep bundleFilter) (map[string]string, error) {
 	files, err := s.readBundleAt(ctx, ref, commitSHA, prefix, keep)
 	if err != nil {
 		return nil, fmt.Errorf("read bundle at %s: %w", commitSHA, err)
@@ -98,7 +98,7 @@ func (s *artifactService) readBundleAtCommit(ctx context.Context, ref gitrepo.Re
 }
 
 // readBundleAtHead reads the artifact bundle at the default branch's tip.
-func (s *artifactService) readBundleAtHead(ctx context.Context, ref gitrepo.RepoRef, prefix string, keep bundleFilter) (map[string]string, error) {
+func (s *artifactService) readBundleAtHead(ctx context.Context, ref sourcecontrol.RepoRef, prefix string, keep bundleFilter) (map[string]string, error) {
 	files, err := s.readBundleAt(ctx, ref, "", prefix, keep)
 	if err != nil {
 		return nil, fmt.Errorf("read bundle at head: %w", err)
@@ -111,10 +111,10 @@ func (s *artifactService) readBundleAtHead(ctx context.Context, ref gitrepo.Repo
 // readBundleAtTag reads the artifact bundle at a `v*` tag. The engine resolves
 // the ref and peels an annotated tag to its commit; an absent tag surfaces as
 // ErrArtifactNotFound.
-func (s *artifactService) readBundleAtTag(ctx context.Context, ref gitrepo.RepoRef, tag, prefix string, keep bundleFilter) (map[string]string, error) {
+func (s *artifactService) readBundleAtTag(ctx context.Context, ref sourcecontrol.RepoRef, tag, prefix string, keep bundleFilter) (map[string]string, error) {
 	files, err := s.readBundleAt(ctx, ref, "tags/"+tag, prefix, keep)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRefNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRefNotFound) {
 			return nil, ErrArtifactNotFound
 		}
 		return nil, fmt.Errorf("read bundle at tag %s: %w", tag, err)
@@ -126,13 +126,13 @@ func (s *artifactService) readBundleAtTag(ctx context.Context, ref gitrepo.RepoR
 // annotation subject. The local read restores the Message the Git Data refs API
 // could not expose (it is empty only for lightweight tags). Fetches origin
 // first — the freshness-critical path (version lists, save prechecks).
-func (s *artifactService) listVersionTags(ctx context.Context, ref gitrepo.RepoRef) ([]gitrepo.TagInfo, error) {
+func (s *artifactService) listVersionTags(ctx context.Context, ref sourcecontrol.RepoRef) ([]sourcecontrol.TagInfo, error) {
 	return s.git.Workspace().ListTags(ctx, ref, "v")
 }
 
 // listVersionTagsLocal is listVersionTags without the origin fetch — for the
 // best-effort LatestDesignTag read (the task stale-design attention flag),
 // which must not force a per-read network round-trip.
-func (s *artifactService) listVersionTagsLocal(ctx context.Context, ref gitrepo.RepoRef) ([]gitrepo.TagInfo, error) {
+func (s *artifactService) listVersionTagsLocal(ctx context.Context, ref sourcecontrol.RepoRef) ([]sourcecontrol.TagInfo, error) {
 	return s.git.Workspace().ListTagsLocal(ctx, ref, "v")
 }

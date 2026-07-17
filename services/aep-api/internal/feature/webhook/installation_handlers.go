@@ -24,8 +24,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // RegisterInstallationHandlers wires the handlers for App-mode lifecycle
@@ -51,7 +51,7 @@ func RegisterInstallationHandlers(
 	router *Router,
 	db *gorm.DB,
 	credSvc *orgcreds.CredentialService,
-	issueSvc gitrepo.IssueService,
+	issueSvc sourcecontrol.IssueService,
 	workspaceTrash func(ctx context.Context, ocOrgID string),
 ) {
 	h := &installationHandler{
@@ -71,7 +71,7 @@ func RegisterInstallationHandlers(
 type installationHandler struct {
 	db         *gorm.DB
 	credSvc    *orgcreds.CredentialService
-	issueSvc   gitrepo.IssueService
+	issueSvc   sourcecontrol.IssueService
 	disconnect *orgcreds.OrgDisconnectService
 }
 

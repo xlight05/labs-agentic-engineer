@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo_test
+package sourcecontrol_test
 
 // Shared fakes for the gitrepo unit tier. Fakes sit only at the two real edges
 // of these services — the credential seam (secrets.Resolver / Credential)

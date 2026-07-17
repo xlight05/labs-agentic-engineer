@@ -27,11 +27,11 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -87,7 +87,7 @@ func newPlanRig(t *testing.T, seed map[string]string, specTag string) *planRig {
 	svc := NewPlanService(
 		fakeRepos{repo: repoRow},
 		planVersions{specTag: specTag},
-		gitrepo.NewGitOpsService(nilResolver{}, fx.Engine),
+		sourcecontrol.NewGitOpsService(nilResolver{}, fx.Engine),
 		func(context.Context, string) (string, error) { return "sk-test", nil },
 		turn,
 		issues,
@@ -183,7 +183,7 @@ func TestStartPlan_InstructionCarriesExistingTasksAndLineageDiff(t *testing.T) {
 	block := taskmeta.Block{Component: "hello-world-api", Origin: taskmeta.OriginSpecPlan,
 		SpecTag: "v0", DesignTag: "v0"}
 	block.Key = taskmeta.Key("proj1", "v0", block.Target(), "Implement hello-world-api")
-	r.issues.seed(gitrepo.IssueInfo{
+	r.issues.seed(sourcecontrol.IssueInfo{
 		Number: 104,
 		Title:  "Implement hello-world-api",
 		Body:   taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "seed", Body: "## Scope"}),
@@ -227,7 +227,7 @@ func TestStartPlan_SkillsRepoGone_TypedError(t *testing.T) {
 	svc := NewPlanService(
 		fakeRepos{repo: repoRow},
 		planVersions{specTag: "v1"},
-		gitrepo.NewGitOpsService(nilResolver{}, fx.Engine),
+		sourcecontrol.NewGitOpsService(nilResolver{}, fx.Engine),
 		func(context.Context, string) (string, error) { return "sk-test", nil },
 		turn,
 		newFakeIssues(),
@@ -299,7 +299,7 @@ func TestStartPlan_ContextExcludesValidationTask(t *testing.T) {
 	coding := taskmeta.Block{Component: "hello-world-api", Origin: taskmeta.OriginSpecPlan,
 		SpecTag: "v1", DesignTag: "v1"}
 	coding.Key = taskmeta.Key("proj1", "v1", coding.Target(), "Implement hello-world-api")
-	r.issues.seed(gitrepo.IssueInfo{
+	r.issues.seed(sourcecontrol.IssueInfo{
 		Number: 104,
 		Title:  "Implement hello-world-api",
 		Body:   taskmeta.ComposeBody(coding, taskmeta.Human{Rationale: "seed", Body: "## Scope"}),
@@ -309,7 +309,7 @@ func TestStartPlan_ContextExcludesValidationTask(t *testing.T) {
 	validationBlock := taskmeta.Block{Operation: "validate", DependsOn: []string{"hello-world-api"},
 		Origin: taskmeta.OriginSpecPlan, DesignTag: "v1"}
 	validationBlock.Key = taskmeta.Key("proj1", "v1", validationBlock.Target(), "Validate the deployed system")
-	r.issues.seed(gitrepo.IssueInfo{
+	r.issues.seed(sourcecontrol.IssueInfo{
 		Number: 105,
 		Title:  "Validate the deployed system against its acceptance criteria",
 		Body:   taskmeta.ComposeBody(validationBlock, taskmeta.Human{Rationale: "oracle", Body: "## Report"}),

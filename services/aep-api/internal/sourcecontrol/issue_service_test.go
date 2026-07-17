@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo_test
+package sourcecontrol_test
 
 import (
 	"errors"
@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -32,14 +32,14 @@ import (
 // stub. The repo resolves (org1, proj1) → github.com/acme/widgets, so every
 // GitHub call lands under /repos/acme/widgets on the stub. Tasks are plain
 // GitHub issues now (Projects v2 dropped) — no board ops on creation.
-func newIssueSvcOnStub(t *testing.T, stub *gittest.Stub) gitrepo.IssueService {
+func newIssueSvcOnStub(t *testing.T, stub *gittest.Stub) sourcecontrol.IssueService {
 	t.Helper()
 	repo := newFakeRepoRepo()
 	repo.preload(&models.GitRepository{
 		OrgID: "org1", ProjectID: "proj1",
 		RepoURL: "https://github.com/acme/widgets",
 	})
-	return gitrepo.NewIssueService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{})
+	return sourcecontrol.NewIssueService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{})
 }
 
 func TestCreateIssue_SendsTitleBodyLabelsAndParsesResult(t *testing.T) {
@@ -50,7 +50,7 @@ func TestCreateIssue_SendsTitleBodyLabelsAndParsesResult(t *testing.T) {
 		`{"number":7,"html_url":"https://github.com/acme/widgets/issues/7","node_id":"NODE7"}`)
 	svc := newIssueSvcOnStub(t, stub)
 
-	res, err := svc.CreateIssue(testContext(), "org1", "proj1", gitrepo.CreateIssueRequest{
+	res, err := svc.CreateIssue(testContext(), "org1", "proj1", sourcecontrol.CreateIssueRequest{
 		Title:  "Implement auth",
 		Body:   "do the thing",
 		Labels: []string{"aep", "phase-1"},
@@ -101,7 +101,7 @@ func TestCreateIssue_SendsTitleBodyLabelsAndParsesResult(t *testing.T) {
 func TestCreateIssue_TitleRequired(t *testing.T) {
 	t.Parallel()
 	svc := newIssueSvcOnStub(t, gittest.NewStub(t))
-	if _, err := svc.CreateIssue(testContext(), "org1", "proj1", gitrepo.CreateIssueRequest{Title: "  "}); err == nil {
+	if _, err := svc.CreateIssue(testContext(), "org1", "proj1", sourcecontrol.CreateIssueRequest{Title: "  "}); err == nil {
 		t.Fatal("want error for blank title, got nil")
 	}
 }
@@ -109,9 +109,9 @@ func TestCreateIssue_TitleRequired(t *testing.T) {
 func TestCreateIssue_RepoNotFound(t *testing.T) {
 	t.Parallel()
 	// A repo with no row → resolveRepoAndCredential surfaces ErrRepoNotFound.
-	svc := gitrepo.NewIssueService(newFakeRepoRepo(), githubclient.NewClient(githubclient.WithAPIBase(gittest.NewStub(t).URL)), fakeResolver{})
-	_, err := svc.CreateIssue(testContext(), "org1", "proj1", gitrepo.CreateIssueRequest{Title: "x"})
-	if !errors.Is(err, gitrepo.ErrRepoNotFound) {
+	svc := sourcecontrol.NewIssueService(newFakeRepoRepo(), githubclient.NewClient(githubclient.WithAPIBase(gittest.NewStub(t).URL)), fakeResolver{})
+	_, err := svc.CreateIssue(testContext(), "org1", "proj1", sourcecontrol.CreateIssueRequest{Title: "x"})
+	if !errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 		t.Fatalf("err = %v, want ErrRepoNotFound", err)
 	}
 }
@@ -245,7 +245,7 @@ func TestParseOwnerRepo(t *testing.T) {
 		{"https://github.com/onlyowner", "", "", true},
 	}
 	for _, c := range cases {
-		owner, repo, err := gitrepo.ParseOwnerRepo(c.in)
+		owner, repo, err := sourcecontrol.ParseOwnerRepo(c.in)
 		if c.wantErr {
 			if err == nil {
 				t.Errorf("ParseOwnerRepo(%q): want error, got %s/%s", c.in, owner, repo)

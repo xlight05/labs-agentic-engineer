@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Artifacts feature on the strict interface: the spec-version tag read (#117).
@@ -34,7 +34,7 @@ func (s *legacyHandlers) ListProjectTags(ctx context.Context, request gen.ListPr
 	tags, err := s.deps.ArtifactSvc.ListSpecVersionTags(ctx, org, request.ProjectName)
 	if err != nil {
 		switch {
-		case errors.Is(err, gitrepo.ErrRepoNotFound), errors.Is(err, gitrepo.ErrRepoNotReady):
+		case errors.Is(err, sourcecontrol.ErrRepoNotFound), errors.Is(err, sourcecontrol.ErrRepoNotReady):
 			return nil, errNotFound("project repository not found")
 		default:
 			return nil, errInternal("internal error")

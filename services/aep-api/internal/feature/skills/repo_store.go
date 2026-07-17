@@ -41,7 +41,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -74,8 +74,8 @@ var legacyKindDirs = map[string]string{
 // holds the low-level git read/write primitives that the mutation + import
 // services and the reconciler compose with.
 type SkillService struct {
-	git   gitrepo.GitOpsService
-	repos gitrepo.RepoService
+	git   sourcecontrol.GitOpsService
+	repos sourcecontrol.RepoService
 	// library is the platform skill source read at reconcile time — os.DirFS
 	// over the on-disk library (config.SkillsDir) in production, a test fs.FS in
 	// tests. Rooted at the library directory itself ("<name>/SKILL.md"), so
@@ -103,7 +103,7 @@ func (s *SkillService) orgLock(orgID string) *sync.Mutex {
 // during seed/reconcile (os.DirFS(config.SkillsDir) in production, a test fs.FS
 // in tests). Any may be nil in degraded/test boot (reads then return empty; a
 // nil library seeds nothing).
-func NewSkillService(git gitrepo.GitOpsService, repos gitrepo.RepoService, library fs.FS) *SkillService {
+func NewSkillService(git sourcecontrol.GitOpsService, repos sourcecontrol.RepoService, library fs.FS) *SkillService {
 	return &SkillService{git: git, repos: repos, library: library}
 }
 
@@ -226,7 +226,7 @@ func (s *SkillService) catalog(ctx context.Context, orgID string) []Skill {
 // always revalidate origin, so freshness matches the retired REST walk without
 // any cache.
 func (s *SkillService) loadCatalogEntries(ctx context.Context, orgID string, repo *models.GitRepository) ([]catalogEntry, error) {
-	ref, err := gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -400,13 +400,13 @@ func parseBundle(ctx context.Context, files map[string]string) []Skill {
 // repo's default branch in a single commit through Workspace.Mutate, which
 // owns the bounded fast-forward CAS retry (design D5). §9.
 func (s *SkillService) commitFiles(ctx context.Context, orgID string, repo *models.GitRepository, message string, writes map[string][]byte, deletePrefixes []string) (string, error) {
-	ref, err := gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return "", err
 	}
 	author, committer := s.git.ResolveSaveIdentities(ref.Cred)
 
-	res, err := s.git.Workspace().Mutate(ctx, ref, func(tx gitrepo.Tx) error {
+	res, err := s.git.Workspace().Mutate(ctx, ref, func(tx sourcecontrol.Tx) error {
 		// Deletes are staged BEFORE writes: Tx is last-op-wins per path, so a
 		// path also being written this commit survives its own prefix delete
 		// (e.g. a reference file being replaced under a pruning update).
@@ -426,7 +426,7 @@ func (s *SkillService) commitFiles(ctx context.Context, orgID string, repo *mode
 			tx.Write(p, data)
 		}
 		return nil
-	}, gitrepo.CommitOpts{Message: message, Author: author, Committer: committer})
+	}, sourcecontrol.CommitOpts{Message: message, Author: author, Committer: committer})
 	if err != nil {
 		return "", err
 	}

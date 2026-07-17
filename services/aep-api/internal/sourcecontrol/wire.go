@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo
+package sourcecontrol
 
 import (
 	"errors"
@@ -136,7 +136,7 @@ type AppInstallationSummary struct {
 // optional (defaults to the commit/tag time when omitted). Named with the
 // `Git` prefix to avoid collision with the `Identity` type already declared
 // in credential_service.go. Alias of the gitfs definition — consumers keep
-// importing gitrepo.GitIdentity while the engine owns the type.
+// importing sourcecontrol.GitIdentity while the engine owns the type.
 type GitIdentity = gitfs.GitIdentity
 
 // PullRequestState is the subset of a pull request the sweep's PR-state

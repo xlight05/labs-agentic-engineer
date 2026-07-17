@@ -30,7 +30,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // tagRetryAttempts is the bounded backoff schedule for tag-name collisions
@@ -55,8 +55,8 @@ var tagRetryAttempts = []time.Duration{
 // version; for requirements it is ignored.
 func (s *artifactService) createAnnotatedTag(
 	ctx context.Context,
-	ref gitrepo.RepoRef,
-	tags *[]gitrepo.TagInfo,
+	ref sourcecontrol.RepoRef,
+	tags *[]sourcecontrol.TagInfo,
 	nextN *int,
 	tagName *string,
 	tagBody, commitSHA string,
@@ -77,7 +77,7 @@ func (s *artifactService) createAnnotatedTag(
 			ver, name := nextRequirementsTag(*tags)
 			*nextN, *tagName = ver, name
 		}
-		return s.git.Workspace().Tag(ctx, ref, gitrepo.TagSpec{
+		return s.git.Workspace().Tag(ctx, ref, sourcecontrol.TagSpec{
 			Name:    *tagName,
 			Target:  commitSHA,
 			Message: tagBody,
@@ -86,7 +86,7 @@ func (s *artifactService) createAnnotatedTag(
 	}
 	err := attempt()
 	for _, delay := range tagRetryAttempts {
-		if !errors.Is(err, gitrepo.ErrTagAlreadyExists) {
+		if !errors.Is(err, sourcecontrol.ErrTagAlreadyExists) {
 			return err
 		}
 		if jerr := jitterSleep(ctx, delay); jerr != nil {

@@ -21,11 +21,11 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Projects feature on the strict interface. Every operation is org-scoped:
@@ -106,7 +106,7 @@ func mapProjectError(err error) error {
 		return errNotFound("project not found")
 	case errors.Is(err, project.ErrForbidden):
 		return errForbidden("insufficient permissions to perform this action")
-	case gitrepo.IsRepoNameConflict(err):
+	case sourcecontrol.IsRepoNameConflict(err):
 		return errConflict("a repository with this name already exists — choose another repository name")
 	}
 	if status, ok := ocerr.Status(err); ok {

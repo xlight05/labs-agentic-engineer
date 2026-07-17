@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -30,19 +30,19 @@ import (
 // label/comment/body/title mutations.
 type fakeIssues struct {
 	mu           sync.Mutex
-	byNumber     map[int]*gitrepo.IssueInfo
+	byNumber     map[int]*sourcecontrol.IssueInfo
 	nextNum      int
-	created      []gitrepo.CreateIssueRequest
+	created      []sourcecontrol.CreateIssueRequest
 	comments     map[int][]string
 	failCreate   bool
 	failEditBody bool
 }
 
 func newFakeIssues() *fakeIssues {
-	return &fakeIssues{byNumber: map[int]*gitrepo.IssueInfo{}, nextNum: 100, comments: map[int][]string{}}
+	return &fakeIssues{byNumber: map[int]*sourcecontrol.IssueInfo{}, nextNum: 100, comments: map[int][]string{}}
 }
 
-func (f *fakeIssues) seed(issue gitrepo.IssueInfo) *fakeIssues {
+func (f *fakeIssues) seed(issue sourcecontrol.IssueInfo) *fakeIssues {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cp := issue
@@ -53,7 +53,7 @@ func (f *fakeIssues) seed(issue gitrepo.IssueInfo) *fakeIssues {
 	return f
 }
 
-func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failCreate {
@@ -62,14 +62,14 @@ func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req gitrepo.Cre
 	n := f.nextNum
 	f.nextNum++
 	f.created = append(f.created, req)
-	f.byNumber[n] = &gitrepo.IssueInfo{Number: n, Title: req.Title, Body: req.Body, State: "open", Labels: req.Labels, URL: fmt.Sprintf("https://github.com/o/r/issues/%d", n)}
-	return &gitrepo.IssueResult{Number: n, URL: f.byNumber[n].URL}, nil
+	f.byNumber[n] = &sourcecontrol.IssueInfo{Number: n, Title: req.Title, Body: req.Body, State: "open", Labels: req.Labels, URL: fmt.Sprintf("https://github.com/o/r/issues/%d", n)}
+	return &sourcecontrol.IssueResult{Number: n, URL: f.byNumber[n].URL}, nil
 }
 
-func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string) ([]gitrepo.IssueInfo, error) {
+func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string) ([]sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []gitrepo.IssueInfo
+	var out []sourcecontrol.IssueInfo
 	for _, issue := range f.byNumber {
 		if issueHasAll(issue.Labels, labels) {
 			out = append(out, *issue)
@@ -78,14 +78,14 @@ func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string)
 	return out, nil
 }
 
-func (f *fakeIssues) GetIssue(_ context.Context, _, _ string, number int) (*gitrepo.IssueInfo, error) {
+func (f *fakeIssues) GetIssue(_ context.Context, _, _ string, number int) (*sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if i := f.byNumber[number]; i != nil {
 		cp := *i
 		return &cp, nil
 	}
-	return nil, gitrepo.ErrIssueNotFound
+	return nil, sourcecontrol.ErrIssueNotFound
 }
 
 func (f *fakeIssues) CommentIssue(_ context.Context, _, _ string, number int, body string) error {
@@ -180,7 +180,7 @@ type fakeRepos struct {
 
 func (f fakeRepos) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
 	if f.repo == nil {
-		return nil, gitrepo.ErrRepoNotFound
+		return nil, sourcecontrol.ErrRepoNotFound
 	}
 	return f.repo, nil
 }
@@ -290,7 +290,7 @@ func (f fakeDesign) OrgServiceDepNames(context.Context, string, string) (map[str
 // provisionGateIssue builds a seeded aep:provision gate issue whose machine-block
 // component IS the dependency name it gates (dependency-management §3.6) — the
 // exact shape the read path indexes into provisionByDep.
-func provisionGateIssue(number int, depName string) gitrepo.IssueInfo {
+func provisionGateIssue(number int, depName string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{
 		Component: depName,
 		GateKind:  taskmeta.GateConfigCollection,
@@ -298,7 +298,7 @@ func provisionGateIssue(number int, depName string) gitrepo.IssueInfo {
 		DesignTag: "design-v1",
 	}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "gate"})
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Provision " + depName,
 		Body:   body,

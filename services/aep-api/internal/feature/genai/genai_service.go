@@ -36,9 +36,9 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -122,11 +122,11 @@ type RepoResolver interface {
 
 // GitReader is the workspace-backed git surface the turn flow drives: reads +
 // the commit path (Workspace), per-op credentials (Resolver), and the save
-// identity helper. gitrepo.GitOpsService satisfies it.
+// identity helper. sourcecontrol.GitOpsService satisfies it.
 type GitReader interface {
-	Workspace() gitrepo.Workspace
+	Workspace() sourcecontrol.Workspace
 	Resolver() secrets.Resolver
-	ResolveSaveIdentities(cred secrets.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
+	ResolveSaveIdentities(cred secrets.Credential) (*sourcecontrol.GitIdentity, *sourcecontrol.GitIdentity)
 }
 
 // AnthropicKeyResolver resolves the effective org Anthropic key. An empty key
@@ -210,7 +210,7 @@ type ServiceDeps struct {
 	Client     agentsvc.Client
 	Turns      TurnRepository
 	Broker     *TurnBroker
-	Snapshots  gitrepo.SnapshotProvider
+	Snapshots  sourcecontrol.SnapshotProvider
 	SkillsRepo SkillsRepoResolver
 	MCPTokens  MCPTokenMinter
 	MCPBaseURL string
@@ -233,7 +233,7 @@ type Service struct {
 	client     agentsvc.Client
 	turns      TurnRepository
 	broker     *TurnBroker
-	snapshots  gitrepo.SnapshotProvider
+	snapshots  sourcecontrol.SnapshotProvider
 	skillsRepo SkillsRepoResolver
 	mcpTokens  MCPTokenMinter
 	mcpBaseURL string
@@ -282,7 +282,7 @@ func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 	if err != nil {
 		return "", err
 	}
-	ref, err := gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return "", fmt.Errorf("resolve workspace ref: %w", err)
 	}
@@ -353,7 +353,7 @@ func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 	if err != nil {
 		return "", fmt.Errorf("%w: resolve repo row: %w", ErrSkillsRepoUnavailable, err)
 	}
-	skillsRepoRef := gitrepo.WorkspaceRefFor(orgID, skillsRow, ref.Cred)
+	skillsRepoRef := sourcecontrol.WorkspaceRefFor(orgID, skillsRow, ref.Cred)
 	skillsRef, err := ws.Head(ctx, skillsRepoRef, "")
 	if err != nil {
 		return "", fmt.Errorf("%w: resolve head: %w", ErrSkillsRepoUnavailable, err)
@@ -482,7 +482,7 @@ func (s *Service) resolveRepo(ctx context.Context, orgID, projectID string) (*mo
 	}
 	repo, err := s.repos.GetRepo(ctx, orgID, projectID)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, ErrProjectRepoNotFound
 		}
 		return nil, fmt.Errorf("resolve project repo: %w", err)
@@ -516,7 +516,7 @@ func (s *Service) resolveKey(ctx context.Context, orgID string) (string, error) 
 // latestRequirementsTag lists the v* tags and returns the highest `v<N>` spec
 // tag name, or "" when none exists yet (a first-build project) — the design
 // turn's lineage stamp, no longer a gate.
-func (s *Service) latestRequirementsTag(ctx context.Context, ref gitrepo.RepoRef) (string, error) {
+func (s *Service) latestRequirementsTag(ctx context.Context, ref sourcecontrol.RepoRef) (string, error) {
 	tags, err := s.git.Workspace().ListTags(ctx, ref, "v")
 	if err != nil {
 		return "", fmt.Errorf("list requirement tags: %w", err)
@@ -541,7 +541,7 @@ func (s *Service) latestRequirementsTag(ctx context.Context, ref gitrepo.RepoRef
 
 // requireRequirementsContent is the design-generate gate: the requirements
 // main doc must be non-empty at the turn's base ref.
-func (s *Service) requireRequirementsContent(ctx context.Context, ref gitrepo.RepoRef, at string) error {
+func (s *Service) requireRequirementsContent(ctx context.Context, ref sourcecontrol.RepoRef, at string) error {
 	const mainDoc = "specs/requirements/requirements.md"
 	files, _, err := s.git.Workspace().ReadBundle(ctx, ref, at, func(rel string) bool {
 		return rel == mainDoc
@@ -561,11 +561,11 @@ func (s *Service) requireRequirementsContent(ctx context.Context, ref gitrepo.Re
 // credential's save identity (falls back to the AEP bot). When no claims are
 // present (should not happen on the authed edge), both fall back to the
 // committer.
-func (s *Service) captureIdentities(ctx context.Context, ref gitrepo.RepoRef) (author, committer *gitrepo.GitIdentity) {
+func (s *Service) captureIdentities(ctx context.Context, ref sourcecontrol.RepoRef) (author, committer *sourcecontrol.GitIdentity) {
 	_, committer = s.git.ResolveSaveIdentities(ref.Cred)
 	author = committer
 	if claims := auth.ClaimsFromContext(ctx); claims != nil && claims.Subject != "" {
-		author = &gitrepo.GitIdentity{
+		author = &sourcecontrol.GitIdentity{
 			Name:  claims.Subject,
 			Email: noreplyEmail(claims.Subject),
 		}

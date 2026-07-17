@@ -19,7 +19,7 @@ package validation
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -31,10 +31,10 @@ import (
 
 // IssueClient is the GitHub issue surface the minter needs: list Task issues (to
 // dedup the open aep:validation issue) and create the validation issue.
-// gitrepo.IssueService satisfies it.
+// sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
-	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]gitrepo.IssueInfo, error)
-	CreateIssue(ctx context.Context, orgID, projectID string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error)
+	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
+	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
 }
 
 // DesignReader reads the project's authored design components at HEAD — the

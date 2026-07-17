@@ -17,7 +17,7 @@
 // Package files is the generic, specs/-scoped Files API
 // (docs/design/agents-generation-migration.md §4, §12.2). It replaces the
 // per-project local working tree: reads are served from the workspace-mounted
-// bare mirror at the branch tip via the gitrepo.Workspace port (ls-tree/
+// bare mirror at the branch tip via the sourcecontrol.Workspace port (ls-tree/
 // cat-file blob shas are the same git blob shas the GitHub tree API returned,
 // so the FE's baseSha CAS flow is unaffected), and the single write is an atomic,
 // all-or-nothing `apply`: one Workspace.Mutate that stages the whole batch as
@@ -39,9 +39,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/designspec"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -122,8 +122,8 @@ type Conflict struct {
 
 // ---- ports (consumer-side; concrete gitrepo services satisfy them) ---------
 
-// RepoResolver looks up the project's git repo row. *gitrepo.repoService
-// satisfies it via GetRepo (which returns gitrepo.ErrRepoNotFound when absent).
+// RepoResolver looks up the project's git repo row. *sourcecontrol.repoService
+// satisfies it via GetRepo (which returns sourcecontrol.ErrRepoNotFound when absent).
 type RepoResolver interface {
 	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
 }
@@ -131,12 +131,12 @@ type RepoResolver interface {
 // GitGateway is the narrow git surface + credential resolver + save identities.
 // Every operation — reads and the Apply write — goes through the Workspace port
 // (the mounted bare mirror); the feature holds no REST Git-Data dependency.
-// *gitrepo.gitOpsService satisfies it structurally.
+// *sourcecontrol.gitOpsService satisfies it structurally.
 type GitGateway interface {
 	// Workspace is the mount-backed git engine serving all reads and writes.
-	Workspace() gitrepo.Workspace
+	Workspace() sourcecontrol.Workspace
 	Resolver() secrets.Resolver
-	ResolveSaveIdentities(cred secrets.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
+	ResolveSaveIdentities(cred secrets.Credential) (*sourcecontrol.GitIdentity, *sourcecontrol.GitIdentity)
 }
 
 // ---- service ---------------------------------------------------------------
@@ -167,7 +167,7 @@ func (s *service) repoRow(ctx context.Context, orgID, projectID string) (*models
 	}
 	repo, err := s.repos.GetRepo(ctx, orgID, projectID)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, ErrProjectRepoNotFound
 		}
 		return nil, fmt.Errorf("resolve project repo: %w", err)
@@ -181,12 +181,12 @@ func (s *service) repoRow(ctx context.Context, orgID, projectID string) (*models
 // resolveRef derives the workspace-mount address every operation starts from:
 // the repo row keyed by the AUTHENTICATED org (never client input) plus the
 // org credential for mirror freshening and pushes.
-func (s *service) resolveRef(ctx context.Context, orgID, projectID string) (gitrepo.RepoRef, error) {
+func (s *service) resolveRef(ctx context.Context, orgID, projectID string) (sourcecontrol.RepoRef, error) {
 	repo, err := s.repoRow(ctx, orgID, projectID)
 	if err != nil {
-		return gitrepo.RepoRef{}, err
+		return sourcecontrol.RepoRef{}, err
 	}
-	return gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	return sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 }
 
 // List returns every blob at the branch tip, filtered to those whose path has
@@ -222,7 +222,7 @@ func (s *service) Read(ctx context.Context, orgID, projectID, path string) (*Fil
 	}
 	content, blobSHA, err := s.git.Workspace().ReadFile(ctx, ref, "", path)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrPathNotFound) {
+		if errors.Is(err, sourcecontrol.ErrPathNotFound) {
 			return nil, ErrFileNotFound
 		}
 		return nil, fmt.Errorf("read %s at head: %w", path, err)
@@ -274,7 +274,7 @@ func (s *service) Apply(ctx context.Context, orgID, projectID string, req ApplyR
 	var conflicts []Conflict
 	var files []FileMeta
 	var warnings []Warning
-	res, err := s.git.Workspace().Mutate(ctx, ref, func(tx gitrepo.Tx) error {
+	res, err := s.git.Workspace().Mutate(ctx, ref, func(tx sourcecontrol.Tx) error {
 		// fn re-runs against a fresh base on a CAS retry — start clean.
 		conflicts, files, warnings = nil, nil, nil
 
@@ -306,11 +306,11 @@ func (s *service) Apply(ctx context.Context, orgID, projectID string, req ApplyR
 			tx.Delete(d.Path)
 		}
 		return nil
-	}, gitrepo.CommitOpts{
+	}, sourcecontrol.CommitOpts{
 		Message:   applyMessage(req.Message),
 		Author:    author,
 		Committer: committer,
-		Retry:     gitrepo.RetryPolicy{Attempts: casAttempts},
+		Retry:     sourcecontrol.RetryPolicy{Attempts: casAttempts},
 	})
 	if errors.Is(err, errConflictSentinel) {
 		slog.InfoContext(ctx, "files apply conflict — nothing applied",

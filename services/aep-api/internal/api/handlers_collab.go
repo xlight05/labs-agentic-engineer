@@ -31,7 +31,7 @@ import (
 // room authorization the collab-server calls with the forwarded user Bearer
 // (+ X-Room-Id). Both read the Authorization header only for the best-effort
 // display identity — the JWT signature is verified by the outer middleware.
-// The project-ownership oracle (§6.6g) is deps.CollabRepo (gitrepo.RepoService).
+// The project-ownership oracle (§6.6g) is deps.CollabRepo (sourcecontrol.RepoService).
 
 func (s *legacyHandlers) GetSpecCollabSession(ctx context.Context, request gen.GetSpecCollabSessionRequestObject) (gen.GetSpecCollabSessionResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)

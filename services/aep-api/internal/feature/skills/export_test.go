@@ -23,7 +23,7 @@ package skills
 // gitfs engine rooted in t.TempDir() + one real bare file:// origin per org) —
 // without duplicating the host or reaching its unexported doubles. This is the
 // engine-injection seam the later ports (files/artifacts, Phases 2–3) reuse:
-// production gateway (gitrepo.NewGitOpsService) + workspacetest engine + a
+// production gateway (sourcecontrol.NewGitOpsService) + workspacetest engine + a
 // RepoService fake whose rows carry file:// CloneURLs and a pinned RepoSlug.
 // These symbols are compiled only into the test binary.
 
@@ -34,7 +34,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // testLibraryFS is the platform skill source for tests: the repo-root skills/
@@ -66,7 +66,7 @@ type ComponentStore struct {
 // as production does.
 func NewComponentStore(t *testing.T) *ComponentStore {
 	host := newTestGitHost(t)
-	svc := NewSkillService(gitrepo.NewGitOpsService(fakeResolver{}, host.engine), host, testLibraryFS(t))
+	svc := NewSkillService(sourcecontrol.NewGitOpsService(fakeResolver{}, host.engine), host, testLibraryFS(t))
 	return &ComponentStore{Svc: svc, host: host}
 }
 

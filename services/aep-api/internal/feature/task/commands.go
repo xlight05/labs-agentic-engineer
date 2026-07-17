@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/async"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Commands is the write surface for the reactive control labels (§5): execute
@@ -133,7 +133,7 @@ func (c *Commands) PromoteAndExecute(ctx context.Context, orgID, projectID, comp
 	// on a busy repo.
 	issue, err := c.issues.GetIssue(ctx, orgID, projectID, issueNumber)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrIssueNotFound) {
+		if errors.Is(err, sourcecontrol.ErrIssueNotFound) {
 			return ErrTaskNotFound
 		}
 		return fmt.Errorf("promote task from issue: get issue: %w", err)

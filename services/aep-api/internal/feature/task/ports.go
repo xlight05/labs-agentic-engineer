@@ -22,8 +22,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -32,14 +32,14 @@ import (
 // providers and tests supply fakes.
 
 // IssueClient is the GitHub issue surface: create/list/comment/edit and the
-// label stamping the command + projection paths need. gitrepo.IssueService
+// label stamping the command + projection paths need. sourcecontrol.IssueService
 // satisfies it.
 type IssueClient interface {
-	CreateIssue(ctx context.Context, orgID, projectID string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error)
-	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]gitrepo.IssueInfo, error)
-	// GetIssue fetches one issue by number (O(1)); returns gitrepo.ErrIssueNotFound
+	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
+	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
+	// GetIssue fetches one issue by number (O(1)); returns sourcecontrol.ErrIssueNotFound
 	// when it doesn't exist. Preferred over ListIssues when the number is known.
-	GetIssue(ctx context.Context, orgID, projectID string, number int) (*gitrepo.IssueInfo, error)
+	GetIssue(ctx context.Context, orgID, projectID string, number int) (*sourcecontrol.IssueInfo, error)
 	CommentIssue(ctx context.Context, orgID, projectID string, number int, body string) error
 	EditIssueBody(ctx context.Context, orgID, projectID string, number int, body string) error
 	EditIssueTitle(ctx context.Context, orgID, projectID string, number int, title string) error
@@ -78,9 +78,9 @@ type VersionReader interface {
 // GitReader is the workspace-backed git surface the plan turn drives: the
 // snapshot refs (Head), the lineage diff (Workspace.Diff between a Task's
 // lineage tag and the current tag, §6), and per-op secrets.
-// gitrepo.GitOpsService satisfies it.
+// sourcecontrol.GitOpsService satisfies it.
 type GitReader interface {
-	Workspace() gitrepo.Workspace
+	Workspace() sourcecontrol.Workspace
 	Resolver() secrets.Resolver
 }
 

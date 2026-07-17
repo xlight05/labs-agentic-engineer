@@ -27,13 +27,13 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/organization"
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Deps carries every feature service the strict handlers (handlers_*.go)
@@ -47,8 +47,8 @@ type Deps struct {
 	OrgSvc              organization.OrganizationService
 	ComponentSvc        component.ComponentService
 	ConfigSvc           component.ConfigService
-	CollabRepo          gitrepo.RepoService
-	IssueSvc            gitrepo.IssueService
+	CollabRepo          sourcecontrol.RepoService
+	IssueSvc            sourcecontrol.IssueService
 	ProvisioningSvc     *provisioning.Service
 	ResourceTypeCatalog dependencies.ResourceTypeLister
 	TaskReads           *task.Reads

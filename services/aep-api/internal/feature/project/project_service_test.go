@@ -38,14 +38,14 @@ import (
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- port fakes --------------------------------------------------------------
 
-// fakeRepoSvc fakes gitrepo.RepoService. Unset funcs panic loudly.
+// fakeRepoSvc fakes sourcecontrol.RepoService. Unset funcs panic loudly.
 type fakeRepoSvc struct {
 	CreateRepoFunc func(ctx context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error)
 	GetRepoFunc    func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
@@ -404,7 +404,7 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 			}
 			repoSvc := &fakeRepoSvc{
 				CreateRepoFunc: func(context.Context, string, string, string, string) (*models.GitRepository, error) {
-					return nil, fmt.Errorf("create github repo: %w", gitrepo.ErrRepoNameConflict)
+					return nil, fmt.Errorf("create github repo: %w", sourcecontrol.ErrRepoNameConflict)
 				},
 			}
 			svc := NewProjectService(oc, repoSvc, &fakeWebhookSvc{RegisterFunc: func(context.Context, string, string) (*int64, error) {
@@ -414,7 +414,7 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 
 			req := &gen.CreateProjectRequest{Name: "gym", RepoName: tc.repoName}
 			_, err := svc.CreateProject(context.Background(), "acme", req)
-			if !gitrepo.IsRepoNameConflict(err) {
+			if !sourcecontrol.IsRepoNameConflict(err) {
 				t.Fatalf("err = %v, want the repo-name-conflict sentinel surfaced", err)
 			}
 			if deletedProject != "gym" {

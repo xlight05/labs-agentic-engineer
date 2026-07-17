@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -91,7 +91,7 @@ func (s *Sweep) Run(ctx context.Context) {
 // issues.unlabeled delivery whose sender is the platform bot; the issues.* handler
 // drops self-sender deliveries (echo suppression, §9.2), so there is no loop.
 // execs is the Task's latest-per-kind rows, batch-loaded once per repo by Sweep.
-func (s *Sweep) clearStaleAttention(ctx context.Context, orgID, projectID, repoFullName string, issue gitrepo.IssueInfo, execs map[string]*models.Execution) {
+func (s *Sweep) clearStaleAttention(ctx context.Context, orgID, projectID, repoFullName string, issue sourcecontrol.IssueInfo, execs map[string]*models.Execution) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask || !labels.Attention {
 		return // not a flagged Task — nothing to clear (no GitHub call)

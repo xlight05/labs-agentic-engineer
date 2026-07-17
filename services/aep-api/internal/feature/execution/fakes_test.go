@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -148,13 +148,13 @@ func (s *fakeStore) ListActive(_ context.Context) ([]models.Execution, error) {
 // fakeIssues records label/comment mutations and serves a scripted issue list.
 type fakeIssues struct {
 	mu       sync.Mutex
-	list     []gitrepo.IssueInfo
+	list     []sourcecontrol.IssueInfo
 	added    map[int][]string
 	removed  map[int][]string
 	comments map[int][]string
 }
 
-func newFakeIssues(list []gitrepo.IssueInfo) *fakeIssues {
+func newFakeIssues(list []sourcecontrol.IssueInfo) *fakeIssues {
 	return &fakeIssues{
 		list:     list,
 		added:    map[int][]string{},
@@ -163,10 +163,10 @@ func newFakeIssues(list []gitrepo.IssueInfo) *fakeIssues {
 	}
 }
 
-func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string) ([]gitrepo.IssueInfo, error) {
+func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string) ([]sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []gitrepo.IssueInfo
+	var out []sourcecontrol.IssueInfo
 	for _, issue := range f.list {
 		if hasAllLabels(issue.Labels, labels) {
 			out = append(out, issue)
@@ -211,10 +211,10 @@ func hasAllLabels(have, want []string) bool {
 
 // fakePRReader serves scripted live PR states by number.
 type fakePRReader struct {
-	states map[int]*gitrepo.PullRequestState
+	states map[int]*sourcecontrol.PullRequestState
 }
 
-func (f fakePRReader) GetPullRequestState(_ context.Context, _, _ string, number int) (*gitrepo.PullRequestState, error) {
+func (f fakePRReader) GetPullRequestState(_ context.Context, _, _ string, number int) (*sourcecontrol.PullRequestState, error) {
 	return f.states[number], nil
 }
 

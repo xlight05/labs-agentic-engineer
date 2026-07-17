@@ -24,7 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -238,7 +238,7 @@ func (s *Service) OnIssueClosed(ctx context.Context, _, _ string, payload []byte
 
 // createOrgPublishIssue mints the provider-side aep:provision org-publish gate
 // issue. It carries no secrets — only the component name being published.
-func (s *Service) createOrgPublishIssue(ctx context.Context, orgID, providerProjectID, providerComponent, orgServiceName string) (*gitrepo.IssueResult, error) {
+func (s *Service) createOrgPublishIssue(ctx context.Context, orgID, providerProjectID, providerComponent, orgServiceName string) (*sourcecontrol.IssueResult, error) {
 	title := fmt.Sprintf("Publish %s org-wide: add namespace visibility", providerComponent)
 	block := taskmeta.Block{
 		Component: providerComponent,
@@ -252,7 +252,7 @@ func (s *Service) createOrgPublishIssue(ctx context.Context, orgID, providerProj
 			"consumer can resolve it. The platform closes this issue and grants the request once the component is "+
 			"published.", providerComponent),
 	})
-	issue, err := s.issues.CreateIssue(ctx, orgID, providerProjectID, gitrepo.CreateIssueRequest{
+	issue, err := s.issues.CreateIssue(ctx, orgID, providerProjectID, sourcecontrol.CreateIssueRequest{
 		Title:  title,
 		Body:   body,
 		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginManual),

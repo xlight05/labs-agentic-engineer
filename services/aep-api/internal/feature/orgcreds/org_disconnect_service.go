@@ -24,7 +24,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // ErrOrgNotFound surfaces from OrgDisconnectService when no credential
@@ -53,7 +53,7 @@ var ErrOrgNotFound = errors.New("org credentials: not found")
 type OrgDisconnectService struct {
 	db       *gorm.DB
 	credSvc  *CredentialService
-	issueSvc gitrepo.IssueService
+	issueSvc sourcecontrol.IssueService
 	// workspaceTrash, when set (from the composition root), is Phase F:
 	// rename the org's whole repos/<orgId>/ workspace subtree (all projects
 	// incl. _skills) into trash (design §14/D12). Best-effort by contract —
@@ -65,7 +65,7 @@ type OrgDisconnectService struct {
 func NewOrgDisconnectService(
 	db *gorm.DB,
 	credSvc *CredentialService,
-	issueSvc gitrepo.IssueService,
+	issueSvc sourcecontrol.IssueService,
 ) *OrgDisconnectService {
 	return &OrgDisconnectService{
 		db:       db,

@@ -48,10 +48,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -225,13 +225,13 @@ func (f *fakeIssueSvc) CommentIssue(_ context.Context, _ string, _ string, _ int
 	f.comments = append(f.comments, body)
 	return nil
 }
-func (f *fakeIssueSvc) CreateIssue(context.Context, string, string, gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (f *fakeIssueSvc) CreateIssue(context.Context, string, string, sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	panic("fakeIssueSvc: CreateIssue not expected")
 }
-func (f *fakeIssueSvc) ListIssues(context.Context, string, string, []string) ([]gitrepo.IssueInfo, error) {
+func (f *fakeIssueSvc) ListIssues(context.Context, string, string, []string) ([]sourcecontrol.IssueInfo, error) {
 	panic("fakeIssueSvc: ListIssues not expected")
 }
-func (f *fakeIssueSvc) GetIssue(context.Context, string, string, int) (*gitrepo.IssueInfo, error) {
+func (f *fakeIssueSvc) GetIssue(context.Context, string, string, int) (*sourcecontrol.IssueInfo, error) {
 	panic("fakeIssueSvc: GetIssue not expected")
 }
 func (f *fakeIssueSvc) CloseIssue(context.Context, string, string, int, string) error {
@@ -252,7 +252,7 @@ func (f *fakeIssueSvc) RemoveLabel(context.Context, string, string, int, string)
 func (f *fakeIssueSvc) SetLabels(context.Context, string, string, int, []string) error {
 	panic("fakeIssueSvc: SetLabels not expected")
 }
-func (f *fakeIssueSvc) GetPullRequestState(context.Context, string, string, int) (*gitrepo.PullRequestState, error) {
+func (f *fakeIssueSvc) GetPullRequestState(context.Context, string, string, int) (*sourcecontrol.PullRequestState, error) {
 	panic("fakeIssueSvc: GetPullRequestState not expected")
 }
 func (f *fakeIssueSvc) MergePullRequest(context.Context, string, string, int) error {
@@ -316,7 +316,7 @@ func loadCred(t *testing.T, db *gorm.DB, ocOrgID string) models.OrgCredential {
 
 // dispatch wires the real installation handlers on a fresh Router and dispatches
 // one event through it — exactly the receiver's dispatch leg.
-func dispatchInstall(t *testing.T, db *gorm.DB, credSvc *orgcreds.CredentialService, issues gitrepo.IssueService, event, payload string) error {
+func dispatchInstall(t *testing.T, db *gorm.DB, credSvc *orgcreds.CredentialService, issues sourcecontrol.IssueService, event, payload string) error {
 	t.Helper()
 	router := NewRouter()
 	RegisterInstallationHandlers(router, db, credSvc, issues, nil)

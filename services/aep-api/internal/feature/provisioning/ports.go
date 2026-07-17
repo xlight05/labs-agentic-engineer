@@ -21,7 +21,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -32,10 +32,10 @@ import (
 
 // IssueClient is the GitHub issue surface: list Task issues (to find/dedup
 // aep:provision gate issues), create a gate issue, close it with a reference,
-// and comment a failure. gitrepo.IssueService satisfies it.
+// and comment a failure. sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
-	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]gitrepo.IssueInfo, error)
-	CreateIssue(ctx context.Context, orgID, projectID string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error)
+	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
+	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
 	CloseIssue(ctx context.Context, orgID, projectID string, number int, comment string) error
 	CommentIssue(ctx context.Context, orgID, projectID string, number int, body string) error
 }

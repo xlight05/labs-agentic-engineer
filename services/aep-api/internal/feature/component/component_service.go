@@ -26,8 +26,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -84,14 +84,14 @@ type componentService struct {
 	// repoSvc + buildCredSvc are used by TriggerBuild to pre-stage the
 	// per-WorkflowRun build Secret. Optional — nil means "no staging"
 	// (tests / unit-only flows).
-	repoSvc      gitrepo.RepoService
+	repoSvc      sourcecontrol.RepoService
 	buildCredSvc BuildSecretStager
 }
 
 // NewComponentService builds the component service. repoSvc + buildCredSvc
 // may be nil in tests / unit-only flows; production wiring passes both so
 // TriggerBuild can pre-stage the per-WorkflowRun build Secret.
-func NewComponentService(client openchoreo.ComponentClient, observClient observability.Client, artifactStore *artifacts.ArtifactStore, repoSvc gitrepo.RepoService, buildCredSvc BuildSecretStager) ComponentService {
+func NewComponentService(client openchoreo.ComponentClient, observClient observability.Client, artifactStore *artifacts.ArtifactStore, repoSvc sourcecontrol.RepoService, buildCredSvc BuildSecretStager) ComponentService {
 	return &componentService{
 		client:        client,
 		observClient:  observClient,

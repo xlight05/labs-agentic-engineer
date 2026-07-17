@@ -666,3 +666,68 @@ func TestAggregatorRuleDoesNotOverfire(t *testing.T) {
 		t.Fatalf("the aggregator rule fired on a pure aggregator: %v", bad)
 	}
 }
+
+// ── Rule: a landed domain never imports a legacy feature ────────────────────
+
+// domainImportsFeatureViolations returns domain files that import
+// internal/feature/*.
+//
+// This rule is what replaces the featureEdgeAllowlist for a migrated package.
+// When a feature becomes a domain, its allowlist row is deleted (the honesty
+// check demands it) — which silently stops policing everything about it. The
+// edge that actually matters is the REVERSE of the one the allowlist tracked:
+// features importing a domain are transitional and die with the feature, but a
+// DOMAIN importing a feature is legacy leaking into the target, and would
+// quietly make the domain undeletable-from-legacy at P9.
+func domainImportsFeatureViolations(t *testing.T, root, modPath string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	for _, d := range domains {
+		_ = filepath.WalkDir(filepath.Join(root, d), func(path string, e os.DirEntry, err error) error {
+			if err != nil || e.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			for _, imp := range fileImports(t, path) {
+				if strings.HasPrefix(imp, modPath+"/internal/feature/") {
+					rel, _ := filepath.Rel(root, path)
+					bad = append(bad, rel+" -> "+strings.TrimPrefix(imp, modPath+"/internal/"))
+				}
+			}
+			return nil
+		})
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestDomainsAreFeatureFree asserts the target never depends on the legacy it is
+// replacing. A domain is DONE; a feature is dying. The arrow may only point the
+// other way.
+func TestDomainsAreFeatureFree(t *testing.T) {
+	if bad := domainImportsFeatureViolations(t, "..", mod, domainsOnDisk(t, "..")); len(bad) > 0 {
+		t.Errorf("a domain imports a legacy feature: %v\n"+
+			"Domains do not depend on features — features are being deleted. Declare a "+
+			"consumer-side port in the domain's ports.go and bridge it at the composition root "+
+			"(labelled with the phase that retires the bridge).", bad)
+	}
+}
+
+func TestDomainsAreFeatureFreeFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/model.go": "package ops\n\nimport _ \"" + mod + "/internal/feature/gitrepo\"\n",
+	})
+	if bad := domainImportsFeatureViolations(t, root, mod, []string{"ops"}); len(bad) != 1 {
+		t.Fatalf("the domain->feature rule did not fire: got %v", bad)
+	}
+}
+
+func TestDomainsAreFeatureFreeDoesNotOverfire(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/model.go": "package ops\n\nimport (\n\t_ \"" + mod + "/internal/platform/tenant\"\n\t_ \"" + mod + "/internal/gen\"\n)\n",
+	})
+	if bad := domainImportsFeatureViolations(t, root, mod, []string{"ops"}); len(bad) != 0 {
+		t.Fatalf("the domain->feature rule fired on kernel/gen imports: %v", bad)
+	}
+}

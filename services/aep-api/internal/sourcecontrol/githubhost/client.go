@@ -16,7 +16,7 @@
 
 // Package github is the GitHub implementation of gitrepo's provider ports.
 //
-// A single *Client satisfies gitrepo.Host — the REST surface (repo / issue /
+// A single *Client satisfies sourcecontrol.Host — the REST surface (repo / issue /
 // pull-request / webhook / app-installation) in client.go. The git-object
 // (Git-Data) surface is gone: all repo content reads/writes run on the
 // disk-backed Workspace engine (internal/platform/gitfs).
@@ -27,7 +27,7 @@
 // headers (authHeaders / the App-JWT and pat paths). Selected by GIT_PROVIDER
 // in the composition root; a GitLab/Gitea host would be a sibling clients/*
 // package satisfying the same ports.
-package github
+package githubhost
 
 import (
 	"bytes"
@@ -40,12 +40,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Client is the GitHub host client — one http.Client, one auth path, serving
-// gitrepo.Host as a single implementation. Stateless; concurrent calls are safe.
+// sourcecontrol.Host as a single implementation. Stateless; concurrent calls are safe.
 type Client struct {
 	httpClient *http.Client
 	// apiBase is the GitHub REST API root, default "https://api.github.com".
@@ -65,7 +65,7 @@ func WithAPIBase(base string) Option {
 }
 
 // NewClient builds the GitHub host client. Production wiring passes no options.
-func NewClient(opts ...Option) gitrepo.Host {
+func NewClient(opts ...Option) sourcecontrol.Host {
 	c := &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		apiBase:    "https://api.github.com",
@@ -77,7 +77,7 @@ func NewClient(opts ...Option) gitrepo.Host {
 }
 
 // Compile-time proof the concrete client satisfies the whole provider surface.
-var _ gitrepo.Host = (*Client)(nil)
+var _ sourcecontrol.Host = (*Client)(nil)
 
 // authHeaders sets the standard GitHub API headers and the Authorization
 // header. Token is fetched fresh on every call from the credential —
@@ -144,7 +144,7 @@ func (c *Client) doJSON(ctx context.Context, method, url, label string, cred sec
 }
 
 // getJSON performs an authenticated GET, requires 200, and decodes the body
-// into out. Any other status returns *gitrepo.HTTPStatusError so callers can
+// into out. Any other status returns *sourcecontrol.HTTPStatusError so callers can
 // branch on the code (404 vs 5xx).
 func (c *Client) getJSON(ctx context.Context, url string, cred secrets.Credential, out any) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -161,7 +161,7 @@ func (c *Client) getJSON(ctx context.Context, url string, cred secrets.Credentia
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
+		return &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
 	}
 	if err := json.Unmarshal(respBody, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
@@ -169,7 +169,7 @@ func (c *Client) getJSON(ctx context.Context, url string, cred secrets.Credentia
 	return nil
 }
 
-func (c *Client) CreateOrgRepo(ctx context.Context, cred secrets.Credential, req gitrepo.CreateOrgRepoRequest) (string, error) {
+func (c *Client) CreateOrgRepo(ctx context.Context, cred secrets.Credential, req sourcecontrol.CreateOrgRepoRequest) (string, error) {
 	owner := cred.RepoOwner()
 	if owner == "" {
 		return "", fmt.Errorf("credential has no repo owner")
@@ -227,7 +227,7 @@ func (c *Client) CreateOrgRepo(ctx context.Context, cred secrets.Credential, req
 
 	if resp.StatusCode == http.StatusUnprocessableEntity &&
 		strings.Contains(string(respBody), "name already exists") {
-		return "", gitrepo.ErrRepoNameConflict
+		return "", sourcecontrol.ErrRepoNameConflict
 	}
 
 	return "", fmt.Errorf("github repo create failed (status %d): %s", resp.StatusCode, string(respBody))
@@ -263,12 +263,12 @@ func (c *Client) createUserRepo(ctx context.Context, cred secrets.Credential, pa
 	}
 	if resp.StatusCode == http.StatusUnprocessableEntity &&
 		strings.Contains(string(respBody), "name already exists") {
-		return "", gitrepo.ErrRepoNameConflict
+		return "", sourcecontrol.ErrRepoNameConflict
 	}
 	return "", fmt.Errorf("github user repo create failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred secrets.Credential, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred secrets.Credential, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -304,7 +304,7 @@ func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred secre
 		if created.HTMLURL == "" {
 			return nil, fmt.Errorf("github response missing html_url: %s", string(respBody))
 		}
-		return &gitrepo.IssueResult{Number: created.Number, URL: created.HTMLURL, NodeID: created.NodeID}, nil
+		return &sourcecontrol.IssueResult{Number: created.Number, URL: created.HTMLURL, NodeID: created.NodeID}, nil
 	}
 
 	return nil, fmt.Errorf("github issue create failed (status %d): %s", resp.StatusCode, string(respBody))
@@ -387,7 +387,7 @@ func (c *Client) EditIssueTitle(ctx context.Context, owner, repo string, cred se
 // GetPullRequest returns the live state of a pull request (GET /pulls/{n}) — the
 // sweep's PR-state reconciliation input (docs/design/tasks-github-native.md §5:
 // PR state is native GitHub truth healed by the sweep when a webhook is missed).
-func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*gitrepo.PullRequestState, error) {
+func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*sourcecontrol.PullRequestState, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/pulls/%d", owner, repo, number)
 	var raw struct {
 		State          string `json:"state"` // "open" | "closed"
@@ -397,7 +397,7 @@ func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred se
 	if err := c.getJSON(ctx, url, cred, &raw); err != nil {
 		return nil, err
 	}
-	return &gitrepo.PullRequestState{State: raw.State, Merged: raw.Merged, MergeCommitSHA: raw.MergeCommitSHA}, nil
+	return &sourcecontrol.PullRequestState{State: raw.State, Merged: raw.Merged, MergeCommitSHA: raw.MergeCommitSHA}, nil
 }
 
 // MergePullRequest squash-merges a pull request (PUT /pulls/{n}/merge) — the
@@ -451,7 +451,7 @@ func (c *Client) CommentIssue(ctx context.Context, owner, repo string, cred secr
 	return fmt.Errorf("github issue comment failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred secrets.Credential, labels []string) ([]gitrepo.IssueInfo, error) {
+func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred secrets.Credential, labels []string) ([]sourcecontrol.IssueInfo, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues?state=all&per_page=100", owner, repo)
 	if len(labels) > 0 {
 		url += "&labels=" + strings.Join(labels, ",")
@@ -491,13 +491,13 @@ func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred secret
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	issues := make([]gitrepo.IssueInfo, 0, len(raw))
+	issues := make([]sourcecontrol.IssueInfo, 0, len(raw))
 	for _, r := range raw {
 		labelNames := make([]string, 0, len(r.Labels))
 		for _, l := range r.Labels {
 			labelNames = append(labelNames, l.Name)
 		}
-		issues = append(issues, gitrepo.IssueInfo{
+		issues = append(issues, sourcecontrol.IssueInfo{
 			Number: r.Number,
 			Title:  r.Title,
 			Body:   r.Body,
@@ -512,9 +512,9 @@ func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred secret
 // GetIssue fetches a single issue by number via GET
 // /repos/{owner}/{repo}/issues/{number} — O(1) in repo size, unlike ListIssues
 // (which pages the repo and stops at 100). A 404 is mapped to
-// gitrepo.ErrIssueNotFound so callers can distinguish a missing issue from a
+// sourcecontrol.ErrIssueNotFound so callers can distinguish a missing issue from a
 // transport failure.
-func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*gitrepo.IssueInfo, error) {
+func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*sourcecontrol.IssueInfo, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d", owner, repo, number)
 	var raw struct {
 		Number  int    `json:"number"`
@@ -527,8 +527,8 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred secrets.
 		} `json:"labels"`
 	}
 	if err := c.getJSON(ctx, url, cred, &raw); err != nil {
-		if gitrepo.IsHTTPStatus(err, http.StatusNotFound) {
-			return nil, gitrepo.ErrIssueNotFound
+		if sourcecontrol.IsHTTPStatus(err, http.StatusNotFound) {
+			return nil, sourcecontrol.ErrIssueNotFound
 		}
 		return nil, err
 	}
@@ -536,7 +536,7 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred secrets.
 	for _, l := range raw.Labels {
 		labelNames = append(labelNames, l.Name)
 	}
-	return &gitrepo.IssueInfo{
+	return &sourcecontrol.IssueInfo{
 		Number: raw.Number,
 		Title:  raw.Title,
 		Body:   raw.Body,
@@ -674,7 +674,7 @@ func (c *Client) UpdateWebhookEvents(ctx context.Context, owner, repo string, cr
 // GetUser performs GET /user using the credential's token. Returns
 // HTTPStatusError for non-2xx responses so the validator can branch on
 // 401 (revoked) vs 5xx (transient).
-func (c *Client) GetUser(ctx context.Context, cred secrets.Credential) (*gitrepo.GitHubUser, error) {
+func (c *Client) GetUser(ctx context.Context, cred secrets.Credential) (*sourcecontrol.GitHubUser, error) {
 	url := c.apiBase + "/user"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -692,9 +692,9 @@ func (c *Client) GetUser(ctx context.Context, cred secrets.Credential) (*gitrepo
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
+		return nil, &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
 	}
-	var user gitrepo.GitHubUser
+	var user sourcecontrol.GitHubUser
 	if err := json.Unmarshal(respBody, &user); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
@@ -704,7 +704,7 @@ func (c *Client) GetUser(ctx context.Context, cred secrets.Credential) (*gitrepo
 // GetAppInstallation calls GET /app/installations/{id}. Authenticated by
 // the App JWT (not an installation token) — App-level endpoints reject
 // installation tokens. The minter exposes the JWT through SignAppJWT().
-func (c *Client) GetAppInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) (*gitrepo.AppInstallationInfo, error) {
+func (c *Client) GetAppInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) (*sourcecontrol.AppInstallationInfo, error) {
 	if minter == nil {
 		return nil, fmt.Errorf("app minter required")
 	}
@@ -729,9 +729,9 @@ func (c *Client) GetAppInstallation(ctx context.Context, minter *secrets.AppToke
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
+		return nil, &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
 	}
-	var info gitrepo.AppInstallationInfo
+	var info sourcecontrol.AppInstallationInfo
 	if err := json.Unmarshal(respBody, &info); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
@@ -765,14 +765,14 @@ func (c *Client) DeleteInstallation(ctx context.Context, minter *secrets.AppToke
 		return nil
 	}
 	respBody, _ := io.ReadAll(resp.Body)
-	return &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
+	return &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(respBody), URL: url}
 }
 
 // ListAppInstallations pages through GET /app/installations using the
 // App JWT. Returns the flat AppInstallationSummary projection. Caps
 // the walk at 10 pages × 100 = 1000 installations as a defensive bound;
 // real-world dev/single-tenant installs are an order of magnitude under.
-func (c *Client) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+func (c *Client) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error) {
 	if minter == nil {
 		return nil, fmt.Errorf("app minter required")
 	}
@@ -789,7 +789,7 @@ func (c *Client) ListAppInstallations(ctx context.Context, minter *secrets.AppTo
 		} `json:"account"`
 	}
 
-	all := make([]gitrepo.AppInstallationSummary, 0, 16)
+	all := make([]sourcecontrol.AppInstallationSummary, 0, 16)
 	page := 1
 	for {
 		url := fmt.Sprintf(c.apiBase+"/app/installations?per_page=100&page=%d", page)
@@ -808,14 +808,14 @@ func (c *Client) ListAppInstallations(ctx context.Context, minter *secrets.AppTo
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return nil, &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
+			return nil, &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
 		}
 		var items []pageItem
 		if err := json.Unmarshal(body, &items); err != nil {
 			return nil, fmt.Errorf("decode response: %w", err)
 		}
 		for _, it := range items {
-			all = append(all, gitrepo.AppInstallationSummary{
+			all = append(all, sourcecontrol.AppInstallationSummary{
 				InstallationID: it.ID,
 				AccountLogin:   it.Account.Login,
 				AccountType:    it.Account.Type,
@@ -864,7 +864,7 @@ func (c *Client) ExchangeOAuthCode(ctx context.Context, clientID, clientSecret, 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
+		return "", &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
 	}
 	var out struct {
 		AccessToken      string `json:"access_token"`
@@ -922,7 +922,7 @@ func (c *Client) GetUserInstallations(ctx context.Context, userToken string) ([]
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return nil, &gitrepo.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
+			return nil, &sourcecontrol.HTTPStatusError{StatusCode: resp.StatusCode, Body: string(body), URL: url}
 		}
 		var pr pageResp
 		if err := json.Unmarshal(body, &pr); err != nil {

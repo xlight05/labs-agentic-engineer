@@ -24,7 +24,7 @@
 // This package is the single definition point for the Workspace and
 // SnapshotProvider ports, their DTOs, and the git sentinel errors. The domain
 // alias surface lives in internal/feature/gitrepo/workspace.go — consumers
-// import gitrepo.*, and the arch lock (internal/platform must stay
+// import sourcecontrol.*, and the arch lock (internal/platform must stay
 // feature-free) is honoured because the definitions live here.
 package gitfs
 
@@ -190,7 +190,7 @@ type TagSpec struct {
 
 // TagInfo describes a git tag: the peeled commit it points at and the tag
 // message subject (empty for lightweight tags). Field shape matches the
-// historical gitrepo.TagInfo (now an alias of this type).
+// historical sourcecontrol.TagInfo (now an alias of this type).
 type TagInfo struct {
 	Name       string `json:"name"`
 	CommitHash string `json:"commitHash"`
@@ -198,7 +198,7 @@ type TagInfo struct {
 }
 
 // GitIdentity is a git author/committer/tagger identity. Field names and
-// json tags are byte-identical to the historical gitrepo.GitIdentity (now an
+// json tags are byte-identical to the historical sourcecontrol.GitIdentity (now an
 // alias of this type) so the GitHub client's wire marshaling is unchanged.
 // Date is optional (git raw or RFC2822/ISO format accepted by git); empty
 // means "now".
@@ -236,7 +236,7 @@ func (p RetryPolicy) withDefaults() RetryPolicy {
 }
 
 // CompareResult is the per-file change summary between two refs. Field shape
-// matches the historical gitrepo.CompareResult (now an alias of this type),
+// matches the historical sourcecontrol.CompareResult (now an alias of this type),
 // which mirrored GitHub's GET /compare/{base}...{head} subset.
 type CompareResult struct {
 	// Status is the overall relationship of head to base: "ahead", "behind",

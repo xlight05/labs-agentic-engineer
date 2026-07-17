@@ -96,7 +96,7 @@ type TokenIssuer interface {
 }
 
 // ProjectRepos resolves a project's git repo row (RepoURL/RepoSlug). Wired from
-// gitrepo.RepoService.
+// sourcecontrol.RepoService.
 type ProjectRepos interface {
 	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
 }

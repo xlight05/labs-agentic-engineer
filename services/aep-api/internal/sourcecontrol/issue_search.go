@@ -18,7 +18,7 @@
 // Serves the SRE/RCA handoff (via aep-mcp-server): surface lexically-related
 // issues before filing a new one; precision is the LLM caller's job.
 
-package gitrepo
+package sourcecontrol
 
 import (
 	"sort"

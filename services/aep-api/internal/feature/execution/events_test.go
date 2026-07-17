@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -67,7 +67,7 @@ func TestEvents_PROpened_EndsCodingExecution(t *testing.T) {
 	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	store.markRunning(row.ID)
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	e := newEvents(store, issues, &fakeExecutor{store: store, startOK: true})
 
 	if err := e.PullRequestOpened(context.Background(), "pull_request", "opened",
@@ -82,7 +82,7 @@ func TestEvents_PROpened_EndsCodingExecution(t *testing.T) {
 
 func TestEvents_PRMerged_SpawnsBuild(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEvents(store, issues, exec)
 
@@ -104,7 +104,7 @@ func TestEvents_PRClosedUnmerged_RecordsRejection(t *testing.T) {
 	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), row.ID, string(taskmeta.ExecSucceeded), "pull request opened")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	e := newEvents(store, issues, &fakeExecutor{store: store, startOK: true})
 
 	if err := e.PullRequestClosed(context.Background(), "pull_request", "closed",
@@ -133,8 +133,8 @@ func seedOpenPRTask(store *fakeStore, prNumber int) {
 func TestEvents_ReconcileTaskPR_MissedCloseUnmerged_HealsToRejected(t *testing.T) {
 	store := newFakeStore()
 	seedOpenPRTask(store, 7)
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
-	prs := fakePRReader{states: map[int]*gitrepo.PullRequestState{7: {State: "closed", Merged: false}}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	prs := fakePRReader{states: map[int]*sourcecontrol.PullRequestState{7: {State: "closed", Merged: false}}}
 	e := newEventsWithPR(store, issues, &fakeExecutor{store: store, startOK: true}, prs)
 
 	if err := reconcile(t, e, "o/r", 2); err != nil {
@@ -149,8 +149,8 @@ func TestEvents_ReconcileTaskPR_MissedCloseUnmerged_HealsToRejected(t *testing.T
 func TestEvents_ReconcileTaskPR_MissedMerge_SpawnsBuild(t *testing.T) {
 	store := newFakeStore()
 	seedOpenPRTask(store, 7)
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
-	prs := fakePRReader{states: map[int]*gitrepo.PullRequestState{7: {State: "closed", Merged: true, MergeCommitSHA: "abc123"}}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	prs := fakePRReader{states: map[int]*sourcecontrol.PullRequestState{7: {State: "closed", Merged: true, MergeCommitSHA: "abc123"}}}
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEventsWithPR(store, issues, exec, prs)
 
@@ -175,8 +175,8 @@ func TestEvents_ReconcileTaskPR_NewMergeWithOlderBuild_Heals(t *testing.T) {
 	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"3")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
-	prs := fakePRReader{states: map[int]*gitrepo.PullRequestState{3: {State: "closed", Merged: true, MergeCommitSHA: "sha3"}}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	prs := fakePRReader{states: map[int]*sourcecontrol.PullRequestState{3: {State: "closed", Merged: true, MergeCommitSHA: "sha3"}}}
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEventsWithPR(store, issues, exec, prs)
 
@@ -191,8 +191,8 @@ func TestEvents_ReconcileTaskPR_NewMergeWithOlderBuild_Heals(t *testing.T) {
 func TestEvents_ReconcileTaskPR_NoDivergence_NoWrites(t *testing.T) {
 	store := newFakeStore()
 	seedOpenPRTask(store, 7)
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
-	prs := fakePRReader{states: map[int]*gitrepo.PullRequestState{7: {State: "open", Merged: false}}}
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	prs := fakePRReader{states: map[int]*sourcecontrol.PullRequestState{7: {State: "open", Merged: false}}}
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEventsWithPR(store, issues, exec, prs)
 
@@ -216,7 +216,7 @@ func TestEvents_PROpened_PlatformSenderStillEnds(t *testing.T) {
 	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	store.markRunning(row.ID)
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	e := newEvents(store, issues, &fakeExecutor{store: store, startOK: true})
 
 	// Sender is the platform/App-bot login — must NOT be dropped.
@@ -234,7 +234,7 @@ func TestEvents_PROpened_PlatformSenderStillEnds(t *testing.T) {
 // the merge path: a self-sender merge delivery must still spawn the build.
 func TestEvents_PRMerged_PlatformSenderStillSpawnsBuild(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEvents(store, issues, exec)
 
@@ -257,7 +257,7 @@ func TestEvents_PRMerged_ReDeliveryAfterBuild_NoDuplicate(t *testing.T) {
 	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "abc123"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEvents(store, issues, exec)
 
@@ -282,7 +282,7 @@ func TestEvents_PRMerged_NewMergeAfterFailedBuild_Spawns(t *testing.T) {
 	_, b1, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha2"})
 	_, _ = store.Finish(context.Background(), b1.ID, string(taskmeta.ExecFailed), "boom")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEvents(store, issues, exec)
 

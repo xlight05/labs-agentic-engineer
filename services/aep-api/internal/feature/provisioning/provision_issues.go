@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -90,7 +90,7 @@ func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, d
 			Rationale: provisionIssueRationale(dep),
 			Body:      provisionIssueScope(dep),
 		})
-		req := gitrepo.CreateIssueRequest{
+		req := sourcecontrol.CreateIssueRequest{
 			Title:  title,
 			Body:   body,
 			Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginSpecPlan),

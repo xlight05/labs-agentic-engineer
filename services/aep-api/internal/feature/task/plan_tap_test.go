@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 func newTestTap(issues IssueClient) *planTap {
@@ -210,7 +210,7 @@ func TestPlanTap_UpdateByIssueNumber_PreExisting(t *testing.T) {
 func TestPlanTap_UpdateByIssueNumber_OutOfContext_NoWrite(t *testing.T) {
 	issues := newFakeIssues()
 	// #999 exists on the repo but was never part of the plan context (unrelated).
-	issues.seed(gitrepo.IssueInfo{Number: 999, Title: "Prod bug: checkout 500", Body: "Users can't check out.", State: "open"})
+	issues.seed(sourcecontrol.IssueInfo{Number: 999, Title: "Prod bug: checkout 500", Body: "Users can't check out.", State: "open"})
 	tap := newTestTap(issues) // contextNumbers is empty → 999 is out of context
 	var buf bytes.Buffer
 
@@ -364,10 +364,10 @@ func TestPlanTap_IdleDeadline_AbortsHungDrain(t *testing.T) {
 }
 
 // gitrepoIssue builds a seeded pre-existing Task issue with a valid block.
-func gitrepoIssue(number int, component, designTag string) gitrepo.IssueInfo {
+func gitrepoIssue(number int, component, designTag string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, DesignTag: designTag}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "orig"})
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Implement " + component,
 		Body:   body,
@@ -380,11 +380,11 @@ func gitrepoIssue(number int, component, designTag string) gitrepo.IssueInfo {
 // taggedIssue builds a seeded Task issue stamped with a spec version, exactly as
 // plan_tap writes it: the aep:spec/<tag> label plus the specTag in its machine
 // block.
-func taggedIssue(number int, component, specTag string) gitrepo.IssueInfo {
+func taggedIssue(number int, component, specTag string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, SpecTag: specTag, DesignTag: "design-v1"}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "orig"})
 	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), taskmeta.SpecTagLabel(specTag))
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Implement " + component,
 		Body:   body,

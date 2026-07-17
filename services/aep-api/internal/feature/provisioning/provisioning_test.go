@@ -26,15 +26,15 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- fakes -----------------------------------------------------------------
 
 type fakeIssues struct {
-	list     []gitrepo.IssueInfo
-	created  []gitrepo.CreateIssueRequest
+	list     []sourcecontrol.IssueInfo
+	created  []sourcecontrol.CreateIssueRequest
 	closed   map[int]string
 	comments map[int][]string
 	nextNum  int
@@ -51,7 +51,7 @@ type fakeIssues struct {
 	hiddenFromList map[int]bool
 }
 
-func newFakeIssues(seed []gitrepo.IssueInfo) *fakeIssues {
+func newFakeIssues(seed []sourcecontrol.IssueInfo) *fakeIssues {
 	max := 0
 	for _, i := range seed {
 		if i.Number > max {
@@ -61,8 +61,8 @@ func newFakeIssues(seed []gitrepo.IssueInfo) *fakeIssues {
 	return &fakeIssues{list: seed, closed: map[int]string{}, comments: map[int][]string{}, nextNum: max + 1, project: map[int]string{}, hiddenFromList: map[int]bool{}}
 }
 
-func (f *fakeIssues) ListIssues(_ context.Context, _, projectID string, _ []string) ([]gitrepo.IssueInfo, error) {
-	var out []gitrepo.IssueInfo
+func (f *fakeIssues) ListIssues(_ context.Context, _, projectID string, _ []string) ([]sourcecontrol.IssueInfo, error) {
+	var out []sourcecontrol.IssueInfo
 	for _, i := range f.list {
 		if f.hiddenFromList[i.Number] {
 			continue // eventually-consistent list has not caught up to this create yet
@@ -73,16 +73,16 @@ func (f *fakeIssues) ListIssues(_ context.Context, _, projectID string, _ []stri
 	}
 	return out, nil
 }
-func (f *fakeIssues) CreateIssue(_ context.Context, _, projectID string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (f *fakeIssues) CreateIssue(_ context.Context, _, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	f.created = append(f.created, req)
 	n := f.nextNum
 	f.nextNum++
-	f.list = append(f.list, gitrepo.IssueInfo{Number: n, Title: req.Title, Body: req.Body, State: "open", Labels: req.Labels})
+	f.list = append(f.list, sourcecontrol.IssueInfo{Number: n, Title: req.Title, Body: req.Body, State: "open", Labels: req.Labels})
 	f.project[n] = projectID
 	if f.raceNewIssues {
 		f.hiddenFromList[n] = true
 	}
-	return &gitrepo.IssueResult{Number: n}, nil
+	return &sourcecontrol.IssueResult{Number: n}, nil
 }
 func (f *fakeIssues) CloseIssue(_ context.Context, _, _ string, number int, comment string) error {
 	f.closed[number] = comment
@@ -462,7 +462,7 @@ func TestEnsureProvisionIssues_MintsPerDepDeduped(t *testing.T) {
 
 func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 	gate := provisionGateIssue(10, "stripe", taskmeta.GateConfigCollection)
-	issues := newFakeIssues([]gitrepo.IssueInfo{gate})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
@@ -508,7 +508,7 @@ func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 
 func TestProvision_PlatformIsAsync_LeftRunning(t *testing.T) {
 	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
-	issues := newFakeIssues([]gitrepo.IssueInfo{gate})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
 	plat := &fakePlatProv{}
@@ -543,7 +543,7 @@ func TestProvision_PlatformIsAsync_LeftRunning(t *testing.T) {
 
 func TestResourceWatcher_ReadyClosesGateAndReleases(t *testing.T) {
 	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
-	issues := newFakeIssues([]gitrepo.IssueInfo{gate})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
 	bindings := &fakeBindings{byName: map[string]*openchoreo.ResourceReleaseBinding{}}
@@ -585,7 +585,7 @@ func TestResourceWatcher_ReadyClosesGateAndReleases(t *testing.T) {
 
 func TestResourceWatcher_StaleFails(t *testing.T) {
 	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
-	issues := newFakeIssues([]gitrepo.IssueInfo{gate})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	bindings := &fakeBindings{byName: map[string]*openchoreo.ResourceReleaseBinding{"o-orders-db-development": {}}}
 	svc := newTestService(issues, execs, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, &fakeCatalog{}, &fakeExtProv{}, &fakePlatProv{}, bindings)
@@ -702,7 +702,7 @@ func TestRequestAccess_CreatesRequestAndProviderIssue(t *testing.T) {
 }
 
 func TestGrant_OnProviderDeploy(t *testing.T) {
-	issues := newFakeIssues([]gitrepo.IssueInfo{{Number: 20, State: "open", Title: "publish"}})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{{Number: 20, State: "open", Title: "publish"}})
 	access := &fakeAccess{}
 	// Two riders on the same provider issue, both pending.
 	pk := providerTaskKey("warehouse", 20)
@@ -794,9 +794,9 @@ func TestSaveValues_WrongKind400(t *testing.T) {
 
 // ---- helpers ---------------------------------------------------------------
 
-func provisionGateIssue(number int, depName, gateKind string) gitrepo.IssueInfo {
+func provisionGateIssue(number int, depName, gateKind string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{Component: depName, GateKind: gateKind, Origin: taskmeta.OriginSpecPlan, DesignTag: "v1-1"}
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Provision " + depName,
 		Body:   taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "r"}),

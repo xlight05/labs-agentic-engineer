@@ -47,7 +47,7 @@ type CodingDispatcher interface {
 }
 
 // PRMerger squash-merges a Task's pull request through the existing issue
-// service. Satisfied by an app-root adapter over gitrepo.IssueService.
+// service. Satisfied by an app-root adapter over sourcecontrol.IssueService.
 type PRMerger interface {
 	MergePR(ctx context.Context, orgID, projectID string, prNumber int) error
 }

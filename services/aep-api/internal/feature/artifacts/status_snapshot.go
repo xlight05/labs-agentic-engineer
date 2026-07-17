@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // The status poll's fetch-free git reads (design/project-status-stage-
@@ -67,7 +67,7 @@ func (s *artifactService) StatusSnapshot(ctx context.Context, orgID, projectID s
 	}
 
 	head, err := s.git.Workspace().HeadLocal(ctx, ref)
-	if errors.Is(err, gitrepo.ErrRefNotFound) {
+	if errors.Is(err, sourcecontrol.ErrRefNotFound) {
 		// No commits yet — an empty snapshot, not an error.
 		return &StatusSnapshot{}, nil
 	}
@@ -149,7 +149,7 @@ func (s *artifactService) ComponentCountAtTag(ctx context.Context, orgID, projec
 // countDesignComponents counts specs/design/components/<name>/design.json
 // blobs — AssembleDesign's component predicate (design.json is the authored
 // component model) applied to a tree listing, no content reads.
-func countDesignComponents(entries []gitrepo.Entry) int {
+func countDesignComponents(entries []sourcecontrol.Entry) int {
 	prefix := designPrefix + componentDirPrefix
 	n := 0
 	for _, e := range entries {

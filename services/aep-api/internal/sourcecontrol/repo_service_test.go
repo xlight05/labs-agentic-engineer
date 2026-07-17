@@ -14,16 +14,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo_test
+package sourcecontrol_test
 
 import (
 	"net/http"
 	"strings"
 	"testing"
 
-	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -34,7 +34,7 @@ func TestCreateRepo_HappyPathMarksReady(t *testing.T) {
 		`{"clone_url":"https://github.com/test-org/my-project.git"}`)
 
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	got, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "")
 	if err != nil {
@@ -79,10 +79,10 @@ func TestCreateRepo_DerivedNameConflictFailsWithoutRetry(t *testing.T) {
 		`{"message":"name already exists on this account"}`)
 
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	_, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "")
-	if !gitrepo.IsRepoNameConflict(err) {
+	if !sourcecontrol.IsRepoNameConflict(err) {
 		t.Fatalf("err = %v, want the ErrRepoNameConflict sentinel to survive", err)
 	}
 	if n := len(stub.Requests()); n != 1 {
@@ -96,7 +96,7 @@ func TestCreateRepo_IsIdempotentOnExistingRow(t *testing.T) {
 	existing := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/test-org/pre", Status: "ready"}
 	repo.preload(existing)
 	stub := gittest.NewStub(t) // no create route registered — must NOT be hit
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	got, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "")
 	if err != nil {
@@ -115,7 +115,7 @@ func TestCreateRepo_ErrorPropagatesAndCreatesNoRow(t *testing.T) {
 	stub := gittest.NewStub(t)
 	stub.On(http.MethodPost, "/orgs/test-org/repos", http.StatusForbidden, `{"message":"Forbidden"}`)
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	_, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "")
 	if err == nil || !strings.Contains(err.Error(), "create github repo") || !strings.Contains(err.Error(), "403") {
@@ -133,7 +133,7 @@ func TestCreateRepo_ExplicitRepoNameUsedVerbatim(t *testing.T) {
 		`{"clone_url":"https://github.com/test-org/exact-repo.git"}`)
 
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	got, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "exact-repo")
 	if err != nil {
@@ -161,10 +161,10 @@ func TestCreateRepo_ExplicitRepoNameConflictFailsWithoutRetry(t *testing.T) {
 		`{"message":"name already exists on this account"}`)
 
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	_, err := svc.CreateRepo(testContext(), "org1", "proj1", "My Project", "taken-repo")
-	if !gitrepo.IsRepoNameConflict(err) {
+	if !sourcecontrol.IsRepoNameConflict(err) {
 		t.Fatalf("err = %v, want the ErrRepoNameConflict sentinel to survive", err)
 	}
 	// The name was chosen by the user — retrying with suffixes would betray it.
@@ -182,7 +182,7 @@ func TestEnsureBareRepo_AdoptsOnNameConflict(t *testing.T) {
 	stub.On(http.MethodPost, "/orgs/test-org/repos", http.StatusUnprocessableEntity,
 		`{"message":"name already exists on this account"}`)
 	repo := newFakeRepoRepo()
-	svc := gitrepo.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
+	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")
 
 	got, err := svc.EnsureBareRepo(testContext(), "org1", "_skills", "org-skills")
 	if err != nil {

@@ -28,8 +28,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/async"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -49,8 +49,8 @@ var (
 // edge instead).
 type Service struct {
 	client         openchoreo.ProjectClient
-	repoSvc        gitrepo.RepoService
-	webhookSvc     gitrepo.WebhookService
+	repoSvc        sourcecontrol.RepoService
+	webhookSvc     sourcecontrol.WebhookService
 	artifactSvc    artifacts.ArtifactService
 	execs          repositories.ExecutionRepository
 	skillsProv     skillsProvisioner
@@ -79,8 +79,8 @@ func (s *Service) SetSkillsProvisioner(p skillsProvisioner) { s.skillsProv = p }
 
 func NewProjectService(
 	client openchoreo.ProjectClient,
-	repoSvc gitrepo.RepoService,
-	webhookSvc gitrepo.WebhookService,
+	repoSvc sourcecontrol.RepoService,
+	webhookSvc sourcecontrol.WebhookService,
 	artifactSvc artifacts.ArtifactService,
 	execs repositories.ExecutionRepository,
 ) *Service {
@@ -169,7 +169,7 @@ func (s *Service) CreateProject(ctx context.Context, orgName string, req *gen.Cr
 			// OC project away and fail the create so the user picks another
 			// name. Every other repo failure stays best-effort (clone happens
 			// async and can be retried).
-			if gitrepo.IsRepoNameConflict(createErr) {
+			if sourcecontrol.IsRepoNameConflict(createErr) {
 				if delErr := s.client.DeleteProject(ctx, orgName, project.Name); delErr != nil {
 					slog.ErrorContext(ctx, "failed to compensate project after repo name conflict",
 						"project", project.Name, "error", delErr)

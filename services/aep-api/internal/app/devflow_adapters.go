@@ -24,8 +24,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
@@ -41,9 +41,9 @@ func (l repoFullNameLookup) RepoFullName(ctx context.Context, orgID, projectID s
 		return "", err
 	}
 	if row == nil {
-		return "", gitrepo.ErrRepoNotFound
+		return "", sourcecontrol.ErrRepoNotFound
 	}
-	owner, name, err := gitrepo.ParseOwnerRepo(row.RepoURL)
+	owner, name, err := sourcecontrol.ParseOwnerRepo(row.RepoURL)
 	if err != nil {
 		return "", err
 	}

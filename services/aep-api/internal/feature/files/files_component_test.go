@@ -42,12 +42,12 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -67,7 +67,7 @@ type stubRepoResolver struct{ rec *models.GitRepository }
 
 func (s stubRepoResolver) GetRepo(_ context.Context, orgID, _ string) (*models.GitRepository, error) {
 	if s.rec == nil || orgID != s.rec.OrgID {
-		return nil, gitrepo.ErrRepoNotFound
+		return nil, sourcecontrol.ErrRepoNotFound
 	}
 	return s.rec, nil
 }
@@ -112,7 +112,7 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	// write run through the Workspace port (the REST git-object port is nil —
 	// files never touches it).
 	engine := workspacetest.NewEngine(t)
-	gitOps := gitrepo.NewGitOpsService(stubResolver{}, engine)
+	gitOps := sourcecontrol.NewGitOpsService(stubResolver{}, engine)
 	svc := files.NewService(stubRepoResolver{rec: rec}, gitOps)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{FilesSvc: svc}})
 	return &filesRig{h: h, remote: remote, engine: engine}

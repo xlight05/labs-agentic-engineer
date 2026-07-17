@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo
+package sourcecontrol
 
 import (
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"

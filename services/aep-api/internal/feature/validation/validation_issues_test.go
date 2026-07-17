@@ -23,24 +23,24 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- fakes ------------------------------------------------------------------
 
 type fakeIssues struct {
-	existing []gitrepo.IssueInfo
-	created  []gitrepo.CreateIssueRequest
+	existing []sourcecontrol.IssueInfo
+	created  []sourcecontrol.CreateIssueRequest
 }
 
-func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, _ []string) ([]gitrepo.IssueInfo, error) {
+func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, _ []string) ([]sourcecontrol.IssueInfo, error) {
 	return f.existing, nil
 }
 
-func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	f.created = append(f.created, req)
-	return &gitrepo.IssueResult{Number: 42, URL: "https://example/issues/42"}, nil
+	return &sourcecontrol.IssueResult{Number: 42, URL: "https://example/issues/42"}, nil
 }
 
 type fakeDesign struct{ names []string }
@@ -145,7 +145,7 @@ func TestEnsureValidationIssue_CreatesFormattedIssue(t *testing.T) {
 }
 
 func TestEnsureValidationIssue_DedupSkipsWhenOpenExists(t *testing.T) {
-	iss := &fakeIssues{existing: []gitrepo.IssueInfo{
+	iss := &fakeIssues{existing: []sourcecontrol.IssueInfo{
 		{Number: 7, State: "open", Labels: []string{"aep:task", "aep:validation", "aep:origin/spec-plan"}},
 	}}
 	svc := newSvc(iss, []string{"hello-web"}, fakeCriteria{raw: []byte(sampleCriteria), found: true})

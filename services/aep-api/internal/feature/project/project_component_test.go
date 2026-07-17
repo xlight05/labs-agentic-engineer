@@ -40,18 +40,18 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// conflictRepoSvc is a minimal gitrepo.RepoService whose CreateRepo always
+// conflictRepoSvc is a minimal sourcecontrol.RepoService whose CreateRepo always
 // reports a name conflict; every other method is unreachable from create.
 type conflictRepoSvc struct{}
 
 func (conflictRepoSvc) CreateRepo(context.Context, string, string, string, string) (*models.GitRepository, error) {
-	return nil, fmt.Errorf("create github repo: %w", gitrepo.ErrRepoNameConflict)
+	return nil, fmt.Errorf("create github repo: %w", sourcecontrol.ErrRepoNameConflict)
 }
 func (conflictRepoSvc) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
 	return nil, nil

@@ -21,9 +21,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Issue create/search on the strict interface. These back external handoffs —
@@ -38,14 +38,14 @@ func (s *legacyHandlers) CreateIssue(ctx context.Context, request gen.CreateIssu
 		return nil, errServiceUnavailable("issue service not configured")
 	}
 	org := tenant.BoundOrgFromContext(ctx)
-	issue, err := s.deps.IssueSvc.CreateIssue(ctx, org, request.ProjectName, gitrepo.CreateIssueRequest{
+	issue, err := s.deps.IssueSvc.CreateIssue(ctx, org, request.ProjectName, sourcecontrol.CreateIssueRequest{
 		Title:     request.Body.Title,
 		Body:      request.Body.Body,
 		Labels:    request.Body.Labels,
 		DedupeKey: request.Body.DedupeKey,
 	})
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, errNotFound("project repo not found")
 		}
 		return nil, errInternal("failed to create issue")
@@ -73,7 +73,7 @@ func (s *legacyHandlers) ListIssues(ctx context.Context, request gen.ListIssuesR
 	}
 	issues, err := s.deps.IssueSvc.ListIssues(ctx, org, request.ProjectName, labels)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, errNotFound("project repo not found")
 		}
 		return nil, errInternal("failed to list issues")
@@ -82,7 +82,7 @@ func (s *legacyHandlers) ListIssues(ctx context.Context, request gen.ListIssuesR
 	if request.Params.Q != "" {
 		query = request.Params.Q
 	}
-	ranked := gitrepo.RankIssuesByQuery(issues, query)
+	ranked := sourcecontrol.RankIssuesByQuery(issues, query)
 	out := make([]gen.IssueInfo, 0, len(ranked))
 	for _, iss := range ranked {
 		out = append(out, gen.IssueInfo{

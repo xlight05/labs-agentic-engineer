@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // ValidatorProbes is the production secrets.ValidatorProbes that
@@ -29,7 +29,7 @@ import (
 // CredentialService's identity-update helpers.
 type ValidatorProbes struct {
 	credSvc      *CredentialService
-	githubClient gitrepo.AppInstallOps
+	githubClient sourcecontrol.AppInstallOps
 	resolver     secrets.Resolver
 	minter       *secrets.AppTokenMinter
 }
@@ -37,7 +37,7 @@ type ValidatorProbes struct {
 // NewValidatorProbes constructs the probes adapter. All four
 // dependencies must be non-nil; nil short-circuits the validator at
 // construction so we don't half-fire later.
-func NewValidatorProbes(credSvc *CredentialService, githubClient gitrepo.AppInstallOps, resolver secrets.Resolver, minter *secrets.AppTokenMinter) *ValidatorProbes {
+func NewValidatorProbes(credSvc *CredentialService, githubClient sourcecontrol.AppInstallOps, resolver secrets.Resolver, minter *secrets.AppTokenMinter) *ValidatorProbes {
 	return &ValidatorProbes{
 		credSvc:      credSvc,
 		githubClient: githubClient,
@@ -79,9 +79,9 @@ func (p *ValidatorProbes) ProbePAT(ctx context.Context, row secrets.ActiveRow) (
 	user, err := p.githubClient.GetUser(ctx, cred)
 	if err != nil {
 		switch {
-		case gitrepo.IsHTTPStatus(err, 401), gitrepo.IsHTTPStatus(err, 403):
+		case sourcecontrol.IsHTTPStatus(err, 401), sourcecontrol.IsHTTPStatus(err, 403):
 			return "", "", "", secrets.ErrCredentialUnauthorized
-		case gitrepo.IsHTTPStatus(err, 404):
+		case sourcecontrol.IsHTTPStatus(err, 404):
 			return "", "", "", secrets.ErrCredentialUnauthorized
 		}
 		return "", "", "", secrets.ErrCredentialTransient
@@ -105,7 +105,7 @@ func (p *ValidatorProbes) ProbeApp(ctx context.Context, row secrets.ActiveRow) (
 	info, err := p.githubClient.GetAppInstallation(ctx, p.minter, *row.InstallationID)
 	if err != nil {
 		switch {
-		case gitrepo.IsHTTPStatus(err, 401), gitrepo.IsHTTPStatus(err, 404), gitrepo.IsHTTPStatus(err, 410):
+		case sourcecontrol.IsHTTPStatus(err, 401), sourcecontrol.IsHTTPStatus(err, 404), sourcecontrol.IsHTTPStatus(err, 410):
 			return "", secrets.ErrCredentialUnauthorized
 		}
 		return "", secrets.ErrCredentialTransient

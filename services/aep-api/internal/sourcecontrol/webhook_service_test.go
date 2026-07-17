@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo_test
+package sourcecontrol_test
 
 import (
 	"context"
@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -35,16 +35,16 @@ import (
 // the REAL REST client at the stub. Everything shares ONE fake repo store, whose
 // record is how tests assert persistence. strategy sets the resolved
 // credential's webhook strategy.
-func newWebhookSvcOnStub(t *testing.T, stub *gittest.Stub, strategy secrets.WebhookStrategy) (gitrepo.WebhookService, *fakeRepoRepo) {
+func newWebhookSvcOnStub(t *testing.T, stub *gittest.Stub, strategy secrets.WebhookStrategy) (sourcecontrol.WebhookService, *fakeRepoRepo) {
 	t.Helper()
 	repo := newFakeRepoRepo()
 	repo.preload(&models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
 	resolver := fakeResolver{cred: fakeCred{strategy: strategy}}
 	gh := githubclient.NewClient(githubclient.WithAPIBase(stub.URL))
-	issueSvc := gitrepo.NewIssueService(repo, nil, resolver)
-	repoSvc := gitrepo.NewRepoService(repo, gh, resolver, "public")
+	issueSvc := sourcecontrol.NewIssueService(repo, nil, resolver)
+	repoSvc := sourcecontrol.NewRepoService(repo, gh, resolver, "public")
 
-	wh := gitrepo.NewWebhookService(
+	wh := sourcecontrol.NewWebhookService(
 		repo,
 		gh,
 		repoSvc,
@@ -128,10 +128,10 @@ func TestWebhookRegister_MissingConfigErrors(t *testing.T) {
 	t.Parallel()
 	issRepo := newFakeRepoRepo()
 	issRepo.preload(&models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
-	issueSvc := gitrepo.NewIssueService(issRepo, nil, fakeResolver{})
-	repoSvc := gitrepo.NewRepoService(issRepo, githubclient.NewClient(), fakeResolver{}, "public")
+	issueSvc := sourcecontrol.NewIssueService(issRepo, nil, fakeResolver{})
+	repoSvc := sourcecontrol.NewRepoService(issRepo, githubclient.NewClient(), fakeResolver{}, "public")
 	// Empty delivery URL + secret.
-	wh := gitrepo.NewWebhookService(issRepo, githubclient.NewClient(), repoSvc, issueSvc, "", "")
+	wh := sourcecontrol.NewWebhookService(issRepo, githubclient.NewClient(), repoSvc, issueSvc, "", "")
 
 	if _, err := wh.Register(testContext(), "org1", "proj1"); err == nil {
 		t.Fatal("want error for unconfigured webhook delivery URL/secret, got nil")
@@ -164,15 +164,15 @@ func TestWebhookRegister_DedupOnHookAlreadyExists(t *testing.T) {
 // alternate provider impl. Before the fix, webhookService type-asserted to the
 // concrete *issueService and stored nil, so Register nil-dereferenced. After the
 // fix it stores the interface and surfaces a clean error.
-type nonResolvingIssueSvc struct{ gitrepo.IssueService }
+type nonResolvingIssueSvc struct{ sourcecontrol.IssueService }
 
 func TestWebhookRegister_NonResolvingIssueServiceErrorsNotPanics(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepoRepo()
-	wh := gitrepo.NewWebhookService(
+	wh := sourcecontrol.NewWebhookService(
 		repo,
 		githubclient.NewClient(),
-		gitrepo.NewRepoService(repo, githubclient.NewClient(), fakeResolver{}, "public"),
+		sourcecontrol.NewRepoService(repo, githubclient.NewClient(), fakeResolver{}, "public"),
 		nonResolvingIssueSvc{},
 		"https://webhook.example/deliver",
 		"s3cr3t",

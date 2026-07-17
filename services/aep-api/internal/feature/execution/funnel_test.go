@@ -22,11 +22,11 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-func taskIssue(number int, comp string, deps []string, extraLabels []string, state string) gitrepo.IssueInfo {
+func taskIssue(number int, comp string, deps []string, extraLabels []string, state string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{
 		Component: comp,
 		DependsOn: deps,
@@ -36,7 +36,7 @@ func taskIssue(number int, comp string, deps []string, extraLabels []string, sta
 	}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "because", Body: "## Scope\nwork"})
 	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), extraLabels...)
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Implement " + comp,
 		Body:   body,
@@ -60,7 +60,7 @@ func TestFunnel_DepsSatisfied_Dispatches(t *testing.T) {
 	_, dep, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 1, Kind: string(taskmeta.KindBuild)})
 	_, _ = store.Finish(context.Background(), dep.ID, string(taskmeta.ExecSucceeded), "")
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(1, "user-service", nil, nil, "open"),
 		taskIssue(2, "order-service", []string{"user-service"}, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -88,7 +88,7 @@ func TestFunnel_DepsSatisfied_Dispatches(t *testing.T) {
 
 func TestFunnel_DepsUnsatisfied_QueuesNoDispatch(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(1, "user-service", nil, nil, "open"), // not deployed
 		taskIssue(2, "order-service", []string{"user-service"}, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -109,7 +109,7 @@ func TestFunnel_DepsUnsatisfied_QueuesNoDispatch(t *testing.T) {
 
 func TestFunnel_Held_QueuesNoDispatch(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute, taskmeta.LabelHold}, "open"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -130,7 +130,7 @@ func TestFunnel_Held_QueuesNoDispatch(t *testing.T) {
 func TestFunnel_HoldLifted_Reevaluate_Dispatches(t *testing.T) {
 	store := newFakeStore()
 	held := taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute, taskmeta.LabelHold}, "open")
-	issues := newFakeIssues([]gitrepo.IssueInfo{held})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{held})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 
@@ -147,7 +147,7 @@ func TestFunnel_HoldLifted_Reevaluate_Dispatches(t *testing.T) {
 
 func TestFunnel_OpsClass_NoExecutor_FlagsAttention(t *testing.T) {
 	store := newFakeStore()
-	issue := gitrepo.IssueInfo{
+	issue := sourcecontrol.IssueInfo{
 		Number: 3,
 		Title:  "Provision DB",
 		State:  "open",
@@ -157,7 +157,7 @@ func TestFunnel_OpsClass_NoExecutor_FlagsAttention(t *testing.T) {
 		}, taskmeta.Human{Rationale: "r"}),
 		Labels: append(taskmeta.NewTaskLabels(taskmeta.ClassOps, taskmeta.OriginManual), taskmeta.LabelExecute),
 	}
-	issues := newFakeIssues([]gitrepo.IssueInfo{issue})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{issue})
 	// Registry has only the coding executor.
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{}, exec)
@@ -179,7 +179,7 @@ func TestFunnel_OpsClass_NoExecutor_FlagsAttention(t *testing.T) {
 
 func TestFunnel_ComponentRemoved_FlagsAttention(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -199,7 +199,7 @@ func TestFunnel_ComponentRemoved_FlagsAttention(t *testing.T) {
 
 func TestFunnel_Cycle_FlagsAttention(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(1, "a", []string{"b"}, nil, "open"),
 		taskIssue(2, "b", []string{"a"}, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -219,7 +219,7 @@ func TestFunnel_Cycle_FlagsAttention(t *testing.T) {
 
 func TestFunnel_Idempotent_ActiveExecution(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -234,7 +234,7 @@ func TestFunnel_Idempotent_ActiveExecution(t *testing.T) {
 
 func TestFunnel_ClosedIssue_NoDispatch(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "closed"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -266,7 +266,7 @@ func seedMergedFailedBuild(store *fakeStore, mergeSHA string) {
 func TestFunnel_ExecuteOnFailedBuild_RetriesBuildAtSameSHA(t *testing.T) {
 	store := newFakeStore()
 	seedMergedFailedBuild(store, "sha7")
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 
@@ -300,7 +300,7 @@ func TestFunnel_ExecuteOnFailedCoding_RetriesCoding(t *testing.T) {
 	// Latest coding FAILED (no merged PR) — retry re-runs coding, unchanged.
 	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecFailed), "agent crashed")
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 
@@ -315,7 +315,7 @@ func TestFunnel_ExecuteOnFailedCoding_RetriesCoding(t *testing.T) {
 func TestFunnel_ExecuteOnFailedBuild_Held_Queues(t *testing.T) {
 	store := newFakeStore()
 	seedMergedFailedBuild(store, "sha7")
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute, taskmeta.LabelHold}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute, taskmeta.LabelHold}, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 
@@ -337,7 +337,7 @@ func TestFunnel_Reevaluate_ReleasesQueuedBuildWhenUnheld(t *testing.T) {
 	// A queued build retry (as if admitted while held) at sha7; the issue is now
 	// NOT held → Reevaluate must dispatch it.
 	_, _, _ = store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), Component: "order-service", CommitSHA: "sha7"})
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 
@@ -352,7 +352,7 @@ func TestFunnel_Reevaluate_ReleasesQueuedBuildWhenUnheld(t *testing.T) {
 func TestFunnel_ExecuteOnFailedBuild_Closed_NoDispatch(t *testing.T) {
 	store := newFakeStore()
 	seedMergedFailedBuild(store, "sha7")
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "closed")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "closed")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)
 

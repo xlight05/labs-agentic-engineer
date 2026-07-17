@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -40,10 +40,10 @@ import (
 // gitfs engine rooted in t.TempDir() plus one REAL bare file:// origin per org,
 // provisioned lazily by EnsureBareRepo exactly like production provisions the
 // GitHub repo (it supersedes the old in-memory git-host fake — the store now
-// drives genuine git plumbing end to end). It implements gitrepo.RepoService
+// drives genuine git plumbing end to end). It implements sourcecontrol.RepoService
 // (the row store) and hands out origins for arrange/assert.
 type testGitHost struct {
-	gitrepo.RepoService // embedded: unimplemented methods panic (untouched by these tests)
+	sourcecontrol.RepoService // embedded: unimplemented methods panic (untouched by these tests)
 
 	t       *testing.T
 	engine  *gitfs.Engine
@@ -67,7 +67,7 @@ func (h *testGitHost) GetRepo(_ context.Context, orgID, _ string) (*models.GitRe
 	if r, ok := h.rows[orgID]; ok {
 		return r, nil
 	}
-	return nil, gitrepo.ErrRepoNotFound
+	return nil, sourcecontrol.ErrRepoNotFound
 }
 
 func (h *testGitHost) EnsureBareRepo(_ context.Context, orgID, projectID, repoName string) (*models.GitRepository, error) {
@@ -117,7 +117,7 @@ func (h *testGitHost) mirrorGitDir(orgID string) (string, error) {
 	h.mu.Lock()
 	row := h.rows[orgID]
 	h.mu.Unlock()
-	return gitfs.GitDir(h.engine.Root(), gitrepo.WorkspaceRefFor(orgID, row, nil))
+	return gitfs.GitDir(h.engine.Root(), sourcecontrol.WorkspaceRefFor(orgID, row, nil))
 }
 
 // ---- fake credential + resolver ----------------------------------------------
@@ -138,11 +138,11 @@ func (fakeResolver) Resolve(context.Context, string) (secrets.Credential, error)
 }
 
 // newTestStore builds a REAL SkillService over the engine-backed host: the
-// production gitrepo.NewGitOpsService gateway with the workspacetest engine
+// production sourcecontrol.NewGitOpsService gateway with the workspacetest engine
 // as the Workspace port.
 func newTestStore(t *testing.T) (*SkillService, *testGitHost) {
 	host := newTestGitHost(t)
-	svc := NewSkillService(gitrepo.NewGitOpsService(fakeResolver{}, host.engine), host, testLibraryFS(t))
+	svc := NewSkillService(sourcecontrol.NewGitOpsService(fakeResolver{}, host.engine), host, testLibraryFS(t))
 	return svc, host
 }
 
@@ -544,7 +544,7 @@ func TestCommitFiles_ConcurrentCommitsSerialize(t *testing.T) {
 			if rerr != nil || sk == nil {
 				t.Fatalf("landed skill %q not resolvable: %v / %v", names[i], sk, rerr)
 			}
-		case errors.Is(err, gitrepo.ErrRefNotFastForward):
+		case errors.Is(err, sourcecontrol.ErrRefNotFastForward):
 			// The one acceptable failure mode: a clean CAS conflict.
 		default:
 			t.Fatalf("commit %q failed with a non-conflict error: %v", names[i], err)

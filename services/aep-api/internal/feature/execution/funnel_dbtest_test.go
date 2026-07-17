@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -40,7 +40,7 @@ func TestFunnel_AdmissionUnderConcurrency_DB(t *testing.T) {
 	repo := repositories.NewExecutionRepository(db)
 
 	// One open, executable coding Task with no deps.
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
 	exec := &fakeExecutor{} // records only — leaves the admitted row queued
 	reg := NewRegistry()
 	reg.Register(taskmeta.ClassCoding, exec)
@@ -94,7 +94,7 @@ func TestFunnel_ReAdmittableAfterFinish_DB(t *testing.T) {
 	ctx := context.Background()
 	repo := repositories.NewExecutionRepository(db)
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
 	exec := &fakeExecutor{} // records only — the admitted row stays queued (active)
 	reg := NewRegistry()
 	reg.Register(taskmeta.ClassCoding, exec)
@@ -153,7 +153,7 @@ func TestFunnel_ReevaluateAdmitsWhenDepsSatisfied_DB(t *testing.T) {
 	ctx := context.Background()
 	repo := repositories.NewExecutionRepository(db)
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(1, "user-service", nil, nil, "open"),
 		taskIssue(2, "order-service", []string{"user-service"}, []string{taskmeta.LabelExecute}, "open"),
 	})

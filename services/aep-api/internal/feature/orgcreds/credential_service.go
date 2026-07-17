@@ -39,8 +39,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -106,7 +106,7 @@ type CredentialService struct {
 	// ExchangeOAuthCode, GetUserInstallations) and the uninstall cascade
 	// (DeleteInstallation); the rest of CredentialService still uses raw
 	// httpClient. Optional — nil disables the bind path.
-	githubClient gitrepo.AppInstallOps
+	githubClient sourcecontrol.AppInstallOps
 
 	httpClient *http.Client
 }
@@ -125,7 +125,7 @@ func NewCredentialService(
 	minter *secrets.AppTokenMinter,
 	envWebhookSecret string,
 	appClientID, appClientSecret string,
-	githubClient gitrepo.AppInstallOps,
+	githubClient sourcecontrol.AppInstallOps,
 ) *CredentialService {
 	return &CredentialService{
 		db:               db,

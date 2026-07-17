@@ -19,7 +19,7 @@ package execution
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -30,9 +30,9 @@ import (
 
 // IssueClient is the GitHub issue surface the funnel reads and stamps: list the
 // project's Task issues, consume the aep:execute command label, and post
-// attention comments. gitrepo.IssueService satisfies it.
+// attention comments. sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
-	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]gitrepo.IssueInfo, error)
+	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
 	AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error
 	RemoveLabel(ctx context.Context, orgID, projectID string, number int, label string) error
 	CommentIssue(ctx context.Context, orgID, projectID string, number int, body string) error
@@ -46,9 +46,9 @@ type RepoLookup interface {
 }
 
 // PRReader reads a pull request's live state for the sweep's PR-state
-// reconciliation (§5). gitrepo.IssueService satisfies it.
+// reconciliation (§5). sourcecontrol.IssueService satisfies it.
 type PRReader interface {
-	GetPullRequestState(ctx context.Context, orgID, projectID string, number int) (*gitrepo.PullRequestState, error)
+	GetPullRequestState(ctx context.Context, orgID, projectID string, number int) (*sourcecontrol.PullRequestState, error)
 }
 
 // RepoRef identifies one project repository for the reconciliation sweep.

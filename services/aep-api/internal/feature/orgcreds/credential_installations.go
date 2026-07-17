@@ -33,8 +33,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -258,7 +258,7 @@ var ErrAppBindNotConfigured = errors.New("app bind path not configured (missing 
 //
 // There is no "list every install of our App" surface — discovery is
 // always proven to the requesting user via OAuth.
-func (s *CredentialService) ResolveUserInstallations(ctx context.Context, ocOrgID, oauthCode, redirectURI string) ([]gitrepo.AppInstallationSummary, error) {
+func (s *CredentialService) ResolveUserInstallations(ctx context.Context, ocOrgID, oauthCode, redirectURI string) ([]sourcecontrol.AppInstallationSummary, error) {
 	if s.minter == nil || s.minter.AppID() == 0 || s.githubClient == nil {
 		return nil, ErrAppBindNotConfigured
 	}
@@ -277,7 +277,7 @@ func (s *CredentialService) ResolveUserInstallations(ctx context.Context, ocOrgI
 		return nil, &ValidationError{Code: "oauth_exchange_failed", Message: err.Error()}
 	}
 	if userToken == "" {
-		return []gitrepo.AppInstallationSummary{}, nil
+		return []sourcecontrol.AppInstallationSummary{}, nil
 	}
 
 	userInstalls, err := s.githubClient.GetUserInstallations(ctx, userToken)
@@ -317,7 +317,7 @@ func (s *CredentialService) ResolveUserInstallations(ctx context.Context, ocOrgI
 		}
 	}
 
-	candidates := make([]gitrepo.AppInstallationSummary, 0, len(all))
+	candidates := make([]sourcecontrol.AppInstallationSummary, 0, len(all))
 	for _, inst := range all {
 		if _, ok := userInstallSet[inst.InstallationID]; !ok {
 			continue

@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Tag scheme:
@@ -84,7 +84,7 @@ func parseDesignTag(name string) (int, int, bool) {
 
 // latestRequirementsVersion returns the highest N from any `v<N>` tag, or 0
 // if none match.
-func latestRequirementsVersion(tags []gitrepo.TagInfo) int {
+func latestRequirementsVersion(tags []sourcecontrol.TagInfo) int {
 	max := 0
 	for _, t := range tags {
 		if n, ok := parseRequirementsTag(t.Name); ok && n > max {
@@ -95,14 +95,14 @@ func latestRequirementsVersion(tags []gitrepo.TagInfo) int {
 }
 
 // nextRequirementsTag returns the next `v<N+1>` tag name and its version.
-func nextRequirementsTag(tags []gitrepo.TagInfo) (int, string) {
+func nextRequirementsTag(tags []sourcecontrol.TagInfo) (int, string) {
 	next := latestRequirementsVersion(tags) + 1
 	return next, requirementsTagFor(next)
 }
 
 // latestDesignRevision returns the highest M for any `v<parentVersion>-<M>`
 // tag, or 0 if none match.
-func latestDesignRevision(tags []gitrepo.TagInfo, parentVersion int) int {
+func latestDesignRevision(tags []sourcecontrol.TagInfo, parentVersion int) int {
 	max := 0
 	for _, t := range tags {
 		n, r, ok := parseDesignTag(t.Name)
@@ -118,14 +118,14 @@ func latestDesignRevision(tags []gitrepo.TagInfo, parentVersion int) int {
 
 // nextDesignTag returns the next `v<parentVersion>-<M+1>` tag name and its
 // revision number for the supplied parent requirements version.
-func nextDesignTag(tags []gitrepo.TagInfo, parentVersion int) (int, string) {
+func nextDesignTag(tags []sourcecontrol.TagInfo, parentVersion int) (int, string) {
 	next := latestDesignRevision(tags, parentVersion) + 1
 	return next, designTagFor(parentVersion, next)
 }
 
 // latestRequirementsTag returns the full tag name of the highest-versioned
 // `v<N>` tag, or "" when none exist.
-func latestRequirementsTag(tags []gitrepo.TagInfo) string {
+func latestRequirementsTag(tags []sourcecontrol.TagInfo) string {
 	max := latestRequirementsVersion(tags)
 	if max == 0 {
 		return ""
@@ -135,7 +135,7 @@ func latestRequirementsTag(tags []gitrepo.TagInfo) string {
 
 // latestDesignTag returns the highest-revision `v<N>-<M>` tag (across any
 // parent N) by lexical (N, M) order, or "" when none exist.
-func latestDesignTag(tags []gitrepo.TagInfo) string {
+func latestDesignTag(tags []sourcecontrol.TagInfo) string {
 	bestN, bestR := 0, 0
 	for _, t := range tags {
 		n, r, ok := parseDesignTag(t.Name)
@@ -171,7 +171,7 @@ type DesignVersionInfo struct {
 
 // tagsToRequirementsVersions filters + sorts a tag list into the
 // requirements-only version list (descending by N).
-func tagsToRequirementsVersions(tags []gitrepo.TagInfo) []RequirementsVersionInfo {
+func tagsToRequirementsVersions(tags []sourcecontrol.TagInfo) []RequirementsVersionInfo {
 	out := make([]RequirementsVersionInfo, 0, len(tags))
 	for _, t := range tags {
 		n, ok := parseRequirementsTag(t.Name)
@@ -191,7 +191,7 @@ func tagsToRequirementsVersions(tags []gitrepo.TagInfo) []RequirementsVersionInf
 
 // tagsToDesignVersions filters + sorts a tag list into the design-only
 // version list (descending by (N, M)).
-func tagsToDesignVersions(tags []gitrepo.TagInfo) []DesignVersionInfo {
+func tagsToDesignVersions(tags []sourcecontrol.TagInfo) []DesignVersionInfo {
 	out := make([]DesignVersionInfo, 0, len(tags))
 	for _, t := range tags {
 		n, r, ok := parseDesignTag(t.Name)

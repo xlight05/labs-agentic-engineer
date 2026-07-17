@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/taskplan"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // planDrainIdleTimeout aborts the upstream drain if no bytes arrive for this
@@ -242,7 +242,7 @@ func (t *planTap) handlePlan(out *taskplan.PlanTaskOk) {
 	if l := taskmeta.SpecTagLabel(t.specTag); l != "" {
 		labels = append(labels, l)
 	}
-	issue, err := t.issues.CreateIssue(t.ctx, t.orgID, t.projectID, gitrepo.CreateIssueRequest{
+	issue, err := t.issues.CreateIssue(t.ctx, t.orgID, t.projectID, sourcecontrol.CreateIssueRequest{
 		Title:  out.Title,
 		Body:   body,
 		Labels: labels,

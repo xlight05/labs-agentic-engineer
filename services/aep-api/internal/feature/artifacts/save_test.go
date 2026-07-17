@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // validComponentDesignJSON is a component design.json that satisfies the
@@ -214,7 +214,7 @@ func TestSaveRequirements_TagCollision_InWindowClaim(t *testing.T) {
 
 	var tagAttempts int32
 	var once sync.Once
-	r.ws.BeforeTag = func(gitrepo.TagSpec) {
+	r.ws.BeforeTag = func(sourcecontrol.TagSpec) {
 		atomic.AddInt32(&tagAttempts, 1)
 		once.Do(func() { r.tag("v1", "external claim in the race window") })
 	}
@@ -256,7 +256,7 @@ func TestCreateAnnotatedTag_ConcurrentSameName_LoserRecomputesToNext(t *testing.
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			tags := []gitrepo.TagInfo{} // both believe no tags exist yet
+			tags := []sourcecontrol.TagInfo{} // both believe no tags exist yet
 			var n int
 			var name string
 			err := s.createAnnotatedTag(context.Background(), ref, &tags, &n, &name,
@@ -311,8 +311,8 @@ func TestSaveRequirements_UnknownPinnedSha_RefNotFound(t *testing.T) {
 	r := newRig(t, map[string]string{"specs/requirements/requirements.md": "body\n"})
 	_, err := r.svc.SaveRequirements(context.Background(), r.org, r.proj,
 		SaveRequest{CommitSHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"})
-	if !errors.Is(err, gitrepo.ErrRefNotFound) {
-		t.Fatalf("err = %v, want wrapped gitrepo.ErrRefNotFound", err)
+	if !errors.Is(err, sourcecontrol.ErrRefNotFound) {
+		t.Fatalf("err = %v, want wrapped sourcecontrol.ErrRefNotFound", err)
 	}
 	if got := r.tags(); len(got) != 0 {
 		t.Errorf("tags = %v, want none (unknown sha must never acquire a tag)", got)

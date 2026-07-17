@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -355,7 +355,7 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 }
 
 // containsIssue reports whether the task-marker issue set includes issueNumber.
-func containsIssue(issues []gitrepo.IssueInfo, issueNumber int) bool {
+func containsIssue(issues []sourcecontrol.IssueInfo, issueNumber int) bool {
 	for i := range issues {
 		if issues[i].Number == issueNumber {
 			return true
@@ -367,7 +367,7 @@ func containsIssue(issues []gitrepo.IssueInfo, issueNumber int) bool {
 // buildView fuses one live issue with its latest-per-kind executions into a
 // TaskView. ok is false when the issue is not a Task (no marker) — the caller
 // skips it.
-func buildView(issue gitrepo.IssueInfo, latestSpecTag string, execs map[string]*models.Execution) (TaskView, bool) {
+func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[string]*models.Execution) (TaskView, bool) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask {
 		return TaskView{}, false

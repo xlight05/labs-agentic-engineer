@@ -21,9 +21,9 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/feature/files"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Files feature on the strict interface: list-files / read-file / apply-files.
@@ -131,7 +131,7 @@ func mapFilesError(err error) error {
 		return errNotFound("file not found")
 	case errors.Is(err, files.ErrPathInvalid):
 		return errBadRequest(err.Error())
-	case errors.Is(err, gitrepo.ErrRefNotFastForward):
+	case errors.Is(err, sourcecontrol.ErrRefNotFastForward):
 		// Workspace.Mutate exhausted its CAS retries: the ref tip moved under
 		// us on every attempt. That is a concurrent-write conflict, not a
 		// server fault — surface it as a retryable 409, never a 500.

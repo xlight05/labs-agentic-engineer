@@ -24,7 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -118,7 +118,7 @@ func (s *Service) ensureConsumerVisibilityGate(ctx context.Context, orgID, consu
 			"build. This gate closes automatically once the provider publishes (namespace visibility) — no manual action "+
 			"is needed here.", dep, dep),
 	})
-	req := gitrepo.CreateIssueRequest{
+	req := sourcecontrol.CreateIssueRequest{
 		Title:  title,
 		Body:   body,
 		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginManual),

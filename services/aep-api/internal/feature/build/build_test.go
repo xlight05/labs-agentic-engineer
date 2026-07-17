@@ -39,9 +39,9 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -289,7 +289,7 @@ func TestBuild_AlreadyRunning_409_TaggerUntouched(t *testing.T) {
 }
 
 func TestBuild_NoRepo_404(t *testing.T) {
-	svc := newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{err: gitrepo.ErrRepoNotFound},
+	svc := newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{err: sourcecontrol.ErrRepoNotFound},
 		&fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
 	code, body := postBuild(t, svc, "shop")
 	if code != 404 {
@@ -320,7 +320,7 @@ func TestBuild_TemporalDown_503_NoTag(t *testing.T) {
 }
 
 func TestBuild_RepoNotReady_409(t *testing.T) {
-	tagger := &fakeTagger{err: gitrepo.ErrRepoNotReady}
+	tagger := &fakeTagger{err: sourcecontrol.ErrRepoNotReady}
 	svc := newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{})
 	code, body := postBuild(t, svc, "shop")
 	if code != 409 {

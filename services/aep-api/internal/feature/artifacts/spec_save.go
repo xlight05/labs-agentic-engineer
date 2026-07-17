@@ -28,7 +28,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Spec-gate error codes not owned by designspec (the design codes pass
@@ -215,7 +215,7 @@ func validateSpecBundles(reqFiles, designFiles map[string]string) error {
 
 // specTreeUnchanged reports whether the specs/ subtrees at the two commits are
 // content-identical (path→blob-sha comparison, sha-addressed local reads).
-func (s *artifactService) specTreeUnchanged(ctx context.Context, ref gitrepo.RepoRef, commit, tagCommit string) (bool, error) {
+func (s *artifactService) specTreeUnchanged(ctx context.Context, ref sourcecontrol.RepoRef, commit, tagCommit string) (bool, error) {
 	headEntries, _, err := s.git.Workspace().List(ctx, ref, commit)
 	if err != nil {
 		return false, fmt.Errorf("list tree at %s: %w", commit, err)
@@ -229,8 +229,8 @@ func (s *artifactService) specTreeUnchanged(ctx context.Context, ref gitrepo.Rep
 
 // latestRequirementsTagInfo returns the TagInfo and version of the
 // highest-versioned `v<N>` tag, or ok=false when none exist.
-func latestRequirementsTagInfo(tags []gitrepo.TagInfo) (gitrepo.TagInfo, int, bool) {
-	best, bestN := gitrepo.TagInfo{}, 0
+func latestRequirementsTagInfo(tags []sourcecontrol.TagInfo) (sourcecontrol.TagInfo, int, bool) {
+	best, bestN := sourcecontrol.TagInfo{}, 0
 	for _, t := range tags {
 		if n, ok := parseRequirementsTag(t.Name); ok && n > bestN {
 			best, bestN = t, n

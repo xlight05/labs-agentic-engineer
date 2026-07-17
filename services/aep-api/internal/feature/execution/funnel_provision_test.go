@@ -23,12 +23,12 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // provisionIssue builds an aep:provision gate issue for a dependency name.
-func provisionIssue(number int, depName, gateKind, state string) gitrepo.IssueInfo {
+func provisionIssue(number int, depName, gateKind, state string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{
 		Component: depName,
 		GateKind:  gateKind,
@@ -36,7 +36,7 @@ func provisionIssue(number int, depName, gateKind, state string) gitrepo.IssueIn
 		DesignTag: "design-v1",
 	}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "provision " + depName})
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Provision " + depName,
 		Body:   body,
@@ -71,7 +71,7 @@ func TestFunnel_ProvisionDepDeployed_Dispatches(t *testing.T) {
 	store := newFakeStore()
 	markProvisionDeployed(store, 1, "stripe") // external dep provisioned
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "stripe", taskmeta.GateConfigCollection, "open"),
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -97,7 +97,7 @@ func TestFunnel_ProvisionDepDeployed_ClosedIssue_Dispatches(t *testing.T) {
 	store := newFakeStore()
 	markProvisionDeployed(store, 1, "orders-db") // platform resource provisioned + issue closed
 
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "orders-db", taskmeta.GateResourceProvisioning, "closed"),
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -117,7 +117,7 @@ func TestFunnel_ProvisionDepDeployed_ClosedIssue_Dispatches(t *testing.T) {
 func TestFunnel_ProvisionDepPending_Queues(t *testing.T) {
 	store := newFakeStore()
 	// The provision issue exists but is NOT deployed (no succeeded provision row).
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "orders-db", taskmeta.GateResourceProvisioning, "open"),
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -142,7 +142,7 @@ func TestFunnel_ProvisionIssueMissing_Queues(t *testing.T) {
 	store := newFakeStore()
 	// The design declares a provision dep but no aep:provision issue exists yet —
 	// the consumer must hold (unmet), not dispatch blindly.
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -160,7 +160,7 @@ func TestFunnel_ProvisionIssueMissing_Queues(t *testing.T) {
 
 func TestFunnel_ProvisionDep_ReleasedOnReevaluate(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "orders-db", taskmeta.GateResourceProvisioning, "open"),
 		taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -202,7 +202,7 @@ func TestFunnel_OrgServiceGate_HoldsUntilDeployed(t *testing.T) {
 	store := newFakeStore()
 	// The consumer visibility gate exists but is NOT yet deployed (provider has not
 	// published).
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "billing", taskmeta.GateOrgServiceVisibility, "open"),
 		taskIssue(2, "cart", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -236,7 +236,7 @@ func TestFunnel_OrgServiceGate_NoGateDoesNotBlock(t *testing.T) {
 	store := newFakeStore()
 	// No aep:provision visibility gate for "billing" exists — the org-service is
 	// resolved (or proceed-gated), so it must not hold the consumer.
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(2, "cart", nil, []string{taskmeta.LabelExecute}, "open"),
 	})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -254,7 +254,7 @@ func TestFunnel_OrgServiceGate_NoGateDoesNotBlock(t *testing.T) {
 
 func TestFunnel_ExecuteOnProvisionIssue_NoOp(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "stripe", taskmeta.GateConfigCollection, "open"),
 	})
 	// A stray aep:execute on a provision issue.
@@ -295,7 +295,7 @@ func TestFunnel_ExecuteOnProvisionIssue_NoOp(t *testing.T) {
 // is still consumed and no row is admitted.
 func TestFunnel_ExecuteOnProvisionIssue_NoDuplicateNotice(t *testing.T) {
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		provisionIssue(1, "stripe", taskmeta.GateConfigCollection, "open"),
 	})
 	// A repeated stray aep:execute on a gate that was already explained once.

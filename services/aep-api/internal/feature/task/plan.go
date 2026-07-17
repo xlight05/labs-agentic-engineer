@@ -32,8 +32,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/taskplan"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // planInstruction is the steering directive the BFF composes server-side (§9.1:
@@ -58,7 +58,7 @@ type PlanService struct {
 	keys       AnthropicKeyResolver
 	client     TurnClient
 	issues     IssueClient
-	snapshots  gitrepo.SnapshotProvider
+	snapshots  sourcecontrol.SnapshotProvider
 	skillsRepo SkillsRepoResolver
 	// validationMinter mints the project's single aep:validation Task right
 	// after the plan tap drains — the validation task is born in the SAME
@@ -89,7 +89,7 @@ func (s *PlanService) SetValidationIssueMinter(m validationIssueMinter) {
 
 // NewPlanService wires the plan service. git/snapshots/skillsRepo back the
 // workspace dispatch (snapshot refs + lineage diffs).
-func NewPlanService(repos RepoResolver, versions VersionReader, git GitReader, keys AnthropicKeyResolver, client TurnClient, issues IssueClient, snapshots gitrepo.SnapshotProvider, skillsRepo SkillsRepoResolver) *PlanService {
+func NewPlanService(repos RepoResolver, versions VersionReader, git GitReader, keys AnthropicKeyResolver, client TurnClient, issues IssueClient, snapshots sourcecontrol.SnapshotProvider, skillsRepo SkillsRepoResolver) *PlanService {
 	return &PlanService{repos: repos, versions: versions, git: git, keys: keys, client: client, issues: issues, snapshots: snapshots, skillsRepo: skillsRepo}
 }
 
@@ -142,7 +142,7 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	// the workspace ref, so it needs no owner/name split — only a ready row.
 	repo, err := s.repos.GetRepo(ctx, orgID, projectID)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, ErrProjectRepoNotFound
 		}
 		return nil, err
@@ -173,7 +173,7 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 		return nil, ErrNoAnthropicKey
 	}
 
-	ref, err := gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace ref: %w", err)
 	}
@@ -208,7 +208,7 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	if err != nil {
 		return nil, fmt.Errorf("%w: resolve repo row: %w", ErrSkillsRepoUnavailable, err)
 	}
-	skillsRepoRef := gitrepo.WorkspaceRefFor(orgID, skillsRow, ref.Cred)
+	skillsRepoRef := sourcecontrol.WorkspaceRefFor(orgID, skillsRow, ref.Cred)
 	skillsRef, err := ws.Head(ctx, skillsRepoRef, "")
 	if err != nil {
 		return nil, fmt.Errorf("%w: resolve head: %w", ErrSkillsRepoUnavailable, err)
@@ -319,7 +319,7 @@ func (s *PlanService) assembleExistingTasks(ctx context.Context, orgID, projectI
 // (spec or legacy design — both are real git tags) and the current spec tag so
 // incremental planning reasons over the real change (§6 — Workspace.Diff on
 // the local mirror, was GitHub CompareRefs).
-func (s *PlanService) appendLineageDiffs(ctx context.Context, ref gitrepo.RepoRef, currentSpecTag string, olderTags map[string]bool, files map[string]string) {
+func (s *PlanService) appendLineageDiffs(ctx context.Context, ref sourcecontrol.RepoRef, currentSpecTag string, olderTags map[string]bool, files map[string]string) {
 	if s.git == nil || len(olderTags) == 0 {
 		return
 	}
@@ -355,7 +355,7 @@ func renderPlanContext(files map[string]string) string {
 
 // renderCompare renders a compare result as a compact markdown summary for the
 // planner's context (changed files + hunks).
-func renderCompare(from, to string, cmp *gitrepo.CompareResult) string {
+func renderCompare(from, to string, cmp *sourcecontrol.CompareResult) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Lineage diff: %s → %s\n\n", from, to)
 	fmt.Fprintf(&sb, "Status: %s (%d commit(s), +%d/-%d)\n\n", cmp.Status, cmp.TotalCommits, cmp.AheadBy, cmp.BehindBy)

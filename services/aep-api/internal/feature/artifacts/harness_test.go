@@ -47,11 +47,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -67,7 +67,7 @@ func (s *stubRepoRepo) GetByOrgAndProjectID(context.Context, string, string) (*m
 	return s.rec, nil
 }
 func (s *stubRepoRepo) GetByOrgAndSlug(context.Context, string, string) (*models.GitRepository, error) {
-	return nil, gitrepo.ErrRepoNotFound
+	return nil, sourcecontrol.ErrRepoNotFound
 }
 func (s *stubRepoRepo) ListAllReady(context.Context) ([]models.GitRepository, error) {
 	return nil, nil
@@ -113,24 +113,24 @@ func (stubResolver) Resolve(context.Context, string) (secrets.Credential, error)
 // and BEFORE its push, so seeding the origin there makes that attempt's push a
 // genuine non-fast-forward.
 type hookedWorkspace struct {
-	gitrepo.Workspace
-	BeforeTag      func(spec gitrepo.TagSpec)
+	sourcecontrol.Workspace
+	BeforeTag      func(spec sourcecontrol.TagSpec)
 	BeforeMutateFn func(attempt int)
 }
 
-func (h *hookedWorkspace) Tag(ctx context.Context, ref gitrepo.RepoRef, spec gitrepo.TagSpec) error {
+func (h *hookedWorkspace) Tag(ctx context.Context, ref sourcecontrol.RepoRef, spec sourcecontrol.TagSpec) error {
 	if h.BeforeTag != nil {
 		h.BeforeTag(spec)
 	}
 	return h.Workspace.Tag(ctx, ref, spec)
 }
 
-func (h *hookedWorkspace) Mutate(ctx context.Context, ref gitrepo.RepoRef, fn func(gitrepo.Tx) error, opts gitrepo.CommitOpts) (gitrepo.CommitResult, error) {
+func (h *hookedWorkspace) Mutate(ctx context.Context, ref sourcecontrol.RepoRef, fn func(sourcecontrol.Tx) error, opts sourcecontrol.CommitOpts) (sourcecontrol.CommitResult, error) {
 	if h.BeforeMutateFn == nil {
 		return h.Workspace.Mutate(ctx, ref, fn, opts)
 	}
 	attempt := 0
-	return h.Workspace.Mutate(ctx, ref, func(tx gitrepo.Tx) error {
+	return h.Workspace.Mutate(ctx, ref, func(tx sourcecontrol.Tx) error {
 		attempt++
 		h.BeforeMutateFn(attempt)
 		return fn(tx)
@@ -179,15 +179,15 @@ func newRig(t *testing.T, seed map[string]string) *rig {
 	repoRepo := &stubRepoRepo{rec: rec}
 	engine := workspacetest.NewEngine(t)
 	ws := &hookedWorkspace{Workspace: engine}
-	gitOps := gitrepo.NewGitOpsService(stubResolver{}, ws)
+	gitOps := sourcecontrol.NewGitOpsService(stubResolver{}, ws)
 	svc := NewArtifactService(repoRepo, gitOps)
 
 	return &rig{t: t, svc: svc, remote: remote, engine: engine, ws: ws, rec: rec, org: org, proj: proj}
 }
 
 // workspaceRef derives the same mount RepoRef production resolves for the row.
-func (r *rig) workspaceRef() gitrepo.RepoRef {
-	return gitrepo.WorkspaceRefFor(r.org, r.rec, stubCred{})
+func (r *rig) workspaceRef() sourcecontrol.RepoRef {
+	return sourcecontrol.WorkspaceRefFor(r.org, r.rec, stubCred{})
 }
 
 // mirrorRevParse resolves rev inside the ENGINE's bare mirror (not the origin)

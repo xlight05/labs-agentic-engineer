@@ -16,7 +16,7 @@
 
 // Package artifacts is the requirements + design version store. It holds NO
 // local per-project state: reads are served from the workspace-mounted bare
-// mirror via the gitrepo.Workspace port (at the branch tip for the live draft,
+// mirror via the sourcecontrol.Workspace port (at the branch tip for the live draft,
 // at a `v*` tag for an approved version), a save is the hard semantic gate
 // followed by an annotated tag via Workspace.Tag (no commit — the accepted
 // draft is already on `main` via the Files API), and a discard is one revert
@@ -34,7 +34,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -106,7 +106,7 @@ var commitSHAPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 // CommitSHA when set (validated, never a ref read), else the current HEAD via
 // the workspace mirror (the engine fetches origin first, so an unpinned save
 // never sees a lagging ref).
-func (s *artifactService) resolveSaveCommit(ctx context.Context, ref gitrepo.RepoRef, req SaveRequest) (string, error) {
+func (s *artifactService) resolveSaveCommit(ctx context.Context, ref sourcecontrol.RepoRef, req SaveRequest) (string, error) {
 	if req.CommitSHA != "" {
 		if !commitSHAPattern.MatchString(req.CommitSHA) {
 			return "", fmt.Errorf("%w: %q is not a commit sha", ErrArtifactPathInvalid, req.CommitSHA)
@@ -473,10 +473,10 @@ func (s *artifactService) requireReadyRepo(ctx context.Context, orgID, projectID
 		return nil, fmt.Errorf("get repo: %w", err)
 	}
 	if repoRecord == nil {
-		return nil, gitrepo.ErrRepoNotFound
+		return nil, sourcecontrol.ErrRepoNotFound
 	}
 	if repoRecord.Status != "ready" {
-		return nil, gitrepo.ErrRepoNotReady
+		return nil, sourcecontrol.ErrRepoNotReady
 	}
 	return repoRecord, nil
 }
@@ -484,14 +484,14 @@ func (s *artifactService) requireReadyRepo(ctx context.Context, orgID, projectID
 // readyRef resolves the ready repo row + its workspace-mount address in one
 // step — every entrypoint's resolution (reads, saves, discards). orgID is the
 // authenticated org; the mount path is derived from the row alone (design D6).
-func (s *artifactService) readyRef(ctx context.Context, orgID, projectID string) (*models.GitRepository, gitrepo.RepoRef, error) {
+func (s *artifactService) readyRef(ctx context.Context, orgID, projectID string) (*models.GitRepository, sourcecontrol.RepoRef, error) {
 	repo, err := s.requireReadyRepo(ctx, orgID, projectID)
 	if err != nil {
-		return nil, gitrepo.RepoRef{}, err
+		return nil, sourcecontrol.RepoRef{}, err
 	}
-	ref, err := gitrepo.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
+	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
-		return nil, gitrepo.RepoRef{}, err
+		return nil, sourcecontrol.RepoRef{}, err
 	}
 	return repo, ref, nil
 }

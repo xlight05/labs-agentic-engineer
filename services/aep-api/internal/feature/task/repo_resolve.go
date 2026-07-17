@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -31,7 +31,7 @@ import (
 func resolveProjectRepo(ctx context.Context, repos RepoResolver, orgID, projectID string) (repo *models.GitRepository, owner, name string, err error) {
 	repo, err = repos.GetRepo(ctx, orgID, projectID)
 	if err != nil {
-		if errors.Is(err, gitrepo.ErrRepoNotFound) {
+		if errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 			return nil, "", "", ErrProjectRepoNotFound
 		}
 		return nil, "", "", err

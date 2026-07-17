@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// ensureRepoSvc is a minimal gitrepo.RepoService — only GetRepo is exercised by
+// ensureRepoSvc is a minimal sourcecontrol.RepoService — only GetRepo is exercised by
 // EnsureComponent; the rest panic if reached.
 type ensureRepoSvc struct{ repo *models.GitRepository }
 

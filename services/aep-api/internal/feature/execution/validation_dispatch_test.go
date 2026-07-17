@@ -22,13 +22,13 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // validationTaskIssue builds a project-scoped aep:validation Task issue
 // (operation "validate", no component) that dependsOn the given components.
-func validationTaskIssue(number int, deps []string, extraLabels []string, state string) gitrepo.IssueInfo {
+func validationTaskIssue(number int, deps []string, extraLabels []string, state string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{
 		Operation: "validate",
 		DependsOn: deps,
@@ -37,7 +37,7 @@ func validationTaskIssue(number int, deps []string, extraLabels []string, state 
 	}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "validate the deployed system", Body: "## Report"})
 	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassValidation, taskmeta.OriginSpecPlan), extraLabels...)
-	return gitrepo.IssueInfo{
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Validate the deployed system against its acceptance criteria",
 		Body:   body,
@@ -60,7 +60,7 @@ func newValidationFunnel(store *fakeStore, issues *fakeIssues, design map[string
 func TestFunnel_Validation_HeldUntilDepsDeploy(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{
 		taskIssue(1, "hello-web", nil, nil, "open"), // component task, not yet deployed
 		validationTaskIssue(9, []string{"hello-web"}, []string{taskmeta.LabelExecute}, "open"),
 	})
@@ -100,7 +100,7 @@ func TestFunnel_Validation_HeldUntilDepsDeploy(t *testing.T) {
 func TestEvents_Validation_PRMerged_NoBuild(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeStore()
-	issues := newFakeIssues([]gitrepo.IssueInfo{validationTaskIssue(9, []string{"hello-web"}, nil, "open")})
+	issues := newFakeIssues([]sourcecontrol.IssueInfo{validationTaskIssue(9, []string{"hello-web"}, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	e := newEvents(store, issues, exec)
 

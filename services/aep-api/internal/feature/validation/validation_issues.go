@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -125,7 +125,7 @@ func (s *Service) EnsureValidationIssue(ctx context.Context, orgID, projectID, d
 	if l := taskmeta.SpecTagLabel(designTag); l != "" {
 		labels = append(labels, l)
 	}
-	req := gitrepo.CreateIssueRequest{
+	req := sourcecontrol.CreateIssueRequest{
 		Title:  validationTitle,
 		Body:   body,
 		Labels: labels,

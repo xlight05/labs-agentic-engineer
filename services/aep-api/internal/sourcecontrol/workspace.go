@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package gitrepo
+package sourcecontrol
 
 import (
 	"context"
@@ -29,7 +29,7 @@ import (
 // git-object surface that replaced the per-object REST walkers. The definitions
 // live in internal/platform/gitfs — internal/platform must stay feature-free
 // (internal/arch), so the domain re-exports them as aliases. Consumers keep
-// importing gitrepo.*; `errors.Is` identities are shared with gitfs because
+// importing sourcecontrol.*; `errors.Is` identities are shared with gitfs because
 // alias vars ARE the gitfs values.
 type (
 	// Workspace is the single collapse point for the four read walkers, the

@@ -42,12 +42,12 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -61,24 +61,24 @@ const (
 
 type fakeIssues struct {
 	mu    sync.Mutex
-	byNum map[int]*gitrepo.IssueInfo
+	byNum map[int]*sourcecontrol.IssueInfo
 }
 
-func newIssues(seed ...gitrepo.IssueInfo) *fakeIssues {
-	f := &fakeIssues{byNum: map[int]*gitrepo.IssueInfo{}}
+func newIssues(seed ...sourcecontrol.IssueInfo) *fakeIssues {
+	f := &fakeIssues{byNum: map[int]*sourcecontrol.IssueInfo{}}
 	for i := range seed {
 		cp := seed[i]
 		f.byNum[cp.Number] = &cp
 	}
 	return f
 }
-func (f *fakeIssues) CreateIssue(context.Context, string, string, gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
-	return &gitrepo.IssueResult{Number: 999, URL: "u"}, nil
+func (f *fakeIssues) CreateIssue(context.Context, string, string, sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
+	return &sourcecontrol.IssueResult{Number: 999, URL: "u"}, nil
 }
-func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, want []string) ([]gitrepo.IssueInfo, error) {
+func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, want []string) ([]sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []gitrepo.IssueInfo
+	var out []sourcecontrol.IssueInfo
 	for _, i := range f.byNum {
 		if hasAll(i.Labels, want) {
 			out = append(out, *i)
@@ -86,14 +86,14 @@ func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, want []string) (
 	}
 	return out, nil
 }
-func (f *fakeIssues) GetIssue(_ context.Context, _, _ string, n int) (*gitrepo.IssueInfo, error) {
+func (f *fakeIssues) GetIssue(_ context.Context, _, _ string, n int) (*sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if i := f.byNum[n]; i != nil {
 		cp := *i
 		return &cp, nil
 	}
-	return nil, gitrepo.ErrIssueNotFound
+	return nil, sourcecontrol.ErrIssueNotFound
 }
 func (f *fakeIssues) CommentIssue(context.Context, string, string, int, string) error { return nil }
 func (f *fakeIssues) EditIssueBody(context.Context, string, string, int, string) error {
@@ -168,11 +168,11 @@ func hasAll(have, want []string) bool {
 	return true
 }
 
-func taskIssue(number int, component, state string, extra ...string) gitrepo.IssueInfo {
+func taskIssue(number int, component, state string, extra ...string) sourcecontrol.IssueInfo {
 	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, SpecTag: "req-v1", DesignTag: "design-v1"}
 	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "r", Body: "## Scope"})
 	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), extra...)
-	return gitrepo.IssueInfo{Number: number, Title: "Implement " + component, Body: body, State: state, URL: "https://github.com/acme/widgets/issues/1", Labels: labels}
+	return sourcecontrol.IssueInfo{Number: number, Title: "Implement " + component, Body: body, State: state, URL: "https://github.com/acme/widgets/issues/1", Labels: labels}
 }
 
 // ---- harness ---------------------------------------------------------------
@@ -262,7 +262,7 @@ func TestPlan_InProgress_409(t *testing.T) {
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
 	skillsRow := &models.GitRepository{OrgID: org, ProjectID: models.SkillsRepoSentinelProjectID,
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
-	git := gitrepo.NewGitOpsService(nilCredResolver{}, fx.Engine)
+	git := sourcecontrol.NewGitOpsService(nilCredResolver{}, fx.Engine)
 	plan := task.NewPlanService(fixedRepos{repo: repoRow},
 		fakeVersions{spec: []artifacts.RequirementsVersionInfo{{Tag: "v1"}}}, git,
 		func(context.Context, string) (string, error) { return "sk-key", nil }, bt, iss, fx.Engine,

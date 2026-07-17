@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // fakeComponentEnsurer records EnsureComponent calls and can be configured to
@@ -53,8 +53,8 @@ func (f *fakeComponentEnsurer) callCount() int {
 // adHocIssue is an SRE-agent-style issue: a plain human-authored body, no
 // taskmeta block or labels yet — the state ae_create_issue leaves it in
 // before ae_dispatch_coding_agent ever runs.
-func adHocIssue(number int) gitrepo.IssueInfo {
-	return gitrepo.IssueInfo{
+func adHocIssue(number int) sourcecontrol.IssueInfo {
+	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "service1 times out waiting for service2",
 		Body:   "## Root cause\nservice1 times out waiting for service2 after 5s.",

@@ -34,7 +34,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -390,9 +390,9 @@ func mapTagError(err error) error {
 			})
 		}
 		return &EdgeError{Status: 400, Message: "spec validation failed", Details: details}
-	case errors.Is(err, gitrepo.ErrRepoNotFound):
+	case errors.Is(err, sourcecontrol.ErrRepoNotFound):
 		return &EdgeError{Status: 404, Message: "project repository not found"}
-	case errors.Is(err, gitrepo.ErrRepoNotReady):
+	case errors.Is(err, sourcecontrol.ErrRepoNotReady):
 		return &EdgeError{Status: 409, Message: "project repository is not ready yet"}
 	default:
 		return &EdgeError{Status: 500, Message: "tag spec: " + err.Error()}

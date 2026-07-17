@@ -36,7 +36,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
-	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
 	"github.com/wso2/aep/aep-api/internal/clients/oauth"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -57,7 +56,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/idp"
 	"github.com/wso2/aep/aep-api/internal/feature/organization"
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
@@ -76,6 +74,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -258,12 +258,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		}
 	}
 
-	repoService := gitrepo.NewRepoService(repoRepo, gitHost, credResolver, cfg.GitHubRepoVisibility,
-		gitrepo.WithWorkspaceTrash(trashWorkspaceRepo))
-	gitOpsService := gitrepo.NewGitOpsService(credResolver, workspaceEngine)
+	repoService := sourcecontrol.NewRepoService(repoRepo, gitHost, credResolver, cfg.GitHubRepoVisibility,
+		sourcecontrol.WithWorkspaceTrash(trashWorkspaceRepo))
+	gitOpsService := sourcecontrol.NewGitOpsService(credResolver, workspaceEngine)
 	artifactSvcGit := artifacts.NewArtifactService(repoRepo, gitOpsService)
-	issueService := gitrepo.NewIssueService(repoRepo, gitHost, credResolver)
-	webhookRegService := gitrepo.NewWebhookService(repoRepo, gitHost, repoService, issueService, cfg.WebhookDeliveryURL, cfg.WebhookHMACSecret)
+	issueService := sourcecontrol.NewIssueService(repoRepo, gitHost, credResolver)
+	webhookRegService := sourcecontrol.NewWebhookService(repoRepo, gitHost, repoService, issueService, cfg.WebhookDeliveryURL, cfg.WebhookHMACSecret)
 	credRefreshService := orgcreds.NewCredentialsRefreshService(credResolver)
 	credService := orgcreds.NewCredentialService(db, credStore, minter, cfg.WebhookHMACSecret, cfg.GitHubAppClientID, appClientSecret, gitHost)
 	buildCredService := orgcreds.NewBuildCredentialsService(repoRepo, credResolver, gitSecretClient)
@@ -1118,7 +1118,7 @@ func (d codingDispatcher) DispatchCoding(ctx context.Context, orgID, projectID, 
 
 // prMerger adapts the issue service onto the devflow PRMerger port.
 type prMerger struct {
-	issues gitrepo.IssueService
+	issues sourcecontrol.IssueService
 }
 
 func (m prMerger) MergePR(ctx context.Context, orgID, projectID string, prNumber int) error {
@@ -1146,13 +1146,13 @@ func (a buildSecretStagerAdapter) StageBuildSecret(ctx context.Context, ocOrgID,
 }
 
 // buildGitHost selects the git host implementation named by GIT_PROVIDER and
-// returns it as gitrepo.Host. This is the only place a concrete provider client
+// returns it as sourcecontrol.Host. This is the only place a concrete provider client
 // is constructed; every gitrepo domain service narrows Host to its own
 // capability port. Deliberately a plain switch — NOT a registry or capability
 // framework. A GitLab impl later is one new clients/gitlab package + one case.
 // cfg.Validate() already rejects unknown providers at boot; the default arm is
 // defensive.
-func buildGitHost(cfg config.Config) (gitrepo.Host, error) {
+func buildGitHost(cfg config.Config) (sourcecontrol.Host, error) {
 	switch cfg.GitProvider {
 	case "github":
 		return githubclient.NewClient(), nil

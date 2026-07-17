@@ -47,8 +47,8 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/api"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -56,13 +56,13 @@ const specPrefix = "/api/v1/projects/web/spec"
 
 // --- fakes / harness ---------------------------------------------------------
 
-// fakeCollabRepos is the collab project-ownership oracle (gitrepo.RepoService).
+// fakeCollabRepos is the collab project-ownership oracle (sourcecontrol.RepoService).
 // Only GetRepo is consulted by the collab handlers; the other methods panic.
 type fakeCollabRepos struct {
 	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
 }
 
-var _ gitrepo.RepoService = (*fakeCollabRepos)(nil)
+var _ sourcecontrol.RepoService = (*fakeCollabRepos)(nil)
 
 func (f *fakeCollabRepos) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
 	panic("fakeCollabRepos: ListByOrg not expected")
@@ -87,7 +87,7 @@ func (f *fakeCollabRepos) DeleteRepo(context.Context, string, string) error {
 }
 
 // newReqHarness assembles the real chain around the REAL collab service.
-func newReqHarness(t *testing.T, repos gitrepo.RepoService) *componenttest.Harness {
+func newReqHarness(t *testing.T, repos sourcecontrol.RepoService) *componenttest.Harness {
 	t.Helper()
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		CollabRepo: repos,

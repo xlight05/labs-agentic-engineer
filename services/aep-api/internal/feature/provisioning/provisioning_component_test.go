@@ -39,9 +39,9 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -95,11 +95,11 @@ func (f *cBindings) GetBinding(_ context.Context, _, name string) (*openchoreo.R
 
 type cIssues struct{}
 
-func (cIssues) ListIssues(context.Context, string, string, []string) ([]gitrepo.IssueInfo, error) {
+func (cIssues) ListIssues(context.Context, string, string, []string) ([]sourcecontrol.IssueInfo, error) {
 	return nil, nil
 }
-func (cIssues) CreateIssue(context.Context, string, string, gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
-	return &gitrepo.IssueResult{Number: 1}, nil
+func (cIssues) CreateIssue(context.Context, string, string, sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
+	return &sourcecontrol.IssueResult{Number: 1}, nil
 }
 func (cIssues) CloseIssue(context.Context, string, string, int, string) error   { return nil }
 func (cIssues) CommentIssue(context.Context, string, string, int, string) error { return nil }

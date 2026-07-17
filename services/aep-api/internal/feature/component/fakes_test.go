@@ -27,7 +27,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -47,13 +47,13 @@ func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectNam
 	return s.GetBuildLogsFunc(ctx, orgName, projectName, componentName, buildName)
 }
 
-// --- gitrepo.RepoService (only GetRepo is consulted by TriggerBuild) ----------
+// --- sourcecontrol.RepoService (only GetRepo is consulted by TriggerBuild) ----------
 
 type stubRepoSvc struct {
 	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
 }
 
-var _ gitrepo.RepoService = (*stubRepoSvc)(nil)
+var _ sourcecontrol.RepoService = (*stubRepoSvc)(nil)
 
 func (s *stubRepoSvc) GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
 	if s.GetRepoFunc == nil {

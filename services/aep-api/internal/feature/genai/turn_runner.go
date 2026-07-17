@@ -37,8 +37,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/agentfold"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 const (
@@ -69,12 +69,12 @@ type turnJob struct {
 	nsConversationID string // namespaced agents-service id
 	instruction      string // user instruction + steering + target suffix
 	summary          string // raw user instruction (commit message subject)
-	repoRef          gitrepo.RepoRef
+	repoRef          sourcecontrol.RepoRef
 	baseRef          string
 	skillsRef        string
 	anthropicKey     string
-	author           *gitrepo.GitIdentity
-	committer        *gitrepo.GitIdentity
+	author           *sourcecontrol.GitIdentity
+	committer        *sourcecontrol.GitIdentity
 	// Room-scoped turn (#86 phase 4): non-empty collabRoomID makes the agents
 	// service a live peer of this room (joining with collabToken, the
 	// prompting user's bearer). The doc is the write surface — the runner
@@ -368,7 +368,7 @@ func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 	baseline := make(map[string]string, len(paths))
 	for _, path := range paths {
 		_, blobSHA, err := ws.ReadFile(ctx, job.repoRef, job.baseRef, path)
-		if errors.Is(err, gitrepo.ErrPathNotFound) {
+		if errors.Is(err, sourcecontrol.ErrPathNotFound) {
 			baseline[path] = ""
 			continue
 		}
@@ -378,7 +378,7 @@ func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 		baseline[path] = blobSHA
 	}
 
-	res, err := ws.Mutate(ctx, job.repoRef, func(tx gitrepo.Tx) error {
+	res, err := ws.Mutate(ctx, job.repoRef, func(tx sourcecontrol.Tx) error {
 		// D15: main moved past the turn's base. Overlap = a touched path
 		// whose committed content differs between the turn's base and the
 		// current base (equivalent to changed(base..HEAD) ∩ touched,
@@ -387,7 +387,7 @@ func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 			var conflicts []string
 			for _, path := range paths {
 				_, blobSHA, rerr := tx.Base().Read(path)
-				if errors.Is(rerr, gitrepo.ErrPathNotFound) {
+				if errors.Is(rerr, sourcecontrol.ErrPathNotFound) {
 					blobSHA = ""
 				} else if rerr != nil {
 					return fmt.Errorf("re-read %s at new base: %w", path, rerr)
@@ -410,7 +410,7 @@ func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 			}
 		}
 		return nil
-	}, gitrepo.CommitOpts{
+	}, sourcecontrol.CommitOpts{
 		Message:   commitMessage(job.useCase, job.summary),
 		Author:    job.author,
 		Committer: job.committer,
@@ -421,7 +421,7 @@ func (s *Service) commitFold(ctx context.Context, job turnJob, fold *agentfold.F
 	case errors.As(err, &bm):
 		slog.WarnContext(ctx, "genai: turn failed base-moved", "turn", job.turnID, "paths", bm.Paths)
 		return failedTerminal(turnReasonBaseMoved, "main moved past the turn's base with overlapping changes", bm.Paths)
-	case errors.Is(err, gitrepo.ErrRefNotFastForward):
+	case errors.Is(err, sourcecontrol.ErrRefNotFastForward):
 		return failedTerminal(turnReasonInternal, "commit retries exhausted (origin kept advancing)", nil)
 	case err != nil:
 		slog.WarnContext(ctx, "genai: turn commit failed", "turn", job.turnID, "error", err)
@@ -464,10 +464,10 @@ func (s *Service) finishTurn(ctx context.Context, job turnJob, term TurnTerminal
 // path the agents snapshot walk dropped (non-.md/.dsl/design.json, dot-led
 // segment, binary) must read as exists=false here even though it is in git,
 // or NO_SUCH_FILE parity breaks (agentfold snapshot_filter contract).
-func (s *Service) turnBaseReader(ref gitrepo.RepoRef, baseRef string) agentfold.BaseReader {
+func (s *Service) turnBaseReader(ref sourcecontrol.RepoRef, baseRef string) agentfold.BaseReader {
 	return func(ctx context.Context, path string) ([]byte, bool, error) {
 		content, _, err := s.git.Workspace().ReadFile(ctx, ref, baseRef, path)
-		if errors.Is(err, gitrepo.ErrPathNotFound) {
+		if errors.Is(err, sourcecontrol.ErrPathNotFound) {
 			return nil, false, nil
 		}
 		if err != nil {

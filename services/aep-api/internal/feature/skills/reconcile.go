@@ -41,7 +41,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -72,7 +72,7 @@ func (s *SkillService) ensureSkillsRepo(ctx context.Context, orgID string) (*mod
 	if err == nil {
 		return repo, nil
 	}
-	if !errors.Is(err, gitrepo.ErrRepoNotFound) {
+	if !errors.Is(err, sourcecontrol.ErrRepoNotFound) {
 		return nil, err
 	}
 	// First time for this org — create the bare repo and seed the embedded skills.
