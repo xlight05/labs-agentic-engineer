@@ -1089,7 +1089,7 @@ P5 is deliberately gated on a **deterministic turn/fold divergence regression in
 e2e — because a cross-service behaviour change must not depend on a human noticing. The live e2e is
 confirmation, not the gate.
 
-### 19.5.1 Findings from execution (P0–P2)
+### 19.5.1 Findings from execution (P0–P3)
 
 Corrections that only building the phases produced — recorded so later phases inherit them, not the
 surprise:
@@ -1111,6 +1111,39 @@ surprise:
 - **The 503-vs-panic harness contract is per-domain.** A domain is embedded as a pointer, so an unwired
   domain panics where a pre-migration handler nil-guarded to 503. Preserve exactly what each domain did
   before (the edge assembles an empty domain for the nil-tolerant ones; the strict ones keep failing loud).
+
+**P3 (`organization`) findings** — the largest surprises so far, all corrections to §7's assumptions:
+
+- **Not every `x-go-type` schema is a P1-style split.** §7 lists `organization` inheriting *five*
+  schemas "each costing a wire/domain split." Building it showed the opposite: `ConfigProjection`,
+  `ConfigPatch`, and the three `*Projection`/`*Write` types in `models/org_config.go` are **already pure,
+  OrgID-free, secret-free wire DTOs** — hand-written *because* codegen cannot express their semantics
+  (`ConfigPatch` is `patch.Field[T]` three-state; the projections use pointer-null). They are not gorm
+  entities doing double duty, so there is nothing to *split* — the domain just references them. The
+  P1 split (drop the alias, let `gen` generate, map in `wire.go`) is **unavailable** for them: `gen`
+  cannot generate a `patch.Field`. They stay `x-go-type: models.X` and only need a gen-importable home
+  when `models/` finally dissolves (P9), not a P3 split. **Re-classify a schema before planning its
+  phase: gorm-entity-as-wire-type → split; hand-written-uncodegennable DTO → relocate at P9.**
+- **`igen` had the same leaf violation as `gen`.** The internal S2S contract pointed
+  `x-go-type: orgcreds.RefreshResponse`, so `igen` imported the feature about to become a domain. Fixed
+  as a decoupled preliminary (drop the alias → `igen` generates its own type → the edge S2S handler
+  projects the domain value). The internal contract still `x-go-type`s three `validation.*` types
+  (delivery/P6) — same fix, deferred to that phase.
+- **The org↔SC cycle needs no late-binder.** §19.6 reserved worry for it, but `sourcecontrol`'s host
+  ports already take the kernel `secrets.Credential`, and `sourcecontrol` imports **no** org package
+  (`go list -deps`, not the grep that flagged a comment). `organization` consuming `sourcecontrol`'s
+  `AppInstallOps` is a plain consumer-side port — no cycle, no ordered-binder machinery.
+- **A domain with raw-inline gorm must pay the "gorm payoff" during the fold.** Unlike `sourcecontrol`
+  (whose services already spoke `repositories.RepoRepository`), the four org features query gorm inline
+  in ~10 files, several inside `tx.Begin()` + `pg_advisory_xact_lock` transactions. The domain fence
+  forbids gorm outside `<domain>/repository.go`, so the fold *requires* extracting it. Mirroring
+  `sourcecontrol`, the extracted impl lands in `repositories/` (a **transactional-closure** API —
+  `repo.Tx(fn)` + `tx.AdvisoryLock(key)` — preserves the lock-held-across-validation semantics that no
+  dbtest covers), deferring gorm-into-`organization/repository.go` + the entity move to P9 together.
+- **`platform/secrets` already names an org entity.** `secrets/org_resolver.go` reads
+  `models.OrgCredential` — the same "kernel names a domain entity" shape as P2c's reaper. It is fine only
+  because the entity stays in `models/`; it gets the P2c treatment (a port in the kernel's vocabulary,
+  projected at the root) whenever the entity finally moves.
 
 ### 19.6 Cross-cutting risks
 
