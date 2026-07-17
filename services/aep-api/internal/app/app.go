@@ -979,7 +979,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		// age-reap, DB↔disk orphan reconciliation, quota/LRU eviction. The
 		// global passes self-elect via a non-blocking flock on the mount, so
 		// running one per replica is correct.
-		reaper.New(workspaceEngine, repoRepo, cfg.Workspace),
+		reaper.New(workspaceEngine, reaperRepoLister{repoRepo}, cfg.Workspace),
 		// agent_turns crash-safety sweep (design D17): a stale-heartbeat
 		// running turn is failed and the D18 one-active guard released;
 		// locally-buffered streams get the terminal event.

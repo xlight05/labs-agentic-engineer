@@ -16,7 +16,11 @@
 
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
+)
 
 // Skill is the resolved shape that flows from the `org-skills` repo to the
 // architect input, the tech-lead input, and the console. Mirrors the stored
@@ -57,20 +61,11 @@ const (
 	SkillKindImported = "imported"
 )
 
-// SkillsRepoSentinelProjectID is the reserved git_repositories.project_id under
-// which the per-org skills repo row lives (so it is distinguishable from real
-// project repos). Defined in models — a neutral package — so both the skills
-// feature and gitrepo (which skips it from clone pre-warm; the skills repo is
-// API-read-only, never cloned) reference one constant.
-// See docs/design/skills-repo-storage.md §10.1.
-const SkillsRepoSentinelProjectID = "_skills"
-
-// SkillsRepoDirName is the pinned on-disk directory leaf for the per-org
-// skills repo on the shared workspace volume:
-// repos/<orgId>/_skills/org-skills/. It is deliberately NOT the row's repo_slug: the slug is owner-prefixed
-// (lower(<owner>-<repo>)) and would change if the org reconnects under a
-// different GitHub owner, while the agents service — which never receives a
-// path — derives the skills snapshot dir structurally from this fixed leaf
-// (services/agents/src/shared/snapshot-path.ts). One org, one skills repo,
-// one constant.
-const SkillsRepoDirName = "org-skills"
+// SkillsRepoSentinelProjectID and SkillsRepoDirName re-export the canonical
+// gitfs constants (§11.3 — the workspace-naming vocabulary lives in the package
+// that owns the workspace layout). Kept as models.* for legacy callers until
+// each becomes a domain. See docs/design/skills-repo-storage.md §10.1.
+const (
+	SkillsRepoSentinelProjectID = naming.SkillsRepoSentinelProjectID
+	SkillsRepoDirName           = naming.SkillsRepoDirName
+)

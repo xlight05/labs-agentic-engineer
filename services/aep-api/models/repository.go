@@ -17,10 +17,23 @@
 package models
 
 import (
-	"regexp"
-	"strings"
 	"time"
+
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
 )
+
+// The workspace-naming vocabulary now lives in platform/gitfs (the package that
+// owns the workspace layout — §11.3). These re-exports keep legacy callers
+// compiling as `models.X`; each migrates to naming.X when its feature becomes a
+// domain, and these thin aliases shrink to nothing.
+//
+// aep:migration-shim retires=P9 reason=legacy features still reference models.SlugForURL etc.; they move to naming.* as each feature becomes a domain
+
+// SlugForURL re-exports naming.SlugForURL.
+func SlugForURL(repoURL string) string { return naming.SlugForURL(repoURL) }
+
+// OwnerRepoFromURL re-exports naming.OwnerRepoFromURL.
+func OwnerRepoFromURL(repoURL string) (owner, repo string) { return naming.OwnerRepoFromURL(repoURL) }
 
 // GitRepository stores metadata about a platform-provisioned git repository.
 type GitRepository struct {
@@ -58,53 +71,9 @@ type GitRepository struct {
 	// migration and no longer modeled.
 }
 
-// repoURLPattern extracts `<owner>/<repo>` from a GitHub HTTPS URL.
-// Matches both `https://github.com/owner/repo` and `https://github.com/owner/repo.git`.
-var repoURLPattern = regexp.MustCompile(`github\.com/([^/]+/[^/]+?)(?:\.git)?/?$`)
-
-// SlugForURL returns the canonical RepoSlug for a GitHub HTTPS URL — the
-// `owner/repo` path lowercased with `/` replaced by `-`. Returns empty string
-// if the URL doesn't match the GitHub HTTPS pattern (caller decides whether
-// to backfill or fail).
-//
-// Mirrors phase2.md §9.1: `slug = strings.ToLower(strings.ReplaceAll(repoFullName, "/", "-"))`.
-func SlugForURL(repoURL string) string {
-	m := repoURLPattern.FindStringSubmatch(repoURL)
-	if len(m) < 2 {
-		return ""
-	}
-	return strings.ToLower(strings.ReplaceAll(m[1], "/", "-"))
-}
-
 // WorkspaceSlug returns the on-disk directory leaf for this repo row on the
-// shared workspace volume (repos/<org>/<project>/<slug>/ — design D6: a pure
-// function of the DB row). For the per-org skills repo the leaf is the pinned
-// constant SkillsRepoDirName — the agents service derives the skills snapshot
-// path structurally from that fixed name and never receives a path or slug
-// for it on the wire. For everything else it is RepoSlug, backfilled from the
-// URL for pre-phase2 rows.
+// shared workspace volume — a pure function of the row's identity, delegating to
+// the canonical naming.WorkspaceSlug.
 func (r *GitRepository) WorkspaceSlug() string {
-	if r.ProjectID == SkillsRepoSentinelProjectID {
-		return SkillsRepoDirName
-	}
-	if r.RepoSlug != "" {
-		return r.RepoSlug
-	}
-	return SlugForURL(r.RepoURL)
-}
-
-// OwnerRepoFromURL extracts (owner, repo) from a GitHub HTTPS URL, preserving
-// the original case (unlike SlugForURL which lowercases). Returns empty
-// strings if the URL doesn't match the GitHub HTTPS pattern. Used by the
-// artifact-store v2 save flow to address the repo over the GitHub REST API.
-func OwnerRepoFromURL(repoURL string) (owner, repo string) {
-	m := repoURLPattern.FindStringSubmatch(repoURL)
-	if len(m) < 2 {
-		return "", ""
-	}
-	parts := strings.SplitN(m[1], "/", 2)
-	if len(parts) != 2 {
-		return "", ""
-	}
-	return parts[0], parts[1]
+	return naming.WorkspaceSlug(r.ProjectID, r.RepoSlug, r.RepoURL)
 }

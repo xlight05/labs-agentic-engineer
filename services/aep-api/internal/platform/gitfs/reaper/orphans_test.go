@@ -21,17 +21,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
 )
 
 // TestOrphanReconcile is the pass-3 matrix: DB-known dirs and graced young
 // dirs are kept, stale unknown dirs are trashed, and _skills subtrees belong
 // to any org that owns at least one row.
 func TestOrphanReconcile(t *testing.T) {
-	rows := []models.GitRepository{
-		{OrgID: "o1", ProjectID: "p1", RepoSlug: "r1"},
+	// The reaper takes coordinates, not rows: WorkspaceSlug is computed at the
+	// composition root (here via gitfs, the same source), so the reaper package
+	// never names the GitRepository entity.
+	rows := []RepoCoordinate{
+		{OrgID: "o1", ProjectID: "p1", WorkspaceSlug: "r1"},
 		// A slug-less row exercises the SlugForURL backfill.
-		{OrgID: "o1", ProjectID: "p4", RepoURL: "https://github.com/acme/from-url.git"},
+		{OrgID: "o1", ProjectID: "p4", WorkspaceSlug: naming.WorkspaceSlug("p4", "", "https://github.com/acme/from-url.git")},
 	}
 	r, root := newSyntheticReaper(t, testCfg(), staticLister(rows)) // grace = 2×1min
 

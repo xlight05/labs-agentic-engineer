@@ -47,16 +47,24 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
-	"github.com/wso2/aep/aep-api/models"
 )
 
-// RepoLister is the reaper-side port onto repositories.RepoRepository: every
-// repo row across all orgs and statuses. Pending/error rows count — their
-// on-disk dirs must not be misread as orphans. Defined here (not imported
-// from repositories) so the platform package states exactly the one method
-// it needs; the concrete repository satisfies it structurally.
+// RepoCoordinate is the reaper's own view of a repo row: just its on-disk
+// identity. Deliberately NOT models.GitRepository — the reaper is a kernel
+// package, and naming the domain entity would be the kernel depending on a
+// domain. It needs three things to decide whether a directory is an orphan;
+// this names exactly those. The composition root projects the DB rows onto it.
+type RepoCoordinate struct {
+	OrgID         string
+	ProjectID     string
+	WorkspaceSlug string
+}
+
+// RepoLister is the reaper-side port: every repo coordinate across all orgs and
+// statuses. Pending/error rows count — their on-disk dirs must not be misread as
+// orphans. The concrete repository is adapted onto it at the composition root.
 type RepoLister interface {
-	ListAll(ctx context.Context) ([]models.GitRepository, error)
+	ListAll(ctx context.Context) ([]RepoCoordinate, error)
 }
 
 // leaderLockName is the root-level flock file serializing the global passes

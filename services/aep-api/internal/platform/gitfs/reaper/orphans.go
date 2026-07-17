@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
 )
 
 // reconcileOrphans is pass 3 (leader-only): set-difference the on-disk
@@ -44,16 +44,15 @@ func (r *Reaper) reconcileOrphans(ctx context.Context) error {
 	}
 	known := make(map[string]bool, len(rows)) // "org/project/slug" path keys
 	orgs := make(map[string]bool)
-	for i := range rows {
-		row := &rows[i]
-		known[row.OrgID+"/"+row.ProjectID+"/"+row.WorkspaceSlug()] = true
+	for _, row := range rows {
+		known[row.OrgID+"/"+row.ProjectID+"/"+row.WorkspaceSlug] = true
 		orgs[row.OrgID] = true
 	}
 
 	grace := 2 * r.cfg.ReapInterval
 	now := time.Now()
 	walkErr := r.walkRepoDirs(ctx, func(orgID, projectID, repoSlug, slugDir string) {
-		if projectID == models.SkillsRepoSentinelProjectID && orgs[orgID] {
+		if projectID == naming.SkillsRepoSentinelProjectID && orgs[orgID] {
 			return // the org exists → it owns its whole _skills subtree
 		}
 		if known[orgID+"/"+projectID+"/"+repoSlug] {

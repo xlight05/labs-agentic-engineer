@@ -27,7 +27,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // testCfg is the baseline knob set: minute-scale interval (grace = 2min),
@@ -43,14 +42,14 @@ func testCfg() config.WorkspaceConfig {
 }
 
 // staticLister is a fixed-rows RepoLister.
-type staticLister []models.GitRepository
+type staticLister []RepoCoordinate
 
-func (l staticLister) ListAll(context.Context) ([]models.GitRepository, error) { return l, nil }
+func (l staticLister) ListAll(context.Context) ([]RepoCoordinate, error) { return l, nil }
 
 // errLister always fails — for the pass-isolation test.
 type errLister struct{ err error }
 
-func (l errLister) ListAll(context.Context) ([]models.GitRepository, error) { return nil, l.err }
+func (l errLister) ListAll(context.Context) ([]RepoCoordinate, error) { return nil, l.err }
 
 // newSyntheticReaper builds a reaper over a fresh workspace root (no real
 // origin — dirs are laid out by hand with the mk* helpers below).

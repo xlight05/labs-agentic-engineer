@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/ops"
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -63,6 +64,36 @@ func (b opsExecutionBridge) LatestExecutionPerKind(ctx context.Context, orgID, r
 			continue
 		}
 		out[kind] = ops.ExecutionFact{Kind: e.Kind, Status: e.Status, EndedAt: e.EndedAt}
+	}
+	return out, nil
+}
+
+// reaperRepoLister projects git_repositories rows onto the reaper's coordinate
+// port, so the kernel reaper never names the GitRepository entity.
+//
+// This is a permanent composition-root adapter, not a migration bridge: the
+// reaper is a kernel package and will always take its own vocabulary, while the
+// repository will always speak rows. It lives beside the ops bridge because both
+// are the same pattern — the root translating between a consumer's port and a
+// provider's model.
+type reaperRepoLister struct {
+	repos interface {
+		ListAll(ctx context.Context) ([]models.GitRepository, error)
+	}
+}
+
+func (l reaperRepoLister) ListAll(ctx context.Context) ([]reaper.RepoCoordinate, error) {
+	rows, err := l.repos.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]reaper.RepoCoordinate, len(rows))
+	for i := range rows {
+		out[i] = reaper.RepoCoordinate{
+			OrgID:         rows[i].OrgID,
+			ProjectID:     rows[i].ProjectID,
+			WorkspaceSlug: rows[i].WorkspaceSlug(),
+		}
 	}
 	return out, nil
 }
