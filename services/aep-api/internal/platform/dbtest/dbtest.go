@@ -32,7 +32,7 @@
 //     the real production migrator into a template database. The container is
 //     fully hermetic — a run depends on nothing but Docker (no compose stack, no
 //     :5433, no shared server to collide on). Its schema is byte-for-byte the
-//     production schema, because it is built by the same migrations.RunAll the
+//     production schema, because it is built by the same migrate.RunAll the
 //     app runs at boot.
 //   - Per test: pgtestdb issues `CREATE DATABASE … TEMPLATE <template>` — a
 //     Postgres file-copy in single-digit ms — so each test gets its own
@@ -66,8 +66,7 @@ import (
 	// template/base connections with (Config.DriverName below).
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/wso2/aep/aep-api/internal/database"
-	"github.com/wso2/aep/aep-api/internal/database/migrations"
+	"github.com/wso2/aep/aep-api/internal/migrate"
 )
 
 const (
@@ -205,7 +204,7 @@ type runAllMigrator struct{}
 
 // Migrate provisions the template exactly as the app provisions a fresh DB at
 // boot: AutoMigrate the base models, self-heal grants, then run every ordered
-// migration via migrations.RunAll. pgtestdb calls this once, on the empty
+// migration via migrate.RunAll. pgtestdb calls this once, on the empty
 // template database it just created.
 func (runAllMigrator) Migrate(ctx context.Context, sqlDB *sql.DB, _ pgtestdb.Config) error {
 	db, err := gorm.Open(gormpostgres.New(gormpostgres.Config{Conn: sqlDB}), &gorm.Config{
@@ -215,11 +214,11 @@ func (runAllMigrator) Migrate(ctx context.Context, sqlDB *sql.DB, _ pgtestdb.Con
 	if err != nil {
 		return fmt.Errorf("open gorm on template: %w", err)
 	}
-	if err := db.AutoMigrate(database.BaseModels()...); err != nil {
+	if err := db.AutoMigrate(migrate.BaseModels()...); err != nil {
 		return fmt.Errorf("auto-migrate base models: %w", err)
 	}
-	_ = migrations.RunBootstrapGrants(ctx, db) // non-fatal self-heal, as in main
-	if err := migrations.RunAll(ctx, db, migrationTier); err != nil {
+	_ = migrate.RunBootstrapGrants(ctx, db) // non-fatal self-heal, as in main
+	if err := migrate.RunAll(ctx, db, migrationTier); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 	return nil

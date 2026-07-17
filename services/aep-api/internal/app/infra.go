@@ -29,7 +29,8 @@ import (
 	k8sclient "github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/credentials"
-	"github.com/wso2/aep/aep-api/internal/database"
+	"github.com/wso2/aep/aep-api/internal/migrate"
+	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/seed"
 )
@@ -59,7 +60,7 @@ type Infra struct {
 func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 	// Database + first-boot schema. Opened here (not in main) so main is just
 	// Resolve → Assemble → serve, and Assemble never touches the DB at build time.
-	db, err := database.Open(cfg.DatabaseURL, database.BaseModels()...)
+	db, err := database.Open(cfg.DatabaseURL, migrate.BaseModels()...)
 	if err != nil {
 		return Infra{}, fmt.Errorf("database init: %w", err)
 	}
