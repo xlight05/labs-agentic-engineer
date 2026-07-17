@@ -56,6 +56,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 const (
@@ -179,7 +180,7 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 	credSvc := orgcreds.NewCredentialService(db, store, minter, configEnvSec, "", "", nil).WithGitHubAPIBase(gh.URL)
 	disconnectSvc := orgcreds.NewOrgDisconnectService(db, credSvc, nil)
 	bearerSvc := orgcreds.NewBearerService("state-key", time.Minute)
-	idpSvc := idp.NewIDPService(db, thunder, idp.PlatformIDPConfig{Issuer: platformIss, JWKSURL: platformJWKS})
+	idpSvc := idp.NewIDPService(repositories.NewIDPRepository(db), repositories.NewOrganizationRepository(db), thunder, idp.PlatformIDPConfig{Issuer: platformIss, JWKSURL: platformJWKS})
 
 	svc := orgconfig.NewService(
 		anthropicSvc, credSvc, disconnectSvc, bearerSvc, idpSvc,
