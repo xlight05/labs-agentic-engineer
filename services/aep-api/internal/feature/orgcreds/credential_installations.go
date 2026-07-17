@@ -31,11 +31,10 @@ import (
 	"net/http"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ----------------------------------------------------------------------------
@@ -46,13 +45,12 @@ import (
 // installation_id. Used by the BFF webhook receiver to route App-mode
 // events. NotFoundError if no row matches.
 func (s *CredentialService) OrgIDByInstallationID(ctx context.Context, installationID int64) (string, error) {
-	var row models.OrgCredential
-	err := s.db.WithContext(ctx).Where("installation_id = ?", installationID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", &NotFoundError{What: fmt.Sprintf("installation %d", installationID)}
-	}
+	row, err := s.repo.GetByInstallationID(ctx, installationID)
 	if err != nil {
 		return "", err
+	}
+	if row == nil {
+		return "", &NotFoundError{What: fmt.Sprintf("installation %d", installationID)}
 	}
 	return row.OcOrgID, nil
 }
@@ -69,29 +67,18 @@ func (s *CredentialService) OrgIDByRepoFullName(ctx context.Context, fullName st
 	if fullName == "" {
 		return "", &NotFoundError{What: "empty repo full_name"}
 	}
-	// INT-2 (routing leg): match the canonical clone URL EXACTLY, not with an
-	// unanchored `LIKE '%/owner/repo'`. The leading-`%` wildcard matched any
-	// host (and any path suffix), so a malicious or colliding repo_url could
-	// route a webhook to the wrong org. git_repositories stores the canonical
-	// `https://github.com/<owner>/<repo>` (optionally `.git`); match both exact
-	// shapes, anchored on host+owner+repo. No `LIKE`, no leading wildcard.
-	var row struct {
-		OrgID string `gorm:"column:org_id"`
-	}
-	canonical := "https://github.com/" + fullName
-	err := s.db.WithContext(ctx).
-		Table("git_repositories").
-		Select("org_id").
-		Where("repo_url = ? OR repo_url = ?", canonical, canonical+".git").
-		Limit(1).
-		Scan(&row).Error
+	// INT-2 (routing leg): resolve against the canonical clone URL, anchored on
+	// host+owner+repo (no unanchored LIKE, which could route a webhook to the
+	// wrong org). The anchored match lives in the repository — see
+	// OrgCredentialRepository.OrgIDByRepoURL.
+	orgID, err := s.repo.OrgIDByRepoURL(ctx, fullName)
 	if err != nil {
 		return "", fmt.Errorf("repo lookup: %w", err)
 	}
-	if row.OrgID == "" {
+	if orgID == "" {
 		return "", &NotFoundError{What: fmt.Sprintf("repo %s", fullName)}
 	}
-	return row.OrgID, nil
+	return orgID, nil
 }
 
 // SuspendInstallation flips the org_credentials row bound to installationID
@@ -106,75 +93,57 @@ func (s *CredentialService) UnsuspendInstallation(ctx context.Context, installat
 }
 
 func (s *CredentialService) setInstallationStatus(ctx context.Context, installationID int64, status string) error {
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, fmt.Sprintf("install:%d", installationID)).Error; err != nil {
-		return err
-	}
-	res := tx.Model(&models.OrgCredential{}).
-		Where("installation_id = ?", installationID).
-		Update("status", status)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		// 200 idempotent — webhooks may arrive before the connect callback
-		// has finished; missing row is recoverable via the next connect.
-		_ = tx.Commit()
-		return nil
-	}
-	return tx.Commit().Error
+	return s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		if err := tx.AdvisoryLock(fmt.Sprintf("install:%d", installationID)); err != nil {
+			return err
+		}
+		// 200 idempotent — a no-op status update when no row matches (webhooks
+		// may arrive before the connect callback has finished; the missing row
+		// is recoverable via the next connect).
+		return tx.UpdateStatusByInstallationID(installationID, status)
+	})
 }
 
 // MergeSelectedRepos applies an installation_repositories.added/removed
 // JSON merge under the org-scoped lock. delta carries lists of full names
 // to add/remove (intersection vs. current state determines the new set).
 func (s *CredentialService) MergeSelectedRepos(ctx context.Context, installationID int64, added, removed []string) error {
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	var row models.OrgCredential
-	if err := tx.Where("installation_id = ?", installationID).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	return s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		// Read the row (by installation_id) BEFORE taking the org lock, exactly
+		// as the inline transaction did — the lock is keyed on the org handle we
+		// learn from that read.
+		row, err := tx.GetByInstallationID(installationID)
+		if err != nil {
+			return err
+		}
+		if row == nil {
 			return &NotFoundError{What: fmt.Sprintf("installation %d", installationID)}
 		}
-		return err
-	}
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org:"+row.OcOrgID).Error; err != nil {
-		return err
-	}
+		if err := tx.AdvisoryLock("org:" + row.OcOrgID); err != nil {
+			return err
+		}
 
-	current := map[string]bool{}
-	for _, r := range row.SelectedRepos {
-		current[r] = true
-	}
-	for _, r := range removed {
-		delete(current, r)
-	}
-	for _, r := range added {
-		current[r] = true
-	}
-	merged := make([]string, 0, len(current))
-	for r := range current {
-		merged = append(merged, r)
-	}
+		current := map[string]bool{}
+		for _, r := range row.SelectedRepos {
+			current[r] = true
+		}
+		for _, r := range removed {
+			delete(current, r)
+		}
+		for _, r := range added {
+			current[r] = true
+		}
+		merged := make([]string, 0, len(current))
+		for r := range current {
+			merged = append(merged, r)
+		}
 
-	now := time.Now().UTC()
-	if err := tx.Model(&models.OrgCredential{}).
-		Where("oc_org_id = ?", row.OcOrgID).
-		Updates(map[string]any{
+		now := time.Now().UTC()
+		return tx.UpdateColumns(row.OcOrgID, map[string]any{
 			"selected_repos":    models.JSONStringList(merged),
 			"last_validated_at": now,
-		}).Error; err != nil {
-		return err
-	}
-	return tx.Commit().Error
+		})
+	})
 }
 
 // fetchInstallation mints an App JWT and reads /app/installations/{id} to
@@ -298,16 +267,8 @@ func (s *CredentialService) ResolveUserInstallations(ctx context.Context, ocOrgI
 	// don't leak "install X is owned by some other AEP tenant" to this
 	// user. Installs bound to ocOrgID itself (re-connect / re-confirm)
 	// are kept.
-	type boundRow struct {
-		InstallationID int64
-		OcOrgID        string
-	}
-	var bound []boundRow
-	if err := s.db.WithContext(ctx).
-		Model(&models.OrgCredential{}).
-		Where("installation_id IS NOT NULL AND status IN ?", []string{"active", "suspended"}).
-		Select("installation_id, oc_org_id").
-		Find(&bound).Error; err != nil {
+	bound, err := s.repo.ListBoundInstallations(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("scan bound installs: %w", err)
 	}
 	boundElsewhere := make(map[int64]struct{}, len(bound))

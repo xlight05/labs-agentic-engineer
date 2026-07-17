@@ -22,8 +22,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
@@ -51,7 +49,6 @@ var ErrOrgNotFound = errors.New("org credentials: not found")
 // Severing the credential makes the org's issues inert to the webhook router
 // (no valid delivery), which is the disconnect effect.
 type OrgDisconnectService struct {
-	db       *gorm.DB
 	credSvc  *CredentialService
 	issueSvc sourcecontrol.IssueService
 	// workspaceTrash, when set (from the composition root), is Phase F:
@@ -63,12 +60,10 @@ type OrgDisconnectService struct {
 
 // NewOrgDisconnectService constructs the cascade orchestrator.
 func NewOrgDisconnectService(
-	db *gorm.DB,
 	credSvc *CredentialService,
 	issueSvc sourcecontrol.IssueService,
 ) *OrgDisconnectService {
 	return &OrgDisconnectService{
-		db:       db,
 		credSvc:  credSvc,
 		issueSvc: issueSvc,
 	}

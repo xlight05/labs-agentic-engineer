@@ -31,17 +31,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // CredentialService is the orchestration layer behind /internal/credentials/orgs/...
@@ -72,7 +70,7 @@ type AnthropicSecretCleaner interface {
 }
 
 type CredentialService struct {
-	db        *gorm.DB
+	repo      repositories.OrgCredentialRepository
 	store     secrets.OpenBaoStore
 	minter    *secrets.AppTokenMinter
 	githubAPI string // "https://api.github.com" by default; overridden in tests.
@@ -120,7 +118,7 @@ type CredentialService struct {
 // githubClient is used by the discover-then-bind path (ListAppInstallations,
 // ExchangeOAuthCode, GetUserInstallations); nil disables the bind path.
 func NewCredentialService(
-	db *gorm.DB,
+	repo repositories.OrgCredentialRepository,
 	store secrets.OpenBaoStore,
 	minter *secrets.AppTokenMinter,
 	envWebhookSecret string,
@@ -128,7 +126,7 @@ func NewCredentialService(
 	githubClient sourcecontrol.AppInstallOps,
 ) *CredentialService {
 	return &CredentialService{
-		db:               db,
+		repo:             repo,
 		store:            store,
 		minter:           minter,
 		envWebhookSecret: envWebhookSecret,
@@ -270,15 +268,14 @@ func (s *CredentialService) WithGitHubAPIBase(base string) *CredentialService {
 // ----------------------------------------------------------------------------
 
 func (s *CredentialService) fetchRow(ctx context.Context, ocOrgID string) (*models.OrgCredential, error) {
-	var row models.OrgCredential
-	err := s.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, &NotFoundError{What: fmt.Sprintf("org_credentials.%s", ocOrgID)}
-	}
+	row, err := s.repo.GetByOrg(ctx, ocOrgID)
 	if err != nil {
 		return nil, err
 	}
-	return &row, nil
+	if row == nil {
+		return nil, &NotFoundError{What: fmt.Sprintf("org_credentials.%s", ocOrgID)}
+	}
+	return row, nil
 }
 
 func generateRandomHex(byteLen int) (string, error) {

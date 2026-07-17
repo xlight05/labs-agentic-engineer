@@ -22,15 +22,13 @@ package orgcreds
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // Connect creates or replaces the credential record for ocOrgID. PAT mode
@@ -43,46 +41,60 @@ import (
 // 400 (ValidationError) for any GitHub-side validation failure — wrapped
 // with a cause code that the UI maps to a specific error message.
 func (s *CredentialService) Connect(ctx context.Context, ocOrgID string, req ConnectRequest) (*Projection, error) {
-	// Acquire org-scoped advisory lock for the duration of the txn so the
-	// callback handler and a concurrent webhook (installation.created) can't
-	// race the INSERT/UPDATE.
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, fmt.Errorf("connect: begin tx: %w", tx.Error)
-	}
-	defer tx.Rollback() //nolint:errcheck — committed on success
+	// finalize carries the post-commit work (SM-API mirror, projection
+	// re-fetch, success logging) for the chosen kind. It runs AFTER repo.Tx
+	// commits and releases the advisory lock — exactly the commit-then-mirror
+	// ordering the inline transaction used.
+	var finalize func() (*Projection, error)
+	err := s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		// Acquire org-scoped advisory lock for the duration of the txn so the
+		// callback handler and a concurrent webhook (installation.created) can't
+		// race the INSERT/UPDATE.
+		if err := tx.AdvisoryLock("org:" + ocOrgID); err != nil {
+			return fmt.Errorf("connect: org lock: %w", err)
+		}
 
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org:"+ocOrgID).Error; err != nil {
-		return nil, fmt.Errorf("connect: org lock: %w", err)
-	}
+		existing, err := tx.GetByOrg(ocOrgID)
+		if err != nil {
+			return fmt.Errorf("connect: lookup existing: %w", err)
+		}
+		hadRow := existing != nil
 
-	var existing models.OrgCredential
-	hadRow := false
-	err := tx.Where("oc_org_id = ?", ocOrgID).First(&existing).Error
-	switch {
-	case err == nil:
-		hadRow = true
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		hadRow = false
-	default:
-		return nil, fmt.Errorf("connect: lookup existing: %w", err)
-	}
+		if hadRow && existing.Status == "active" && existing.Kind != req.Kind {
+			return &ConflictError{Reason: fmt.Sprintf("active %s connection exists; disconnect before connecting %s", existing.Kind, req.Kind)}
+		}
 
-	if hadRow && existing.Status == "active" && existing.Kind != req.Kind {
-		return nil, &ConflictError{Reason: fmt.Sprintf("active %s connection exists; disconnect before connecting %s", existing.Kind, req.Kind)}
+		switch req.Kind {
+		case "user-pat":
+			fn, err := s.connectPAT(ctx, tx, ocOrgID, hadRow, existing, req)
+			if err != nil {
+				return err
+			}
+			finalize = fn
+			return nil
+		case "app-installation":
+			fn, err := s.connectApp(ctx, tx, ocOrgID, hadRow, existing, req)
+			if err != nil {
+				return err
+			}
+			finalize = fn
+			return nil
+		default:
+			return &ValidationError{Code: "kind_invalid", Message: fmt.Sprintf("unknown kind %q", req.Kind)}
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	switch req.Kind {
-	case "user-pat":
-		return s.connectPAT(ctx, tx, ocOrgID, hadRow, &existing, req)
-	case "app-installation":
-		return s.connectApp(ctx, tx, ocOrgID, hadRow, &existing, req)
-	default:
-		return nil, &ValidationError{Code: "kind_invalid", Message: fmt.Sprintf("unknown kind %q", req.Kind)}
-	}
+	return finalize()
 }
 
-func (s *CredentialService) connectPAT(ctx context.Context, tx *gorm.DB, ocOrgID string, hadRow bool, existing *models.OrgCredential, req ConnectRequest) (*Projection, error) {
+// connectPAT runs inside Connect's transaction (the org advisory lock is held).
+// It does GitHub validation + the credential-store write + the row write, then
+// returns the finalize closure Connect calls AFTER the commit: the SM-API
+// mirror, the post-commit projection re-fetch (REPLACE), and the success log —
+// preserving the original commit-then-mirror ordering.
+func (s *CredentialService) connectPAT(ctx context.Context, tx repositories.OrgCredentialTx, ocOrgID string, hadRow bool, existing *models.OrgCredential, req ConnectRequest) (func() (*Projection, error), error) {
 	identity, err := s.validatePAT(ctx, req.PAT, req.GitHubLogin)
 	if err != nil {
 		return nil, err
@@ -123,15 +135,14 @@ func (s *CredentialService) connectPAT(ctx context.Context, tx *gorm.DB, ocOrgID
 				{Secret: secret, AddedAt: now},
 			},
 		}
-		if err := tx.Create(&row).Error; err != nil {
+		if err := tx.Create(&row); err != nil {
 			return nil, fmt.Errorf("connect: insert: %w", err)
 		}
-		if err := tx.Commit().Error; err != nil {
-			return nil, fmt.Errorf("connect: commit: %w", err)
-		}
-		slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login)
-		s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
-		return projectionFromRow(&row), nil
+		return func() (*Projection, error) {
+			slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login)
+			s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
+			return projectionFromRow(&row), nil
+		}, nil
 	}
 
 	// REPLACE — preserve webhook_secrets, possibly record identity drift.
@@ -176,20 +187,19 @@ func (s *CredentialService) connectPAT(ctx context.Context, tx *gorm.DB, ocOrgID
 		}
 		updates["webhook_secrets"] = models.WebhookSecrets{{Secret: secret, AddedAt: now}}
 	}
-	if err := tx.Model(&models.OrgCredential{}).Where("oc_org_id = ?", ocOrgID).Updates(updates).Error; err != nil {
+	if err := tx.UpdateColumns(ocOrgID, updates); err != nil {
 		return nil, fmt.Errorf("connect: update: %w", err)
 	}
-	if err := tx.Commit().Error; err != nil {
-		return nil, fmt.Errorf("connect: commit: %w", err)
-	}
-	// Reload for accurate projection.
-	row, err := s.fetchRow(ctx, ocOrgID)
-	if err != nil {
-		return nil, err
-	}
-	slog.InfoContext(ctx, "secrets.replaced", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login, "drift", identity.Login != existing.IdentityLogin)
-	s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
-	return projectionFromRow(row), nil
+	return func() (*Projection, error) {
+		// Reload for accurate projection.
+		row, err := s.fetchRow(ctx, ocOrgID)
+		if err != nil {
+			return nil, err
+		}
+		slog.InfoContext(ctx, "secrets.replaced", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login, "drift", identity.Login != existing.IdentityLogin)
+		s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
+		return projectionFromRow(row), nil
+	}, nil
 }
 
 // validatePAT runs the full PAT validation chain (phase2.md §6.5) WITHOUT
@@ -263,12 +273,12 @@ type SMAPISeedBundle struct {
 //
 // Drives the local-dev repair path. See deployments/scripts/repair-secrets.sh.
 func (s *CredentialService) PrepareSMAPISeed(ctx context.Context, ocOrgID string) (*SMAPISeedBundle, error) {
-	var row models.OrgCredential
-	if err := s.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
+	row, err := s.repo.GetByOrg(ctx, ocOrgID)
+	if err != nil {
 		return nil, fmt.Errorf("credentials seed: load row: %w", err)
+	}
+	if row == nil {
+		return nil, nil
 	}
 	if row.Kind != "user-pat" || row.Status != "active" {
 		return nil, nil
@@ -288,7 +298,11 @@ func (s *CredentialService) PrepareSMAPISeed(ctx context.Context, ocOrgID string
 	}, nil
 }
 
-func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID string, hadRow bool, existing *models.OrgCredential, req ConnectRequest) (*Projection, error) {
+// connectApp runs inside Connect's transaction (the org advisory lock is
+// held). It takes the install-scoped advisory lock, validates the installation
+// against GitHub, writes the row, and returns the finalize closure Connect
+// calls AFTER the commit (post-commit projection re-fetch + success log).
+func (s *CredentialService) connectApp(ctx context.Context, tx repositories.OrgCredentialTx, ocOrgID string, hadRow bool, existing *models.OrgCredential, req ConnectRequest) (func() (*Projection, error), error) {
 	if req.InstallationID == 0 {
 		return nil, &ValidationError{Code: "installation_id_missing", Message: "installationId is required"}
 	}
@@ -297,28 +311,27 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 	}
 
 	// Race-fix advisory lock keyed on installation_id (phase2.md §6.4).
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, fmt.Sprintf("install:%d", req.InstallationID)).Error; err != nil {
+	if err := tx.AdvisoryLock(fmt.Sprintf("install:%d", req.InstallationID)); err != nil {
 		return nil, fmt.Errorf("connect: install lock: %w", err)
 	}
 
 	// Cross-org install check: if the same installation_id already maps
 	// to a different ocOrgId, refuse.
-	var clash models.OrgCredential
-	err := tx.Where("installation_id = ?", req.InstallationID).First(&clash).Error
-	switch {
-	case err == nil:
+	clash, err := tx.GetByInstallationID(req.InstallationID)
+	if err != nil {
+		return nil, fmt.Errorf("connect: install lookup: %w", err)
+	}
+	if clash != nil {
 		if clash.OcOrgID != ocOrgID {
 			return nil, &ConflictError{Reason: fmt.Sprintf("installation %d already bound to org %s", req.InstallationID, clash.OcOrgID)}
 		}
 		if clash.Status == "active" && hadRow && existing.OcOrgID == ocOrgID {
 			// Idempotent re-connect — return current projection.
 			slog.InfoContext(ctx, "secrets.connect.idempotent", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", req.InstallationID)
-			return projectionFromRow(&clash), nil
+			return func() (*Projection, error) {
+				return projectionFromRow(clash), nil
+			}, nil
 		}
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		// Fresh install — fall through to fetch + insert.
-	default:
-		return nil, fmt.Errorf("connect: install lookup: %w", err)
 	}
 
 	// Fetch installation + bot identity.
@@ -369,14 +382,13 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 			ConnectedAt:     now,
 			LastValidatedAt: &now,
 		}
-		if err := tx.Create(&row).Error; err != nil {
+		if err := tx.Create(&row); err != nil {
 			return nil, fmt.Errorf("connect: insert app: %w", err)
 		}
-		if err := tx.Commit().Error; err != nil {
-			return nil, fmt.Errorf("connect: commit: %w", err)
-		}
-		slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
-		return projectionFromRow(&row), nil
+		return func() (*Projection, error) {
+			slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
+			return projectionFromRow(&row), nil
+		}, nil
 	}
 
 	// Updating existing row to App mode (post-disconnect-then-reconnect).
@@ -396,16 +408,15 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 		"webhook_secrets": nil,
 		"pat_secret_ref":  nil,
 	}
-	if err := tx.Model(&models.OrgCredential{}).Where("oc_org_id = ?", ocOrgID).Updates(updates).Error; err != nil {
+	if err := tx.UpdateColumns(ocOrgID, updates); err != nil {
 		return nil, fmt.Errorf("connect: update app: %w", err)
 	}
-	if err := tx.Commit().Error; err != nil {
-		return nil, fmt.Errorf("connect: commit: %w", err)
-	}
-	row, err := s.fetchRow(ctx, ocOrgID)
-	if err != nil {
-		return nil, err
-	}
-	slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
-	return projectionFromRow(row), nil
+	return func() (*Projection, error) {
+		row, err := s.fetchRow(ctx, ocOrgID)
+		if err != nil {
+			return nil, err
+		}
+		slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
+		return projectionFromRow(row), nil
+	}, nil
 }

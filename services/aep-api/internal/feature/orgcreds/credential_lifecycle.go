@@ -21,13 +21,11 @@ package orgcreds
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ----------------------------------------------------------------------------
@@ -55,34 +53,35 @@ func (s *CredentialService) Status(ctx context.Context, ocOrgID string) (*Projec
 //
 // Idempotent: if the row is already 'disconnected' or absent, returns nil.
 func (s *CredentialService) Disconnect(ctx context.Context, ocOrgID string) error {
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org:"+ocOrgID).Error; err != nil {
-		return fmt.Errorf("disconnect: org lock: %w", err)
-	}
-
-	var row models.OrgCredential
-	err := tx.Where("oc_org_id = ?", ocOrgID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		_ = tx.Commit()
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("disconnect: lookup: %w", err)
-	}
-
-	// Status flip — already-disconnected is a no-op (200 idempotent).
-	if row.Status != "disconnected" {
-		if err := tx.Model(&models.OrgCredential{}).Where("oc_org_id = ?", ocOrgID).Update("status", "disconnected").Error; err != nil {
-			return fmt.Errorf("disconnect: status flip: %w", err)
+	var row *models.OrgCredential
+	err := s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		if err := tx.AdvisoryLock("org:" + ocOrgID); err != nil {
+			return fmt.Errorf("disconnect: org lock: %w", err)
 		}
+
+		r, err := tx.GetByOrg(ocOrgID)
+		if err != nil {
+			return fmt.Errorf("disconnect: lookup: %w", err)
+		}
+		if r == nil {
+			// No row — commit (releases the lock) and no-op.
+			return nil
+		}
+		row = r
+
+		// Status flip — already-disconnected is a no-op (200 idempotent).
+		if r.Status != "disconnected" {
+			if err := tx.UpdateColumns(ocOrgID, map[string]any{"status": "disconnected"}); err != nil {
+				return fmt.Errorf("disconnect: status flip: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("disconnect: commit: %w", err)
+	if row == nil {
+		return nil
 	}
 
 	// Best-effort GC of credential-store keys. Failure is logged, not surfaced —
@@ -119,13 +118,12 @@ func (s *CredentialService) UninstallAppInstallation(ctx context.Context, ocOrgI
 	if s.minter == nil || s.minter.AppID() == 0 || s.githubClient == nil {
 		return ErrAppBindNotConfigured
 	}
-	var row models.OrgCredential
-	err := s.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
-	}
+	row, err := s.repo.GetByOrg(ctx, ocOrgID)
 	if err != nil {
 		return fmt.Errorf("uninstall: lookup: %w", err)
+	}
+	if row == nil {
+		return nil
 	}
 	if row.Kind != "app-installation" || row.InstallationID == nil {
 		return nil

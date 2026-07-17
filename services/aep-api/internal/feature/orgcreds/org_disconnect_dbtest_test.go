@@ -61,7 +61,7 @@ func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
 
 	// issueSvc is nil: the disconnect cascade no longer touches issues (the task
 	// abandon cascade that used it is gone).
-	svc := NewOrgDisconnectService(db, credSvc, nil)
+	svc := NewOrgDisconnectService(credSvc, nil)
 	if err := svc.Disconnect(ctx, "acme", "manual.disconnect", false); err != nil {
 		t.Fatalf("disconnect: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestOrgDisconnect_UnknownOrg_ReturnsNotFound_DB(t *testing.T) {
 
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	credSvc, _ := newCredSvcDB(t, db, gh)
-	svc := NewOrgDisconnectService(db, credSvc, nil)
+	svc := NewOrgDisconnectService(credSvc, nil)
 
 	// Phase A existence check: no credential row → ErrOrgNotFound (the controller
 	// maps it to an idempotent 200).
@@ -105,7 +105,7 @@ func TestOrgDisconnect_AlreadyDisconnected_NoOp_DB(t *testing.T) {
 	if _, err := credSvc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	svc := NewOrgDisconnectService(db, credSvc, nil)
+	svc := NewOrgDisconnectService(credSvc, nil)
 
 	if err := svc.Disconnect(ctx, "acme", "manual.disconnect", false); err != nil {
 		t.Fatalf("first disconnect: %v", err)

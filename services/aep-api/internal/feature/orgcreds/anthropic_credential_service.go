@@ -51,17 +51,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // AnthropicCredentialService — see package doc.
 type AnthropicCredentialService struct {
-	db           *gorm.DB
+	repo         repositories.OrgAnthropicRepository
 	store        secrets.OpenBaoStore
 	wpClient     client.Client
 	anthropicAPI string // "https://api.anthropic.com" by default; overridden in tests
@@ -119,12 +118,12 @@ func (s *AnthropicCredentialService) WithAnthropicAPIBase(base string) *Anthropi
 // non-nil; wpClient may be nil (off-cluster degraded mode — same shape as
 // BuildCredentialsService).
 func NewAnthropicCredentialService(
-	db *gorm.DB,
+	repo repositories.OrgAnthropicRepository,
 	store secrets.OpenBaoStore,
 	wpClient client.Client,
 ) *AnthropicCredentialService {
 	return &AnthropicCredentialService{
-		db:           db,
+		repo:         repo,
 		store:        store,
 		wpClient:     wpClient,
 		anthropicAPI: "https://api.anthropic.com",
@@ -193,21 +192,6 @@ func (s *AnthropicCredentialService) Connect(ctx context.Context, ocOrgID string
 	now := time.Now().UTC()
 	prefix, last4 := anthropicKeyPreview(key)
 
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return nil, fmt.Errorf("anthropic connect: begin tx: %w", tx.Error)
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org_anthropic:"+ocOrgID).Error; err != nil {
-		return nil, fmt.Errorf("anthropic connect: lock: %w", err)
-	}
-
-	// Encrypted bytes — same KV store the GitHub PAT uses.
-	if err := s.store.Put(ctx, ocOrgID, "anthropic/key", []byte(key)); err != nil {
-		return nil, fmt.Errorf("anthropic connect: store put: %w", err)
-	}
-
 	row := models.OrgAnthropicCredential{
 		OcOrgID:         ocOrgID,
 		KeyPrefix:       prefix,
@@ -217,28 +201,29 @@ func (s *AnthropicCredentialService) Connect(ctx context.Context, ocOrgID string
 		LastValidatedAt: &now,
 		ValidationError: nil,
 	}
-	// Upsert via ON CONFLICT DO UPDATE so Replace is idempotent. The UPDATE
-	// deliberately omits connected_at so a replace preserves the ORIGINAL
-	// connection time; RETURNING that column reads the persisted value back so
-	// the projection we return matches the stored row (on a replace it's the
-	// original, not the in-memory `now`).
-	if err := tx.Raw(`
-		INSERT INTO org_anthropic_credentials
-		    (oc_org_id, key_prefix, key_last4, status, connected_at, last_validated_at, validation_error)
-		VALUES (?, ?, ?, ?, ?, ?, NULL)
-		ON CONFLICT (oc_org_id) DO UPDATE
-		  SET key_prefix         = EXCLUDED.key_prefix,
-		      key_last4          = EXCLUDED.key_last4,
-		      status             = EXCLUDED.status,
-		      last_validated_at  = EXCLUDED.last_validated_at,
-		      validation_error   = NULL
-		RETURNING connected_at`,
-		row.OcOrgID, row.KeyPrefix, row.KeyLast4, row.Status, row.ConnectedAt, row.LastValidatedAt,
-	).Scan(&row.ConnectedAt).Error; err != nil {
-		return nil, fmt.Errorf("anthropic connect: upsert: %w", err)
-	}
-	if err := tx.Commit().Error; err != nil {
-		return nil, fmt.Errorf("anthropic connect: commit: %w", err)
+	err := s.repo.Tx(ctx, func(tx repositories.OrgAnthropicTx) error {
+		if err := tx.AdvisoryLock("org_anthropic:" + ocOrgID); err != nil {
+			return fmt.Errorf("anthropic connect: lock: %w", err)
+		}
+
+		// Encrypted bytes — same KV store the GitHub PAT uses.
+		if err := s.store.Put(ctx, ocOrgID, "anthropic/key", []byte(key)); err != nil {
+			return fmt.Errorf("anthropic connect: store put: %w", err)
+		}
+
+		// Upsert via ON CONFLICT DO UPDATE so Replace is idempotent. The UPDATE
+		// deliberately omits connected_at so a replace preserves the ORIGINAL
+		// connection time; RETURNING that column reads the persisted value back so
+		// the projection we return matches the stored row (on a replace it's the
+		// original, not the in-memory `now`) — Upsert scans it back into
+		// row.ConnectedAt.
+		if err := tx.Upsert(&row); err != nil {
+			return fmt.Errorf("anthropic connect: upsert: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Best-effort SM-API mirror. Same posture as
@@ -362,26 +347,21 @@ func (s *AnthropicCredentialService) Status(ctx context.Context, ocOrgID string)
 //
 // Idempotent: missing row is a no-op (200 → 204 at the API edge).
 func (s *AnthropicCredentialService) Disconnect(ctx context.Context, ocOrgID string) error {
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
+	err := s.repo.Tx(ctx, func(tx repositories.OrgAnthropicTx) error {
+		if err := tx.AdvisoryLock("org_anthropic:" + ocOrgID); err != nil {
+			return fmt.Errorf("anthropic disconnect: lock: %w", err)
+		}
 
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org_anthropic:"+ocOrgID).Error; err != nil {
-		return fmt.Errorf("anthropic disconnect: lock: %w", err)
-	}
-
-	// Delete the metadata row directly — the existing GitHub PAT flow flips
-	// to `disconnected` for audit, but here we have nothing else referencing
-	// the row (no installation_id, no webhook routing). Delete is cleaner.
-	if err := tx.Exec(
-		`DELETE FROM org_anthropic_credentials WHERE oc_org_id = ?`, ocOrgID,
-	).Error; err != nil {
-		return fmt.Errorf("anthropic disconnect: delete row: %w", err)
-	}
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("anthropic disconnect: commit: %w", err)
+		// Delete the metadata row directly — the existing GitHub PAT flow flips
+		// to `disconnected` for audit, but here we have nothing else referencing
+		// the row (no installation_id, no webhook routing). Delete is cleaner.
+		if err := tx.DeleteByOrg(ocOrgID); err != nil {
+			return fmt.Errorf("anthropic disconnect: delete row: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	// Best-effort GC. Failures are logged, not surfaced.
@@ -574,15 +554,14 @@ func (s *AnthropicCredentialService) PrepareSMAPISeed(ctx context.Context, ocOrg
 }
 
 func (s *AnthropicCredentialService) fetchRow(ctx context.Context, ocOrgID string) (*models.OrgAnthropicCredential, error) {
-	var row models.OrgAnthropicCredential
-	err := s.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, &NotFoundError{What: fmt.Sprintf("org_anthropic_credentials.%s", ocOrgID)}
-	}
+	row, err := s.repo.GetByOrg(ctx, ocOrgID)
 	if err != nil {
 		return nil, err
 	}
-	return &row, nil
+	if row == nil {
+		return nil, &NotFoundError{What: fmt.Sprintf("org_anthropic_credentials.%s", ocOrgID)}
+	}
+	return row, nil
 }
 
 // validateAnthropicKey probes Anthropic's /v1/messages with a minimal

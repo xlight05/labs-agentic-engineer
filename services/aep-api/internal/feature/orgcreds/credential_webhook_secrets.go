@@ -21,13 +21,11 @@ package orgcreds
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ----------------------------------------------------------------------------
@@ -81,65 +79,51 @@ func (s *CredentialService) AppendWebhookSecret(ctx context.Context, ocOrgID, se
 	if secret == "" {
 		return &ValidationError{Code: "secret_empty", Message: "secret is required"}
 	}
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org:"+ocOrgID).Error; err != nil {
-		return err
-	}
-	var row models.OrgCredential
-	if err := tx.Where("oc_org_id = ?", ocOrgID).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	return s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		if err := tx.AdvisoryLock("org:" + ocOrgID); err != nil {
+			return err
+		}
+		row, err := tx.GetByOrg(ocOrgID)
+		if err != nil {
+			return err
+		}
+		if row == nil {
 			return &NotFoundError{What: "org_credentials"}
 		}
-		return err
-	}
-	if row.Kind != "user-pat" {
-		return &ConflictError{Reason: "webhook-secret rotation is PAT-only; App-mode rotation lives in _platform"}
-	}
-	row.WebhookSecrets = append(models.WebhookSecrets{{Secret: secret, AddedAt: time.Now().UTC()}}, row.WebhookSecrets...)
-	if err := tx.Model(&models.OrgCredential{}).Where("oc_org_id = ?", ocOrgID).Update("webhook_secrets", row.WebhookSecrets).Error; err != nil {
-		return err
-	}
-	return tx.Commit().Error
+		if row.Kind != "user-pat" {
+			return &ConflictError{Reason: "webhook-secret rotation is PAT-only; App-mode rotation lives in _platform"}
+		}
+		row.WebhookSecrets = append(models.WebhookSecrets{{Secret: secret, AddedAt: time.Now().UTC()}}, row.WebhookSecrets...)
+		return tx.UpdateColumns(ocOrgID, map[string]any{"webhook_secrets": row.WebhookSecrets})
+	})
 }
 
 // RemoveWebhookSecret drops a specific secret from the PAT row's list.
 func (s *CredentialService) RemoveWebhookSecret(ctx context.Context, ocOrgID, secret string) error {
-	tx := s.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "org:"+ocOrgID).Error; err != nil {
-		return err
-	}
-	var row models.OrgCredential
-	if err := tx.Where("oc_org_id = ?", ocOrgID).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	return s.repo.Tx(ctx, func(tx repositories.OrgCredentialTx) error {
+		if err := tx.AdvisoryLock("org:" + ocOrgID); err != nil {
+			return err
+		}
+		row, err := tx.GetByOrg(ocOrgID)
+		if err != nil {
+			return err
+		}
+		if row == nil {
 			return &NotFoundError{What: "org_credentials"}
 		}
-		return err
-	}
-	if row.Kind != "user-pat" {
-		return &ConflictError{Reason: "webhook-secret rotation is PAT-only"}
-	}
-	filtered := row.WebhookSecrets[:0]
-	for _, e := range row.WebhookSecrets {
-		if e.Secret != secret {
-			filtered = append(filtered, e)
+		if row.Kind != "user-pat" {
+			return &ConflictError{Reason: "webhook-secret rotation is PAT-only"}
 		}
-	}
-	if len(filtered) == 0 {
-		return &ConflictError{Reason: "cannot drop the last webhook secret"}
-	}
-	row.WebhookSecrets = filtered
-	if err := tx.Model(&models.OrgCredential{}).Where("oc_org_id = ?", ocOrgID).Update("webhook_secrets", row.WebhookSecrets).Error; err != nil {
-		return err
-	}
-	return tx.Commit().Error
+		filtered := row.WebhookSecrets[:0]
+		for _, e := range row.WebhookSecrets {
+			if e.Secret != secret {
+				filtered = append(filtered, e)
+			}
+		}
+		if len(filtered) == 0 {
+			return &ConflictError{Reason: "cannot drop the last webhook secret"}
+		}
+		row.WebhookSecrets = filtered
+		return tx.UpdateColumns(ocOrgID, map[string]any{"webhook_secrets": row.WebhookSecrets})
+	})
 }

@@ -125,6 +125,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	repoRepo := repositories.NewRepoRepository(db)
 	workflowRunRepo := repositories.NewWorkflowRunRepository(db)
 	orgRepo := repositories.NewOrganizationRepository(db)
+	orgCredRepo := repositories.NewOrgCredentialRepository(db)
+	orgAnthropicRepo := repositories.NewOrgAnthropicRepository(db)
+	idpRepo := repositories.NewIDPRepository(db)
 
 	// Temporal devflow runtime. Constructed always, but connects lazily in the
 	// worker watcher's retry loop (never at Build time), so aep-api boots and
@@ -206,7 +209,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// SM-API mirror writer. Constructed ahead of the credential / IDP service
 	// constructors so all consumers can attach via WithSMAPIWriter (the no-op
 	// case when smClient is nil is fine).
-	smWriter := orgcreds.NewSMAPIWriter(smClient, db)
+	smWriter := orgcreds.NewSMAPIWriter(smClient, orgCredRepo, orgAnthropicRepo, idpRepo)
 
 	// cluster-gateway-proxy client. Used for reading coding-agent pod logs +
 	// job status (streaming feed + JobWatcher) and, when sm-api is also
@@ -267,10 +270,10 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	issueService := sourcecontrol.NewIssueService(repoRepo, gitHost, credResolver)
 	webhookRegService := sourcecontrol.NewWebhookService(repoRepo, gitHost, repoService, issueService, cfg.WebhookDeliveryURL, cfg.WebhookHMACSecret)
 	credRefreshService := orgcreds.NewCredentialsRefreshService(credResolver)
-	credService := orgcreds.NewCredentialService(db, credStore, minter, cfg.WebhookHMACSecret, cfg.GitHubAppClientID, appClientSecret, gitHost)
+	credService := orgcreds.NewCredentialService(orgCredRepo, credStore, minter, cfg.WebhookHMACSecret, cfg.GitHubAppClientID, appClientSecret, gitHost)
 	buildCredService := orgcreds.NewBuildCredentialsService(repoRepo, credResolver, gitSecretClient)
 	credService.WithBuildSecretCleaner(buildCredService)
-	anthropicCredService := orgcreds.NewAnthropicCredentialService(db, credStore, wpClient)
+	anthropicCredService := orgcreds.NewAnthropicCredentialService(orgAnthropicRepo, credStore, wpClient)
 
 	// Task JWT manager — RS256, 24h TTL. The public key is published on the
 	// JWKS endpoint (/auth/external/jwks.json) and verified by both the runner
@@ -498,7 +501,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// EnsureOrgPublisher / RegenerateClientSecret so the dispatcher's
 	// PUBLISHER_CLIENT_SECRET ExternalSecret can materialise it into runner
 	// pods without the BFF holding the plaintext.
-	idpService := idp.NewIDPService(repositories.NewIDPRepository(db), orgRepo, thunderAdminClient, idp.PlatformIDPConfig{
+	idpService := idp.NewIDPService(idpRepo, orgRepo, thunderAdminClient, idp.PlatformIDPConfig{
 		Issuer:  cfg.PlatformIDP.Issuer,
 		JWKSURL: cfg.PlatformIDP.JWKSURL,
 	}).WithSMAPIWriter(smWriter)
@@ -654,7 +657,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Org-scoped GitHub connect/disconnect surface. Tasks are GitHub issues now
 	// (no rows to abandon on disconnect); the disconnect service severs the
 	// credential and the issues become inert to the router (no valid webhook).
-	disconnectSvc := orgcreds.NewOrgDisconnectService(db, credService, issueService).
+	disconnectSvc := orgcreds.NewOrgDisconnectService(credService, issueService).
 		WithWorkspaceTrash(trashWorkspaceOrg)
 	orgGitHubCtrl := orgcreds.NewOrgGitHubController(
 		credService,

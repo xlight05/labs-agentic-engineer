@@ -280,7 +280,7 @@ func newInstallCredSvc(t *testing.T, db *gorm.DB) *orgcreds.CredentialService {
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
-	return orgcreds.NewCredentialService(db, store, minter, "", "", "", nil)
+	return orgcreds.NewCredentialService(repositories.NewOrgCredentialRepository(db), store, minter, "", "", "", nil)
 }
 
 // insertAppRow inserts an app-installation org_credentials row directly,

@@ -96,9 +96,7 @@ func (s *CredentialService) RecordIdentityFromGitHub(ctx context.Context, ocOrgI
 		updates["identity_changed_at"] = now
 		drifted = true
 	}
-	if err := s.db.WithContext(ctx).Model(&models.OrgCredential{}).
-		Where("oc_org_id = ?", ocOrgID).
-		Updates(updates).Error; err != nil {
+	if err := s.repo.UpdateColumns(ctx, ocOrgID, updates); err != nil {
 		return false, fmt.Errorf("update identity: %w", err)
 	}
 	return drifted, nil
@@ -108,16 +106,12 @@ func (s *CredentialService) RecordIdentityFromGitHub(ctx context.Context, ocOrgI
 // by the validator's no-drift App-mode path to record the heartbeat.
 func (s *CredentialService) TouchValidatedAt(ctx context.Context, ocOrgID string) error {
 	now := time.Now().UTC()
-	return s.db.WithContext(ctx).Model(&models.OrgCredential{}).
-		Where("oc_org_id = ?", ocOrgID).
-		Update("last_validated_at", now).Error
+	return s.repo.UpdateColumns(ctx, ocOrgID, map[string]any{"last_validated_at": now})
 }
 
 // UpdateGitHubLogin sets github_login (App-mode rename drift). Validator-only.
 func (s *CredentialService) UpdateGitHubLogin(ctx context.Context, ocOrgID, githubLogin string) error {
-	return s.db.WithContext(ctx).Model(&models.OrgCredential{}).
-		Where("oc_org_id = ?", ocOrgID).
-		Update("github_login", githubLogin).Error
+	return s.repo.UpdateColumns(ctx, ocOrgID, map[string]any{"github_login": githubLogin})
 }
 
 // ListActiveRows returns all OrgCredential rows in 'active' or 'suspended'
@@ -125,12 +119,5 @@ func (s *CredentialService) UpdateGitHubLogin(ctx context.Context, ocOrgID, gith
 // once per tick. The result is materialised — the validator releases the
 // validator-scoped advisory lock before iterating.
 func (s *CredentialService) ListActiveRows(ctx context.Context) ([]models.OrgCredential, error) {
-	var rows []models.OrgCredential
-	err := s.db.WithContext(ctx).
-		Where("status IN ?", []string{"active", "suspended"}).
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return s.repo.ListActiveRows(ctx)
 }

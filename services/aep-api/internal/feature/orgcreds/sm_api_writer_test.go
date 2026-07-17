@@ -42,6 +42,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/secretmanagersvc"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- fake secretmanagersvc.SecretManagementClient ----------------------------
@@ -103,10 +104,10 @@ func (f *fakeSMClient) GetSecretWithValue(context.Context, string) (map[string]s
 func TestSMAPIWriter_Enabled(t *testing.T) {
 	t.Parallel()
 
-	if w := NewSMAPIWriter(nil, nil); w.Enabled() {
+	if w := NewSMAPIWriter(nil, nil, nil, nil); w.Enabled() {
 		t.Fatalf("nil client must report Enabled() == false")
 	}
-	if w := NewSMAPIWriter(&fakeSMClient{}, nil); !w.Enabled() {
+	if w := NewSMAPIWriter(&fakeSMClient{}, nil, nil, nil); !w.Enabled() {
 		t.Fatalf("non-nil client must report Enabled() == true")
 	}
 	// Quirk: Enabled() is nil-receiver-safe (w != nil check first), so callers
@@ -124,7 +125,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		ref, err := w.WriteAnthropic(context.Background(), "acme", "sk-ant-key")
 		if err != nil || ref != "" {
 			t.Fatalf("disabled WriteAnthropic = (%q, %v); want (\"\", nil)", ref, err)
@@ -134,7 +135,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 	t.Run("empty ocOrgID is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		if _, err := w.WriteAnthropic(context.Background(), "  ", "sk-ant-key"); err == nil {
 			t.Fatalf("want an error for empty ocOrgID")
 		}
@@ -146,7 +147,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 	t.Run("empty apiKey is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		if _, err := w.WriteAnthropic(context.Background(), "acme", "   "); err == nil {
 			t.Fatalf("want an error for empty apiKey")
 		}
@@ -161,7 +162,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 		// db: nil is deliberate — this ctx carries no JWT claims, so
 		// resolveVaultKey fails and the DB stamp is never reached (see the
 		// next subtest). A nil db would panic if that assumption ever broke.
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		ref, err := w.WriteAnthropic(context.Background(), "acme", "sk-ant-key")
 		if err == nil {
 			t.Fatalf("want an error: no JWT claims in ctx means resolveVaultKey must fail")
@@ -187,7 +188,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 		// Pins the exact error text resolveVaultKey returns when the caller
 		// isn't running inside a real authenticated request context.
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		_, err := w.WriteAnthropic(context.Background(), "acme", "sk-ant-key")
 		if err == nil || !strings.Contains(err.Error(), "resolve anthropic vault key") {
 			t.Fatalf("want a wrapped resolve-vault-key error, got %v", err)
@@ -200,7 +201,7 @@ func TestSMAPIWriter_WriteAnthropic(t *testing.T) {
 	t.Run("CreateSecret error is wrapped and returned; db untouched", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{createErr: errors.New("sm-api: 503")}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		ref, err := w.WriteAnthropic(context.Background(), "acme", "sk-ant-key")
 		if err == nil || ref != "" {
 			t.Fatalf("WriteAnthropic = (%q, %v); want (\"\", wrapped error)", ref, err)
@@ -218,7 +219,7 @@ func TestSMAPIWriter_WriteExternalResourceSecret(t *testing.T) {
 
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		vaultKey, ref, err := w.WriteExternalResourceSecret(context.Background(), "acme", "proj", "extres-openweather-development", map[string]string{"K": "v"})
 		if err != nil || vaultKey != "" || ref != "" {
 			t.Fatalf("disabled WriteExternalResourceSecret = (%q, %q, %v); want (\"\", \"\", nil)", vaultKey, ref, err)
@@ -228,7 +229,7 @@ func TestSMAPIWriter_WriteExternalResourceSecret(t *testing.T) {
 	t.Run("empty ocOrgID/projectName/entityName is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		for _, args := range [][3]string{
 			{"  ", "proj", "extres-x-dev"},
 			{"acme", "", "extres-x-dev"},
@@ -246,7 +247,7 @@ func TestSMAPIWriter_WriteExternalResourceSecret(t *testing.T) {
 	t.Run("empty data is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		if _, _, err := w.WriteExternalResourceSecret(context.Background(), "acme", "proj", "extres-x-dev", nil); err == nil {
 			t.Fatalf("want an error for empty data")
 		}
@@ -261,7 +262,7 @@ func TestSMAPIWriter_WriteExternalResourceSecret(t *testing.T) {
 		// db: nil is deliberate — WriteExternalResourceSecret never touches the
 		// DB (no triplet row exists for external resources; the vault path is
 		// carried on the per-env OC binding instead).
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		_, ref, err := w.WriteExternalResourceSecret(context.Background(), "acme", "weatherproj", "extres-openweather-development",
 			map[string]string{"OPENWEATHER_API_KEY": "k123"})
 		if err == nil {
@@ -286,7 +287,7 @@ func TestSMAPIWriter_WriteExternalResourceSecret(t *testing.T) {
 	t.Run("CreateSecret error is wrapped and returned", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{createErr: errors.New("sm-api: 503")}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		vaultKey, ref, err := w.WriteExternalResourceSecret(context.Background(), "acme", "proj", "extres-x-dev", map[string]string{"K": "v"})
 		if err == nil || vaultKey != "" || ref != "" {
 			t.Fatalf("WriteExternalResourceSecret = (%q, %q, %v); want (\"\", \"\", wrapped error)", vaultKey, ref, err)
@@ -304,7 +305,7 @@ func TestSMAPIWriter_WriteGitHubPAT(t *testing.T) {
 
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		ref, err := w.WriteGitHubPAT(context.Background(), "acme", "ghp_token")
 		if err != nil || ref != "" {
 			t.Fatalf("disabled WriteGitHubPAT = (%q, %v); want (\"\", nil)", ref, err)
@@ -314,7 +315,7 @@ func TestSMAPIWriter_WriteGitHubPAT(t *testing.T) {
 	t.Run("empty ocOrgID is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		if _, err := w.WriteGitHubPAT(context.Background(), "", "ghp_token"); err == nil {
 			t.Fatalf("want an error for empty ocOrgID")
 		}
@@ -326,7 +327,7 @@ func TestSMAPIWriter_WriteGitHubPAT(t *testing.T) {
 	t.Run("empty pat is a validation error, SM-API never called", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		if _, err := w.WriteGitHubPAT(context.Background(), "acme", ""); err == nil {
 			t.Fatalf("want an error for empty pat")
 		}
@@ -338,7 +339,7 @@ func TestSMAPIWriter_WriteGitHubPAT(t *testing.T) {
 	t.Run("uploads to the github-pat location with the api-key payload", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil) // db untouched, see WriteAnthropic subtest for why
+		w := NewSMAPIWriter(fake, nil, nil, nil) // db untouched, see WriteAnthropic subtest for why
 		ref, err := w.WriteGitHubPAT(context.Background(), "acme", "ghp_token")
 		if err == nil {
 			t.Fatalf("want an error: no JWT claims in ctx means resolveVaultKey must fail")
@@ -362,7 +363,7 @@ func TestSMAPIWriter_WriteGitHubPAT(t *testing.T) {
 	t.Run("CreateSecret error is wrapped and returned", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{createErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		ref, err := w.WriteGitHubPAT(context.Background(), "acme", "ghp_token")
 		if err == nil || ref != "" {
 			t.Fatalf("WriteGitHubPAT = (%q, %v); want (\"\", wrapped error)", ref, err)
@@ -380,7 +381,7 @@ func TestSMAPIWriter_WritePublisher(t *testing.T) {
 
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		ref, err := w.WritePublisher(context.Background(), "acme", "cid", "csecret")
 		if err != nil || ref != "" {
 			t.Fatalf("disabled WritePublisher = (%q, %v); want (\"\", nil)", ref, err)
@@ -390,7 +391,7 @@ func TestSMAPIWriter_WritePublisher(t *testing.T) {
 	t.Run("empty ocOrgID/clientID/clientSecret are each validation errors", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		cases := []struct {
 			name, org, id, secret string
 		}{
@@ -411,7 +412,7 @@ func TestSMAPIWriter_WritePublisher(t *testing.T) {
 	t.Run("uploads to the publisher location as a 2-field payload with no SecretKey", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, nil) // db untouched, see WriteAnthropic subtest for why
+		w := NewSMAPIWriter(fake, nil, nil, nil) // db untouched, see WriteAnthropic subtest for why
 		ref, err := w.WritePublisher(context.Background(), "acme", "cid", "csecret")
 		if err == nil {
 			t.Fatalf("want an error: no JWT claims in ctx means resolveVaultKey must fail")
@@ -441,7 +442,7 @@ func TestSMAPIWriter_WritePublisher(t *testing.T) {
 	t.Run("CreateSecret error is wrapped and returned", func(t *testing.T) {
 		t.Parallel()
 		fake := &fakeSMClient{createErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, nil)
+		w := NewSMAPIWriter(fake, nil, nil, nil)
 		ref, err := w.WritePublisher(context.Background(), "acme", "cid", "csecret")
 		if err == nil || ref != "" {
 			t.Fatalf("WritePublisher = (%q, %v); want (\"\", wrapped error)", ref, err)
@@ -459,7 +460,7 @@ func TestSMAPIWriter_ResolveVaultKey_NoClaimsInContext(t *testing.T) {
 	// resolveVaultKey never touches the DB (it derives the path from the JWT,
 	// deliberately not from the local `organizations.uuid` row — see its
 	// doc comment), so db: nil is safe here too.
-	w := NewSMAPIWriter(&fakeSMClient{}, nil)
+	w := NewSMAPIWriter(&fakeSMClient{}, nil, nil, nil)
 	_, err := w.resolveVaultKey(context.Background(), "some-ref")
 	if err == nil {
 		t.Fatalf("want an error when ctx carries no JWT claims")
@@ -494,7 +495,7 @@ func strPtr(s string) *string { return &s }
 func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err != nil {
 			t.Fatalf("disabled DeleteAnthropic = %v; want nil", err)
 		}
@@ -504,7 +505,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeleteAnthropic on a missing row = %v; want nil", err)
 		}
@@ -519,7 +520,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", strPtr("acme-anthropic-secrets"), strPtr("user-app-secrets/wc-xxx/acme-anthropic-secrets"), strPtr("api-key"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteAnthropic: %v", err)
 		}
@@ -546,7 +547,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", nil, nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteAnthropic: %v", err)
 		}
@@ -561,7 +562,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", strPtr("acme-anthropic-secrets"), strPtr("kv/path"), strPtr("api-key"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}
@@ -601,7 +602,7 @@ func seedIDPProfileRow(t testing.TB, db *gorm.DB, orgID string, refName, kvPath 
 func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		if err := w.DeletePublisher(context.Background(), "acme"); err != nil {
 			t.Fatalf("disabled DeletePublisher = %v; want nil", err)
 		}
@@ -611,7 +612,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeletePublisher on a missing row = %v; want nil", err)
 		}
@@ -626,7 +627,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", strPtr("acme-publisher-secrets"), strPtr("user-app-secrets/wc-xxx/acme-publisher-secrets"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeletePublisher: %v", err)
 		}
@@ -654,7 +655,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeletePublisher: %v", err)
 		}
@@ -669,7 +670,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", strPtr("acme-publisher-secrets"), strPtr("kv/path"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}
@@ -712,7 +713,7 @@ func seedUserPATRow(t testing.TB, db *gorm.DB, ocOrgID string, refName, kvPath *
 func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 	t.Run("disabled (nil client) is a no-op", func(t *testing.T) {
 		t.Parallel()
-		w := NewSMAPIWriter(nil, nil)
+		w := NewSMAPIWriter(nil, nil, nil, nil)
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err != nil {
 			t.Fatalf("disabled DeleteGitHubPAT = %v; want nil", err)
 		}
@@ -722,7 +723,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeleteGitHubPAT on a missing row = %v; want nil", err)
 		}
@@ -737,7 +738,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", strPtr("acme-github-pat-secrets"), strPtr("user-app-secrets/wc-xxx/acme-github-pat-secrets"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteGitHubPAT: %v", err)
 		}
@@ -764,7 +765,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteGitHubPAT: %v", err)
 		}
@@ -779,7 +780,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", strPtr("acme-github-pat-secrets"), strPtr("kv/path"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, db)
+		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}

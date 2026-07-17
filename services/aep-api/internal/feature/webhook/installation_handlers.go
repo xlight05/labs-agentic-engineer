@@ -58,7 +58,7 @@ func RegisterInstallationHandlers(
 		db:         db,
 		credSvc:    credSvc,
 		issueSvc:   issueSvc,
-		disconnect: orgcreds.NewOrgDisconnectService(db, credSvc, issueSvc).WithWorkspaceTrash(workspaceTrash),
+		disconnect: orgcreds.NewOrgDisconnectService(credSvc, issueSvc).WithWorkspaceTrash(workspaceTrash),
 	}
 	router.Register("installation", "created", EventHandlerFunc(h.handleCreated))
 	router.Register("installation", "deleted", EventHandlerFunc(h.handleDeleted))

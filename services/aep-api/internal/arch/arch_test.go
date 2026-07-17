@@ -417,7 +417,6 @@ var gormImporters = map[string]bool{
 	"internal/feature/codingagent":   true,
 	"internal/feature/component":     true,
 	"internal/feature/genai":         true,
-	"internal/feature/orgcreds":      true,
 	"internal/feature/runtimeconfig": true,
 	"internal/feature/webhook":       true,
 }
