@@ -1,0 +1,432 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package arch
+
+import (
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// The domain/slice boundary rules of the target architecture
+// (docs/design/domain-oriented-architecture.md §13).
+//
+// These land in P0, BEFORE the first domain exists, and are deliberately
+// PERMISSIVE for the duration of the migration: they police the domains that are
+// on disk and say nothing about the legacy layout beside them. They are flipped
+// strict in P9, when the legacy layout is gone.
+//
+// A rule nobody has seen fail is a rule nobody knows works. Every rule below is
+// therefore written as a pure function over a ROOT PATH, and each has a
+// fires-proof test that plants the violation in a temp tree and asserts the rule
+// reports it. Without that, a scanner with a typo'd path would "pass" forever.
+
+// targetDomains are the seven business domains of §3. This is a DESIGN decision,
+// not a disk discovery: a new top-level package under internal/ must be
+// classified — as a domain here, or as infrastructure in nonDomainPkgs — so that
+// growing an eighth domain is a deliberate act with a review, not a side effect.
+var targetDomains = map[string]bool{
+	"organization":  true,
+	"spec":          true,
+	"delivery":      true,
+	"dependencies":  true,
+	"projects":      true,
+	"sourcecontrol": true,
+	"ops":           true,
+}
+
+// nonDomainPkgs are the internal/ packages that are NOT business domains: the
+// kernel, the edge machinery, and the legacy scaffolding still being migrated.
+// The legacy rows (api, feature, credentials) are deleted in P9.
+var nonDomainPkgs = map[string]bool{
+	"platform":  true, // the kernel
+	"edge":      true, // the surface composer (P9 target of internal/api)
+	"gen":       true, // generated wire types — public surface
+	"igen":      true, // generated wire types — S2S surface
+	"migrate":   true, // the ordered migration list
+	"app":       true, // the composition root
+	"arch":      true, // these tests
+	"clients":   true, // outbound adapters (folds into platform/clients)
+	"config":    true,
+	"contracts": true,
+	"seed":      true,
+	// ── legacy, deleted in P9 ──
+	"api":         true, // the exiled handler layer -> edge/ + domain slices
+	"feature":     true, // the 24 feature packages -> the 7 domains
+	"credentials": true, // -> platform/secrets
+}
+
+// domainsOnDisk returns the target domains that actually exist yet. During the
+// migration this grows one entry per phase; the rules apply only to these, which
+// is what makes the ruleset permissive without being toothless.
+func domainsOnDisk(t *testing.T, root string) []string {
+	t.Helper()
+	var out []string
+	for _, d := range listDir(t, root) {
+		if targetDomains[d] {
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// fileImports parses one Go file and returns its import paths. Parsing (rather
+// than grepping) means a path named in a comment or a string literal cannot
+// produce a false violation.
+func fileImports(t *testing.T, path string) []string {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	var out []string
+	for _, spec := range f.Imports {
+		p, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// goFilesIn returns the .go files directly in dir (not its sub-packages).
+func goFilesIn(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		out = append(out, filepath.Join(dir, e.Name()))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// subPackagesOf returns a domain's sub-package directory names — its slices plus
+// the httpapi aggregator.
+func subPackagesOf(t *testing.T, root, domain string) []string {
+	t.Helper()
+	dir := filepath.Join(root, domain)
+	if _, err := os.Stat(dir); err != nil {
+		return nil
+	}
+	return listDir(t, dir)
+}
+
+// ── Rule: gorm lives only in <domain>/repository.go ─────────────────────────
+
+// gormFenceViolations returns every file under a domain that imports gorm from
+// somewhere other than the domain-root's repository.go.
+//
+// This is the per-domain successor to the flat gormImporters ratchet, which is
+// keyed to internal/feature/* + repositories/ and would go RED the moment a
+// domain adds its own repository.go. Both run side by side during the migration:
+// the old list shrinks as features die, this fence governs what replaces them.
+func gormFenceViolations(t *testing.T, root string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	for _, d := range domains {
+		_ = filepath.WalkDir(filepath.Join(root, d), func(path string, e os.DirEntry, err error) error {
+			if err != nil || e.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			if strings.HasSuffix(path, "_test.go") {
+				return nil // tests may touch gorm (dbtest fixtures)
+			}
+			for _, imp := range fileImports(t, path) {
+				if !strings.HasPrefix(imp, "gorm.io/") {
+					continue
+				}
+				rel, _ := filepath.Rel(root, path)
+				// The ONE sanctioned home: the domain-root's repository.go.
+				if rel != filepath.Join(d, "repository.go") {
+					bad = append(bad, rel)
+				}
+			}
+			return nil
+		})
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestGormFencedToDomainRepository asserts the ORM stays behind each domain's
+// repository. A slice that reaches for gorm directly has escaped the seam that
+// makes the domain testable.
+func TestGormFencedToDomainRepository(t *testing.T) {
+	if bad := gormFenceViolations(t, "..", domainsOnDisk(t, "..")); len(bad) > 0 {
+		t.Errorf("gorm.io imported outside <domain>/repository.go: %v\n"+
+			"Persistence belongs behind the domain's repository interface — a slice uses the "+
+			"interface, never the ORM.", bad)
+	}
+}
+
+// ── Rule: the domain-root never imports its own sub-packages ────────────────
+
+// rootImportsSliceViolations returns domain-root files that import one of the
+// domain's own sub-packages. The dependency runs slices -> root, never back:
+// the root holds the shared core (model, repository, ports, funnel), so a root
+// that imported a slice would be a cycle in the design even where Go permits it.
+func rootImportsSliceViolations(t *testing.T, root, modPath string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	for _, d := range domains {
+		subs := subPackagesOf(t, root, d)
+		for _, f := range goFilesIn(t, filepath.Join(root, d)) {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			for _, imp := range fileImports(t, f) {
+				for _, sub := range subs {
+					want := modPath + "/internal/" + d + "/" + sub
+					if imp == want || strings.HasPrefix(imp, want+"/") {
+						rel, _ := filepath.Rel(root, f)
+						bad = append(bad, rel+" -> "+d+"/"+sub)
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestDomainRootNeverImportsItsSlices asserts root ⊥ slice.
+func TestDomainRootNeverImportsItsSlices(t *testing.T) {
+	if bad := rootImportsSliceViolations(t, "..", mod, domainsOnDisk(t, "..")); len(bad) > 0 {
+		t.Errorf("domain-root imports its own sub-package: %v\n"+
+			"Slices import the root, never the reverse. Shared behaviour belongs IN the root.", bad)
+	}
+}
+
+// ── Rule: a slice never imports a sibling slice ─────────────────────────────
+
+// siblingSliceViolations returns slice-to-sibling-slice imports. This is the
+// rule that makes a slice a real blast-radius boundary rather than a naming
+// convention: without it, "change one use-case" silently means "change three".
+//
+// httpapi is exempt as the IMPORTER: it is the domain's aggregator, and
+// embedding every slice's handler is its entire job. It is never an importee.
+func siblingSliceViolations(t *testing.T, root, modPath string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	for _, d := range domains {
+		subs := subPackagesOf(t, root, d)
+		for _, from := range subs {
+			if from == "httpapi" {
+				continue // the aggregator imports slices by design
+			}
+			_ = filepath.WalkDir(filepath.Join(root, d, from), func(path string, e os.DirEntry, err error) error {
+				if err != nil || e.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+					return nil
+				}
+				for _, imp := range fileImports(t, path) {
+					for _, to := range subs {
+						if to == from {
+							continue
+						}
+						want := modPath + "/internal/" + d + "/" + to
+						if imp == want || strings.HasPrefix(imp, want+"/") {
+							rel, _ := filepath.Rel(root, path)
+							bad = append(bad, rel+" -> "+d+"/"+to)
+						}
+					}
+				}
+				return nil
+			})
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// TestSliceNeverImportsSibling asserts slice ⊥ sibling slice.
+func TestSliceNeverImportsSibling(t *testing.T) {
+	if bad := siblingSliceViolations(t, "..", mod, domainsOnDisk(t, "..")); len(bad) > 0 {
+		t.Errorf("slice imports a sibling slice: %v\n"+
+			"Share through the domain-root instead — and only once the duplication is real.", bad)
+	}
+}
+
+// ── Rule: every internal/ package is classified ─────────────────────────────
+
+// TestEveryInternalPackageIsClassified asserts no top-level internal/ package
+// escapes classification. A new directory here is either an eighth domain (a
+// design decision) or infrastructure — both deserve a reviewer, and neither
+// should be able to appear by accident.
+func TestEveryInternalPackageIsClassified(t *testing.T) {
+	for _, d := range listDir(t, "..") {
+		if !targetDomains[d] && !nonDomainPkgs[d] {
+			t.Errorf("internal/%s is neither a target domain (§3) nor classified infrastructure — "+
+				"add it to targetDomains or nonDomainPkgs and say which it is in the PR", d)
+		}
+	}
+}
+
+// ── Proof that the rules fire ───────────────────────────────────────────────
+//
+// Each rule is planted with its violation in a temp tree. Until a domain exists
+// on disk these are the ONLY evidence the scanners work at all — and even after,
+// they are what proves a green run means "no violations" rather than "scanned
+// nothing".
+
+// plantDomain writes files into root/<domain>/<relpath> to fake a domain layout.
+func plantDomain(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for rel, body := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+}
+
+func TestGormFenceFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		// Sanctioned: the domain-root's repository.
+		"ops/repository.go": "package ops\n\nimport _ \"gorm.io/gorm\"\n",
+		// The violation: a slice reaching past its repository straight to the ORM.
+		"ops/listreports/handler.go": "package listreports\n\nimport _ \"gorm.io/gorm\"\n",
+	})
+	bad := gormFenceViolations(t, root, []string{"ops"})
+	if len(bad) != 1 || bad[0] != filepath.Join("ops", "listreports", "handler.go") {
+		t.Fatalf("gorm fence did not fire on a slice importing gorm: got %v", bad)
+	}
+	// And it must not fire on the sanctioned file.
+	for _, b := range bad {
+		if strings.HasSuffix(b, "repository.go") {
+			t.Fatalf("gorm fence wrongly flagged the domain's own repository.go: %v", bad)
+		}
+	}
+}
+
+func TestRootImportsSliceRuleFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/model.go":               "package ops\n\nimport _ \"" + mod + "/internal/ops/listreports\"\n",
+		"ops/listreports/handler.go": "package listreports\n",
+	})
+	if bad := rootImportsSliceViolations(t, root, mod, []string{"ops"}); len(bad) != 1 {
+		t.Fatalf("root->slice rule did not fire: got %v", bad)
+	}
+}
+
+func TestSiblingSliceRuleFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/listreports/handler.go": "package listreports\n\nimport _ \"" + mod + "/internal/ops/getreport\"\n",
+		"ops/getreport/handler.go":   "package getreport\n",
+		// The aggregator imports both — and must NOT be reported.
+		"ops/httpapi/aggregate.go": "package httpapi\n\nimport (\n\t_ \"" + mod + "/internal/ops/getreport\"\n\t_ \"" + mod + "/internal/ops/listreports\"\n)\n",
+	})
+	bad := siblingSliceViolations(t, root, mod, []string{"ops"})
+	if len(bad) != 1 {
+		t.Fatalf("sibling-slice rule fired %d times, want exactly 1 (the httpapi aggregator is "+
+			"exempt as importer; only listreports->getreport is a violation): %v", len(bad), bad)
+	}
+	if !strings.Contains(bad[0], "listreports") {
+		t.Fatalf("sibling-slice rule reported the wrong file: %v", bad)
+	}
+}
+
+// TestSliceRulesDoNotFireOnACleanDomain is the mirror: a correctly-shaped domain
+// must produce ZERO violations. Without it, a scanner that always reported a
+// violation would pass every fires-proof above.
+func TestSliceRulesDoNotFireOnACleanDomain(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"ops/model.go":               "package ops\n",
+		"ops/repository.go":          "package ops\n\nimport _ \"gorm.io/gorm\"\n",
+		"ops/listreports/handler.go": "package listreports\n\nimport _ \"" + mod + "/internal/ops\"\n",
+		"ops/getreport/handler.go":   "package getreport\n\nimport _ \"" + mod + "/internal/platform/tenant\"\n",
+		"ops/httpapi/aggregate.go":   "package httpapi\n\nimport _ \"" + mod + "/internal/ops/listreports\"\n",
+	})
+	domains := []string{"ops"}
+	if bad := gormFenceViolations(t, root, domains); len(bad) != 0 {
+		t.Errorf("gorm fence fired on a clean domain: %v", bad)
+	}
+	if bad := rootImportsSliceViolations(t, root, mod, domains); len(bad) != 0 {
+		t.Errorf("root->slice rule fired on a clean domain: %v", bad)
+	}
+	if bad := siblingSliceViolations(t, root, mod, domains); len(bad) != 0 {
+		t.Errorf("sibling-slice rule fired on a clean domain: %v", bad)
+	}
+}
+
+// TestPlatformImportsNoDomain asserts the kernel stays domain-free as domains
+// appear. The existing TestPlatformAndContractsAreFeatureFree covers the legacy
+// feature/ layout; this is its successor for internal/<domain>.
+func TestPlatformImportsNoDomain(t *testing.T) {
+	domains := domainsOnDisk(t, "..")
+	if len(domains) == 0 {
+		t.Skip("no domains on disk yet (P1 lands the first) — TestPlatformImportsNoDomainFires " +
+			"proves the rule works meanwhile")
+	}
+	for _, p := range listDir(t, "../platform") {
+		// The harnesses assemble the REAL graph — importing everything is their
+		// job, exactly as componenttest is exempted from the feature-free rule.
+		if p == "componenttest" || p == "dbtest" {
+			continue
+		}
+		pkg := mod + "/internal/platform/" + p
+		for d := range deps(t, pkg) {
+			for _, dom := range domains {
+				if d == mod+"/internal/"+dom || strings.HasPrefix(d, mod+"/internal/"+dom+"/") {
+					t.Errorf("platform/%s imports domain %s — the kernel stays domain-free; "+
+						"invert the dependency with a port owned by the domain", p, dom)
+				}
+			}
+		}
+	}
+}
+
+// TestPlatformImportsNoDomainFires proves the domain-detection half of the rule
+// above works before any domain exists to test it against.
+func TestPlatformImportsNoDomainFires(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"platform/obs/obs.go": "package obs\n\nimport _ \"" + mod + "/internal/ops\"\n",
+		"ops/model.go":        "package ops\n",
+	})
+	var found bool
+	for _, f := range goFilesIn(t, filepath.Join(root, "platform", "obs")) {
+		for _, imp := range fileImports(t, f) {
+			if imp == mod+"/internal/ops" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the platform->domain detector failed to see a planted domain import")
+	}
+}
