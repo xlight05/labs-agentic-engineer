@@ -90,8 +90,8 @@ const (
 	// schemaVersion is folded into the migrator Hash so pgtestdb rebuilds the
 	// template when the schema changes. The backing container is ephemeral (one
 	// per process), so a stale template can never outlive a run — this only
-	// needs to be stable within a run. Bump it when database/migrations or the
-	// base-model set below changes, purely as documentation of intent.
+	// needs to be stable within a run. Bump it when internal/migrate's step list
+	// or base-model set changes, purely as documentation of intent.
 	schemaVersion = "5"
 )
 

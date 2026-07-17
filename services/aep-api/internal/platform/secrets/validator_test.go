@@ -25,8 +25,7 @@ import (
 
 // Validator unit tests — exercise classification + cascade dispatch
 // without touching Postgres, GitHub, or the resolver. The DB-backed
-// election (electAndList) is exercised in the integration tests via the
-// /internal/credentials/_validator/tick endpoint.
+// election (electAndList) is covered by the dbtest tier.
 
 type fakeProbes struct {
 	rows         []ActiveRow

@@ -948,15 +948,23 @@ Two independent nets, both landed in P0:
 2. **The method-origin reflection gate** (`internal/api/method_origin_test.go`) — a ledger mapping each
    of the 61 contract ops to the embed expected to serve it. It asks every embed directly, so it catches
    double coverage **at any depth**, and it fails if an op moves without the ledger being updated.
-   Strictly stronger than the compiler; each net was verified to fire alone by mutation.
+   Each net was verified to fire alone by mutation.
 
-**Two preconditions the shim depends on** (both mechanically pinned, because violating either silently
-restores the hazard):
+**Three preconditions the nets depend on.** Each is pinned, and — this is the point — *not all of them
+can be pinned by reflection*:
 
-- `apiServer` **declares no methods** (`TestApiServerDeclaresNoMethods`) — depth-0 beats everything.
-- A **domain aggregator declares no methods**, only embeds slice handlers — otherwise its op sits at
-  depth-1 and beats the shimmed legacy method at depth-2. This is the case the compiler *cannot* catch
-  and the reflection gate must.
+- **`apiServer` declares no methods** — a method declared on the composite sits at **depth-0** and
+  shadows every embed, shim included. **Reflection cannot see this**: a shadowing method changes nothing
+  about what the *embeds* provide, so the origin gate still reports `legacyShim`, the ledger still agrees,
+  and all of it passes while the edge serves a body no embed supplied. Pinned by **parsing the source**
+  for receivers of type `apiServer` (`TestApiServerDeclaresNoMethods`). *(This hole was real: the first
+  implementation asked reflection, and a planted shadowing method compiled green with every gate passing.)*
+- **A domain aggregator declares no methods**, only embeds slice handlers — otherwise its op sits at
+  depth-1 and beats the shimmed legacy method at depth-2. The compiler cannot catch this; the reflection
+  gate does, because it ignores depth.
+- **Every embed is a struct or `*struct`** (`TestEmbedsAreConcrete`) — an embedded *interface* is
+  invisible to the detector (`reflect.PointerTo(iface)` has an empty method set), so the op would resolve
+  through it at depth-1 while the ledger silently agreed with itself.
 
 `TestLegacyIsShimmed` pins the shape itself, since "simplifying" the shim away is how this protection
 would die quietly.
@@ -1042,7 +1050,7 @@ confirmation, not the gate.
 |---|---|
 | **Silent stale-serve** (moved handler left on legacy) — the headline risk, empirically confirmed | `legacyShim` (compile error) **+** method-origin gate — both in P0, before any op moves |
 | `database.BaseModels()` hard-references models that are about to move to domains | P0 **inverts registration**: mechanism in `platform/database`, ordered list in `internal/migrate` |
-| The gorm ratchet is shrink-only, so it goes RED the moment a domain adds `repository.go` | P0 **redesigns** it into a discovered-from-disk **per-domain fence** |
+| The gorm ratchet is shrink-only, so it goes RED the moment a domain adds `repository.go` | P0 adds a discovered-from-disk **per-domain fence** AND **carves the seven domains out of the legacy list** (`inTargetDomain`). Both halves are required: adding the fence alone leaves the rules contradicting, so every domain phase would have to GROW a list documented as shrink-only — rotting it into a rubber stamp. `TestGormRulesHandOffCleanly` pins the partition |
 | "Each phase touches only its domain" is **false** for substrate (gitrepo = 75 files/18 pkgs) | P0's **re-export shims** (type-alias packages at old paths); deleted in P9 |
 | Migration order is load-bearing **and non-obvious** (`phase2_pra` before `phase0`) | never reorder; golden ordered-sequence test; move call-sites only |
 | Pre-existing dbtest RED masks a real P6 regression | fixed/baselined in P0; **genuinely fixed** by P9 |

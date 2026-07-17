@@ -212,6 +212,6 @@ lane failure, merge rejection — `workflow_validation_test.go`).
   `internal/feature/codingagent/{exec_watcher,watcher}.go`,
   `internal/feature/genai/{genai_service,turn_runner}.go`
 - Persistence: `models/workflow_run.go`,
-  `internal/database/migrations/workflow_runs.go`,
+  `internal/migrate/workflow_runs.go`,
   `repositories/workflow_run_repository.go`
 - Old-console demo: `console-legacy/console/src/components/devflow/DevflowPanel.tsx`

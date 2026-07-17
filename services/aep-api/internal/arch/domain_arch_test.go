@@ -56,10 +56,9 @@ var targetDomains = map[string]bool{
 
 // nonDomainPkgs are the internal/ packages that are NOT business domains: the
 // kernel, the edge machinery, and the legacy scaffolding still being migrated.
-// The legacy rows (api, feature, credentials) are deleted in P9.
+// The legacy rows (api, feature) are deleted in P9.
 var nonDomainPkgs = map[string]bool{
 	"platform":  true, // the kernel
-	"edge":      true, // the surface composer (P9 target of internal/api)
 	"gen":       true, // generated wire types — public surface
 	"igen":      true, // generated wire types — S2S surface
 	"migrate":   true, // the ordered migration list
@@ -70,9 +69,16 @@ var nonDomainPkgs = map[string]bool{
 	"contracts": true,
 	"seed":      true,
 	// ── legacy, deleted in P9 ──
-	"api":         true, // the exiled handler layer -> edge/ + domain slices
-	"feature":     true, // the 24 feature packages -> the 7 domains
-	"credentials": true, // -> platform/secrets
+	"api":     true, // the exiled handler layer -> edge/ + domain slices
+	"feature": true, // the 24 feature packages -> the 7 domains
+}
+
+// plannedPkgs are classified names that do not exist YET. They are listed
+// separately so the honesty check below can demand that every OTHER row
+// correspond to something real — the distinction between "planned" and "stale"
+// is exactly what a classification map loses if nobody checks it.
+var plannedPkgs = map[string]bool{
+	"edge": true, // the surface composer; internal/api collapses into it in P9
 }
 
 // domainsOnDisk returns the target domains that actually exist yet. During the
@@ -282,9 +288,37 @@ func TestSliceNeverImportsSibling(t *testing.T) {
 // should be able to appear by accident.
 func TestEveryInternalPackageIsClassified(t *testing.T) {
 	for _, d := range listDir(t, "..") {
-		if !targetDomains[d] && !nonDomainPkgs[d] {
+		if !targetDomains[d] && !nonDomainPkgs[d] && !plannedPkgs[d] {
 			t.Errorf("internal/%s is neither a target domain (§3) nor classified infrastructure — "+
 				"add it to targetDomains or nonDomainPkgs and say which it is in the PR", d)
+		}
+	}
+}
+
+// TestClassificationIsHonest is the reverse direction: every classified
+// infrastructure package must actually EXIST. Without it the map only checks
+// disk->map, so a row survives the deletion of the thing it names and the map
+// slowly becomes a description of the past — precisely what happened to the
+// "credentials" row, which outlived its package by one commit (P0.6 moved it to
+// platform/secrets).
+//
+// Domains are exempt: they are the migration's TARGET and appear one per phase.
+// plannedPkgs is the explicit, reviewed list of not-yet-existing names.
+func TestClassificationIsHonest(t *testing.T) {
+	present := map[string]bool{}
+	for _, d := range listDir(t, "..") {
+		present[d] = true
+	}
+	for p := range nonDomainPkgs {
+		if !present[p] {
+			t.Errorf("nonDomainPkgs names internal/%s, which does not exist — remove the row, or "+
+				"move it to plannedPkgs if it is genuinely still coming", p)
+		}
+	}
+	for p := range plannedPkgs {
+		if present[p] {
+			t.Errorf("plannedPkgs names internal/%s, which now EXISTS — move it to nonDomainPkgs "+
+				"(or targetDomains) so the map stops calling it hypothetical", p)
 		}
 	}
 }
@@ -383,50 +417,143 @@ func TestSliceRulesDoNotFireOnACleanDomain(t *testing.T) {
 	}
 }
 
+// harnessExempt are the platform packages allowed to see domains: they assemble
+// the REAL graph, which is their entire job — the same deliberate exception
+// TestPlatformAndContractsAreFeatureFree already makes for componenttest.
+var harnessExempt = map[string]bool{"componenttest": true, "dbtest": true}
+
+// platformDomainViolations returns platform files that DIRECTLY import a domain.
+//
+// Source-based, so the very same function can be aimed at a planted temp tree —
+// the fires-proof below calls THIS function, not a hand-rolled copy of it. (A
+// fires-proof that re-implements its rule proves only that the copy works.)
+func platformDomainViolations(t *testing.T, root, modPath string, domains []string) []string {
+	t.Helper()
+	var bad []string
+	platformDir := filepath.Join(root, "platform")
+	if _, err := os.Stat(platformDir); err != nil {
+		return nil
+	}
+	for _, p := range listDir(t, platformDir) {
+		if harnessExempt[p] {
+			continue
+		}
+		_ = filepath.WalkDir(filepath.Join(platformDir, p), func(path string, e os.DirEntry, err error) error {
+			if err != nil || e.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			for _, imp := range fileImports(t, path) {
+				for _, dom := range domains {
+					want := modPath + "/internal/" + dom
+					if imp == want || strings.HasPrefix(imp, want+"/") {
+						rel, _ := filepath.Rel(root, path)
+						bad = append(bad, rel+" -> "+dom)
+					}
+				}
+			}
+			return nil
+		})
+	}
+	sort.Strings(bad)
+	return bad
+}
+
 // TestPlatformImportsNoDomain asserts the kernel stays domain-free as domains
 // appear. The existing TestPlatformAndContractsAreFeatureFree covers the legacy
 // feature/ layout; this is its successor for internal/<domain>.
+//
+// Two checks: the source-based one (shared with the fires-proof) catches a direct
+// import, and the `go list -deps` one additionally catches a domain reached
+// TRANSITIVELY — platform/x -> clients/y -> domain — which no source scan of
+// platform/ alone could see. The transitive half only runs once a domain exists.
 func TestPlatformImportsNoDomain(t *testing.T) {
 	domains := domainsOnDisk(t, "..")
+
+	if bad := platformDomainViolations(t, "..", mod, domains); len(bad) > 0 {
+		t.Errorf("platform imports a domain: %v\n"+
+			"The kernel stays domain-free — invert the dependency with a port owned by the domain.", bad)
+	}
+
 	if len(domains) == 0 {
-		t.Skip("no domains on disk yet (P1 lands the first) — TestPlatformImportsNoDomainFires " +
-			"proves the rule works meanwhile")
+		return // nothing for the transitive half to find yet
 	}
 	for _, p := range listDir(t, "../platform") {
-		// The harnesses assemble the REAL graph — importing everything is their
-		// job, exactly as componenttest is exempted from the feature-free rule.
-		if p == "componenttest" || p == "dbtest" {
+		if harnessExempt[p] {
 			continue
 		}
 		pkg := mod + "/internal/platform/" + p
 		for d := range deps(t, pkg) {
 			for _, dom := range domains {
 				if d == mod+"/internal/"+dom || strings.HasPrefix(d, mod+"/internal/"+dom+"/") {
-					t.Errorf("platform/%s imports domain %s — the kernel stays domain-free; "+
-						"invert the dependency with a port owned by the domain", p, dom)
+					t.Errorf("platform/%s reaches domain %s (transitively, via %s) — the kernel "+
+						"stays domain-free", p, dom, d)
 				}
 			}
 		}
 	}
 }
 
-// TestPlatformImportsNoDomainFires proves the domain-detection half of the rule
-// above works before any domain exists to test it against.
+// TestPlatformImportsNoDomainFires proves the rule by calling the rule — the
+// same function the real test uses — against a planted kernel->domain import.
 func TestPlatformImportsNoDomainFires(t *testing.T) {
 	root := t.TempDir()
 	plantDomain(t, root, map[string]string{
 		"platform/obs/obs.go": "package obs\n\nimport _ \"" + mod + "/internal/ops\"\n",
 		"ops/model.go":        "package ops\n",
 	})
-	var found bool
-	for _, f := range goFilesIn(t, filepath.Join(root, "platform", "obs")) {
-		for _, imp := range fileImports(t, f) {
-			if imp == mod+"/internal/ops" {
-				found = true
-			}
-		}
+	if bad := platformDomainViolations(t, root, mod, []string{"ops"}); len(bad) != 1 {
+		t.Fatalf("the platform->domain rule did not fire on a planted import: got %v", bad)
 	}
-	if !found {
-		t.Fatal("the platform->domain detector failed to see a planted domain import")
+}
+
+// TestPlatformImportsNoDomainDoesNotOverfire is the mirror — including the
+// harness carve-out, which is the one way this rule could wrongly fail a phase.
+func TestPlatformImportsNoDomainDoesNotOverfire(t *testing.T) {
+	root := t.TempDir()
+	plantDomain(t, root, map[string]string{
+		"platform/obs/obs.go":               "package obs\n\nimport _ \"" + mod + "/internal/platform/tenant\"\n",
+		"platform/componenttest/harness.go": "package componenttest\n\nimport _ \"" + mod + "/internal/ops\"\n",
+		"ops/model.go":                      "package ops\n",
+	})
+	if bad := platformDomainViolations(t, root, mod, []string{"ops"}); len(bad) != 0 {
+		t.Fatalf("rule fired on a clean kernel / exempt harness: %v", bad)
+	}
+}
+
+// inTargetDomain reports whether a module-relative package path (e.g.
+// "internal/ops/listreports") lives inside one of the seven target domains.
+//
+// It is the hand-off point between the two gorm rules: the legacy shrink-only
+// gormImporters list governs everything OUTSIDE the domains, and
+// TestGormFencedToDomainRepository governs everything inside. Without this split
+// the rules contradict — the sanctioned <domain>/repository.go would read as a
+// "NEW direct gorm importer" and force the shrink-only list to grow once per
+// domain phase (§19.6).
+func inTargetDomain(short string) bool {
+	parts := strings.Split(short, "/")
+	return len(parts) >= 2 && parts[0] == "internal" && targetDomains[parts[1]]
+}
+
+// TestGormRulesHandOffCleanly proves the two gorm rules partition the tree
+// rather than overlap or leave a gap: the sanctioned domain repository is
+// exempt from the legacy list, and everything outside a domain is still subject
+// to it.
+func TestGormRulesHandOffCleanly(t *testing.T) {
+	cases := []struct {
+		pkg    string
+		domain bool
+	}{
+		{"internal/ops", true},                   // a domain root -> the fence
+		{"internal/ops/listreports", true},       // a slice -> the fence
+		{"internal/spec/httpapi", true},          // an aggregator -> the fence
+		{"internal/platform/database", false},    // kernel -> the legacy list
+		{"internal/feature/organization", false}, // legacy feature -> the legacy list
+		{"repositories", false},                  // the flat kernel -> the legacy list
+		{"internal/opsomething", false},          // NOT a domain despite the prefix
+	}
+	for _, c := range cases {
+		if got := inTargetDomain(c.pkg); got != c.domain {
+			t.Errorf("inTargetDomain(%q) = %v, want %v", c.pkg, got, c.domain)
+		}
 	}
 }

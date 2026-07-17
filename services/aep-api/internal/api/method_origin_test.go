@@ -18,6 +18,11 @@ package api
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -200,19 +205,78 @@ func TestOpOwnerLedgerIsHonest(t *testing.T) {
 	}
 }
 
-// TestApiServerDeclaresNoMethods pins the promotion-only property the whole
-// scheme rests on: if apiServer ever declared a handler method itself it would
-// sit at depth-0 and silently beat EVERY embed, shim included.
-func TestApiServerDeclaresNoMethods(t *testing.T) {
-	for _, op := range contractOps() {
-		m, ok := reflect.PointerTo(reflect.TypeOf(apiServer{})).MethodByName(op)
-		if !ok {
-			continue // TestMethodOrigin reports the missing-op case
+// methodsDeclaredOn parses dir and returns the names of methods declared with a
+// receiver of type recvType (value or pointer).
+//
+// This has to read the SOURCE. Reflection cannot answer it: a method declared on
+// apiServer sits at depth-0 and shadows every embed, yet it changes nothing about
+// what the embeds themselves provide — so embedsProviding still returns
+// ["legacyShim"], the ledger still matches, and every reflection assertion passes
+// while the edge serves a body no embed supplied. Only the declaration site
+// distinguishes "composed" from "implemented".
+func methodsDeclaredOn(t *testing.T, dir, recvType string) []string {
+	t.Helper()
+	pkgs, err := parser.ParseDir(token.NewFileSet(), dir, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", dir, err)
+	}
+	var out []string
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
+					continue
+				}
+				expr := fn.Recv.List[0].Type
+				if star, isPtr := expr.(*ast.StarExpr); isPtr {
+					expr = star.X
+				}
+				if id, ok := expr.(*ast.Ident); ok && id.Name == recvType {
+					out = append(out, fn.Name.Name)
+				}
+			}
 		}
-		// A promoted method's Index chain starts at the embedded field; a
-		// method declared on apiServer itself has no embedded provider.
-		if len(embedsProviding(op)) == 0 {
-			t.Errorf("op %q (%v) is declared on apiServer itself — the edge composes, it never implements", op, m.Name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestApiServerDeclaresNoMethods pins the promotion-only property the whole
+// scheme rests on: apiServer COMPOSES, it never implements. A method declared on
+// it would sit at depth-0 and silently beat EVERY embed, shim included — the same
+// stale-serve failure the shim exists to prevent, one level up.
+func TestApiServerDeclaresNoMethods(t *testing.T) {
+	if got := methodsDeclaredOn(t, ".", "apiServer"); len(got) > 0 {
+		t.Errorf("apiServer declares %v — the edge composes, it never implements. A method here "+
+			"sits at depth-0 and shadows every embed silently (the build stays green and no "+
+			"reflection check can see it). Move the body into its domain slice.", got)
+	}
+}
+
+// TestEmbedsAreConcrete pins the assumption embedsProviding rests on: every embed
+// must be a struct or pointer-to-struct.
+//
+// An embedded INTERFACE would make the detector blind — reflect.PointerTo(iface)
+// has an empty method set, so MethodByName always misses. The op would resolve
+// through the interface at depth-1, the detector would report only the other
+// providers, and the ledger would agree with itself while the edge served
+// something else entirely.
+func TestEmbedsAreConcrete(t *testing.T) {
+	srv := reflect.TypeOf(apiServer{})
+	for i := 0; i < srv.NumField(); i++ {
+		f := srv.Field(i)
+		if !f.Anonymous {
+			continue
+		}
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() != reflect.Struct {
+			t.Errorf("apiServer embeds %s (%v) — embeds must be a struct or *struct. An embedded "+
+				"interface is invisible to the method-origin gate, which would then pass while "+
+				"serving a body the ledger does not name.", f.Name, f.Type)
 		}
 	}
 }
@@ -269,5 +333,43 @@ func TestMethodOriginGateAcceptsACorrectCut(t *testing.T) {
 	}
 	if got := embedsProvidingIn(reflect.TypeOf(correctCut{}), "ListProjects"); len(got) != 1 {
 		t.Fatalf("a correctly-cut op reported %v, want exactly one provider", got)
+	}
+}
+
+// TestApiServerDeclaresNoMethodsFires proves the source check catches the depth-0
+// method — the case that defeats every reflection assertion in this file.
+//
+// This gap was real, not hypothetical: the first version of the check asked
+// reflection whether any embed supplied the op, which a shadowing method leaves
+// untouched. Planting one compiled green with all four gates passing.
+func TestApiServerDeclaresNoMethodsFires(t *testing.T) {
+	dir := t.TempDir()
+	body := "package api\n\n" +
+		"type apiServer struct{ legacyShim }\n\n" +
+		"// The shadowing method: depth-0, beats every embed, invisible to reflection.\n" +
+		"func (s *apiServer) ListProjects() string { return \"shadowed\" }\n"
+	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	got := methodsDeclaredOn(t, dir, "apiServer")
+	if len(got) != 1 || got[0] != "ListProjects" {
+		t.Fatalf("the depth-0 detector did not fire on a planted shadowing method: got %v", got)
+	}
+}
+
+// TestApiServerDeclaresNoMethodsDoesNotOverfire is the mirror: methods on OTHER
+// types in the package are not apiServer's problem. Without this, a check that
+// reported every method would pass the test above.
+func TestApiServerDeclaresNoMethodsDoesNotOverfire(t *testing.T) {
+	dir := t.TempDir()
+	body := "package api\n\n" +
+		"type legacyHandlers struct{}\n\n" +
+		"func (l *legacyHandlers) ListProjects() string { return \"legacy\" }\n\n" +
+		"type apiServer struct{ legacyShim }\n"
+	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	if got := methodsDeclaredOn(t, dir, "apiServer"); len(got) != 0 {
+		t.Fatalf("the detector reported %v for methods declared on legacyHandlers, not apiServer", got)
 	}
 }

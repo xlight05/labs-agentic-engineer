@@ -383,13 +383,20 @@ func TestTaskmetaIsPure(t *testing.T) {
 	}
 }
 
-// gormImporters is the frozen allowlist of module-internal packages permitted
-// to import gorm.io/gorm directly. The DB seam is being migrated feature-by-
-// feature into repositories/ (the aep-api testability plan, step 11), so this
-// list may only SHRINK: a NEW direct gorm importer fails (route persistence
-// through a repository — the real repository over dbtest is the DB test seam),
-// and a STALE entry — a package that no longer imports gorm — also fails, so
-// every migration trims exactly one row and the list stays honest.
+// gormImporters is the frozen allowlist of module-internal LEGACY packages
+// permitted to import gorm.io/gorm directly. The DB seam is being migrated
+// feature-by-feature into repositories/ (the aep-api testability plan, step 11),
+// so this list may only SHRINK: a NEW direct gorm importer fails (route
+// persistence through a repository — the real repository over dbtest is the DB
+// test seam), and a STALE entry — a package that no longer imports gorm — also
+// fails, so every migration trims exactly one row and the list stays honest.
+//
+// The seven target domains are DELIBERATELY out of scope here: they are governed
+// by TestGormFencedToDomainRepository, which allows gorm in <domain>/repository.go
+// and nowhere else. Without that carve-out the two rules contradict — a domain
+// adding the sanctioned repository.go would be a "NEW direct gorm importer" and
+// force this shrink-only list to GROW once per domain phase, which would rot it
+// into a rubber stamp (docs/design/domain-oriented-architecture.md §19.6).
 var gormImporters = map[string]bool{
 	// Composition + kernel (structurally hold gorm; not feature slices).
 	"internal/api": true,
@@ -437,6 +444,9 @@ func TestGormImportAllowlist(t *testing.T) {
 			continue
 		}
 		short := strings.TrimPrefix(fields[0], mod+"/")
+		if inTargetDomain(short) {
+			continue // governed by TestGormFencedToDomainRepository instead
+		}
 		direct := false
 		for _, imp := range fields[1:] {
 			if imp == "gorm.io/gorm" {

@@ -137,8 +137,14 @@ const currentPhase = "P0"
 func TestNoShimsSurvivePastTheirPhase(t *testing.T) {
 	decls, _ := findShims(t, filepath.Join("..", ".."))
 	for _, d := range decls {
-		if d.retires < currentPhase {
-			t.Errorf("%s was due to retire in %s but we are at %s — delete the shim, or move its "+
+		// <= , not < : currentPhase names the phase that has LANDED, so a shim
+		// retiring in that phase is already overdue. With strict <, the terminal
+		// case could never fire — at currentPhase=P9 a retires=P9 shim (which is
+		// every shim P9 exists to delete) would pass, and the pragma P[0-9] regex
+		// admits no phase beyond P9 to bump to. The gate would be dead code
+		// exactly when it matters.
+		if d.retires <= currentPhase {
+			t.Errorf("%s was due to retire in %s but %s has landed — delete the shim, or move its "+
 				"retires= if the plan genuinely changed (and say why in the PR)", d.file, d.retires, currentPhase)
 		}
 	}
