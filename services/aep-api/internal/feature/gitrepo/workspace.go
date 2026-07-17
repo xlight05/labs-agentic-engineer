@@ -20,8 +20,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -75,7 +75,7 @@ var (
 // (design §4: repos/<orgId>/_skills/org-skills/; the agents service derives
 // the skills snapshot path structurally from that fixed name). The default
 // branch falls back to "main".
-func WorkspaceRefFor(orgID string, repo *models.GitRepository, cred credentials.Credential) RepoRef {
+func WorkspaceRefFor(orgID string, repo *models.GitRepository, cred secrets.Credential) RepoRef {
 	slug := repo.WorkspaceSlug()
 	branch := repo.DefaultBranch
 	if branch == "" {
@@ -93,7 +93,7 @@ func WorkspaceRefFor(orgID string, repo *models.GitRepository, cred credentials.
 
 // ResolveWorkspaceRef is WorkspaceRefFor with the credential resolved from
 // the org resolver — the one call consumers start every read/write from.
-func ResolveWorkspaceRef(ctx context.Context, resolver credentials.Resolver, orgID string, repo *models.GitRepository) (RepoRef, error) {
+func ResolveWorkspaceRef(ctx context.Context, resolver secrets.Resolver, orgID string, repo *models.GitRepository) (RepoRef, error) {
 	cred, err := resolver.Resolve(ctx, orgID)
 	if err != nil {
 		return RepoRef{}, fmt.Errorf("resolve credential: %w", err)

@@ -48,13 +48,13 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/idp"
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/contracttest"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -166,11 +166,11 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 	gh := newCfgFakeGH(t)
 	anth := newAnthropicFake(t)
 
-	store, err := credentials.NewDBStore(db, []byte(configAESKey))
+	store, err := secrets.NewDBStore(db, []byte(configAESKey))
 	if err != nil {
 		t.Fatalf("NewDBStore: %v", err)
 	}
-	minter, err := credentials.NewAppTokenMinter(nil)
+	minter, err := secrets.NewAppTokenMinter(nil)
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}

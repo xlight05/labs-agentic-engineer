@@ -39,8 +39,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -73,8 +73,8 @@ type AnthropicSecretCleaner interface {
 
 type CredentialService struct {
 	db        *gorm.DB
-	store     credentials.OpenBaoStore
-	minter    *credentials.AppTokenMinter
+	store     secrets.OpenBaoStore
+	minter    *secrets.AppTokenMinter
 	githubAPI string // "https://api.github.com" by default; overridden in tests.
 
 	// buildSecretCleaner is invoked from the Disconnect cascade so a
@@ -121,8 +121,8 @@ type CredentialService struct {
 // ExchangeOAuthCode, GetUserInstallations); nil disables the bind path.
 func NewCredentialService(
 	db *gorm.DB,
-	store credentials.OpenBaoStore,
-	minter *credentials.AppTokenMinter,
+	store secrets.OpenBaoStore,
+	minter *secrets.AppTokenMinter,
 	envWebhookSecret string,
 	appClientID, appClientSecret string,
 	githubClient gitrepo.AppInstallOps,

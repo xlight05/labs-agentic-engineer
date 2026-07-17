@@ -33,8 +33,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -375,10 +375,10 @@ func (s *CredentialService) listInstallationRepos(ctx context.Context, installat
 // fetchAppBotIdentity calls GET /app to learn the App's bot login. The
 // "name" field is the App's display name; the "slug" is what appears as
 // `<slug>[bot]` on commits.
-func (s *CredentialService) fetchAppBotIdentity(ctx context.Context) (credentials.Identity, error) {
+func (s *CredentialService) fetchAppBotIdentity(ctx context.Context) (secrets.Identity, error) {
 	jwt, err := s.minter.SignAppJWT(time.Now())
 	if err != nil {
-		return credentials.Identity{}, err
+		return secrets.Identity{}, err
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, s.githubAPI+"/app", nil)
 	req.Header.Set("Authorization", "Bearer "+jwt)
@@ -386,28 +386,28 @@ func (s *CredentialService) fetchAppBotIdentity(ctx context.Context) (credential
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return credentials.Identity{}, err
+		return secrets.Identity{}, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return credentials.Identity{}, fmt.Errorf("GET /app: %d %s", resp.StatusCode, truncateForError(body))
+		return secrets.Identity{}, fmt.Errorf("GET /app: %d %s", resp.StatusCode, truncateForError(body))
 	}
 	var info struct {
 		Slug string `json:"slug"`
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(body, &info); err != nil {
-		return credentials.Identity{}, err
+		return secrets.Identity{}, err
 	}
 	if info.Slug == "" {
-		return credentials.Identity{}, errors.New("/app response missing slug")
+		return secrets.Identity{}, errors.New("/app response missing slug")
 	}
 	// GitHub's commit-attribution convention uses {numericUserID}+{slug}[bot]
 	// as the noreply email's local-part. We don't have the numeric user ID
 	// at this layer; leave the slug-based shape (GitHub still attributes
 	// correctly when the email belongs to the App's verified noreply domain).
-	return credentials.Identity{
+	return secrets.Identity{
 		Name:  info.Name,
 		Email: fmt.Sprintf("%s[bot]@users.noreply.github.com", info.Slug),
 		Login: fmt.Sprintf("%s[bot]", info.Slug),

@@ -21,9 +21,9 @@ import (
 	"io"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -77,11 +77,11 @@ type VersionReader interface {
 
 // GitReader is the workspace-backed git surface the plan turn drives: the
 // snapshot refs (Head), the lineage diff (Workspace.Diff between a Task's
-// lineage tag and the current tag, §6), and per-op credentials.
+// lineage tag and the current tag, §6), and per-op secrets.
 // gitrepo.GitOpsService satisfies it.
 type GitReader interface {
 	Workspace() gitrepo.Workspace
-	Resolver() credentials.Resolver
+	Resolver() secrets.Resolver
 }
 
 // SkillsRepoResolver ensures the org's _skills repo is provisioned (the

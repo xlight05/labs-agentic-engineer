@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -57,7 +57,7 @@ type RepoService interface {
 type repoService struct {
 	repo     repositories.RepoRepository
 	github   RepoAdmin
-	resolver credentials.Resolver
+	resolver secrets.Resolver
 	repoVis  string
 	// workspaceTrash, when set (from the composition root), renames the
 	// repo's on-disk workspace subtree into trash after the DB row is
@@ -81,7 +81,7 @@ func WithWorkspaceTrash(fn func(ctx context.Context, orgID, projectID, repoSlug 
 func NewRepoService(
 	repo repositories.RepoRepository,
 	github RepoAdmin,
-	resolver credentials.Resolver,
+	resolver secrets.Resolver,
 	repoVisibility string,
 	opts ...RepoServiceOption,
 ) RepoService {

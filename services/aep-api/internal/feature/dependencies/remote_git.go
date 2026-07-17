@@ -51,7 +51,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // ErrOwnerNotInOrg is returned when a requested repo owner is not the GitHub
@@ -121,7 +121,7 @@ type RemoteGitSearchHit struct {
 // over the REST API. It resolves the org's credential (token + owner) from the
 // credential resolver and enforces the owner-must-match-org guard on every read.
 type RemoteGitClient struct {
-	resolver        credentials.Resolver
+	resolver        secrets.Resolver
 	httpClient      *http.Client
 	apiBase         string
 	maxContentBytes int64
@@ -144,7 +144,7 @@ func WithRemoteGitMaxContentBytes(n int64) RemoteGitOption {
 
 // NewRemoteGitClient builds the read-only GitHub client over the org credential
 // resolver. Production wiring passes no options.
-func NewRemoteGitClient(resolver credentials.Resolver, opts ...RemoteGitOption) *RemoteGitClient {
+func NewRemoteGitClient(resolver secrets.Resolver, opts ...RemoteGitOption) *RemoteGitClient {
 	c := &RemoteGitClient{
 		resolver:        resolver,
 		httpClient:      &http.Client{Timeout: defaultRemoteGitTimeout},

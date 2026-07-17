@@ -392,9 +392,11 @@ func TestTaskmetaIsPure(t *testing.T) {
 // every migration trims exactly one row and the list stays honest.
 var gormImporters = map[string]bool{
 	// Composition + kernel (structurally hold gorm; not feature slices).
-	"internal/api":         true,
-	"internal/app":         true,
-	"internal/credentials": true,
+	"internal/api": true,
+	"internal/app": true,
+	// The secret kernel module (§10.4): its Postgres-backed store is one of the
+	// four backends it exists to own. Was internal/credentials.
+	"internal/platform/secrets": true,
 	// The migration MECHANISM (conn + Runner/Step) — domain-free by design.
 	"internal/platform/database": true,
 	// The ordered migration LIST — names domain-owned steps, so it sits beside

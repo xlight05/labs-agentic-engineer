@@ -14,11 +14,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package credentials is the single seam for GitHub authentication in
-// git-service. Every code path that calls GitHub or runs `git` against a
-// remote routes through Resolver.Resolve(ocOrgID) to obtain a Credential,
-// then asks the credential for a token, identity, repo-owner, or webhook
-// strategy as needed.
+// Package secrets is the kernel module that owns every secret BACKEND, and the
+// single seam for GitHub authentication (docs/design/domain-oriented-architecture.md
+// §10.4).
+//
+// Secret storage is spread across four genuinely different backends — OpenBao
+// (sealed git tokens), the SM-API (runner mirrors), Kubernetes ExternalSecrets
+// (pods), and Postgres (the publisher secret). This module gives them ONE home
+// and ONE arch fence: the OpenBao/Vault SDK may be imported from here and nowhere
+// else (TestImportFences), so no business domain can reach a backend directly.
+//
+// It exposes a FEW purpose-specific ports, never one god port: the four backends
+// serve different purposes, and one interface over them would be a false common
+// core. The user-facing "connect my GitHub / Anthropic / resource secret"
+// capabilities are NOT here — they stay in their business domains
+// (organization, dependencies) and call these ports.
+//
+// Migration note: this was internal/credentials. The other three backends are
+// routed through it in P3, not P0.
+//
+// # GitHub authentication
+//
+// Every code path that calls GitHub or runs `git` against a remote routes
+// through Resolver.Resolve(ocOrgID) to obtain a Credential, then asks the
+// credential for a token, identity, repo-owner, or webhook strategy as needed.
 //
 // Implementations cover App-installation and per-org user-PAT kinds; call
 // sites stay identical because they consume the polymorphic Credential
@@ -31,7 +50,7 @@
 //     source — not env, not the GitRepository row.
 //  3. Every external GitHub operation passes ocOrgID explicitly. Resolvers
 //     refuse an empty ocOrgID.
-package credentials
+package secrets
 
 import (
 	"context"

@@ -55,14 +55,14 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/k8s"
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // AnthropicCredentialService — see package doc.
 type AnthropicCredentialService struct {
 	db           *gorm.DB
-	store        credentials.OpenBaoStore
+	store        secrets.OpenBaoStore
 	wpClient     client.Client
 	anthropicAPI string // "https://api.anthropic.com" by default; overridden in tests
 	httpClient   *http.Client
@@ -120,7 +120,7 @@ func (s *AnthropicCredentialService) WithAnthropicAPIBase(base string) *Anthropi
 // BuildCredentialsService).
 func NewAnthropicCredentialService(
 	db *gorm.DB,
-	store credentials.OpenBaoStore,
+	store secrets.OpenBaoStore,
 	wpClient client.Client,
 ) *AnthropicCredentialService {
 	return &AnthropicCredentialService{

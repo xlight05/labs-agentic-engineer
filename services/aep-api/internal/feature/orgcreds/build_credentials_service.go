@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// build_credentials_service.go — build credentials.
+// build_credentials_service.go — build secrets.
 //
 // StageBuildSecret is the BFF entry point for provisioning the git credential
 // a component build's checkout step uses to clone the repo. It mints a fresh
@@ -48,7 +48,7 @@ import (
 	"log/slog"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
@@ -90,13 +90,13 @@ var (
 // clone with a clearer signal than a silent misroute.
 type BuildCredentialsService struct {
 	repos      repositories.RepoRepository
-	resolver   credentials.Resolver
+	resolver   secrets.Resolver
 	gitSecrets openchoreo.GitSecretClient
 }
 
 func NewBuildCredentialsService(
 	repos repositories.RepoRepository,
-	resolver credentials.Resolver,
+	resolver secrets.Resolver,
 	gitSecrets openchoreo.GitSecretClient,
 ) *BuildCredentialsService {
 	return &BuildCredentialsService{
@@ -137,8 +137,8 @@ func (s *BuildCredentialsService) StageBuildSecret(
 
 	cred, err := s.resolver.Resolve(ctx, ocOrgID)
 	if err != nil {
-		var notActive *credentials.OrgNotActiveError
-		var notFound *credentials.OrgNotFoundError
+		var notActive *secrets.OrgNotActiveError
+		var notFound *secrets.OrgNotFoundError
 		if errors.As(err, &notActive) || errors.As(err, &notFound) {
 			return nil, fmt.Errorf("%w: %v", ErrOrgDisconnected, err)
 		}
@@ -234,8 +234,8 @@ func (s *BuildCredentialsService) DeleteBuildSecretsForOrg(ctx context.Context, 
 // the package contract — see pkg/credentials/credential.go §3 rules) by
 // reading the credential's WebhookStrategy: App mode is WebhookPlatform,
 // PAT mode is WebhookPerRepo.
-func usernameForCredential(cred credentials.Credential) string {
-	if cred.WebhookStrategy() == credentials.WebhookPlatform {
+func usernameForCredential(cred secrets.Credential) string {
+	if cred.WebhookStrategy() == secrets.WebhookPlatform {
 		return "x-access-token"
 	}
 	if login := cred.Identity().Login; login != "" {
@@ -249,7 +249,7 @@ func usernameForCredential(cred credentials.Credential) string {
 // missing from store) is treated as ErrOrgDisconnected so the BFF can mark
 // the task abandoned.
 func classifyMintErr(err error) error {
-	if errors.Is(err, credentials.ErrSecretNotFound) {
+	if errors.Is(err, secrets.ErrSecretNotFound) {
 		return fmt.Errorf("%w: %v", ErrOrgDisconnected, err)
 	}
 	return fmt.Errorf("stage-build-secret: token: %w", err)

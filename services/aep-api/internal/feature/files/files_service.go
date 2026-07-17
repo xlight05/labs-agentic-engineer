@@ -39,9 +39,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/designspec"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -135,8 +135,8 @@ type RepoResolver interface {
 type GitGateway interface {
 	// Workspace is the mount-backed git engine serving all reads and writes.
 	Workspace() gitrepo.Workspace
-	Resolver() credentials.Resolver
-	ResolveSaveIdentities(cred credentials.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
+	Resolver() secrets.Resolver
+	ResolveSaveIdentities(cred secrets.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
 }
 
 // ---- service ---------------------------------------------------------------

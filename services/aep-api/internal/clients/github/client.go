@@ -40,8 +40,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // Client is the GitHub host client — one http.Client, one auth path, serving
@@ -83,7 +83,7 @@ var _ gitrepo.Host = (*Client)(nil)
 // header. Token is fetched fresh on every call from the credential —
 // long-lived PATs are a no-op here, short-lived App tokens refresh on
 // demand through the same path.
-func authHeaders(ctx context.Context, req *http.Request, cred credentials.Credential) error {
+func authHeaders(ctx context.Context, req *http.Request, cred secrets.Credential) error {
 	token, _, err := cred.Token(ctx)
 	if err != nil {
 		return fmt.Errorf("resolve token: %w", err)
@@ -99,7 +99,7 @@ func authHeaders(ctx context.Context, req *http.Request, cred credentials.Creden
 // and enforce okStatuses. A disallowed status returns
 // "github <label> failed (status %d): <body>"; when out is non-nil the OK
 // response body is unmarshalled into it.
-func (c *Client) doJSON(ctx context.Context, method, url, label string, cred credentials.Credential, payload, out any, okStatuses ...int) error {
+func (c *Client) doJSON(ctx context.Context, method, url, label string, cred secrets.Credential, payload, out any, okStatuses ...int) error {
 	var reqBody io.Reader
 	if payload != nil {
 		b, err := json.Marshal(payload)
@@ -146,7 +146,7 @@ func (c *Client) doJSON(ctx context.Context, method, url, label string, cred cre
 // getJSON performs an authenticated GET, requires 200, and decodes the body
 // into out. Any other status returns *gitrepo.HTTPStatusError so callers can
 // branch on the code (404 vs 5xx).
-func (c *Client) getJSON(ctx context.Context, url string, cred credentials.Credential, out any) error {
+func (c *Client) getJSON(ctx context.Context, url string, cred secrets.Credential, out any) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
@@ -169,7 +169,7 @@ func (c *Client) getJSON(ctx context.Context, url string, cred credentials.Crede
 	return nil
 }
 
-func (c *Client) CreateOrgRepo(ctx context.Context, cred credentials.Credential, req gitrepo.CreateOrgRepoRequest) (string, error) {
+func (c *Client) CreateOrgRepo(ctx context.Context, cred secrets.Credential, req gitrepo.CreateOrgRepoRequest) (string, error) {
 	owner := cred.RepoOwner()
 	if owner == "" {
 		return "", fmt.Errorf("credential has no repo owner")
@@ -233,7 +233,7 @@ func (c *Client) CreateOrgRepo(ctx context.Context, cred credentials.Credential,
 	return "", fmt.Errorf("github repo create failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) createUserRepo(ctx context.Context, cred credentials.Credential, payload map[string]any) (string, error) {
+func (c *Client) createUserRepo(ctx context.Context, cred secrets.Credential, payload map[string]any) (string, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("marshal request: %w", err)
@@ -268,7 +268,7 @@ func (c *Client) createUserRepo(ctx context.Context, cred credentials.Credential
 	return "", fmt.Errorf("github user repo create failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred credentials.Credential, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
+func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred secrets.Credential, req gitrepo.CreateIssueRequest) (*gitrepo.IssueResult, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -310,7 +310,7 @@ func (c *Client) CreateIssue(ctx context.Context, owner, repo string, cred crede
 	return nil, fmt.Errorf("github issue create failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) EnsureLabel(ctx context.Context, owner, repo string, cred credentials.Credential, name, color string) error {
+func (c *Client) EnsureLabel(ctx context.Context, owner, repo string, cred secrets.Credential, name, color string) error {
 	payload := map[string]string{"name": name, "color": color}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -341,7 +341,7 @@ func (c *Client) EnsureLabel(ctx context.Context, owner, repo string, cred crede
 	return fmt.Errorf("github label ensure failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) CloseIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int) error {
+func (c *Client) CloseIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) error {
 	payload := map[string]string{"state": "closed", "state_reason": "completed"}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -372,14 +372,14 @@ func (c *Client) CloseIssue(ctx context.Context, owner, repo string, cred creden
 	return fmt.Errorf("github issue close failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) EditIssueBody(ctx context.Context, owner, repo string, cred credentials.Credential, number int, body string) error {
+func (c *Client) EditIssueBody(ctx context.Context, owner, repo string, cred secrets.Credential, number int, body string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d", owner, repo, number)
 	return c.doJSON(ctx, http.MethodPatch, url, "issue edit", cred, map[string]string{"body": body}, nil, http.StatusOK)
 }
 
 // EditIssueTitle replaces the issue title via PATCH /issues/{number}. Used by
 // the plan tap's updateTask handler when a planned Task is renamed.
-func (c *Client) EditIssueTitle(ctx context.Context, owner, repo string, cred credentials.Credential, number int, title string) error {
+func (c *Client) EditIssueTitle(ctx context.Context, owner, repo string, cred secrets.Credential, number int, title string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d", owner, repo, number)
 	return c.doJSON(ctx, http.MethodPatch, url, "issue title edit", cred, map[string]string{"title": title}, nil, http.StatusOK)
 }
@@ -387,7 +387,7 @@ func (c *Client) EditIssueTitle(ctx context.Context, owner, repo string, cred cr
 // GetPullRequest returns the live state of a pull request (GET /pulls/{n}) — the
 // sweep's PR-state reconciliation input (docs/design/tasks-github-native.md §5:
 // PR state is native GitHub truth healed by the sweep when a webhook is missed).
-func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred credentials.Credential, number int) (*gitrepo.PullRequestState, error) {
+func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*gitrepo.PullRequestState, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/pulls/%d", owner, repo, number)
 	var raw struct {
 		State          string `json:"state"` // "open" | "closed"
@@ -407,7 +407,7 @@ func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, cred cr
 // retry hit an already-merged PR and fail), a merge error is reconciled
 // against the live PR state: if the PR is already merged, the side effect
 // landed and we report success.
-func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, cred credentials.Credential, number int) error {
+func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/pulls/%d/merge", owner, repo, number)
 	err := c.doJSON(ctx, http.MethodPut, url, "pull request merge", cred,
 		map[string]string{"merge_method": "squash"}, nil, http.StatusOK)
@@ -420,7 +420,7 @@ func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, cred 
 	return err
 }
 
-func (c *Client) CommentIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int, body string) error {
+func (c *Client) CommentIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int, body string) error {
 	payload := map[string]string{"body": body}
 	reqBody, err := json.Marshal(payload)
 	if err != nil {
@@ -451,7 +451,7 @@ func (c *Client) CommentIssue(ctx context.Context, owner, repo string, cred cred
 	return fmt.Errorf("github issue comment failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred credentials.Credential, labels []string) ([]gitrepo.IssueInfo, error) {
+func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred secrets.Credential, labels []string) ([]gitrepo.IssueInfo, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues?state=all&per_page=100", owner, repo)
 	if len(labels) > 0 {
 		url += "&labels=" + strings.Join(labels, ",")
@@ -514,7 +514,7 @@ func (c *Client) ListIssues(ctx context.Context, owner, repo string, cred creden
 // (which pages the repo and stops at 100). A 404 is mapped to
 // gitrepo.ErrIssueNotFound so callers can distinguish a missing issue from a
 // transport failure.
-func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int) (*gitrepo.IssueInfo, error) {
+func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*gitrepo.IssueInfo, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d", owner, repo, number)
 	var raw struct {
 		Number  int    `json:"number"`
@@ -550,7 +550,7 @@ func (c *Client) GetIssue(ctx context.Context, owner, repo string, cred credenti
 // /repos/{owner}/{repo}/issues/{number}/labels. GitHub merges them with the
 // issue's current labels (adding a label already present is a no-op). Used to
 // stamp aep:status/* projection and aep:attention flags. 200 is success.
-func (c *Client) AddIssueLabels(ctx context.Context, owner, repo string, cred credentials.Credential, number int, labels []string) error {
+func (c *Client) AddIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d/labels", owner, repo, number)
 	return c.doJSON(ctx, http.MethodPost, url, "add issue labels", cred, map[string][]string{"labels": labels}, nil, http.StatusOK)
 }
@@ -560,7 +560,7 @@ func (c *Client) AddIssueLabels(ctx context.Context, owner, repo string, cred cr
 // path-escaped (aep:status/* contains ':' and '/'). A 404 is treated as success
 // — the label is already absent, which is the desired post-state (idempotent).
 // Used to consume the aep:execute command label and clear stale projections.
-func (c *Client) RemoveIssueLabel(ctx context.Context, owner, repo string, cred credentials.Credential, number int, label string) error {
+func (c *Client) RemoveIssueLabel(ctx context.Context, owner, repo string, cred secrets.Credential, number int, label string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d/labels/%s", owner, repo, number, urlpkg.PathEscape(label))
 	// 404 is success: the label is already absent, the desired post-state.
 	return c.doJSON(ctx, http.MethodDelete, url, "remove issue label", cred, nil, nil, http.StatusOK, http.StatusNotFound)
@@ -569,7 +569,7 @@ func (c *Client) RemoveIssueLabel(ctx context.Context, owner, repo string, cred 
 // SetIssueLabels replaces the issue's entire label set via PUT
 // /repos/{owner}/{repo}/issues/{number}/labels. Unlike AddIssueLabels this is
 // authoritative — labels absent from the slice are removed. 200 is success.
-func (c *Client) SetIssueLabels(ctx context.Context, owner, repo string, cred credentials.Credential, number int, labels []string) error {
+func (c *Client) SetIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error {
 	// Never send a nil slice — GitHub then leaves labels unchanged rather than
 	// clearing them; an explicit empty array clears.
 	if labels == nil {
@@ -579,7 +579,7 @@ func (c *Client) SetIssueLabels(ctx context.Context, owner, repo string, cred cr
 	return c.doJSON(ctx, http.MethodPut, url, "set issue labels", cred, map[string][]string{"labels": labels}, nil, http.StatusOK)
 }
 
-func (c *Client) RegisterWebhook(ctx context.Context, owner, repo string, cred credentials.Credential, deliveryURL, hmacSecret string, events []string) (int64, error) {
+func (c *Client) RegisterWebhook(ctx context.Context, owner, repo string, cred secrets.Credential, deliveryURL, hmacSecret string, events []string) (int64, error) {
 	payload := map[string]any{
 		"name":   "web",
 		"active": true,
@@ -628,7 +628,7 @@ func (c *Client) RegisterWebhook(ctx context.Context, owner, repo string, cred c
 	return 0, fmt.Errorf("github register webhook failed (status %d): %s", resp.StatusCode, string(respBody))
 }
 
-func (c *Client) findHookByURL(ctx context.Context, owner, repo string, cred credentials.Credential, deliveryURL string) (int64, error) {
+func (c *Client) findHookByURL(ctx context.Context, owner, repo string, cred secrets.Credential, deliveryURL string) (int64, error) {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/hooks?per_page=100", owner, repo)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -666,7 +666,7 @@ func (c *Client) findHookByURL(ctx context.Context, owner, repo string, cred cre
 // cutover: RegisterWebhook's already-exists path returns a pre-existing hook
 // without touching its events, so a hook created before "issues" joined the
 // subscription must be PATCHed to add it. 200 is success.
-func (c *Client) UpdateWebhookEvents(ctx context.Context, owner, repo string, cred credentials.Credential, hookID int64, events []string) error {
+func (c *Client) UpdateWebhookEvents(ctx context.Context, owner, repo string, cred secrets.Credential, hookID int64, events []string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/hooks/%d", owner, repo, hookID)
 	return c.doJSON(ctx, http.MethodPatch, url, "update webhook events", cred, map[string]any{"events": events}, nil, http.StatusOK)
 }
@@ -674,7 +674,7 @@ func (c *Client) UpdateWebhookEvents(ctx context.Context, owner, repo string, cr
 // GetUser performs GET /user using the credential's token. Returns
 // HTTPStatusError for non-2xx responses so the validator can branch on
 // 401 (revoked) vs 5xx (transient).
-func (c *Client) GetUser(ctx context.Context, cred credentials.Credential) (*gitrepo.GitHubUser, error) {
+func (c *Client) GetUser(ctx context.Context, cred secrets.Credential) (*gitrepo.GitHubUser, error) {
 	url := c.apiBase + "/user"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -704,7 +704,7 @@ func (c *Client) GetUser(ctx context.Context, cred credentials.Credential) (*git
 // GetAppInstallation calls GET /app/installations/{id}. Authenticated by
 // the App JWT (not an installation token) — App-level endpoints reject
 // installation tokens. The minter exposes the JWT through SignAppJWT().
-func (c *Client) GetAppInstallation(ctx context.Context, minter *credentials.AppTokenMinter, installationID int64) (*gitrepo.AppInstallationInfo, error) {
+func (c *Client) GetAppInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) (*gitrepo.AppInstallationInfo, error) {
 	if minter == nil {
 		return nil, fmt.Errorf("app minter required")
 	}
@@ -738,7 +738,7 @@ func (c *Client) GetAppInstallation(ctx context.Context, minter *credentials.App
 	return &info, nil
 }
 
-func (c *Client) DeleteInstallation(ctx context.Context, minter *credentials.AppTokenMinter, installationID int64) error {
+func (c *Client) DeleteInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) error {
 	if minter == nil {
 		return fmt.Errorf("app minter required")
 	}
@@ -772,7 +772,7 @@ func (c *Client) DeleteInstallation(ctx context.Context, minter *credentials.App
 // App JWT. Returns the flat AppInstallationSummary projection. Caps
 // the walk at 10 pages × 100 = 1000 installations as a defensive bound;
 // real-world dev/single-tenant installs are an order of magnitude under.
-func (c *Client) ListAppInstallations(ctx context.Context, minter *credentials.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+func (c *Client) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
 	if minter == nil {
 		return nil, fmt.Errorf("app minter required")
 	}

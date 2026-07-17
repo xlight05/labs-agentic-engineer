@@ -20,24 +20,24 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
-// ValidatorProbes is the production credentials.ValidatorProbes that
+// ValidatorProbes is the production secrets.ValidatorProbes that
 // wraps the resolver, the GitHub client, the AppTokenMinter, and the
 // CredentialService's identity-update helpers.
 type ValidatorProbes struct {
 	credSvc      *CredentialService
 	githubClient gitrepo.AppInstallOps
-	resolver     credentials.Resolver
-	minter       *credentials.AppTokenMinter
+	resolver     secrets.Resolver
+	minter       *secrets.AppTokenMinter
 }
 
 // NewValidatorProbes constructs the probes adapter. All four
 // dependencies must be non-nil; nil short-circuits the validator at
 // construction so we don't half-fire later.
-func NewValidatorProbes(credSvc *CredentialService, githubClient gitrepo.AppInstallOps, resolver credentials.Resolver, minter *credentials.AppTokenMinter) *ValidatorProbes {
+func NewValidatorProbes(credSvc *CredentialService, githubClient gitrepo.AppInstallOps, resolver secrets.Resolver, minter *secrets.AppTokenMinter) *ValidatorProbes {
 	return &ValidatorProbes{
 		credSvc:      credSvc,
 		githubClient: githubClient,
@@ -48,15 +48,15 @@ func NewValidatorProbes(credSvc *CredentialService, githubClient gitrepo.AppInst
 
 // ListActiveRows projects org_credentials rows into the validator's
 // schema-free shape.
-func (p *ValidatorProbes) ListActiveRows(ctx context.Context) ([]credentials.ActiveRow, error) {
+func (p *ValidatorProbes) ListActiveRows(ctx context.Context) ([]secrets.ActiveRow, error) {
 	rows, err := p.credSvc.ListActiveRows(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]credentials.ActiveRow, 0, len(rows))
+	out := make([]secrets.ActiveRow, 0, len(rows))
 	for i := range rows {
 		r := rows[i]
-		out = append(out, credentials.ActiveRow{
+		out = append(out, secrets.ActiveRow{
 			OcOrgID:        r.OcOrgID,
 			Kind:           r.Kind,
 			GitHubLogin:    r.GitHubLogin,
@@ -71,7 +71,7 @@ func (p *ValidatorProbes) ListActiveRows(ctx context.Context) ([]credentials.Act
 // ProbePAT performs GET /user using the row's resolved credential.
 // Translates GitHub's HTTP status into the validator's signal vocabulary
 // (Unauthorized triggers cascade; Transient defers to the next tick).
-func (p *ValidatorProbes) ProbePAT(ctx context.Context, row credentials.ActiveRow) (login, name, email string, err error) {
+func (p *ValidatorProbes) ProbePAT(ctx context.Context, row secrets.ActiveRow) (login, name, email string, err error) {
 	cred, err := p.resolver.Resolve(ctx, row.OcOrgID)
 	if err != nil {
 		return "", "", "", err
@@ -80,11 +80,11 @@ func (p *ValidatorProbes) ProbePAT(ctx context.Context, row credentials.ActiveRo
 	if err != nil {
 		switch {
 		case gitrepo.IsHTTPStatus(err, 401), gitrepo.IsHTTPStatus(err, 403):
-			return "", "", "", credentials.ErrCredentialUnauthorized
+			return "", "", "", secrets.ErrCredentialUnauthorized
 		case gitrepo.IsHTTPStatus(err, 404):
-			return "", "", "", credentials.ErrCredentialUnauthorized
+			return "", "", "", secrets.ErrCredentialUnauthorized
 		}
-		return "", "", "", credentials.ErrCredentialTransient
+		return "", "", "", secrets.ErrCredentialTransient
 	}
 	if user.Email == "" {
 		user.Email = user.Login + "@users.noreply.github.com"
@@ -98,7 +98,7 @@ func (p *ValidatorProbes) ProbePAT(ctx context.Context, row credentials.ActiveRo
 // ProbeApp calls GET /app/installations/{installationId}. Only valid for
 // app-installation rows; PAT rows would carry InstallationID=nil and we
 // skip them at the caller layer.
-func (p *ValidatorProbes) ProbeApp(ctx context.Context, row credentials.ActiveRow) (string, error) {
+func (p *ValidatorProbes) ProbeApp(ctx context.Context, row secrets.ActiveRow) (string, error) {
 	if row.InstallationID == nil {
 		return "", errors.New("validator: app row missing installation_id")
 	}
@@ -106,9 +106,9 @@ func (p *ValidatorProbes) ProbeApp(ctx context.Context, row credentials.ActiveRo
 	if err != nil {
 		switch {
 		case gitrepo.IsHTTPStatus(err, 401), gitrepo.IsHTTPStatus(err, 404), gitrepo.IsHTTPStatus(err, 410):
-			return "", credentials.ErrCredentialUnauthorized
+			return "", secrets.ErrCredentialUnauthorized
 		}
-		return "", credentials.ErrCredentialTransient
+		return "", secrets.ErrCredentialTransient
 	}
 	return info.Account.Login, nil
 }

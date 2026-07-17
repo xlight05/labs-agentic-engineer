@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // (fakeResolver and fakeCred re-used from build_credentials_service_test.go)
@@ -43,5 +43,5 @@ func TestRefresh_Happy(t *testing.T) {
 	}
 }
 
-// Ensure fakeCred matches the credentials.Credential interface.
-var _ credentials.Credential = (*fakeCred)(nil)
+// Ensure fakeCred matches the secrets.Credential interface.
+var _ secrets.Credential = (*fakeCred)(nil)

@@ -38,9 +38,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 type fakeCredsRefresh struct {
@@ -52,7 +52,7 @@ func (f *fakeCredsRefresh) Refresh(_ context.Context, executionID, orgHandle str
 	return &orgcreds.RefreshResponse{
 		Token:     "ghs_fresh",
 		ExpiresAt: time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC),
-		Identity:  credentials.Identity{Name: "AEP Bot", Email: "bot@aep.dev", Login: "aep-bot"},
+		Identity:  secrets.Identity{Name: "AEP Bot", Email: "bot@aep.dev", Login: "aep-bot"},
 		TaskID:    executionID,
 	}, nil
 }

@@ -40,7 +40,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
@@ -48,6 +47,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -294,11 +294,11 @@ func (f fixedRepos) GetRepo(context.Context, string, string) (*models.GitReposit
 	return f.repo, nil
 }
 
-// nilCredResolver satisfies credentials.Resolver for file:// origins (the
+// nilCredResolver satisfies secrets.Resolver for file:// origins (the
 // engine skips askpass injection on a nil credential).
 type nilCredResolver struct{}
 
-func (nilCredResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (nilCredResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	return nil, nil
 }
 

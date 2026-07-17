@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
@@ -48,7 +48,7 @@ type WebhookService interface {
 // checked assertion — an impl that can't resolve fails loudly with an error, not
 // a panic.
 type issueRepoResolver interface {
-	resolveRepoAndCredential(ctx context.Context, orgID, projectID string) (owner, repo string, cred credentials.Credential, err error)
+	resolveRepoAndCredential(ctx context.Context, orgID, projectID string) (owner, repo string, cred secrets.Credential, err error)
 }
 
 type webhookService struct {
@@ -105,7 +105,7 @@ func (s *webhookService) Register(ctx context.Context, orgID, projectID string) 
 
 	// App-mode short-circuit: platform-level delivery, no per-repo
 	// registration. Platform-PAT credentials always return WebhookPerRepo.
-	if cred.WebhookStrategy() == credentials.WebhookPlatform {
+	if cred.WebhookStrategy() == secrets.WebhookPlatform {
 		return nil, nil
 	}
 

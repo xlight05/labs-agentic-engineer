@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package credentials_test
+package secrets_test
 
 import (
 	"go/parser"
@@ -46,10 +46,12 @@ type fenceRule struct {
 var rules = []fenceRule{
 	{
 		name:                 "openbao-sdk",
-		allowedPrefix:        filepath.Join("internal", "credentials") + string(filepath.Separator),
+		allowedPrefix:        filepath.Join("internal", "platform", "secrets") + string(filepath.Separator),
 		bannedImportPrefixes: []string{`"github.com/openbao/`, `"github.com/hashicorp/vault`},
-		reason: "OpenBao/Vault SDK access is confined to internal/credentials/ (the OpenBaoStore wrapper). " +
-			"Per-org isolation in §6.5 rests on no other package being able to talk to OpenBao directly.",
+		reason: "OpenBao/Vault SDK access is confined to internal/platform/secrets/ (the OpenBaoStore " +
+			"wrapper). Per-org isolation in §6.5 rests on no other package being able to talk to OpenBao " +
+			"directly, and domain-oriented-architecture.md §10.4 makes this module the ONE home for every " +
+			"secret backend — the fence is what stops a business domain reaching a backend directly.",
 	},
 	{
 		name:                 "openchoreo-gen-direct",
@@ -120,9 +122,9 @@ func findModuleRoot(t *testing.T) string {
 	}
 	dir := wd
 	for {
-		// aep-service module root holds go.mod + internal/credentials.
+		// The aep-api module root holds go.mod + the secrets kernel module.
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			if _, err := os.Stat(filepath.Join(dir, "internal", "credentials")); err == nil {
+			if _, err := os.Stat(filepath.Join(dir, "internal", "platform", "secrets")); err == nil {
 				return dir
 			}
 		}

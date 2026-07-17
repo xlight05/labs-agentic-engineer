@@ -27,30 +27,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // ---- test doubles for the credential resolver ------------------------------
 
-// fakeCred is a minimal credentials.Credential: a fixed token + repo owner.
+// fakeCred is a minimal secrets.Credential: a fixed token + repo owner.
 type fakeCred struct {
 	token string
 	owner string
 }
 
 func (c fakeCred) Token(context.Context) (string, time.Time, error) { return c.token, time.Time{}, nil }
-func (c fakeCred) Identity() credentials.Identity                   { return credentials.Identity{} }
+func (c fakeCred) Identity() secrets.Identity                       { return secrets.Identity{} }
 func (c fakeCred) RepoOwner() string                                { return c.owner }
-func (c fakeCred) WebhookStrategy() credentials.WebhookStrategy     { return credentials.WebhookPerRepo }
+func (c fakeCred) WebhookStrategy() secrets.WebhookStrategy         { return secrets.WebhookPerRepo }
 
 // fakeResolver returns cred for orgID, or err.
 type fakeResolver struct {
-	cred    credentials.Credential
+	cred    secrets.Credential
 	err     error
 	lastOrg string
 }
 
-func (r *fakeResolver) Resolve(_ context.Context, ocOrgID string) (credentials.Credential, error) {
+func (r *fakeResolver) Resolve(_ context.Context, ocOrgID string) (secrets.Credential, error) {
 	r.lastOrg = ocOrgID
 	if r.err != nil {
 		return nil, r.err

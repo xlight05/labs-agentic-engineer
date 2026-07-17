@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package credentials
+package secrets
 
 // The Resolver interface lives in credential.go; the DB-backed
 // orgResolver in org_resolver.go is its active implementation.

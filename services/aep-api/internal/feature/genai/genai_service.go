@@ -36,9 +36,9 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -125,8 +125,8 @@ type RepoResolver interface {
 // identity helper. gitrepo.GitOpsService satisfies it.
 type GitReader interface {
 	Workspace() gitrepo.Workspace
-	Resolver() credentials.Resolver
-	ResolveSaveIdentities(cred credentials.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
+	Resolver() secrets.Resolver
+	ResolveSaveIdentities(cred secrets.Credential) (*gitrepo.GitIdentity, *gitrepo.GitIdentity)
 }
 
 // AnthropicKeyResolver resolves the effective org Anthropic key. An empty key

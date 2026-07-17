@@ -19,7 +19,7 @@ package gitrepo
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // The git-provider capability ports.
@@ -31,7 +31,7 @@ import (
 // zero consumer changes. The seam is capability-sliced by CONSUMER need so each
 // domain service depends only on the verbs it drives.
 //
-// Every call takes a credentials.Credential (or an App minter / raw token) —
+// Every call takes a secrets.Credential (or an App minter / raw token) —
 // the client is the only place that mints Authorization headers, so tokens
 // never cross a service boundary. All ports/types are stateless and
 // concurrency-safe.
@@ -51,65 +51,65 @@ type RepoAdmin interface {
 	// CreateOrgRepo creates a repo owned by the credential's RepoOwner() (org
 	// or, on 404-fallback, user account). Returns ErrRepoNameConflict when the
 	// name is taken.
-	CreateOrgRepo(ctx context.Context, cred credentials.Credential, req CreateOrgRepoRequest) (cloneURL string, err error)
+	CreateOrgRepo(ctx context.Context, cred secrets.Credential, req CreateOrgRepoRequest) (cloneURL string, err error)
 }
 
 // IssueOps is the issue surface (create / list / close / comment / labels).
 // Consumed by issueService.
 type IssueOps interface {
-	CreateIssue(ctx context.Context, owner, repo string, cred credentials.Credential, req CreateIssueRequest) (*IssueResult, error)
-	ListIssues(ctx context.Context, owner, repo string, cred credentials.Credential, labels []string) ([]IssueInfo, error)
+	CreateIssue(ctx context.Context, owner, repo string, cred secrets.Credential, req CreateIssueRequest) (*IssueResult, error)
+	ListIssues(ctx context.Context, owner, repo string, cred secrets.Credential, labels []string) ([]IssueInfo, error)
 	// GetIssue fetches a single issue by number via GET /issues/{number} — an
 	// O(1) lookup, unlike ListIssues which pages the whole repo. Returns
 	// ErrIssueNotFound when the host answers 404.
-	GetIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int) (*IssueInfo, error)
+	GetIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*IssueInfo, error)
 	// EnsureLabel creates a label in the repository if it does not already exist.
 	// It is idempotent — a 422 Unprocessable Entity response (already exists) is treated as success.
-	EnsureLabel(ctx context.Context, owner, repo string, cred credentials.Credential, name, color string) error
+	EnsureLabel(ctx context.Context, owner, repo string, cred secrets.Credential, name, color string) error
 	// CloseIssue sets the issue state to closed with reason "completed".
-	CloseIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int) error
+	CloseIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int) error
 	// CommentIssue posts a comment on the issue.
-	CommentIssue(ctx context.Context, owner, repo string, cred credentials.Credential, number int, body string) error
+	CommentIssue(ctx context.Context, owner, repo string, cred secrets.Credential, number int, body string) error
 	// EditIssueBody replaces the issue body via PATCH /issues/{number}.
 	// Used by the tech-lead detail phase to write the LLM-authored body
 	// after the placeholder issue was created.
-	EditIssueBody(ctx context.Context, owner, repo string, cred credentials.Credential, number int, body string) error
+	EditIssueBody(ctx context.Context, owner, repo string, cred secrets.Credential, number int, body string) error
 	// EditIssueTitle replaces the issue title via PATCH /issues/{number}.
 	// Used by the plan tap when a planned Task is renamed (updateTask).
-	EditIssueTitle(ctx context.Context, owner, repo string, cred credentials.Credential, number int, title string) error
+	EditIssueTitle(ctx context.Context, owner, repo string, cred secrets.Credential, number int, title string) error
 	// AddIssueLabels adds labels to an existing issue (merges with current;
 	// adding a present label is a no-op). Used to stamp aep:status/* projection
 	// and aep:attention flags.
-	AddIssueLabels(ctx context.Context, owner, repo string, cred credentials.Credential, number int, labels []string) error
+	AddIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error
 	// RemoveIssueLabel removes one label from an issue. A 404 (already absent)
 	// is treated as success. Used to consume the aep:execute command label and
 	// clear stale aep:status/* projections.
-	RemoveIssueLabel(ctx context.Context, owner, repo string, cred credentials.Credential, number int, label string) error
+	RemoveIssueLabel(ctx context.Context, owner, repo string, cred secrets.Credential, number int, label string) error
 	// SetIssueLabels replaces the issue's entire label set (labels absent from
 	// the slice are removed). Used by block-repair projection when the full set
 	// must be authoritative.
-	SetIssueLabels(ctx context.Context, owner, repo string, cred credentials.Credential, number int, labels []string) error
+	SetIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error
 	// GetPullRequest returns a pull request's live state (open/closed + merged +
 	// merge SHA) for the sweep's PR-state reconciliation (§5).
-	GetPullRequest(ctx context.Context, owner, repo string, cred credentials.Credential, number int) (*PullRequestState, error)
+	GetPullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*PullRequestState, error)
 	// MergePullRequest squash-merges an open pull request — the devflow task
 	// workflow's auto merge-pr gate. GitHub's 405 not-mergeable answer (checks
 	// pending, conflicts, already merged) is returned as an error for the
 	// caller to reconcile against GetPullRequest.
-	MergePullRequest(ctx context.Context, owner, repo string, cred credentials.Credential, number int) error
+	MergePullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) error
 }
 
 // WebhookOps is the repo-webhook surface. Consumed by webhookService.
 type WebhookOps interface {
 	// RegisterWebhook installs a repository webhook delivering to deliveryURL,
 	// signed with hmacSecret. Returns the host-assigned hook ID.
-	RegisterWebhook(ctx context.Context, owner, repo string, cred credentials.Credential, deliveryURL, hmacSecret string, events []string) (hookID int64, err error)
+	RegisterWebhook(ctx context.Context, owner, repo string, cred secrets.Credential, deliveryURL, hmacSecret string, events []string) (hookID int64, err error)
 	// UpdateWebhookEvents replaces the subscribed-event list of an existing repo
 	// webhook (PATCH /hooks/{id}). RegisterWebhook's already-exists path returns
 	// a pre-existing hook without touching its events, so a hook created before
 	// "issues" joined the subscription must be PATCHed to add it
 	// (docs/design/tasks-github-native.md §9.2 cutover).
-	UpdateWebhookEvents(ctx context.Context, owner, repo string, cred credentials.Credential, hookID int64, events []string) error
+	UpdateWebhookEvents(ctx context.Context, owner, repo string, cred secrets.Credential, hookID int64, events []string) error
 }
 
 // AppInstallOps is the GitHub-App installation lifecycle + credential-account
@@ -126,17 +126,17 @@ type AppInstallOps interface {
 	// validator to probe a PAT credential for liveness and identity drift.
 	// Returns an HTTPStatusError wrapping 401/404 etc. so callers can
 	// trigger the disconnect cascade selectively.
-	GetUser(ctx context.Context, cred credentials.Credential) (*GitHubUser, error)
+	GetUser(ctx context.Context, cred secrets.Credential) (*GitHubUser, error)
 	// GetAppInstallation calls GET /app/installations/{id} using the App
 	// JWT directly (not an installation token) so it can reach the App-level
 	// endpoint. Used by the validator's App-mode probe to refresh
 	// account.login on rename and to detect 404/410 (install deleted).
-	GetAppInstallation(ctx context.Context, minter *credentials.AppTokenMinter, installationID int64) (*AppInstallationInfo, error)
+	GetAppInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) (*AppInstallationInfo, error)
 	// ListAppInstallations calls GET /app/installations using the App JWT.
 	// Returns the full list of installations our App has across GitHub.
 	// Used by the discover-then-bind path to surface installations the
 	// platform has no row for yet.
-	ListAppInstallations(ctx context.Context, minter *credentials.AppTokenMinter) ([]AppInstallationSummary, error)
+	ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]AppInstallationSummary, error)
 	// ExchangeOAuthCode exchanges a GitHub OAuth code for a user-to-server
 	// access token via POST github.com/login/oauth/access_token. Used by
 	// the discover-then-bind path to obtain a user token whose
@@ -154,7 +154,7 @@ type AppInstallOps interface {
 	// 404 is treated as success (already gone). Used by the disconnect cascade
 	// to make platform disconnect symmetric with the GitHub side — without
 	// this, disconnects leave orphan installs visible to discover.
-	DeleteInstallation(ctx context.Context, minter *credentials.AppTokenMinter, installationID int64) error
+	DeleteInstallation(ctx context.Context, minter *secrets.AppTokenMinter, installationID int64) error
 }
 
 // Host is the whole git-provider surface: every capability port a single

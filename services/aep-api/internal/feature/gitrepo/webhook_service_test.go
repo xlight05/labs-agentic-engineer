@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	githubclient "github.com/wso2/aep/aep-api/internal/clients/github"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -35,7 +35,7 @@ import (
 // the REAL REST client at the stub. Everything shares ONE fake repo store, whose
 // record is how tests assert persistence. strategy sets the resolved
 // credential's webhook strategy.
-func newWebhookSvcOnStub(t *testing.T, stub *gittest.Stub, strategy credentials.WebhookStrategy) (gitrepo.WebhookService, *fakeRepoRepo) {
+func newWebhookSvcOnStub(t *testing.T, stub *gittest.Stub, strategy secrets.WebhookStrategy) (gitrepo.WebhookService, *fakeRepoRepo) {
 	t.Helper()
 	repo := newFakeRepoRepo()
 	repo.preload(&models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
@@ -69,7 +69,7 @@ func TestWebhookRegister_HappyPathSendsHookPayloadAndPersistsID(t *testing.T) {
 	t.Parallel()
 	stub := gittest.NewStub(t)
 	stub.On(http.MethodPost, "/repos/acme/widgets/hooks", http.StatusCreated, `{"id":12345}`)
-	wh, repo := newWebhookSvcOnStub(t, stub, credentials.WebhookPerRepo)
+	wh, repo := newWebhookSvcOnStub(t, stub, secrets.WebhookPerRepo)
 
 	hookID, err := wh.Register(testContext(), "org1", "proj1")
 	if err != nil {
@@ -110,7 +110,7 @@ func TestWebhookRegister_HappyPathSendsHookPayloadAndPersistsID(t *testing.T) {
 func TestWebhookRegister_PlatformStrategyShortCircuits(t *testing.T) {
 	t.Parallel()
 	stub := gittest.NewStub(t)
-	wh, repo := newWebhookSvcOnStub(t, stub, credentials.WebhookPlatform)
+	wh, repo := newWebhookSvcOnStub(t, stub, secrets.WebhookPlatform)
 
 	hookID, err := wh.Register(testContext(), "org1", "proj1")
 	if err != nil || hookID != nil {
@@ -145,7 +145,7 @@ func TestWebhookRegister_DedupOnHookAlreadyExists(t *testing.T) {
 	stub.On(http.MethodPost, "/repos/acme/widgets/hooks", http.StatusUnprocessableEntity, `{"message":"Hook already exists"}`)
 	stub.On(http.MethodGet, "/repos/acme/widgets/hooks", http.StatusOK,
 		`[{"id":99,"config":{"url":"https://webhook.example/deliver"}}]`)
-	wh, repo := newWebhookSvcOnStub(t, stub, credentials.WebhookPerRepo)
+	wh, repo := newWebhookSvcOnStub(t, stub, secrets.WebhookPerRepo)
 
 	hookID, err := wh.Register(testContext(), "org1", "proj1")
 	if err != nil {

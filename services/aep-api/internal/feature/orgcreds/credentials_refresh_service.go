@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // RefreshResponse is what the workspace credential helper consumes. The
@@ -30,10 +30,10 @@ import (
 // with the runner's anti-misroute tripwire — since the §9.2 re-key it carries
 // the EXECUTION id the refresh was scoped to.
 type RefreshResponse struct {
-	Token     string               `json:"token"`
-	ExpiresAt time.Time            `json:"expiresAt"`
-	Identity  credentials.Identity `json:"identity"`
-	TaskID    string               `json:"taskId"`
+	Token     string           `json:"token"`
+	ExpiresAt time.Time        `json:"expiresAt"`
+	Identity  secrets.Identity `json:"identity"`
+	TaskID    string           `json:"taskId"`
 }
 
 // CredentialsRefreshService returns a fresh GitHub token + identity for the
@@ -48,11 +48,11 @@ type CredentialsRefreshService interface {
 }
 
 type credentialsRefreshService struct {
-	resolver credentials.Resolver
+	resolver secrets.Resolver
 }
 
 // NewCredentialsRefreshService constructs the service.
-func NewCredentialsRefreshService(resolver credentials.Resolver) CredentialsRefreshService {
+func NewCredentialsRefreshService(resolver secrets.Resolver) CredentialsRefreshService {
 	return &credentialsRefreshService{resolver: resolver}
 }
 

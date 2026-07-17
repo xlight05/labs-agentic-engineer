@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -82,11 +82,11 @@ func (f *fakeRepoRepo) DeleteAll(context.Context) error                         
 
 // fakeResolver dispatches a fixed Credential or returns a fixed error.
 type fakeResolver struct {
-	cred credentials.Credential
+	cred secrets.Credential
 	err  error
 }
 
-func (f *fakeResolver) Resolve(ctx context.Context, ocOrgID string) (credentials.Credential, error) {
+func (f *fakeResolver) Resolve(ctx context.Context, ocOrgID string) (secrets.Credential, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -103,10 +103,10 @@ type fakeCred struct {
 func (c *fakeCred) Token(context.Context) (string, time.Time, error) {
 	return c.token, c.exp, c.err
 }
-func (c *fakeCred) Identity() credentials.Identity { return credentials.Identity{} }
-func (c *fakeCred) RepoOwner() string              { return "" }
-func (c *fakeCred) WebhookStrategy() credentials.WebhookStrategy {
-	return credentials.WebhookPerRepo
+func (c *fakeCred) Identity() secrets.Identity { return secrets.Identity{} }
+func (c *fakeCred) RepoOwner() string          { return "" }
+func (c *fakeCred) WebhookStrategy() secrets.WebhookStrategy {
+	return secrets.WebhookPerRepo
 }
 
 const testRunName = "default-greeting-api-1731538100123"
@@ -237,7 +237,7 @@ func TestStageBuildSecret_OrgDisconnected(t *testing.T) {
 	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
-	res := &fakeResolver{err: &credentials.OrgNotActiveError{OcOrgID: "default", Status: "disconnected"}}
+	res := &fakeResolver{err: &secrets.OrgNotActiveError{OcOrgID: "default", Status: "disconnected"}}
 	svc := NewBuildCredentialsService(repos, res, nil)
 	_, err := svc.StageBuildSecret(context.Background(), "default", "slug", testRunName)
 	if !errors.Is(err, ErrOrgDisconnected) {

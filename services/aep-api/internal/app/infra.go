@@ -28,10 +28,10 @@ import (
 
 	k8sclient "github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/config"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/migrate"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/seed"
 )
 
@@ -42,8 +42,8 @@ import (
 // assembles deterministically in milliseconds.
 type Infra struct {
 	DB              *gorm.DB
-	CredStore       credentials.OpenBaoStore
-	Minter          *credentials.AppTokenMinter
+	CredStore       secrets.OpenBaoStore
+	Minter          *secrets.AppTokenMinter
 	AppClientSecret string        // GitHub App OAuth client_secret ("" ⇒ bind path disabled)
 	K8sClient       client.Client // in-cluster client; nil ⇒ mint-build skips Secret writes
 	Workspace       *gitfs.Engine
@@ -75,7 +75,7 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 		// config.Validate guarantees this decodes to 32 bytes; kept as defense.
 		return Infra{}, fmt.Errorf("CREDENTIAL_ENCRYPTION_KEY must be a base64-encoded 32-byte key: %w", err)
 	}
-	credStore, err := credentials.NewDBStore(db, credKey)
+	credStore, err := secrets.NewDBStore(db, credKey)
 	if err != nil {
 		return Infra{}, fmt.Errorf("credential store init: %w", err)
 	}
@@ -92,13 +92,13 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 	// answers in no-app mode; the connect surface lights up the App path lazily on
 	// first use.
 	loadCtx, cancelLoad := context.WithTimeout(ctx, 10*time.Second)
-	appKey, err := credentials.LoadAppKeyFromOpenBao(loadCtx, credStore)
+	appKey, err := secrets.LoadAppKeyFromOpenBao(loadCtx, credStore)
 	cancelLoad()
 	if err != nil {
 		slog.Warn("app key load failed; App-mode credentials will return ErrAppNotConfigured", "error", err)
 		appKey = nil
 	}
-	minter, err := credentials.NewAppTokenMinter(appKey)
+	minter, err := secrets.NewAppTokenMinter(appKey)
 	if err != nil {
 		return Infra{}, fmt.Errorf("app token minter init: %w", err)
 	}
@@ -116,9 +116,9 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 	}
 	if appKey == nil {
 		retryCtx, cancelRetry := context.WithTimeout(ctx, 10*time.Second)
-		if reloaded, rerr := credentials.LoadAppKeyFromOpenBao(retryCtx, credStore); rerr == nil && reloaded != nil {
+		if reloaded, rerr := secrets.LoadAppKeyFromOpenBao(retryCtx, credStore); rerr == nil && reloaded != nil {
 			cancelRetry()
-			minter, err = credentials.NewAppTokenMinter(reloaded)
+			minter, err = secrets.NewAppTokenMinter(reloaded)
 			if err != nil {
 				return Infra{}, fmt.Errorf("app token minter re-init: %w", err)
 			}
@@ -174,8 +174,8 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 // both pure to construct. app.Assemble(cfg, app.Fake()) thus builds the same real
 // handler + watchers as production without touching the network, clock, or disk.
 func Fake() Infra {
-	minter, _ := credentials.NewAppTokenMinter(nil)               // no-app mode, no I/O
-	credStore, _ := credentials.NewDBStore(nil, make([]byte, 32)) // AES cipher only, nil DB
+	minter, _ := secrets.NewAppTokenMinter(nil)               // no-app mode, no I/O
+	credStore, _ := secrets.NewDBStore(nil, make([]byte, 32)) // AES cipher only, nil DB
 	return Infra{
 		DB:              &gorm.DB{},
 		CredStore:       credStore,

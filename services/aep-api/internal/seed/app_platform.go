@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/config"
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // AppPlatformFromEnv writes the GitHub App's appID, clientID, private key,
@@ -43,7 +43,7 @@ import (
 // which is the narrow seam exported from pkg/credentials/ for exactly
 // this purpose. The wider OpenBaoStore interface deliberately omits
 // platform-write so per-org code can't escape into _platform/.
-func AppPlatformFromEnv(ctx context.Context, store credentials.OpenBaoStore, cfg config.Config) error {
+func AppPlatformFromEnv(ctx context.Context, store secrets.OpenBaoStore, cfg config.Config) error {
 	if cfg.DeploymentTier != "dev" {
 		slog.Info("app-platform seed: skipped (DeploymentTier != dev)", "tier", cfg.DeploymentTier)
 		return nil
@@ -80,7 +80,7 @@ func AppPlatformFromEnv(ctx context.Context, store credentials.OpenBaoStore, cfg
 		return fmt.Errorf("app-platform seed: %s is %d bytes but does not contain a PEM-encoded RSA key (drop the .pem you downloaded from GitHub App settings → 'Generate a private key')", cfg.GitHubAppPrivateKeyPath, len(pemBytes))
 	}
 
-	seeder, ok := credentials.AsPlatformSeeder(store)
+	seeder, ok := secrets.AsPlatformSeeder(store)
 	if !ok {
 		slog.Warn("app-platform seed: store is not the real OpenBao implementation; skipping")
 		return nil

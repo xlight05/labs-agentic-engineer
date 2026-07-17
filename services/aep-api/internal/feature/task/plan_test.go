@@ -26,12 +26,12 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -57,7 +57,7 @@ func (c *capturingTurn) Turn(_ context.Context, _, _, _ string, req agentsvc.Tur
 
 type nilResolver struct{}
 
-func (nilResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (nilResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	return nil, nil
 }
 

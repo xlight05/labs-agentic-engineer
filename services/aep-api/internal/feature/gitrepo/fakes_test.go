@@ -17,7 +17,7 @@
 package gitrepo_test
 
 // Shared fakes for the gitrepo unit tier. Fakes sit only at the two real edges
-// of these services — the credential seam (credentials.Resolver / Credential)
+// of these services — the credential seam (secrets.Resolver / Credential)
 // and the persistence seam (repositories.RepoRepository). The git-exec paths
 // run against a real gittest.Remote, and the GitHub HTTP paths run through the
 // REAL clients/github client pointed at gittest fakes (WithAPIBase /
@@ -34,20 +34,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ---- credential seam -------------------------------------------------------
 
-// fakeCred is a static credentials.Credential. Zero value: token "test-token",
+// fakeCred is a static secrets.Credential. Zero value: token "test-token",
 // owner "test-org", strategy WebhookPerRepo, empty identity.
 type fakeCred struct {
 	token    string
 	owner    string
-	strategy credentials.WebhookStrategy
-	identity credentials.Identity
+	strategy secrets.WebhookStrategy
+	identity secrets.Identity
 	tokenErr error
 }
 
@@ -61,25 +61,25 @@ func (c fakeCred) Token(context.Context) (string, time.Time, error) {
 	}
 	return t, time.Time{}, nil
 }
-func (c fakeCred) Identity() credentials.Identity { return c.identity }
+func (c fakeCred) Identity() secrets.Identity { return c.identity }
 func (c fakeCred) RepoOwner() string {
 	if c.owner == "" {
 		return "test-org"
 	}
 	return c.owner
 }
-func (c fakeCred) WebhookStrategy() credentials.WebhookStrategy { return c.strategy }
+func (c fakeCred) WebhookStrategy() secrets.WebhookStrategy { return c.strategy }
 
-var _ credentials.Credential = fakeCred{}
+var _ secrets.Credential = fakeCred{}
 
 // fakeResolver resolves every org to `cred` (or fakeCred{} when nil), unless
 // `err` is set.
 type fakeResolver struct {
-	cred credentials.Credential
+	cred secrets.Credential
 	err  error
 }
 
-func (f fakeResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (f fakeResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -89,7 +89,7 @@ func (f fakeResolver) Resolve(context.Context, string) (credentials.Credential, 
 	return fakeCred{}, nil
 }
 
-var _ credentials.Resolver = fakeResolver{}
+var _ secrets.Resolver = fakeResolver{}
 
 // ---- persistence seam ------------------------------------------------------
 

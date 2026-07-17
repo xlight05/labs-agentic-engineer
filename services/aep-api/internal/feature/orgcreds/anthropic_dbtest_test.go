@@ -18,7 +18,7 @@ package orgcreds
 
 // DBTEST tier (skips under -short; `make test-db` runs it): the REAL
 // AnthropicCredentialService over a pristine per-test Postgres (dbtest.New)
-// with the REAL AES-256-GCM credentials.NewDBStore — the SQL-shaped behavior
+// with the REAL AES-256-GCM secrets.NewDBStore — the SQL-shaped behavior
 // under pin: Connect's advisory-lock + ON CONFLICT upsert, the org_secrets
 // write, Status/fetchRow org scoping, Disconnect's delete + best-effort GC,
 // EffectiveKey resolution, and ApplyWPSecret's nil-wpClient degraded mode.
@@ -34,8 +34,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -47,10 +47,10 @@ const anthropicDBKey2 = "sk-ant-api03-ZyXwVuTsRqPoNmLkJiHgFe-second-9876"
 
 // anthropicDBService wires the real service: per-test Postgres + the real
 // encrypted DBStore + a fake Anthropic API answering apiStatus; wpClient nil.
-func anthropicDBService(t *testing.T, apiStatus int) (*AnthropicCredentialService, credentials.OpenBaoStore) {
+func anthropicDBService(t *testing.T, apiStatus int) (*AnthropicCredentialService, secrets.OpenBaoStore) {
 	t.Helper()
 	db := dbtest.New(t)
-	store, err := credentials.NewDBStore(db, []byte(anthropicDBAESKey))
+	store, err := secrets.NewDBStore(db, []byte(anthropicDBAESKey))
 	if err != nil {
 		t.Fatalf("real DBStore: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestAnthropicConnect_RejectedKeyLeavesNoTrace_DB(t *testing.T) {
 		t.Fatalf("status after rejected connect: want NotFoundError, got %v", err)
 	}
 	// …and no secret bytes.
-	if _, err := store.Get(ctx, "acme", "anthropic/key"); !errors.Is(err, credentials.ErrSecretNotFound) {
+	if _, err := store.Get(ctx, "acme", "anthropic/key"); !errors.Is(err, secrets.ErrSecretNotFound) {
 		t.Fatalf("store after rejected connect: want ErrSecretNotFound, got %v", err)
 	}
 }
@@ -199,7 +199,7 @@ func TestAnthropicDisconnect_RemovesRowAndBytes_Idempotent_DB(t *testing.T) {
 	if _, err := svc.Status(ctx, "acme"); !errors.As(err, &nfe) {
 		t.Fatalf("status after disconnect: want NotFoundError, got %v", err)
 	}
-	if _, err := store.Get(ctx, "acme", "anthropic/key"); !errors.Is(err, credentials.ErrSecretNotFound) {
+	if _, err := store.Get(ctx, "acme", "anthropic/key"); !errors.Is(err, secrets.ErrSecretNotFound) {
 		t.Fatalf("secret bytes must be GC'd on disconnect, got %v", err)
 	}
 
@@ -313,7 +313,7 @@ func TestAnthropicApplyWPSecret_NilClientDegradedMode_DB(t *testing.T) {
 		t.Fatalf("store delete: %v", err)
 	}
 	_, err = svc.ApplyWPSecret(ctx, "acme")
-	if err == nil || errors.Is(err, ErrAnthropicKeyRequired) || !errors.Is(err, credentials.ErrSecretNotFound) {
+	if err == nil || errors.Is(err, ErrAnthropicKeyRequired) || !errors.Is(err, secrets.ErrSecretNotFound) {
 		t.Fatalf("active row without bytes: want a wrapped ErrSecretNotFound, got %v", err)
 	}
 }

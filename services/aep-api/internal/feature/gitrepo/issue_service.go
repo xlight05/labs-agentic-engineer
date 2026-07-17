@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
@@ -67,7 +67,7 @@ type IssueService interface {
 type issueService struct {
 	repo     repositories.RepoRepository
 	github   IssueOps
-	resolver credentials.Resolver
+	resolver secrets.Resolver
 	// createLocks serializes dedupe-checked creation per "owner/repo" so two
 	// concurrent CreateIssue calls with the same DedupeKey can't both pass the
 	// existing-issue check before either creates — the exact race that produced
@@ -128,7 +128,7 @@ func (k *keyedMutex) lock(key string) func() {
 	}
 }
 
-func NewIssueService(repo repositories.RepoRepository, github IssueOps, resolver credentials.Resolver) IssueService {
+func NewIssueService(repo repositories.RepoRepository, github IssueOps, resolver secrets.Resolver) IssueService {
 	return &issueService{
 		repo:     repo,
 		github:   github,
@@ -329,7 +329,7 @@ func (s *issueService) MergePullRequest(ctx context.Context, orgID, projectID st
 // owner/repo from the clone URL, and resolves the org's credential. Every
 // GitHub-bound op routes through here — the multi-tenant invariant
 // (operations parametrised by ocOrgID) is enforced at one place.
-func (s *issueService) resolveRepoAndCredential(ctx context.Context, orgID, projectID string) (owner, repo string, cred credentials.Credential, err error) {
+func (s *issueService) resolveRepoAndCredential(ctx context.Context, orgID, projectID string) (owner, repo string, cred secrets.Credential, err error) {
 	gitRepo, err := s.repo.GetByOrgAndProjectID(ctx, orgID, projectID)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("get repo: %w", err)

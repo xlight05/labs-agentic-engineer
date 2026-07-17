@@ -43,12 +43,12 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -385,15 +385,15 @@ type stubCred struct{}
 func (stubCred) Token(context.Context) (string, time.Time, error) {
 	return "test-token", time.Time{}, nil
 }
-func (stubCred) Identity() credentials.Identity {
-	return credentials.Identity{Name: "Bot", Email: "bot@aep.dev", Login: "bot"}
+func (stubCred) Identity() secrets.Identity {
+	return secrets.Identity{Name: "Bot", Email: "bot@aep.dev", Login: "bot"}
 }
-func (stubCred) RepoOwner() string                            { return "acme" }
-func (stubCred) WebhookStrategy() credentials.WebhookStrategy { return credentials.WebhookPlatform }
+func (stubCred) RepoOwner() string                        { return "acme" }
+func (stubCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPlatform }
 
 type stubResolver struct{}
 
-func (stubResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (stubResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	return stubCred{}, nil
 }
 

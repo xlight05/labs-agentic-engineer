@@ -48,10 +48,10 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -272,11 +272,11 @@ const credAESKey = "0123456789abcdef0123456789abcdef"
 // confirm leg documented above.
 func newInstallCredSvc(t *testing.T, db *gorm.DB) *orgcreds.CredentialService {
 	t.Helper()
-	store, err := credentials.NewDBStore(db, []byte(credAESKey))
+	store, err := secrets.NewDBStore(db, []byte(credAESKey))
 	if err != nil {
 		t.Fatalf("NewDBStore: %v", err)
 	}
-	minter, err := credentials.NewAppTokenMinter(nil)
+	minter, err := secrets.NewAppTokenMinter(nil)
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}

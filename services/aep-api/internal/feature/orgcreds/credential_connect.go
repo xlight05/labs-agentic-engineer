@@ -29,7 +29,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -129,7 +129,7 @@ func (s *CredentialService) connectPAT(ctx context.Context, tx *gorm.DB, ocOrgID
 		if err := tx.Commit().Error; err != nil {
 			return nil, fmt.Errorf("connect: commit: %w", err)
 		}
-		slog.InfoContext(ctx, "credentials.connected", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login)
+		slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login)
 		s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
 		return projectionFromRow(&row), nil
 	}
@@ -187,7 +187,7 @@ func (s *CredentialService) connectPAT(ctx context.Context, tx *gorm.DB, ocOrgID
 	if err != nil {
 		return nil, err
 	}
-	slog.InfoContext(ctx, "credentials.replaced", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login, "drift", identity.Login != existing.IdentityLogin)
+	slog.InfoContext(ctx, "secrets.replaced", "ocOrgId", ocOrgID, "kind", "user-pat", "identityLogin", identity.Login, "drift", identity.Login != existing.IdentityLogin)
 	s.mirrorPATToSMAPI(ctx, ocOrgID, req.PAT)
 	return projectionFromRow(row), nil
 }
@@ -312,7 +312,7 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 		}
 		if clash.Status == "active" && hadRow && existing.OcOrgID == ocOrgID {
 			// Idempotent re-connect — return current projection.
-			slog.InfoContext(ctx, "credentials.connect.idempotent", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", req.InstallationID)
+			slog.InfoContext(ctx, "secrets.connect.idempotent", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", req.InstallationID)
 			return projectionFromRow(&clash), nil
 		}
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -343,7 +343,7 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 		if err != nil {
 			slog.WarnContext(ctx, "fetch bot identity failed", "error", err)
 			// Use a deterministic fallback so the row passes NOT NULL constraints.
-			botID = credentials.Identity{
+			botID = secrets.Identity{
 				Name:  "AEP Platform Bot",
 				Email: "bot@aep.dev",
 				Login: "aep-platform[bot]",
@@ -375,7 +375,7 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 		if err := tx.Commit().Error; err != nil {
 			return nil, fmt.Errorf("connect: commit: %w", err)
 		}
-		slog.InfoContext(ctx, "credentials.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
+		slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
 		return projectionFromRow(&row), nil
 	}
 
@@ -406,6 +406,6 @@ func (s *CredentialService) connectApp(ctx context.Context, tx *gorm.DB, ocOrgID
 	if err != nil {
 		return nil, err
 	}
-	slog.InfoContext(ctx, "credentials.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
+	slog.InfoContext(ctx, "secrets.connected", "ocOrgId", ocOrgID, "kind", "app-installation", "installationId", id, "githubLogin", accountLogin)
 	return projectionFromRow(row), nil
 }

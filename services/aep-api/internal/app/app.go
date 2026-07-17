@@ -45,7 +45,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
@@ -75,6 +74,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -227,7 +227,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// the App-token minter (post OpenBao key-load / dev seed / bot-identity load),
 	// and the App OAuth client_secret are all resolved in Resolve and arrive via
 	// Infra — Assemble does no OpenBao/network I/O.
-	credResolver := credentials.NewOrgResolver(db, credStore, minter)
+	credResolver := secrets.NewOrgResolver(db, credStore, minter)
 
 	// One git host, selected by GIT_PROVIDER, threaded into every gitrepo
 	// domain service where it narrows to that service's capability port.
@@ -301,7 +301,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// unless both env vars are set (no consumer assumed by default).
 	anthropicCredService.WithRCAAgentPush(cgwClient, cfg.RCAAgentAnthropicPushNamespace, cfg.RCAAgentAnthropicPushSecretName)
 	validatorProbes := orgcreds.NewValidatorProbes(credService, gitHost, credResolver, minter)
-	credValidator := credentials.NewValidator(db, validatorProbes, nil, cfg.CredentialValidatorInterval)
+	credValidator := secrets.NewValidator(db, validatorProbes, nil, cfg.CredentialValidatorInterval)
 
 	// Artifact store — in-process via artifactSvcGit. Adds the
 	// external-API catalog + the `DesignFile` YAML split/assemble layer
@@ -953,7 +953,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		runtimeconfig.NewWatcher(db, runtimeConfigSvc, asServiceIdentity, 0),
 		// Periodic credential validator — walks every active org_credentials row
 		// once per cfg.CredentialValidatorInterval (default 24h), probes GitHub,
-		// flags identity drift on confirmed unauthorised credentials.
+		// flags identity drift on confirmed unauthorised secrets.
 		credValidator,
 		// Disk-lifecycle reaper (design §14/D12): trash purge, snapshot
 		// age-reap, DB↔disk orphan reconciliation, quota/LRU eviction. The

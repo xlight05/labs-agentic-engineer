@@ -19,7 +19,7 @@
 // ResolveUserInstallations).
 //
 // fetchInstallation and fetchAppBotIdentity sign their own App JWT
-// (credentials.AppTokenMinter.SignAppJWT) and hit s.githubAPI directly via
+// (secrets.AppTokenMinter.SignAppJWT) and hit s.githubAPI directly via
 // s.httpClient — both are TEST-SEAMED via WithGitHubAPIBase, so their GitHub
 // calls run for real against an httptest fake, no live network.
 //
@@ -30,7 +30,7 @@
 // private field of package credentials with no test seam reachable from
 // here. Two consequences pinned below:
 //   - With an UNCONFIGURED minter (no App key), MintForInstallation returns
-//     credentials.ErrAppNotConfigured before any network I/O — fully
+//     secrets.ErrAppNotConfigured before any network I/O — fully
 //     deterministic, no network, and exercised directly.
 //   - With a CONFIGURED minter (needed for fetchInstallation's own JWT to
 //     succeed), the token-mint call cannot be redirected to a fake without
@@ -61,9 +61,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // --- key + minter helpers -----------------------------------------------------
@@ -86,9 +86,9 @@ func genTestRSAKeyPEM(t testing.TB) []byte {
 // newConfiguredMinter builds an AppTokenMinter with real key material so
 // SignAppJWT succeeds — needed for fetchInstallation/fetchAppBotIdentity's
 // own JWT-signed calls.
-func newConfiguredMinter(t testing.TB, appID int64) *credentials.AppTokenMinter {
+func newConfiguredMinter(t testing.TB, appID int64) *secrets.AppTokenMinter {
 	t.Helper()
-	m, err := credentials.NewAppTokenMinter(&credentials.AppKeyMaterial{AppID: appID, PrivateKeyPEM: genTestRSAKeyPEM(t)})
+	m, err := secrets.NewAppTokenMinter(&secrets.AppKeyMaterial{AppID: appID, PrivateKeyPEM: genTestRSAKeyPEM(t)})
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
@@ -98,9 +98,9 @@ func newConfiguredMinter(t testing.TB, appID int64) *credentials.AppTokenMinter 
 // newUnconfiguredMinter builds a minter with no App key material — every
 // SignAppJWT/MintForInstallation call fails fast with ErrAppNotConfigured,
 // deterministically and without any network I/O.
-func newUnconfiguredMinter(t testing.TB) *credentials.AppTokenMinter {
+func newUnconfiguredMinter(t testing.TB) *secrets.AppTokenMinter {
 	t.Helper()
-	m, err := credentials.NewAppTokenMinter(nil)
+	m, err := secrets.NewAppTokenMinter(nil)
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter(nil): %v", err)
 	}
@@ -111,7 +111,7 @@ func newUnconfiguredMinter(t testing.TB) *credentials.AppTokenMinter {
 // and store stay nil (none of fetchInstallation/fetchAppBotIdentity/
 // listInstallationRepos touch either), minter + GitHub base are the only
 // wiring under test.
-func installSvc(t testing.TB, minter *credentials.AppTokenMinter, ghBase string) *CredentialService {
+func installSvc(t testing.TB, minter *secrets.AppTokenMinter, ghBase string) *CredentialService {
 	t.Helper()
 	return NewCredentialService(nil, nil, minter, "", "", "", nil).WithGitHubAPIBase(ghBase)
 }
@@ -182,7 +182,7 @@ func TestFetchInstallation_ErrorBranches(t *testing.T) {
 
 // cancelAfterResponseTransport lets a test force fetchInstallation's SECOND,
 // unseamed HTTP hop (the installation-token mint, hardcoded inside
-// credentials.AppTokenMinter to real api.github.com with no test seam
+// secrets.AppTokenMinter to real api.github.com with no test seam
 // reachable from this package) to fail deterministically without touching
 // the network. It fully buffers the FIRST response — so the caller's
 // io.ReadAll is unaffected by what happens next — then cancels ctx. Because
@@ -247,7 +247,7 @@ func TestListInstallationRepos_UnconfiguredMinter_NoNetwork(t *testing.T) {
 	gh := newStubGitHub(t) // no routes registered — any hit would 404
 	svc := installSvc(t, newUnconfiguredMinter(t), gh.URL)
 	repos, err := svc.ListInstallationRepos(context.Background(), 42)
-	if !errors.Is(err, credentials.ErrAppNotConfigured) {
+	if !errors.Is(err, secrets.ErrAppNotConfigured) {
 		t.Fatalf("ListInstallationRepos error = %v; want ErrAppNotConfigured", err)
 	}
 	if repos != nil {
@@ -265,7 +265,7 @@ func TestFetchAppBotIdentity(t *testing.T) {
 		gh := newStubGitHub(t) // no routes registered
 		svc := installSvc(t, newUnconfiguredMinter(t), gh.URL)
 		_, err := svc.fetchAppBotIdentity(context.Background())
-		if !errors.Is(err, credentials.ErrAppNotConfigured) {
+		if !errors.Is(err, secrets.ErrAppNotConfigured) {
 			t.Fatalf("fetchAppBotIdentity error = %v; want ErrAppNotConfigured", err)
 		}
 	})
@@ -279,7 +279,7 @@ func TestFetchAppBotIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("fetchAppBotIdentity: %v", err)
 		}
-		want := credentials.Identity{Name: "AEP Bot", Email: "aep[bot]@users.noreply.github.com", Login: "aep[bot]"}
+		want := secrets.Identity{Name: "AEP Bot", Email: "aep[bot]@users.noreply.github.com", Login: "aep[bot]"}
 		if id != want {
 			t.Fatalf("identity = %+v; want %+v", id, want)
 		}
@@ -328,20 +328,20 @@ func TestFetchAppBotIdentity(t *testing.T) {
 type fakeAppInstallOps struct {
 	exchangeFn     func(ctx context.Context, clientID, clientSecret, code, redirectURI string) (string, error)
 	userInstallsFn func(ctx context.Context, userToken string) ([]int64, error)
-	listAppFn      func(ctx context.Context, minter *credentials.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error)
+	listAppFn      func(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error)
 }
 
 var _ gitrepo.AppInstallOps = (*fakeAppInstallOps)(nil)
 
-func (f *fakeAppInstallOps) GetUser(context.Context, credentials.Credential) (*gitrepo.GitHubUser, error) {
+func (f *fakeAppInstallOps) GetUser(context.Context, secrets.Credential) (*gitrepo.GitHubUser, error) {
 	panic("fakeAppInstallOps: GetUser is not on the ResolveUserInstallations path")
 }
 
-func (f *fakeAppInstallOps) GetAppInstallation(context.Context, *credentials.AppTokenMinter, int64) (*gitrepo.AppInstallationInfo, error) {
+func (f *fakeAppInstallOps) GetAppInstallation(context.Context, *secrets.AppTokenMinter, int64) (*gitrepo.AppInstallationInfo, error) {
 	panic("fakeAppInstallOps: GetAppInstallation is not on the ResolveUserInstallations path")
 }
 
-func (f *fakeAppInstallOps) ListAppInstallations(ctx context.Context, minter *credentials.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+func (f *fakeAppInstallOps) ListAppInstallations(ctx context.Context, minter *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
 	if f.listAppFn != nil {
 		return f.listAppFn(ctx, minter)
 	}
@@ -362,7 +362,7 @@ func (f *fakeAppInstallOps) GetUserInstallations(ctx context.Context, userToken 
 	return nil, nil
 }
 
-func (f *fakeAppInstallOps) DeleteInstallation(context.Context, *credentials.AppTokenMinter, int64) error {
+func (f *fakeAppInstallOps) DeleteInstallation(context.Context, *secrets.AppTokenMinter, int64) error {
 	panic("fakeAppInstallOps: DeleteInstallation is not on the ResolveUserInstallations path")
 }
 
@@ -460,7 +460,7 @@ func TestResolveUserInstallations_ValidationAndUpstreamErrors(t *testing.T) {
 		t.Parallel()
 		gh := &fakeAppInstallOps{
 			userInstallsFn: func(context.Context, string) ([]int64, error) { return []int64{1}, nil },
-			listAppFn: func(context.Context, *credentials.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+			listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
 				return nil, errors.New("github: 503")
 			},
 		}
@@ -499,7 +499,7 @@ func TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB(t *testing
 		userInstallsFn: func(context.Context, string) ([]int64, error) {
 			return []int64{1, 2, 3, 4}, nil // user administers 1-4, not 5
 		},
-		listAppFn: func(context.Context, *credentials.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
+		listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]gitrepo.AppInstallationSummary, error) {
 			return []gitrepo.AppInstallationSummary{
 				{InstallationID: 1, AccountLogin: "acme-org", AccountType: "Organization"},
 				{InstallationID: 2, AccountLogin: "other-org", AccountType: "Organization"},

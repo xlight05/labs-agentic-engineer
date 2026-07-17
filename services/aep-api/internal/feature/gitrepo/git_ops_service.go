@@ -17,8 +17,8 @@
 package gitrepo
 
 import (
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // TagInfo describes a git tag. Alias of the gitfs definition (identical
@@ -30,21 +30,21 @@ type TagInfo = gitfs.TagInfo
 // genai, skills, and task stores: the Workspace port (the disk-backed mirror
 // engine), the credential resolver, and the save-identity helper.
 type GitOpsService interface {
-	ResolveSaveIdentities(cred credentials.Credential) (*GitIdentity, *GitIdentity)
+	ResolveSaveIdentities(cred secrets.Credential) (*GitIdentity, *GitIdentity)
 	// Workspace is the mount-backed git engine (reads, Mutate, tags, diff).
 	Workspace() Workspace
-	Resolver() credentials.Resolver
+	Resolver() secrets.Resolver
 }
 
 type gitOpsService struct {
-	resolver credentials.Resolver
+	resolver secrets.Resolver
 	// workspace is the gitfs engine over the shared /workspaces mount.
 	workspace Workspace
 }
 
 // NewGitOpsService builds the git-object gateway over the mount-backed
 // Workspace engine every repo-content consumer runs on.
-func NewGitOpsService(resolver credentials.Resolver, workspace Workspace) GitOpsService {
+func NewGitOpsService(resolver secrets.Resolver, workspace Workspace) GitOpsService {
 	return &gitOpsService{resolver: resolver, workspace: workspace}
 }
 
@@ -52,12 +52,12 @@ func NewGitOpsService(resolver credentials.Resolver, workspace Workspace) GitOps
 func (s *gitOpsService) Workspace() Workspace { return s.workspace }
 
 // Resolver returns the credential resolver wired in at construction.
-func (s *gitOpsService) Resolver() credentials.Resolver { return s.resolver }
+func (s *gitOpsService) Resolver() secrets.Resolver { return s.resolver }
 
 // ResolveSaveIdentities returns (author, committer) identities for a save. Both
 // are the credential identity, falling back to a default AEP name/email when the
 // credential carries none.
-func (s *gitOpsService) ResolveSaveIdentities(cred credentials.Credential) (*GitIdentity, *GitIdentity) {
+func (s *gitOpsService) ResolveSaveIdentities(cred secrets.Credential) (*GitIdentity, *GitIdentity) {
 	id := cred.Identity()
 	if id.Name == "" {
 		id.Name = "AEP"

@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // stubCred is a fixed-token credential for driving the real client against an
@@ -33,11 +33,11 @@ import (
 type stubCred struct{}
 
 func (stubCred) Token(context.Context) (string, time.Time, error) { return "tok", time.Time{}, nil }
-func (stubCred) Identity() credentials.Identity {
-	return credentials.Identity{Name: "Bot", Email: "bot@aep.dev", Login: "bot"}
+func (stubCred) Identity() secrets.Identity {
+	return secrets.Identity{Name: "Bot", Email: "bot@aep.dev", Login: "bot"}
 }
-func (stubCred) RepoOwner() string                            { return "acme" }
-func (stubCred) WebhookStrategy() credentials.WebhookStrategy { return credentials.WebhookPlatform }
+func (stubCred) RepoOwner() string                        { return "acme" }
+func (stubCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPlatform }
 
 // capture records the one request an httptest fake receives.
 type capture struct {

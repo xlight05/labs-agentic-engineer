@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -32,7 +32,7 @@ import (
 // actually calls are implemented — the rest would panic if reached, which is
 // the point: the test asserts the path stays on the dedup branch) ---
 
-type fakeCredential struct{ credentials.Credential }
+type fakeCredential struct{ secrets.Credential }
 
 func (fakeCredential) Token(context.Context) (string, time.Time, error) {
 	return "tok", time.Time{}, nil
@@ -41,7 +41,7 @@ func (fakeCredential) RepoOwner() string { return "o" }
 
 type fakeResolver struct{}
 
-func (fakeResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (fakeResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	return fakeCredential{}, nil
 }
 
@@ -61,7 +61,7 @@ type fakeGitHub struct {
 	nextNum     int
 }
 
-func (f *fakeGitHub) ListIssues(_ context.Context, _, _ string, _ credentials.Credential, labels []string) ([]IssueInfo, error) {
+func (f *fakeGitHub) ListIssues(_ context.Context, _, _ string, _ secrets.Credential, labels []string) ([]IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []IssueInfo
@@ -76,11 +76,11 @@ func (f *fakeGitHub) ListIssues(_ context.Context, _, _ string, _ credentials.Cr
 	return out, nil
 }
 
-func (f *fakeGitHub) EnsureLabel(context.Context, string, string, credentials.Credential, string, string) error {
+func (f *fakeGitHub) EnsureLabel(context.Context, string, string, secrets.Credential, string, string) error {
 	return nil
 }
 
-func (f *fakeGitHub) CreateIssue(_ context.Context, _, _ string, _ credentials.Credential, req CreateIssueRequest) (*IssueResult, error) {
+func (f *fakeGitHub) CreateIssue(_ context.Context, _, _ string, _ secrets.Credential, req CreateIssueRequest) (*IssueResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.createCount++

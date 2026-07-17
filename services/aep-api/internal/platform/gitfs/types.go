@@ -33,7 +33,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // Sentinel errors. ErrRefNotFastForward and ErrTagAlreadyExists carry the
@@ -150,7 +150,7 @@ type RepoRef struct {
 	RepoSlug      string
 	CloneURL      string
 	DefaultBranch string
-	Cred          credentials.Credential
+	Cred          secrets.Credential
 }
 
 // Entry is one blob of a tree listing.

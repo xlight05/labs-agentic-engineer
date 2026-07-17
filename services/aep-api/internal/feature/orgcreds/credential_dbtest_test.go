@@ -18,7 +18,7 @@ package orgcreds
 
 // DBTEST tier ("store"; skips under -short, runs on
 // `make test-db`): the REAL CredentialService over a pristine per-test Postgres
-// (dbtest.New) with the REAL AES-GCM credential store (credentials.NewDBStore)
+// (dbtest.New) with the REAL AES-GCM credential store (secrets.NewDBStore)
 // and a fake GitHub. This is where the SQL-shaped behavior lives — the Connect
 // transaction + CHECK constraints, webhook-secret rotation, the webhook routing
 // lookups, installation status flips, identity-drift bookkeeping, and org
@@ -39,8 +39,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -50,9 +50,9 @@ const credAESKey = "0123456789abcdef0123456789abcdef"
 const envWebhookSecret = "platform-webhook-secret"
 
 // newCredStore builds the real DB-backed, AES-GCM credential store.
-func newCredStore(t testing.TB, db *gorm.DB) credentials.OpenBaoStore {
+func newCredStore(t testing.TB, db *gorm.DB) secrets.OpenBaoStore {
 	t.Helper()
-	store, err := credentials.NewDBStore(db, []byte(credAESKey))
+	store, err := secrets.NewDBStore(db, []byte(credAESKey))
 	if err != nil {
 		t.Fatalf("NewDBStore: %v", err)
 	}
@@ -63,10 +63,10 @@ func newCredStore(t testing.TB, db *gorm.DB) credentials.OpenBaoStore {
 // GitHub. minter is no-app mode (nil material), which is correct for the
 // PAT paths; the OAuth bind path is disabled (nil githubClient, empty client
 // id/secret). Returns the store too so tests can inspect the sealed PAT.
-func newCredSvcDB(t testing.TB, db *gorm.DB, gh *stubGitHub) (*CredentialService, credentials.OpenBaoStore) {
+func newCredSvcDB(t testing.TB, db *gorm.DB, gh *stubGitHub) (*CredentialService, secrets.OpenBaoStore) {
 	t.Helper()
 	store := newCredStore(t, db)
-	minter, err := credentials.NewAppTokenMinter(nil)
+	minter, err := secrets.NewAppTokenMinter(nil)
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestDisconnect_ClearsRowAndSecrets_DB(t *testing.T) {
 	if row := getRow(t, db, "acme"); row.Status != "disconnected" {
 		t.Fatalf("status after disconnect: %q", row.Status)
 	}
-	if _, err := store.Get(ctx, "acme", "github/pat"); !errors.Is(err, credentials.ErrSecretNotFound) {
+	if _, err := store.Get(ctx, "acme", "github/pat"); !errors.Is(err, secrets.ErrSecretNotFound) {
 		t.Fatalf("PAT must be GC'd from the store, got err %v", err)
 	}
 	if len(cleaner.orgs) != 1 || cleaner.orgs[0] != "acme" {

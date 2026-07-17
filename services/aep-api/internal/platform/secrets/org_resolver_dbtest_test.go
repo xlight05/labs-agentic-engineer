@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package credentials
+package secrets
 
 // DBTEST tier (skips under -short, runs on `make test-db`): the REAL
 // orgResolver (NewOrgResolver) against a pristine per-test Postgres

@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -125,15 +125,15 @@ func (h *testGitHost) mirrorGitDir(orgID string) (string, error) {
 type fakeCred struct{}
 
 func (fakeCred) Token(context.Context) (string, time.Time, error) { return "tok", time.Time{}, nil }
-func (fakeCred) Identity() credentials.Identity {
-	return credentials.Identity{Name: "Bot", Email: "bot@aep.dev"}
+func (fakeCred) Identity() secrets.Identity {
+	return secrets.Identity{Name: "Bot", Email: "bot@aep.dev"}
 }
-func (fakeCred) RepoOwner() string                            { return "test-org" }
-func (fakeCred) WebhookStrategy() credentials.WebhookStrategy { return credentials.WebhookPlatform }
+func (fakeCred) RepoOwner() string                        { return "test-org" }
+func (fakeCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPlatform }
 
 type fakeResolver struct{}
 
-func (fakeResolver) Resolve(context.Context, string) (credentials.Credential, error) {
+func (fakeResolver) Resolve(context.Context, string) (secrets.Credential, error) {
 	return fakeCred{}, nil
 }
 

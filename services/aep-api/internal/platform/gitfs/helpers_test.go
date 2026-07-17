@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/credentials"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 )
 
 // seedFiles is the default origin content used across tests.
@@ -38,18 +38,18 @@ func seedFiles() map[string]string {
 	}
 }
 
-// stubCred is a fake credentials.Credential minting a fixed token.
+// stubCred is a fake secrets.Credential minting a fixed token.
 type stubCred struct{ token string }
 
 func (s stubCred) Token(context.Context) (string, time.Time, error) {
 	return s.token, time.Time{}, nil
 }
-func (s stubCred) Identity() credentials.Identity {
-	return credentials.Identity{Name: "Stub User", Email: "stub@aep.test", Login: "stub"}
+func (s stubCred) Identity() secrets.Identity {
+	return secrets.Identity{Name: "Stub User", Email: "stub@aep.test", Login: "stub"}
 }
 func (s stubCred) RepoOwner() string { return "stub-owner" }
-func (s stubCred) WebhookStrategy() credentials.WebhookStrategy {
-	return credentials.WebhookPerRepo
+func (s stubCred) WebhookStrategy() secrets.WebhookStrategy {
+	return secrets.WebhookPerRepo
 }
 
 // cmdRecord is one observed git invocation.
