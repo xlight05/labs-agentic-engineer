@@ -1089,6 +1089,29 @@ P5 is deliberately gated on a **deterministic turn/fold divergence regression in
 e2e — because a cross-service behaviour change must not depend on a human noticing. The live e2e is
 confirmation, not the gate.
 
+### 19.5.1 Findings from execution (P0–P2)
+
+Corrections that only building the phases produced — recorded so later phases inherit them, not the
+surprise:
+
+- **The kernel must name no domain entity, even in a port.** A consumer-side port *type* still couples:
+  `platform/gitfs/reaper`'s `ListAll` returned `[]models.GitRepository`, so moving that entity to a domain
+  would make the kernel import it. Give the kernel consumer a port in *its own* vocabulary (a
+  `RepoCoordinate`, three fields) and project onto it at the root. This is a **permanent** root adapter,
+  not a migration bridge.
+- **Relocating a widely-shared kernel-adjacent type can cycle.** Moving the workspace-naming vocabulary
+  into `platform/gitfs` cycled: `gitfs.RepoRef` carries a `secrets.Credential`, so `models → gitfs →
+  secrets` closed a loop with a `secrets` test that imports `models`. The fix is also the cleaner
+  factoring — path naming is credential-independent, so it lives in a **pure leaf** (`gitfs/naming`,
+  stdlib-only) that anything can depend on without pulling in the engine's secret backend. Check the
+  transitive closure (`go list -deps`) before relocating a type into a kernel package, never grep.
+- **A "backend" phase can require a console change.** Marking `dispatched` `required` (an accuracy fix
+  during the wire/domain split) changed the console's generated types and three fixtures. Regenerate and
+  typecheck the console as part of any contract edit.
+- **The 503-vs-panic harness contract is per-domain.** A domain is embedded as a pointer, so an unwired
+  domain panics where a pre-migration handler nil-guarded to 503. Preserve exactly what each domain did
+  before (the edge assembles an empty domain for the nil-tolerant ones; the strict ones keep failing loud).
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |
