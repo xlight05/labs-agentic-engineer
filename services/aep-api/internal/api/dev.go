@@ -23,7 +23,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/organization"
 )
 
 // RegisterAllDev mounts the dev/test surface (/_dev/v1/*) — local-only tooling
@@ -60,10 +60,10 @@ func RegisterAllDev(mux *http.ServeMux, p AppParams) {
 // secrets. Plaintext is never logged.
 func devResyncHandler(params AppParams) http.HandlerFunc {
 	type orgResult struct {
-		OcOrgID        string                     `json:"ocOrgId"`
-		Writes         []orgcreds.SMAPISeedBundle `json:"writes"`
-		AnthropicError string                     `json:"anthropicError,omitempty"`
-		GitHubPATError string                     `json:"githubPatError,omitempty"`
+		OcOrgID        string                         `json:"ocOrgId"`
+		Writes         []organization.SMAPISeedBundle `json:"writes"`
+		AnthropicError string                         `json:"anthropicError,omitempty"`
+		GitHubPATError string                         `json:"githubPatError,omitempty"`
 	}
 	type response struct {
 		Orgs []orgResult `json:"orgs"`

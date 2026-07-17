@@ -99,18 +99,9 @@ var featureEdgeAllowlist = map[string][]string{
 	// TaskFlow workflow (devflow, nil-safe). Design at HEAD is read through a
 	// consumer-side port, not a direct artifacts import. It NEVER imports
 	// feature/task — the §1 split is a package boundary.
-	"execution":    {"devflow"},
-	"files":        {},
-	"genai":        {},
-	"idp":          {"orgcreds"},
-	"organization": {},
-	// orgconfig is the consolidated /config surface (org-config-consolidation.md):
-	// one orchestrator over the reused Anthropic/GitHub (orgcreds) and IDP (idp)
-	// services. These two edges ARE the feature — it assembles GET /config and runs
-	// the atomic multi-section PATCH across both services — so the concrete edges
-	// are the deliberate design, not incidental coupling.
-	"orgconfig": {"idp", "orgcreds"},
-	"orgcreds":  {},
+	"execution": {"devflow"},
+	"files":     {},
+	"genai":     {},
 	"project":   {"artifacts"},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
@@ -140,7 +131,7 @@ var featureEdgeAllowlist = map[string][]string{
 	// the sourcecontrol domain (P2), and the design-component and criteria-file
 	// reads are consumer-side ports wired at the composition root.
 	"validation": {},
-	"webhook":    {"orgcreds"},
+	"webhook":    {},
 }
 
 // depCache memoizes each package's transitive import set so the boundary

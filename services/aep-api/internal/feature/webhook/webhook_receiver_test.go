@@ -48,7 +48,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -60,7 +60,7 @@ import (
 const receiverSecret = "receiver-hmac-secret"
 
 // fakeOrgLookup routes repo full names / installation ids to ocOrgIDs from a
-// fixed map; unknown keys get the same *orgcreds.NotFoundError the real
+// fixed map; unknown keys get the same *organization.NotFoundError the real
 // CredentialService returns, which the receiver must 200-ack-noop.
 type fakeOrgLookup struct {
 	repos    map[string]string
@@ -71,14 +71,14 @@ func (f *fakeOrgLookup) OrgIDByInstallationID(_ context.Context, id int64) (stri
 	if v, ok := f.installs[id]; ok {
 		return v, nil
 	}
-	return "", &orgcreds.NotFoundError{What: fmt.Sprintf("installation %d", id)}
+	return "", &organization.NotFoundError{What: fmt.Sprintf("installation %d", id)}
 }
 
 func (f *fakeOrgLookup) OrgIDByRepoFullName(_ context.Context, fullName string) (string, error) {
 	if v, ok := f.repos[fullName]; ok {
 		return v, nil
 	}
-	return "", &orgcreds.NotFoundError{What: "repo " + fullName}
+	return "", &organization.NotFoundError{What: "repo " + fullName}
 }
 
 // receiverHarness assembles the real receiver exactly as production wires it,

@@ -24,9 +24,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
-	"github.com/wso2/aep/aep-api/internal/feature/organization"
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/obs"
@@ -55,7 +54,7 @@ type AppParams struct {
 	// Controllers still wired as raw handlers: OrgGitHubController (App-mode
 	// connect callback), WebhookController (GitHub webhook HMAC). The runner
 	// callbacks are the internal contract-first surface (InternalDeps).
-	OrgGitHubController orgcreds.OrgGitHubController
+	OrgGitHubController organization.OrgGitHubController
 	WebhookController   webhook.WebhookController
 
 	// InternalDeps carries the services + authorizer for the internal S2S
@@ -87,8 +86,8 @@ type AppParams struct {
 	// artifacts packages in-process. CredService + AnthropicCredService + DB
 	// also back the local-dev SM-API resync helper (testSMAPIResyncHandler).
 	DB                   *gorm.DB
-	CredService          *orgcreds.CredentialService
-	AnthropicCredService *orgcreds.AnthropicCredentialService
+	CredService          *organization.CredentialService
+	AnthropicCredService *organization.AnthropicCredentialService
 
 	// MCP discovery ports (dependencies feature). The composition root wires
 	// them concretely (external-resource repository / org endpoint catalog /

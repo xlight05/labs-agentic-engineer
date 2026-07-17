@@ -28,12 +28,11 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
-	"github.com/wso2/aep/aep-api/internal/feature/organization"
-	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
@@ -54,7 +53,7 @@ type Deps struct {
 	TaskReads           *task.Reads
 	TaskCommands        *task.Commands
 	TaskStream          *execution.TaskStreamService
-	OrgConfigSvc        *orgconfig.Service
+	OrgConfigSvc        *organization.Service
 	TaskTokens          *auth.TaskTokenManager
 	SkillSvc            *skills.SkillService
 	SkillMutationSvc    *skills.SkillMutationService

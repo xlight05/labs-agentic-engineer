@@ -19,11 +19,11 @@ package api
 import (
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/organization"
 )
 
 // The org-scoped GitHub routes (connect/start, pat, status, disconnect) are now
-// code-first Huma operations (orgcreds.RegisterOrgGitHub). Only the unscoped
+// code-first Huma operations (organization.RegisterOrgGitHub). Only the unscoped
 // connect callback remains a raw handler here.
 
 // registerConnectCallbackRoute mounts the App-mode connect callback
@@ -32,6 +32,6 @@ import (
 // the connect-state JWT (issued by StartConnect) instead of the console
 // JWT. This is an enumerated carve-out: the signed connect-state is the
 // authn, bound to the org from that state (SourcePublisherCC, §6.6f).
-func registerConnectCallbackRoute(mux *http.ServeMux, c orgcreds.OrgGitHubController) {
+func registerConnectCallbackRoute(mux *http.ServeMux, c organization.OrgGitHubController) {
 	mux.HandleFunc("GET /api/v1/org/credentials/github/connect/callback", c.HandleConnectCallback)
 }

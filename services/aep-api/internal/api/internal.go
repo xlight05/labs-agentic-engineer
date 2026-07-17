@@ -21,9 +21,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 	"github.com/wso2/aep/aep-api/internal/igen"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -36,14 +36,15 @@ import (
 // fence) and binds the verified org into the context. The spec is non-public —
 // never gateway-advertised.
 //
-// RUNNER LOCKSTEP: the credentials-refresh response body is the orgcreds
-// service's own struct (igen.RefreshResponse is an alias via x-go-type), so
-// the wire bytes cannot drift from what the runner expects.
+// RUNNER LOCKSTEP: the credentials-refresh response body is projected from the
+// organization domain's RefreshResponse onto igen.RefreshResponse (toIgenRefresh)
+// — the schema pins the wire shape, so the bytes cannot drift from what the
+// runner expects (igen stays a leaf; it cannot import the domain — §7).
 
 // InternalDeps carries the services + authorizer the internal S2S operations
 // need. main.go (internal/app) fills it with real instances.
 type InternalDeps struct {
-	CredsRefresh orgcreds.CredentialsRefreshService
+	CredsRefresh organization.CredentialsRefreshService
 	// RunnerAuth verifies runner bearers (Task-JWT / publisher-cc) against the
 	// path execution id. nil fails closed: every internal op answers 503.
 	RunnerAuth *auth.RunnerAuthorizer
@@ -147,7 +148,7 @@ func (s *internalServer) RunnerRefreshCredentials(ctx context.Context, request i
 // Identity sub-object marshals capitalized either way); only Go field ORDER
 // differs between the two Identity structs, which forbids a whole-struct
 // conversion, so the three fields are copied by name.
-func toIgenRefresh(r orgcreds.RefreshResponse) igen.RefreshResponse {
+func toIgenRefresh(r organization.RefreshResponse) igen.RefreshResponse {
 	return igen.RefreshResponse{
 		Token:     r.Token,
 		ExpiresAt: r.ExpiresAt,

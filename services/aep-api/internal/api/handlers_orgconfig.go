@@ -21,9 +21,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/idp"
-	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -33,7 +32,7 @@ import (
 // sections are three-state patch.Field values — absent = keep, null = clear,
 // value = replace — decoded by Field.UnmarshalJSON exactly as before (the
 // schemas are hand-written in models/org_config.go, excluded from codegen).
-// All handler logic lives in orgconfig.Service; this file only maps HTTP <->
+// All handler logic lives in organization.Service; this file only maps HTTP <->
 // domain and translates SectionError into section-pointered envelopes.
 
 func (s *legacyHandlers) GetConfig(ctx context.Context, _ gen.GetConfigRequestObject) (gen.GetConfigResponseObject, error) {
@@ -64,7 +63,7 @@ func (s *legacyHandlers) StartGitProviderConnect(ctx context.Context, request ge
 	}
 	authorizeURL, err := s.deps.OrgConfigSvc.StartGitHubConnect(ctx, org, actor, installationID)
 	if err != nil {
-		if errors.Is(err, orgconfig.ErrGitHubAppNotConfigured) {
+		if errors.Is(err, organization.ErrGitHubAppNotConfigured) {
 			return nil, errServiceUnavailable("github app oauth client not configured")
 		}
 		return nil, errInternal("could not start connect")
@@ -96,7 +95,7 @@ func (s *legacyHandlers) RotateIdpClientSecret(ctx context.Context, _ gen.Rotate
 	actor := auth.ActorFromContext(ctx)
 	newSecret, err := s.deps.OrgConfigSvc.RotateIDPClientSecret(ctx, org, actor)
 	if err != nil {
-		if errors.Is(err, idp.ErrIDPThunderUnavailable) {
+		if errors.Is(err, organization.ErrIDPThunderUnavailable) {
 			return nil, errServiceUnavailable("Thunder admin client not configured")
 		}
 		return nil, errInternal("failed to regenerate client secret")
@@ -126,7 +125,7 @@ func (s *legacyHandlers) DiscoverIdp(ctx context.Context, request gen.DiscoverId
 // rejections that were 422 under the problem-details dialect are 400 now
 // (the error-model break).
 func mapPatchError(err error) error {
-	var se *orgconfig.SectionError
+	var se *organization.SectionError
 	if errors.As(err, &se) {
 		details := []gen.ErrorDetail{{Field: "body." + se.Section, Message: se.Message}}
 		switch se.Status {

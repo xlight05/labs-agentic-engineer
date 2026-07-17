@@ -22,7 +22,7 @@ package webhook
 //   - DeliveryStore dedup — the PK-on-delivery_id "at-most-once" guarantee that
 //     is inherently SQL-shaped (a unique-violation on the second INSERT is what
 //     distinguishes a fresh delivery from a replay). Cannot be faked.
-//   - The App-installation lifecycle handlers over a REAL orgcreds.CredentialService
+//   - The App-installation lifecycle handlers over a REAL organization.CredentialService
 //     + REAL TaskRepository — status flips, selected-repo merges, and the
 //     installation.deleted → disconnect cascade that abandons the org's in-flight
 //     tasks. The cascade's org scoping and terminal-cause stamping are proven
@@ -48,7 +48,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -270,7 +270,7 @@ const credAESKey = "0123456789abcdef0123456789abcdef"
 // installation handlers use run for real; the GitHub-touching mint path returns
 // ErrAppNotConfigured (never nil-derefs), which is exactly the un-interceptable
 // confirm leg documented above.
-func newInstallCredSvc(t *testing.T, db *gorm.DB) *orgcreds.CredentialService {
+func newInstallCredSvc(t *testing.T, db *gorm.DB) *organization.CredentialService {
 	t.Helper()
 	store, err := secrets.NewDBStore(db, []byte(credAESKey))
 	if err != nil {
@@ -280,7 +280,7 @@ func newInstallCredSvc(t *testing.T, db *gorm.DB) *orgcreds.CredentialService {
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
-	return orgcreds.NewCredentialService(repositories.NewOrgCredentialRepository(db), store, minter, "", "", "", nil)
+	return organization.NewCredentialService(repositories.NewOrgCredentialRepository(db), store, minter, "", "", "", nil)
 }
 
 // insertAppRow inserts an app-installation org_credentials row directly,
@@ -316,7 +316,7 @@ func loadCred(t *testing.T, db *gorm.DB, ocOrgID string) models.OrgCredential {
 
 // dispatch wires the real installation handlers on a fresh Router and dispatches
 // one event through it — exactly the receiver's dispatch leg.
-func dispatchInstall(t *testing.T, db *gorm.DB, credSvc *orgcreds.CredentialService, issues sourcecontrol.IssueService, event, payload string) error {
+func dispatchInstall(t *testing.T, db *gorm.DB, credSvc *organization.CredentialService, issues sourcecontrol.IssueService, event, payload string) error {
 	t.Helper()
 	router := NewRouter()
 	RegisterInstallationHandlers(router, db, credSvc, issues, nil)

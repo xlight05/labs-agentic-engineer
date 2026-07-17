@@ -28,10 +28,10 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -282,9 +282,11 @@ func (l repoLister) ListAll(ctx context.Context) ([]execution.RepoRef, error) {
 	return out, nil
 }
 
-// identities projects orgcreds.CredentialService.IdentityFor onto the
+// identities projects organization.CredentialService.IdentityFor onto the
 // codingagent.Identities port.
-type identities struct{ cred *orgcreds.CredentialService }
+type identities struct {
+	cred *organization.CredentialService
+}
 
 func (a identities) IdentityFor(ctx context.Context, ocOrgID string) (name, email, login string, err error) {
 	id, err := a.cred.IdentityFor(ctx, ocOrgID)
@@ -298,10 +300,10 @@ func (a identities) IdentityFor(ctx context.Context, ocOrgID string) (name, emai
 	return id.Name, id.Email, login, nil
 }
 
-// anthropicProvisioner projects orgcreds.AnthropicCredentialService.ApplyWPSecret
+// anthropicProvisioner projects organization.AnthropicCredentialService.ApplyWPSecret
 // onto the codingagent.AnthropicProvisioner port.
 type anthropicProvisioner struct {
-	svc *orgcreds.AnthropicCredentialService
+	svc *organization.AnthropicCredentialService
 }
 
 func (a anthropicProvisioner) ApplyWPSecret(ctx context.Context, ocOrgID string) (string, error) {
@@ -315,10 +317,10 @@ func (a anthropicProvisioner) ApplyWPSecret(ctx context.Context, ocOrgID string)
 	return res.SecretRefName, nil
 }
 
-// anthropicKeyReaderAdapter projects orgcreds.AnthropicCredentialService.EffectiveKey
+// anthropicKeyReaderAdapter projects organization.AnthropicCredentialService.EffectiveKey
 // onto the codingagent.AnthropicKeyReader port used by the K8s Job dispatcher.
 type anthropicKeyReaderAdapter struct {
-	svc *orgcreds.AnthropicCredentialService
+	svc *organization.AnthropicCredentialService
 }
 
 func (a anthropicKeyReaderAdapter) AnthropicKeyFor(ctx context.Context, orgID string) (string, error) {

@@ -24,14 +24,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
+	"github.com/wso2/aep/aep-api/internal/organization"
 )
 
 // isLookupNotFound reports whether err is a 404 surfaced by the routing
 // lookup. A 404 means "this event is for a repo or installation that
 // isn't connected to AEP" — ack noop instead of 5xx-retrying for hours.
 func isLookupNotFound(err error) bool {
-	var nfe *orgcreds.NotFoundError
+	var nfe *organization.NotFoundError
 	if errors.As(err, &nfe) {
 		return true
 	}
