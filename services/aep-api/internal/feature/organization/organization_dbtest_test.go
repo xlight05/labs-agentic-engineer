@@ -51,6 +51,7 @@ import (
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // nsMockReturning builds a NamespaceClient whose GetNamespace answers a live
@@ -95,7 +96,7 @@ func TestEnsureForOuHandle_FirstCallBackfillsRow_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 	thunder := uuid.NewString()
 
 	if err := svc.EnsureForOuHandle(ctx, "acme", thunder); err != nil {
@@ -126,7 +127,7 @@ func TestEnsureForOuHandle_SecondCallIsCacheServed_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 	thunder := uuid.NewString()
 
 	if err := svc.EnsureForOuHandle(ctx, "acme", thunder); err != nil {
@@ -158,7 +159,7 @@ func TestEnsureForOuHandle_ExistingRowSkipsOCVerify_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	// Pre-seed the row (simulating an earlier process/warm start).
 	if err := db.Create(&models.Organization{UUID: uuid.New(), Name: "acme"}).Error; err != nil {
@@ -185,7 +186,7 @@ func TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB(t *testing.T) {
 			return nil, openchoreo.ErrNotFound
 		},
 	}
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	err := svc.EnsureForOuHandle(ctx, "ghost", uuid.NewString())
 	if !errors.Is(err, ErrOrganizationNotProvisioned) {
@@ -205,7 +206,7 @@ func TestEnsureForOuHandle_CacheExpiryReverifies_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	// Call 1: cold cache → verify + backfill (OC hit #1).
 	if err := svc.EnsureForOuHandle(ctx, "acme", ""); err != nil {
@@ -252,7 +253,7 @@ func TestEnsureThunderUUID_PhantomOverwriteRefused_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: false}) // Thunder: this ouId does NOT exist
 
 	good := uuid.New()
@@ -284,7 +285,7 @@ func TestEnsureThunderUUID_ValidatedDriftOverwrites_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: true}) // Thunder: the new ouId is real
 
 	old := uuid.New()
@@ -317,7 +318,7 @@ func TestEnsureForOuHandle_PhantomOnFreshOrgIsRejected_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: false}) // Thunder: this ouId does NOT exist
 
 	phantom := uuid.NewString()
@@ -352,7 +353,7 @@ func TestEnsureForOuHandle_ConcurrentSameHandleCollapses_DB(t *testing.T) {
 			return &gen.OrganizationView{Name: name, Status: "Active"}, nil
 		},
 	}
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	const n = 10
 	start := make(chan struct{})
@@ -393,7 +394,7 @@ func TestEnsureForOuHandle_DifferentHandlesDoNotInterfere_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	handles := []string{"acme", "globex", "initech", "umbrella"}
 	start := make(chan struct{})
@@ -436,7 +437,7 @@ func TestEnsureForOuHandle_IsNameScopedAmongDecoys_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(db, ns)
+	svc := NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
 
 	// Seed several decoys, each with a distinct, recorded thunder_org_uuid.
 	decoyUUID := map[string]uuid.UUID{}

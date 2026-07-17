@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -29,10 +28,10 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
-	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ensureCacheTTL bounds how long a successful EnsureForOuHandle result
@@ -88,7 +87,7 @@ type OUValidator interface {
 }
 
 type organizationService struct {
-	db    *gorm.DB
+	repo  repositories.OrganizationRepository
 	nsCli openchoreo.NamespaceClient
 
 	// ouValidator (optional) validates a JWT `ouId` against Thunder before the
@@ -107,9 +106,9 @@ type organizationService struct {
 	ensureInflight singleflight.Group
 }
 
-func NewOrganizationService(db *gorm.DB, nsCli openchoreo.NamespaceClient) *organizationService {
+func NewOrganizationService(repo repositories.OrganizationRepository, nsCli openchoreo.NamespaceClient) *organizationService {
 	return &organizationService{
-		db:          db,
+		repo:        repo,
 		nsCli:       nsCli,
 		ensureCache: map[string]time.Time{},
 	}
@@ -155,8 +154,8 @@ func (s *organizationService) List(ctx context.Context) (*gen.OrganizationList, 
 		names = append(names, v.Name)
 	}
 
-	var rows []models.Organization
-	if err := s.db.WithContext(ctx).Where("name IN ?", names).Find(&rows).Error; err != nil {
+	rows, err := s.repo.ListByNames(ctx, names)
+	if err != nil {
 		return nil, fmt.Errorf("load organizations: %w", err)
 	}
 	byName := make(map[string]models.Organization, len(rows))
@@ -236,15 +235,14 @@ func (s *organizationService) EnsureForOuHandle(ctx context.Context, ouHandle st
 }
 
 func (s *organizationService) verifyForOuHandle(ctx context.Context, ouHandle, thunderOrgUUID string) error {
-	var row models.Organization
-	switch err := s.db.WithContext(ctx).Where("name = ?", ouHandle).First(&row).Error; {
-	case err == nil:
-		return nil
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		// fall through to OC verify
-	default:
+	row, err := s.repo.GetByName(ctx, ouHandle)
+	if err != nil {
 		return fmt.Errorf("lookup organization: %w", err)
 	}
+	if row != nil {
+		return nil
+	}
+	// No local row — fall through to OC verify.
 
 	view, err := s.nsCli.GetNamespace(ctx, ouHandle)
 	if err != nil {
@@ -274,8 +272,8 @@ func (s *organizationService) ensureThunderUUID(ctx context.Context, ouHandle, t
 		slog.WarnContext(ctx, "ensureThunderUUID: invalid UUID in JWT", "ouHandle", ouHandle, "thunderOrgUUID", thunderOrgUUID, "error", err)
 		return
 	}
-	var row models.Organization
-	if err := s.db.WithContext(ctx).Where("name = ?", ouHandle).First(&row).Error; err != nil {
+	row, err := s.repo.GetByName(ctx, ouHandle)
+	if err != nil || row == nil {
 		// Row may not exist yet (verify failed earlier); caller already logged.
 		return
 	}
@@ -300,10 +298,7 @@ func (s *organizationService) ensureThunderUUID(ctx context.Context, ouHandle, t
 		slog.WarnContext(ctx, "ensureThunderUUID: row UUID differs from JWT — overwriting (new OU validated against Thunder)",
 			"ouHandle", ouHandle, "current", row.ThunderOrgUUID.String(), "newFromJWT", parsed.String())
 	}
-	if err := s.db.WithContext(ctx).
-		Model(&models.Organization{}).
-		Where("name = ?", ouHandle).
-		Update("thunder_org_uuid", parsed).Error; err != nil {
+	if err := s.repo.SetThunderOrgUUID(ctx, ouHandle, parsed); err != nil {
 		slog.WarnContext(ctx, "ensureThunderUUID: update failed", "ouHandle", ouHandle, "error", err)
 	}
 }
@@ -329,27 +324,16 @@ func (s *organizationService) backfillRow(ctx context.Context, name string, view
 			row.ThunderOrgUUID = &parsed
 		}
 	}
-	err := s.db.WithContext(ctx).Create(&row).Error
+	err := s.repo.Create(ctx, &row)
 	if err == nil {
 		return row
 	}
-	if isUniqueViolation(err) {
+	if repositories.IsUniqueViolation(err) {
 		// Lost the race with a concurrent caller; re-read.
-		if rerr := s.db.WithContext(ctx).Where("name = ?", name).First(&row).Error; rerr == nil {
-			return row
+		if existing, rerr := s.repo.GetByName(ctx, name); rerr == nil && existing != nil {
+			return *existing
 		}
 	}
 	slog.WarnContext(ctx, "backfill organization row failed", "name", name, "error", err)
 	return models.Organization{}
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }

@@ -124,6 +124,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	configRepo := repositories.NewConfigRepository(db)
 	repoRepo := repositories.NewRepoRepository(db)
 	workflowRunRepo := repositories.NewWorkflowRunRepository(db)
+	orgRepo := repositories.NewOrganizationRepository(db)
 
 	// Temporal devflow runtime. Constructed always, but connects lazily in the
 	// worker watcher's retry loop (never at Build time), so aep-api boots and
@@ -393,7 +394,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// workflow_runs index (one row read) + the org-scoped release-binding
 	// list — consumer-side ports wired here so project imports neither.
 	projectService.SetStageSources(workflowRunRepo, componentClient)
-	organizationService := organization.NewOrganizationService(db, namespaceClient)
+	organizationService := organization.NewOrganizationService(orgRepo, namespaceClient)
 	// componentService takes repoSvc + buildCredSvc so TriggerBuild can
 	// pre-stage the per-WorkflowRun build Secret in workflows-<orgID>
 	// before the WorkflowRun is created (see
