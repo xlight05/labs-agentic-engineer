@@ -34,6 +34,7 @@ var (
 	uninstallNamespace        string
 	uninstallBootstrapRelease string
 	uninstallPlatformRelease  string
+	uninstallObsNamespace     string
 	uninstallYes              bool
 )
 
@@ -50,13 +51,15 @@ func init() {
 	uninstallCmd.Flags().StringVar(&uninstallNamespace, "namespace", "wso2-aep", "Kubernetes namespace where AEP is installed")
 	uninstallCmd.Flags().StringVar(&uninstallBootstrapRelease, "bootstrap-release", "aep", "Helm release name of the bootstrap chart")
 	uninstallCmd.Flags().StringVar(&uninstallPlatformRelease, "platform-release", "aep-platform", "Helm release name of the platform chart")
+	uninstallCmd.Flags().StringVar(&uninstallObsNamespace, "obs-namespace", "openchoreo-observability-plane", "Namespace of the SRE/observability plane (installed by `aep sre install`)")
 	uninstallCmd.Flags().BoolVarP(&uninstallYes, "yes", "y", false, "Skip confirmation prompt")
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
 	if !uninstallYes {
-		fmt.Printf("This will permanently delete the AEP installation in namespace %q.\n", uninstallNamespace)
-		fmt.Printf("Helm releases: %q, %q\n", uninstallBootstrapRelease, uninstallPlatformRelease)
+		fmt.Printf("This will permanently delete the AEP installation in namespace %q\n", uninstallNamespace)
+		fmt.Printf("and the SRE/observability plane in namespace %q.\n", uninstallObsNamespace)
+		fmt.Printf("Helm releases: %q, %q, observability-plane, observability-logs-opensearch\n", uninstallBootstrapRelease, uninstallPlatformRelease)
 		fmt.Print("Type \"yes\" to confirm: ")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
@@ -119,6 +122,39 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	step(fmt.Sprintf("Deleting namespace %s...", uninstallNamespace))
 	if err := client.CoreV1().Namespaces().Delete(ctx, uninstallNamespace, metav1.DeleteOptions{}); err != nil {
 		warn(fmt.Sprintf("delete namespace %s: %v", uninstallNamespace, err))
+	}
+
+	// 5. SRE / observability plane (installed by `aep sre install`). Best-effort:
+	//    an install without the SRE stack must still uninstall cleanly. Doing this
+	//    here means a later reinstall starts from a clean obs plane whose secrets
+	//    match the freshly-provisioned OpenBao (avoids stale-secret / OAuth drift).
+	fmt.Println("Removing SRE / observability plane...")
+	for _, release := range []string{"observability-logs-opensearch", "observability-plane"} {
+		step(fmt.Sprintf("helm uninstall %s -n %s", release, uninstallObsNamespace))
+		if out, err := exec.CommandContext(ctx, "helm", "uninstall", release, "-n", uninstallObsNamespace).CombinedOutput(); err != nil {
+			warn(fmt.Sprintf("helm uninstall %s: %v — %s", release, err, strings.TrimSpace(string(out))))
+		}
+	}
+	// Cluster-scoped CRs created by `aep sre install` (survive namespace deletion).
+	if applier, err := k8s.NewApplier(""); err != nil {
+		warn(fmt.Sprintf("build applier for SRE CR cleanup: %v", err))
+	} else {
+		for _, cr := range []struct{ apiVersion, kind, name string }{
+			{"openchoreo.dev/v1alpha1", "ClusterObservabilityPlane", "default"},
+			{"openchoreo.dev/v1alpha1", "ClusterAuthzRoleBinding", "aep-observer-reader-binding"},
+			{"openchoreo.dev/v1alpha1", "ClusterAuthzRole", "aep-observer-reader"},
+			{"openchoreo.dev/v1alpha1", "ClusterAuthzRoleBinding", "rca-agent-dispatch-binding"},
+			{"openchoreo.dev/v1alpha1", "ClusterAuthzRole", "rca-agent-dispatch"},
+		} {
+			step(fmt.Sprintf("Deleting %s %s...", cr.kind, cr.name))
+			if err := applier.Delete(ctx, cr.apiVersion, cr.kind, "", cr.name); err != nil {
+				warn(fmt.Sprintf("delete %s %s: %v", cr.kind, cr.name, err))
+			}
+		}
+	}
+	step(fmt.Sprintf("Deleting namespace %s...", uninstallObsNamespace))
+	if err := client.CoreV1().Namespaces().Delete(ctx, uninstallObsNamespace, metav1.DeleteOptions{}); err != nil {
+		warn(fmt.Sprintf("delete namespace %s: %v", uninstallObsNamespace, err))
 	}
 
 	fmt.Println("Done. AEP has been removed from the cluster.")

@@ -122,6 +122,7 @@ confidential "AEP BFF to git-service"                "BFF outbound JWT, audience
 confidential "AEP BFF to remote-worker"              "BFF outbound JWT, audience: remote-worker" "aep-bff-to-remote-worker"   "$BFF_TO_REMOTE_WORKER_SECRET"
 confidential "AEP Local Dev Seeder"                  "Local-dev convenience client"              "aep-local-dev-seeder"       "$LOCAL_DEV_SEEDER_SECRET"
 confidential "AEP System Client"                     "System-level Thunder admin client"         "aep-system-client"          "$AEP_SYSTEM_CLIENT_SECRET"
+confidential "OpenChoreo RCA Agent"                  "SRE/RCA agent service-account identity"    "openchoreo-rca-agent"       "$OC_RCA_AGENT_SECRET"
 
 # ── Register console PKCE client ─────────────────────────────────────────────
 log "Registering console PKCE client..."

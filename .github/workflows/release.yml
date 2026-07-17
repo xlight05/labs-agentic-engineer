@@ -39,6 +39,12 @@ jobs:
           - name: agents
             dockerfile: services/agents/Dockerfile
             context: .
+          - name: collab
+            dockerfile: services/collab/Dockerfile
+            context: .
+          - name: aep-mcp-server
+            dockerfile: services/aep-mcp-server/Dockerfile
+            context: .
           - name: remote-worker
             dockerfile: runners/remote-worker/Dockerfile
             context: runners/remote-worker
@@ -129,6 +135,12 @@ jobs:
           yq -i '.aepAgents.image.repository = "${{ env.IMAGE_PREFIX }}/agents"' /tmp/platform/values.yaml
           yq -i '.aepAgents.image.tag = "${{ inputs.version }}"' /tmp/platform/values.yaml
           yq -i '.aepAgents.image.pullPolicy = "IfNotPresent"' /tmp/platform/values.yaml
+          yq -i '.collab.image.repository = "${{ env.IMAGE_PREFIX }}/collab"' /tmp/platform/values.yaml
+          yq -i '.collab.image.tag = "${{ inputs.version }}"' /tmp/platform/values.yaml
+          yq -i '.collab.image.pullPolicy = "IfNotPresent"' /tmp/platform/values.yaml
+          yq -i '.aepMcpServer.image.repository = "${{ env.IMAGE_PREFIX }}/aep-mcp-server"' /tmp/platform/values.yaml
+          yq -i '.aepMcpServer.image.tag = "${{ inputs.version }}"' /tmp/platform/values.yaml
+          yq -i '.aepMcpServer.image.pullPolicy = "IfNotPresent"' /tmp/platform/values.yaml
           yq -i '.console.image.repository = "${{ env.IMAGE_PREFIX }}/console"' /tmp/platform/values.yaml
           yq -i '.console.image.tag = "${{ inputs.version }}"' /tmp/platform/values.yaml
           yq -i '.console.image.pullPolicy = "IfNotPresent"' /tmp/platform/values.yaml
@@ -177,6 +189,8 @@ jobs:
           - \`ghcr.io/wso2/aep/aep-server:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/aep-api:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/agents:${{ inputs.version }}\`
+          - \`ghcr.io/wso2/aep/collab:${{ inputs.version }}\`
+          - \`ghcr.io/wso2/aep/aep-mcp-server:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/remote-worker:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/remote-worker-validation:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/console:${{ inputs.version }}\`

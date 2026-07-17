@@ -23,18 +23,22 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/wso2/aep/aepctl/internal/adminpb"
 	k8s "github.com/wso2/aep/aepctl/internal/kubernetes"
 )
+
+const minOCVersion = "1.1.1"
 
 var (
 	initPlatformChart        string
@@ -44,6 +48,10 @@ var (
 	initConsoleURL           string
 	initAPIURL               string
 	initWorkspacesAccessMode string
+	initBuildPlaneNamespace  string
+	initRegistryService      string
+	initOCNamespace          string
+	initSkipOCVersionCheck   bool
 )
 
 var initCmd = &cobra.Command{
@@ -71,6 +79,10 @@ func init() {
 	initCmd.Flags().StringVar(&initAPIURL, "api-url", "http://api.openchoreo.localhost:8080", "Public URL of the AEP API")
 	initCmd.Flags().StringVar(&initWorkspacesAccessMode, "workspaces-access-mode", "", "PVC access mode for the shared workspaces volume (e.g. ReadWriteOnce for local k3d, ReadWriteMany for production)")
 	_ = viper.BindPFlag("platform.workspaces.access_mode", initCmd.Flags().Lookup("workspaces-access-mode"))
+	initCmd.Flags().StringVar(&initBuildPlaneNamespace, "build-plane-namespace", "openchoreo-workflow-plane", "Namespace of the OpenChoreo build/workflow plane (must already exist, incl. its image registry)")
+	initCmd.Flags().StringVar(&initRegistryService, "registry-service", "registry", "Name of the build-plane image registry Service (the coding-agent build pushes/pulls here)")
+	initCmd.Flags().StringVar(&initOCNamespace, "oc-namespace", "openchoreo-system", "Namespace where OpenChoreo control-plane is installed")
+	initCmd.Flags().BoolVar(&initSkipOCVersionCheck, "skip-oc-version-check", false, "Skip the OpenChoreo minimum version check (not recommended)")
 	initCmd.Flags().String("oc-api-url", "", "In-cluster URL of the OpenChoreo platform API (overrides config file)")
 	_ = viper.BindPFlag("oc.api_url", initCmd.Flags().Lookup("oc-api-url"))
 	initCmd.Flags().String("server", "", "AEP server gRPC URL (overrides config file)")
@@ -88,6 +100,26 @@ func runAEPInit(cmd *cobra.Command, args []string) error {
 	k8sClient, err := k8s.NewClient("")
 	if err != nil {
 		return fmt.Errorf("connect to cluster: %w", err)
+	}
+
+	// 0a. Prerequisite guard — verify the OpenChoreo version meets the minimum
+	// requirement. Features used by the coding-agent build/deploy chain (e.g.
+	// the workflow plane APIs) are only available from 1.1.1 onward; older
+	// clusters produce cryptic failures deep in the pipeline.
+	if !initSkipOCVersionCheck {
+		if err := checkOCVersion(ctx, k8sClient, initOCNamespace, minOCVersion); err != nil {
+			return err
+		}
+	}
+
+	// 0b. Prerequisite guard — verify the OpenChoreo build plane + image registry
+	// exist BEFORE installing anything. The coding-agent build/deploy chain
+	// pushes built images to, and pulls them from, this registry; without it,
+	// builds fail deep in the pipeline with an opaque publish/pull error. aepctl
+	// does not provision it (that is the OpenChoreo cluster's responsibility) —
+	// so fail fast here with an actionable message rather than half-installing.
+	if err := checkBuildRegistry(ctx, k8sClient, initBuildPlaneNamespace, initRegistryService); err != nil {
+		return err
 	}
 
 	// 1. Wait for OpenBao pod.
@@ -224,6 +256,116 @@ func runAEPInit(cmd *cobra.Command, args []string) error {
 	}
 
 	_, _ = fmt.Fprintln(os.Stdout, "\nAEP is ready. Open the console to get started.")
+	return nil
+}
+
+// checkOCVersion fails fast when the installed OpenChoreo version is below the
+// required minimum. It reads the app.kubernetes.io/version label from any
+// Deployment in the OC namespace that carries app.kubernetes.io/part-of=openchoreo.
+// A missing namespace or no versioned Deployment is treated as an unrecognised
+// installation and also fails.
+func checkOCVersion(ctx context.Context, client *kubernetes.Clientset, namespace, minVersion string) error {
+	if _, err := client.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("OpenChoreo namespace %q not found: "+
+				"AEP requires OpenChoreo >= %s; provision it first, or pass --oc-namespace if yours differs",
+				namespace, minVersion)
+		}
+		return fmt.Errorf("check OpenChoreo namespace %q: %w", namespace, err)
+	}
+
+	deps, err := client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/part-of=openchoreo",
+	})
+	if err != nil {
+		return fmt.Errorf("list OpenChoreo deployments in %q: %w", namespace, err)
+	}
+
+	for _, d := range deps.Items {
+		ver, ok := d.Labels["app.kubernetes.io/version"]
+		if !ok || ver == "" {
+			continue
+		}
+		// Strip a leading "v" if present (e.g. "v1.2.0" → "1.2.0").
+		ver = strings.TrimPrefix(ver, "v")
+		ok, err := versionAtLeast(ver, minVersion)
+		if err != nil {
+			return fmt.Errorf("parse OpenChoreo version %q: %w", ver, err)
+		}
+		if !ok {
+			return fmt.Errorf("OpenChoreo version %s is below the minimum required version %s: "+
+				"upgrade OpenChoreo to %s or later before running `aep init`",
+				ver, minVersion, minVersion)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("could not determine OpenChoreo version from deployments in namespace %q: "+
+		"ensure OpenChoreo >= %s is installed, or pass --skip-oc-version-check to bypass this check",
+		namespace, minVersion)
+}
+
+// versionAtLeast reports whether version >= minimum, comparing major.minor.patch
+// numerically. Both strings must be of the form "X.Y.Z".
+func versionAtLeast(version, minimum string) (bool, error) {
+	vParts, err := splitVersion(version)
+	if err != nil {
+		return false, fmt.Errorf("version %q: %w", version, err)
+	}
+	mParts, err := splitVersion(minimum)
+	if err != nil {
+		return false, fmt.Errorf("minimum %q: %w", minimum, err)
+	}
+	for i := 0; i < 3; i++ {
+		if vParts[i] > mParts[i] {
+			return true, nil
+		}
+		if vParts[i] < mParts[i] {
+			return false, nil
+		}
+	}
+	return true, nil // equal
+}
+
+func splitVersion(v string) ([3]int, error) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) != 3 {
+		return [3]int{}, fmt.Errorf("expected major.minor.patch, got %q", v)
+	}
+	var out [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return [3]int{}, fmt.Errorf("non-numeric segment %q", p)
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+// checkBuildRegistry fails fast (before any install) when the OpenChoreo build
+// plane or its image registry Service is absent. The coding-agent build →
+// publish → deploy chain depends on this registry; aepctl assumes a
+// pre-provisioned OpenChoreo cluster and does not create it.
+func checkBuildRegistry(ctx context.Context, client *kubernetes.Clientset, namespace, service string) error {
+	if _, err := client.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("OpenChoreo build plane namespace %q not found: "+
+				"AEP requires a pre-provisioned OpenChoreo build/workflow plane with its image registry "+
+				"(the coding-agent build pipeline pushes and pulls images there); "+
+				"provision it first, or pass --build-plane-namespace if yours differs", namespace)
+		}
+		return fmt.Errorf("check build plane namespace %q: %w", namespace, err)
+	}
+	if _, err := client.CoreV1().Services(namespace).Get(ctx, service, metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf("build image registry Service %q not found in namespace %q: "+
+				"the coding-agent build pipeline needs an in-cluster image registry (publish + deploy-time pull); "+
+				"provision the OpenChoreo build plane's registry before running `aep init`, "+
+				"or pass --registry-service if yours is named differently", service, namespace)
+		}
+		return fmt.Errorf("check registry Service %q/%q: %w", namespace, service, err)
+	}
 	return nil
 }
 

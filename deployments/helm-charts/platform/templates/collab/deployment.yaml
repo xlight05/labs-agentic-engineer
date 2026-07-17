@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collab-server
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: collab-server
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: aep
+spec:
+  replicas: {{ .Values.collab.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: collab-server
+  template:
+    metadata:
+      labels:
+        app: collab-server
+        app.kubernetes.io/part-of: wso2-agentic-engineer
+    spec:
+      containers:
+        - name: collab-server
+          image: "{{ .Values.collab.image.repository }}:{{ .Values.collab.image.tag }}"
+          imagePullPolicy: {{ .Values.collab.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.collab.port }}
+              name: http
+          resources: {{ toYaml .Values.collab.resources | nindent 12 }}
+          env:
+            - name: COLLAB_PORT
+              value: {{ .Values.collab.port | quote }}
+            # aep-api origin incl. /api/v1 — the room-access oracle + spec seeder.
+            # A non-null value keeps the server out of dev/fixture mode.
+            - name: AEP_API_BASE
+              value: "http://aep-api:{{ .Values.aepApi.port }}/api/v1"

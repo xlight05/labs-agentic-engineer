@@ -26,13 +26,18 @@ FROM node:22-alpine AS builder
 RUN corepack enable
 WORKDIR /repo
 
-# Workspace manifests first for install-layer caching (same shape as
-# services/agents/Dockerfile).
+# Workspace manifests + package manifests first, so the install layer (and the
+# workspace-dep builds below) stay cached when only app source changes. The app
+# source itself is COPY'd LAST — see the note before `COPY apps/console`.
+# The pnpm content-addressable store is a BuildKit cache mount, so a cache miss
+# on install relinks from the store instead of re-downloading (needs BuildKit;
+# CI's buildx sets it automatically; local builds pass DOCKER_BUILDKIT=1).
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY packages ./packages
-COPY apps/console ./apps/console
+COPY apps/console/package.json ./apps/console/
 
-RUN pnpm install --frozen-lockfile --filter @aep/console...
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store --filter @aep/console...
 
 # Workspace deps whose exports resolve to ./dist must be compiled first
 # (@aep/excalidraw-dsl — the wireframe DSL + layout gate, built FIRST because
@@ -43,14 +48,19 @@ RUN pnpm install --frozen-lockfile --filter @aep/console...
 # types: dist/index.d.ts so consumers read its pre-built declarations instead
 # of re-typechecking its source). The @aep/ui-cell-diagram-view package
 # resolves to its src/ (types: src/index.ts) so tsc reads it directly — no
-# pre-build.
+# pre-build. These depend only on packages/, so an app-source edit doesn't
+# rerun them.
 RUN pnpm --filter @aep/excalidraw-dsl build
 RUN pnpm --filter @aep/agent-stream build
 RUN pnpm --filter @aep/collab-doc build
 RUN pnpm --filter @aep/design-projection build
 RUN pnpm --filter @aep/ui-cell-diagram-react build
-RUN pnpm --filter @aep/console gen
-RUN pnpm --filter @aep/console build
+
+# App source LAST: a console-only change invalidates only this COPY and the
+# gen+build below (install + the workspace-dep builds above stay cached).
+COPY apps/console ./apps/console
+RUN --mount=type=cache,id=vite-console,target=/repo/apps/console/node_modules/.vite \
+    pnpm --filter @aep/console gen && pnpm --filter @aep/console build
 
 # Stage 1: serve with nginx.
 FROM nginx:1.28-alpine

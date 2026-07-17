@@ -30,6 +30,12 @@ jobs:
             agents:
               - 'services/agents/**'
               - 'packages/**'
+            collab:
+              - 'services/collab/**'
+              - 'packages/**'
+            aep-mcp-server:
+              - 'services/aep-mcp-server/**'
+              - 'packages/**'
             console:
               - 'apps/console/**'
               - 'packages/**'
@@ -44,6 +50,8 @@ jobs:
             "aep-server":   {"dockerfile":"tools/aepctl/Dockerfile.server","context":"tools/aepctl"},
             "aep-api":      {"dockerfile":"services/aep-api/Dockerfile","context":"services/aep-api","buildContexts":"skills=skills"},
             "agents":       {"dockerfile":"services/agents/Dockerfile","context":"."},
+            "collab":       {"dockerfile":"services/collab/Dockerfile","context":"."},
+            "aep-mcp-server":{"dockerfile":"services/aep-mcp-server/Dockerfile","context":"."},
             "remote-worker":{"dockerfile":"runners/remote-worker/Dockerfile","context":"runners/remote-worker"},
             "console":      {"dockerfile":"apps/console/Dockerfile","context":"."},
             "cluster-gateway-proxy":{"dockerfile":"deployments/local-cluster-gateway-proxy/Dockerfile","context":"deployments/local-cluster-gateway-proxy"}

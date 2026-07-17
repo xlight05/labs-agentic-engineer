@@ -24,8 +24,9 @@ WORKDIR /workspace
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY services/aep-mcp-server/package.json services/aep-mcp-server/package.json
 
-RUN corepack enable && corepack prepare pnpm@10.12.1 --activate && \
-    pnpm install --filter @aep/aep-mcp-server... --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    corepack enable && corepack prepare pnpm@10.12.1 --activate && \
+    pnpm install --filter @aep/aep-mcp-server... --frozen-lockfile --store-dir=/pnpm/store
 
 COPY services/aep-mcp-server/tsconfig.json services/aep-mcp-server/tsconfig.json
 COPY services/aep-mcp-server/src services/aep-mcp-server/src

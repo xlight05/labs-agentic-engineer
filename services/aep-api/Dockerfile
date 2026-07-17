@@ -18,9 +18,12 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o bin/aep-api ./cmd/aep-api
+# Cache the Go module + build caches (BuildKit) so incremental rebuilds
+# reuse compiled packages instead of recompiling from scratch.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o bin/aep-api ./cmd/aep-api
 
 FROM alpine:3.21
 
@@ -35,12 +38,6 @@ RUN addgroup -g 1000 appgroup && adduser -S -u 1000 -G appgroup appuser
 
 WORKDIR /app
 COPY --from=builder /app/bin/aep-api .
-
-# The platform skill library, read at runtime and seeded into each org's
-# skills repo (config SkillsDir, default /app/skills). Supplied as a BuildKit
-# named build context (`--build-context skills=<repo>/skills`) so the single
-# authored source at repo-root skills/ is never vendored/copied into the module.
-COPY --from=skills . /app/skills
 
 USER appuser
 

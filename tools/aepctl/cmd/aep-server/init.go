@@ -148,9 +148,26 @@ func (s *server) Init(req *adminpb.InitRequest, stream grpc.ServerStreamingServe
 		"bff-remote-worker",
 		"local-dev-seeder",
 		"system-client",
+		// SRE/RCA agent service-account identity. Consumed by the
+		// openchoreo-observability-plane RCA agent (rca.oauth.clientId +
+		// rca-agent-secret OAUTH_CLIENT_SECRET) once `aep sre install` runs.
+		"openchoreo-rca-agent",
+	}
+	// fixedClientSecrets: clients whose secret an OpenChoreo component bakes in
+	// as a fixed default and cannot be told a random value. The OC
+	// dockerfile-builder's generate-workload-cr step authenticates as
+	// openchoreo-workload-publisher-client using this literal (baked into the
+	// ClusterWorkflowTemplate); a random secret here 401s the workload publish
+	// (build fails at generate-workload-cr). Mirrors setup.sh's Thunder bootstrap.
+	fixedClientSecrets := map[string]string{
+		"oc-workload-publisher": "openchoreo-workload-publisher-secret",
 	}
 	thunderClientSecrets := make(map[string]string, len(thunderClientNames))
 	for _, name := range thunderClientNames {
+		if fixed, ok := fixedClientSecrets[name]; ok {
+			thunderClientSecrets[name] = fixed
+			continue
+		}
 		s, err := bootstrap.GeneratePassword(32)
 		if err != nil {
 			return fatal(fmt.Sprintf("generate thunder client secret %s: %v", name, err))
@@ -171,6 +188,16 @@ func (s *server) Init(req *adminpb.InitRequest, stream grpc.ServerStreamingServe
 		return fatal(fmt.Sprintf("generate webhook secret: %v", err))
 	}
 
+	// OpenSearch admin credentials for the observability plane (Observer +
+	// OpenSearch + logs-adapter). Seeded here — while the root token is still
+	// held — because `aep sre install` runs after init (root token revoked) and
+	// only reads these via ESO. The aep-secret-reader policy (secret/data/aep/*)
+	// already covers these paths, so no OpenBao role change is needed.
+	openSearchPassword, err := bootstrap.GeneratePassword(24)
+	if err != nil {
+		return fatal(fmt.Sprintf("generate opensearch password: %v", err))
+	}
+
 	secrets := []struct{ path, value string }{
 		{"aep/anthropic-api-key", req.AnthropicApiKey},
 		{"aep/postgres-password", postgresPassword},
@@ -178,6 +205,8 @@ func (s *server) Init(req *adminpb.InitRequest, stream grpc.ServerStreamingServe
 		{"aep/oauth-state-key", oauthStateKey},
 		{"aep/agents-jwt-secret", agentsJWTSecret},
 		{"aep/webhook-secret", webhookSecret},
+		{"aep/opensearch-username", "admin"},
+		{"aep/opensearch-password", openSearchPassword},
 	}
 	for _, name := range thunderClientNames {
 		secrets = append(secrets, struct{ path, value string }{
@@ -249,4 +278,3 @@ func (s *server) Init(req *adminpb.InitRequest, stream grpc.ServerStreamingServe
 		},
 	})
 }
-

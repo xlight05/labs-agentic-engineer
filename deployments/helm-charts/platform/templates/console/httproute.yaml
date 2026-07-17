@@ -29,6 +29,12 @@ spec:
         - name: aep-api
           namespace: {{ .Release.Namespace }}
           port: {{ .Values.aepApi.port }}
+      # aep-api carries long-lived streaming responses (agent-chat SSE, task
+      # logs, live progress). Disable the gateway's default route timeout so
+      # these aren't severed mid-stream ("Lost the agent's stream").
+      timeouts:
+        request: "0s"
+        backendRequest: "0s"
     - matches:
         - path:
             type: PathPrefix
@@ -37,3 +43,9 @@ spec:
         - name: aep-console
           namespace: {{ .Release.Namespace }}
           port: {{ .Values.console.port }}
+      # The console proxies the /collab spec-collaboration WebSocket to the
+      # collab-server. Disable the gateway's default route timeout so live spec/
+      # design content streaming isn't severed (otherwise it only appears on reload).
+      timeouts:
+        request: "0s"
+        backendRequest: "0s"

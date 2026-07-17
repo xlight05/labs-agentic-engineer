@@ -26,18 +26,23 @@ FROM node:22-bookworm-slim
 RUN corepack enable
 WORKDIR /repo
 
-# Workspace manifests first for install-layer caching. tsconfig.base.json is the
-# shared base @aep/agent-stream's tsconfig extends — needed for the tsc build below.
+# Workspace + package manifests first so the install layer (and the
+# workspace-dep builds below) stay cached when only agents source changes; the
+# service source is COPY'd LAST. tsconfig.base.json is the shared base
+# @aep/agent-stream's tsconfig extends — needed for the tsc build below. The
+# pnpm store is a BuildKit cache mount (needs BuildKit; CI's buildx sets it
+# automatically; local builds pass DOCKER_BUILDKIT=1).
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
-# The agents package plus the workspace packages it depends on.
+# The workspace packages @aep/agents depends on, plus the agents manifest only.
 COPY packages ./packages
-COPY services/agents ./services/agents
+COPY services/agents/package.json ./services/agents/
 
 # Install @aep/agents + its workspace deps. This also installs the workspace ROOT
 # project's devDependencies (pnpm always installs the root's deps) — so `typescript`
 # is present to compile @aep/agent-stream in the next step. (@types/node and tsx
 # ride in via @aep/agents' own dependencies.)
-RUN pnpm install --frozen-lockfile --filter @aep/agents...
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store --filter @aep/agents...
 
 # @aep/agents runs from TypeScript source via tsx (no build of its own), but it
 # imports @aep/agent-stream and @aep/collab-doc as packages whose `exports`
@@ -45,8 +50,14 @@ RUN pnpm install --frozen-lockfile --filter @aep/agents...
 # @aep/excalidraw-dsl builds FIRST: @aep/agent-stream imports it (the layout
 # write-gate), so its dist must exist for agent-stream's tsc to resolve it.
 # Without this step the container crashes at boot with "Cannot find module
-# .../@aep/agent-stream/dist" (or the collab-doc analog).
+# .../@aep/agent-stream/dist" (or the collab-doc analog). These depend only on
+# packages/, so an agents-source edit doesn't rerun them.
 RUN pnpm --filter @aep/excalidraw-dsl build && pnpm --filter @aep/agent-stream build && pnpm --filter @aep/collab-doc build
+
+# Service source LAST: an agents-only change invalidates only this COPY (install
+# + the workspace-dep builds above stay cached). @aep/agents runs via tsx, so
+# there is no build step of its own.
+COPY services/agents ./services/agents
 
 WORKDIR /repo/services/agents
 
