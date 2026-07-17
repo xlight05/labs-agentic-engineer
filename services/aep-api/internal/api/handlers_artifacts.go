@@ -29,7 +29,7 @@ import (
 // The console's overview and spec view poll it for the "vN published" /
 // "draft changes" chips.
 
-func (s *apiServer) ListProjectTags(ctx context.Context, request gen.ListProjectTagsRequestObject) (gen.ListProjectTagsResponseObject, error) {
+func (s *legacyHandlers) ListProjectTags(ctx context.Context, request gen.ListProjectTagsRequestObject) (gen.ListProjectTagsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	tags, err := s.deps.ArtifactSvc.ListSpecVersionTags(ctx, org, request.ProjectName)
 	if err != nil {

@@ -36,7 +36,7 @@ import (
 // validated as DNS-label slugs (400 on malformed) via the requireSlug helpers
 // below — before any service (OC client / repo) is touched.
 
-func (s *apiServer) ListComponents(ctx context.Context, request gen.ListComponentsRequestObject) (gen.ListComponentsResponseObject, error) {
+func (s *legacyHandlers) ListComponents(ctx context.Context, request gen.ListComponentsRequestObject) (gen.ListComponentsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireSlug("projectName", request.ProjectName); err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (s *apiServer) ListComponents(ctx context.Context, request gen.ListComponen
 	return gen.ListComponents200JSONResponse(*list), nil
 }
 
-func (s *apiServer) GetComponent(ctx context.Context, request gen.GetComponentRequestObject) (gen.GetComponentResponseObject, error) {
+func (s *legacyHandlers) GetComponent(ctx context.Context, request gen.GetComponentRequestObject) (gen.GetComponentResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func (s *apiServer) GetComponent(ctx context.Context, request gen.GetComponentRe
 
 // --- Build operations --------------------------------------------------------
 
-func (s *apiServer) TriggerBuild(ctx context.Context, request gen.TriggerBuildRequestObject) (gen.TriggerBuildResponseObject, error) {
+func (s *legacyHandlers) TriggerBuild(ctx context.Context, request gen.TriggerBuildRequestObject) (gen.TriggerBuildResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (s *apiServer) TriggerBuild(ctx context.Context, request gen.TriggerBuildRe
 	return gen.TriggerBuild201JSONResponse(*run), nil
 }
 
-func (s *apiServer) ListBuilds(ctx context.Context, request gen.ListBuildsRequestObject) (gen.ListBuildsResponseObject, error) {
+func (s *legacyHandlers) ListBuilds(ctx context.Context, request gen.ListBuildsRequestObject) (gen.ListBuildsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (s *apiServer) ListBuilds(ctx context.Context, request gen.ListBuildsReques
 	return gen.ListBuilds200JSONResponse(*list), nil
 }
 
-func (s *apiServer) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRequestObject) (gen.GetBuildLogsResponseObject, error) {
+func (s *legacyHandlers) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRequestObject) (gen.GetBuildLogsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -112,7 +112,7 @@ func (s *apiServer) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRe
 // OC's Component controller drives the deploy chain via AutoDeploy. The list
 // reflects materialised ReleaseBindings for this component.
 
-func (s *apiServer) ListDeployments(ctx context.Context, request gen.ListDeploymentsRequestObject) (gen.ListDeploymentsResponseObject, error) {
+func (s *legacyHandlers) ListDeployments(ctx context.Context, request gen.ListDeploymentsRequestObject) (gen.ListDeploymentsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func (s *apiServer) ListDeployments(ctx context.Context, request gen.ListDeploym
 // have a guaranteed OpenAPI 3.0 doc; non-service components return 409 with
 // the componentType so the UI can render a typed empty state.
 
-func (s *apiServer) GetComponentOpenapi(ctx context.Context, request gen.GetComponentOpenapiRequestObject) (gen.GetComponentOpenapiResponseObject, error) {
+func (s *legacyHandlers) GetComponentOpenapi(ctx context.Context, request gen.GetComponentOpenapiRequestObject) (gen.GetComponentOpenapiResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ func (getComponentConfigNull200Response) VisitGetComponentConfigResponse(w http.
 	return writeJSONBody(w, http.StatusOK, nil) // literal null body
 }
 
-func (s *apiServer) GetComponentConfig(ctx context.Context, request gen.GetComponentConfigRequestObject) (gen.GetComponentConfigResponseObject, error) {
+func (s *legacyHandlers) GetComponentConfig(ctx context.Context, request gen.GetComponentConfigRequestObject) (gen.GetComponentConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (s *apiServer) GetComponentConfig(ctx context.Context, request gen.GetCompo
 	return gen.GetComponentConfig200JSONResponse(*config), nil
 }
 
-func (s *apiServer) UpdateComponentConfig(ctx context.Context, request gen.UpdateComponentConfigRequestObject) (gen.UpdateComponentConfigResponseObject, error) {
+func (s *legacyHandlers) UpdateComponentConfig(ctx context.Context, request gen.UpdateComponentConfigRequestObject) (gen.UpdateComponentConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err

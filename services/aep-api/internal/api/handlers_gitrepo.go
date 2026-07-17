@@ -33,7 +33,7 @@ import (
 // sre-agent). NOTE the wire quirk the contract documents: IssueInfo's keys
 // are CAPITALIZED (historical shape the deployed MCP server parses).
 
-func (s *apiServer) CreateIssue(ctx context.Context, request gen.CreateIssueRequestObject) (gen.CreateIssueResponseObject, error) {
+func (s *legacyHandlers) CreateIssue(ctx context.Context, request gen.CreateIssueRequestObject) (gen.CreateIssueResponseObject, error) {
 	if s.deps.IssueSvc == nil {
 		return nil, errServiceUnavailable("issue service not configured")
 	}
@@ -58,7 +58,7 @@ func (s *apiServer) CreateIssue(ctx context.Context, request gen.CreateIssueRequ
 	}), nil
 }
 
-func (s *apiServer) ListIssues(ctx context.Context, request gen.ListIssuesRequestObject) (gen.ListIssuesResponseObject, error) {
+func (s *legacyHandlers) ListIssues(ctx context.Context, request gen.ListIssuesRequestObject) (gen.ListIssuesResponseObject, error) {
 	if s.deps.IssueSvc == nil {
 		return nil, errServiceUnavailable("issue service not configured")
 	}

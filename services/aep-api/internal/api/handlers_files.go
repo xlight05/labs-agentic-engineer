@@ -35,7 +35,7 @@ import (
 // here with PathValue-decoded (unescaped) bytes, so unicode/escaped paths
 // survive the chain byte-identically.
 
-func (s *apiServer) ListFiles(ctx context.Context, request gen.ListFilesRequestObject) (gen.ListFilesResponseObject, error) {
+func (s *legacyHandlers) ListFiles(ctx context.Context, request gen.ListFilesRequestObject) (gen.ListFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	prefix := ""
 	if request.Params.Prefix != "" {
@@ -52,7 +52,7 @@ func (s *apiServer) ListFiles(ctx context.Context, request gen.ListFilesRequestO
 	return gen.ListFiles200JSONResponse(out), nil
 }
 
-func (s *apiServer) ReadFile(ctx context.Context, request gen.ReadFileRequestObject) (gen.ReadFileResponseObject, error) {
+func (s *legacyHandlers) ReadFile(ctx context.Context, request gen.ReadFileRequestObject) (gen.ReadFileResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Path == "" {
 		return nil, errBadRequest("path is required")
@@ -68,7 +68,7 @@ func (s *apiServer) ReadFile(ctx context.Context, request gen.ReadFileRequestObj
 	}), nil
 }
 
-func (s *apiServer) ApplyFiles(ctx context.Context, request gen.ApplyFilesRequestObject) (gen.ApplyFilesResponseObject, error) {
+func (s *legacyHandlers) ApplyFiles(ctx context.Context, request gen.ApplyFilesRequestObject) (gen.ApplyFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body == nil {
 		return nil, errBadRequest("request body required")

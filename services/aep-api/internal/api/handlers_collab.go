@@ -33,7 +33,7 @@ import (
 // display identity — the JWT signature is verified by the outer middleware.
 // The project-ownership oracle (§6.6g) is deps.CollabRepo (gitrepo.RepoService).
 
-func (s *apiServer) GetSpecCollabSession(ctx context.Context, request gen.GetSpecCollabSessionRequestObject) (gen.GetSpecCollabSessionResponseObject, error) {
+func (s *legacyHandlers) GetSpecCollabSession(ctx context.Context, request gen.GetSpecCollabSessionRequestObject) (gen.GetSpecCollabSessionResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// The tenant gate already bound the caller's org. Confirm the project
 	// exists under it via the repo oracle — 404 otherwise.
@@ -56,7 +56,7 @@ func (s *apiServer) GetSpecCollabSession(ctx context.Context, request gen.GetSpe
 // the room exists. The claims check stays even though the tenant gate 401s
 // claimless requests in ENFORCE: in LOG mode the gate passes them through, and
 // this handler must still refuse (the collab server relies on it).
-func (s *apiServer) ValidateCollabAccess(ctx context.Context, request gen.ValidateCollabAccessRequestObject) (gen.ValidateCollabAccessResponseObject, error) {
+func (s *legacyHandlers) ValidateCollabAccess(ctx context.Context, request gen.ValidateCollabAccessRequestObject) (gen.ValidateCollabAccessResponseObject, error) {
 	claims := auth.ClaimsFromContext(ctx)
 	org := auth.ResolveOuHandle(claims)
 	if claims == nil || org == "" {

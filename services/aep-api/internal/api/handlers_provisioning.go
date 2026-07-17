@@ -40,7 +40,7 @@ func errProvisioningUnavailable() error {
 	return errServiceUnavailable("provisioning is not configured")
 }
 
-func (s *apiServer) ListExternalResources(ctx context.Context, _ gen.ListExternalResourcesRequestObject) (gen.ListExternalResourcesResponseObject, error) {
+func (s *legacyHandlers) ListExternalResources(ctx context.Context, _ gen.ListExternalResourcesRequestObject) (gen.ListExternalResourcesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -52,7 +52,7 @@ func (s *apiServer) ListExternalResources(ctx context.Context, _ gen.ListExterna
 	return gen.ListExternalResources200JSONResponse(toExternalResourceDTOs(views)), nil
 }
 
-func (s *apiServer) DeleteExternalResource(ctx context.Context, request gen.DeleteExternalResourceRequestObject) (gen.DeleteExternalResourceResponseObject, error) {
+func (s *legacyHandlers) DeleteExternalResource(ctx context.Context, request gen.DeleteExternalResourceRequestObject) (gen.DeleteExternalResourceResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -63,7 +63,7 @@ func (s *apiServer) DeleteExternalResource(ctx context.Context, request gen.Dele
 	return gen.DeleteExternalResource204Response{}, nil
 }
 
-func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request gen.CollectExternalResourceValuesRequestObject) (gen.CollectExternalResourceValuesResponseObject, error) {
+func (s *legacyHandlers) CollectExternalResourceValues(ctx context.Context, request gen.CollectExternalResourceValuesRequestObject) (gen.CollectExternalResourceValuesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -80,7 +80,7 @@ func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request g
 	return gen.CollectExternalResourceValues200JSONResponse(gen.StatusMsg{Status: "provisioned"}), nil
 }
 
-func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request gen.ProvisionPlatformResourceRequestObject) (gen.ProvisionPlatformResourceResponseObject, error) {
+func (s *legacyHandlers) ProvisionPlatformResource(ctx context.Context, request gen.ProvisionPlatformResourceRequestObject) (gen.ProvisionPlatformResourceResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -99,7 +99,7 @@ func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request gen.P
 	return gen.ProvisionPlatformResource202JSONResponse(gen.StatusMsg{Status: "provisioning"}), nil
 }
 
-func (s *apiServer) GetDependencyStatus(ctx context.Context, request gen.GetDependencyStatusRequestObject) (gen.GetDependencyStatusResponseObject, error) {
+func (s *legacyHandlers) GetDependencyStatus(ctx context.Context, request gen.GetDependencyStatusRequestObject) (gen.GetDependencyStatusResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -119,7 +119,7 @@ func (s *apiServer) GetDependencyStatus(ctx context.Context, request gen.GetDepe
 	}), nil
 }
 
-func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request gen.RequestOrgServiceAccessRequestObject) (gen.RequestOrgServiceAccessResponseObject, error) {
+func (s *legacyHandlers) RequestOrgServiceAccess(ctx context.Context, request gen.RequestOrgServiceAccessRequestObject) (gen.RequestOrgServiceAccessResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -131,7 +131,7 @@ func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request gen.Req
 	return gen.RequestOrgServiceAccess201JSONResponse(*ar), nil
 }
 
-func (s *apiServer) ListAccessRequests(ctx context.Context, request gen.ListAccessRequestsRequestObject) (gen.ListAccessRequestsResponseObject, error) {
+func (s *legacyHandlers) ListAccessRequests(ctx context.Context, request gen.ListAccessRequestsRequestObject) (gen.ListAccessRequestsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()

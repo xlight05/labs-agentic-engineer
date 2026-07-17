@@ -35,7 +35,7 @@ import (
 // dispatch leg of the SRE/RCA alert handoff, called by the deployed
 // aep-mcp-server (AE-HANDOFF-DESIGN.md).
 
-func (s *apiServer) ListTasks(ctx context.Context, request gen.ListTasksRequestObject) (gen.ListTasksResponseObject, error) {
+func (s *legacyHandlers) ListTasks(ctx context.Context, request gen.ListTasksRequestObject) (gen.ListTasksResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.TaskReads == nil {
 		return nil, errTasksNotConfigured()
@@ -54,7 +54,7 @@ func (s *apiServer) ListTasks(ctx context.Context, request gen.ListTasksRequestO
 	return listTasksJSONResponse(views), nil
 }
 
-func (s *apiServer) GetTask(ctx context.Context, request gen.GetTaskRequestObject) (gen.GetTaskResponseObject, error) {
+func (s *legacyHandlers) GetTask(ctx context.Context, request gen.GetTaskRequestObject) (gen.GetTaskResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.TaskReads == nil {
 		return nil, errTasksNotConfigured()
@@ -110,7 +110,7 @@ func mapTaskReadError(err error) error {
 // PromoteTaskFromIssue turns an ad-hoc GitHub issue into a coding Task and
 // dispatches it through the funnel (async 202, empty body). The second half
 // of the SRE/RCA handoff: aep-mcp-server calls this right after create-issue.
-func (s *apiServer) PromoteTaskFromIssue(ctx context.Context, request gen.PromoteTaskFromIssueRequestObject) (gen.PromoteTaskFromIssueResponseObject, error) {
+func (s *legacyHandlers) PromoteTaskFromIssue(ctx context.Context, request gen.PromoteTaskFromIssueRequestObject) (gen.PromoteTaskFromIssueResponseObject, error) {
 	if s.deps.TaskCommands == nil {
 		return nil, errServiceUnavailable("tasks not configured")
 	}

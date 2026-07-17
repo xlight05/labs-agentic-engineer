@@ -30,7 +30,7 @@ import (
 // exists — and the service scopes itself. It still requires a user JWT at the
 // outer middleware.
 
-func (s *apiServer) ListOrganizations(ctx context.Context, _ gen.ListOrganizationsRequestObject) (gen.ListOrganizationsResponseObject, error) {
+func (s *legacyHandlers) ListOrganizations(ctx context.Context, _ gen.ListOrganizationsRequestObject) (gen.ListOrganizationsResponseObject, error) {
 	list, err := s.deps.OrgSvc.List(ctx)
 	if err != nil {
 		return nil, mapOrganizationError(err)

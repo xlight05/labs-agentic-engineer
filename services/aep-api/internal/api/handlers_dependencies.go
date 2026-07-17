@@ -31,7 +31,7 @@ import (
 // fence). A nil catalog answers 503, mirroring the retired
 // RegisterResourceTypes nil guard.
 
-func (s *apiServer) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
+func (s *legacyHandlers) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
 	if s.deps.ResourceTypeCatalog == nil {
 		return nil, errServiceUnavailable("resource-type catalog is not configured")
 	}

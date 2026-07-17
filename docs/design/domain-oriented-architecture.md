@@ -327,6 +327,7 @@ into its slice.
 
 ```go
 // internal/delivery/httpapi/aggregate.go  (imports the slices + gen; NOT imported by the domain-root)
+// A PURE aggregator: it declares no methods of its own, it only embeds slice handlers.
 type Handlers struct {
     *buildproject.Handler
     *executetask.Handler
@@ -335,17 +336,38 @@ type Handlers struct {
 }
 
 // internal/edge/edge.go  (the ONE package that imports every domain httpapi)
+//
+// The embedded field name is the type's UNQUALIFIED name, so embedding
+// *organization.Handlers and *spec.Handlers directly is `Handlers redeclared`.
+// Local aliases give distinct field names while each domain keeps the clean type
+// name — promotion and reflection both see through them.
+type (
+    organizationHandlers = organization.Handlers
+    specHandlers         = spec.Handlers
+    deliveryHandlers     = delivery.Handlers
+)
+
 type apiServer struct {
-    *organization.Handlers
-    *spec.Handlers
-    *delivery.Handlers
+    *organizationHandlers
+    *specHandlers
+    *deliveryHandlers
     // ... one embed per domain
 }
 var _ gen.StrictServerInterface = (*apiServer)(nil)   // satisfied entirely by promotion
 ```
 
-Because each operation belongs to exactly one domain, there is no method-set ambiguity. The tenant
-gate, kin-openapi validator, error envelope, and SSE plumbing stay in `edge` + `platform`, unchanged.
+Each operation belongs to exactly one domain, so no op is promoted from two embeds. Two properties
+make that a *mechanical* guarantee rather than a hope, and both are verified in
+[§19.1](#191-the-edge-mechanism--a-verified-theorem-not-an-assertion):
+
+- **`apiServer` declares no methods** — it composes, it never implements. A method on the composite
+  would sit at depth-0 and silently beat every embed.
+- **A domain aggregator declares no methods either** — it only embeds slice handlers, so a migrated
+  op reaches the edge at **depth-2**. An aggregator that implemented an op directly would sit at
+  depth-1 and silently beat the shimmed legacy method (green build, dead legacy duplicate).
+
+The tenant gate, kin-openapi validator, error envelope, and SSE plumbing stay in `edge` + `platform`,
+unchanged.
 
 - **The five surfaces** are all composed in `edge`: the public `/api/v1` strict chain (embeds every
   domain's `httpapi`), the internal S2S `/internal/v1` chain (embeds the S2S handlers domains
@@ -909,19 +931,39 @@ type apiServer struct {
 var _ gen.StrictServerInterface = (*apiServer)(nil)
 ```
 
-All three states were built and run:
+All states were built and run — and are now pinned as an executable test
+(`internal/api/promotion_theorem_test.go`, which compiles each state in a temp module and asserts what
+it builds/serves, so a future toolchain change fails loudly here instead of silently in production):
 
 | State | Without the shim | With the shim |
 |---|---|---|
-| **Under-coverage** (cut from legacy, not implemented) | interface unsatisfied → **compile error** | same — **compile error** |
+| **Under-coverage** (cut from legacy, not implemented) | interface unsatisfied → **compile error** | same — **compile error** (`missing method`) |
 | **Double-coverage** (forgot to cut from legacy) | green; **silently serves stale legacy** ⚠️ | `ambiguous selector` → **compile error** |
 | **Correct cut** | green, serves domain | green, serves domain |
 
-Two independent nets, both in P0: the **`legacyShim`** (makes the likely slip a build failure) and a
-**method-origin reflection gate** (asserts each of the 61 ops resolves to its expected owning type).
-An op move is **atomic in one commit**: cut from `legacy.Handlers` → add to the slice handler → aggregate
-in `<domain>/httpapi` → embed in `edge`. In P9 the shim is deleted; all embeds are depth-2, so the
-ambiguity theorem survives on its own.
+Two independent nets, both landed in P0:
+
+1. **The `legacyShim`** — makes the likely slip a build failure. It fires *only on a same-depth tie*,
+   which is why it is not sufficient alone.
+2. **The method-origin reflection gate** (`internal/api/method_origin_test.go`) — a ledger mapping each
+   of the 61 contract ops to the embed expected to serve it. It asks every embed directly, so it catches
+   double coverage **at any depth**, and it fails if an op moves without the ledger being updated.
+   Strictly stronger than the compiler; each net was verified to fire alone by mutation.
+
+**Two preconditions the shim depends on** (both mechanically pinned, because violating either silently
+restores the hazard):
+
+- `apiServer` **declares no methods** (`TestApiServerDeclaresNoMethods`) — depth-0 beats everything.
+- A **domain aggregator declares no methods**, only embeds slice handlers — otherwise its op sits at
+  depth-1 and beats the shimmed legacy method at depth-2. This is the case the compiler *cannot* catch
+  and the reflection gate must.
+
+`TestLegacyIsShimmed` pins the shape itself, since "simplifying" the shim away is how this protection
+would die quietly.
+
+An op move is **atomic in one commit**: cut from `legacyHandlers` → add to the slice handler → aggregate
+in `<domain>/httpapi` → embed in `edge` → flip the op's `opOwner` row. In P9 the shim is deleted; all
+embeds are depth-2, so the ambiguity theorem survives on its own.
 
 *(`var _` uses a **nil** pointer — it proves the method **set**, never the wiring. A nil sub-handler
 inside a Module still builds green and panics at runtime; that is why every phase also has a per-domain

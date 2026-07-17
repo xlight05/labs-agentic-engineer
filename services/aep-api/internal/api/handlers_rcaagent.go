@@ -31,7 +31,7 @@ import (
 // separate service-auth scheme; the deny-by-default tenant gate binds the
 // active org from the verified token before these run.
 
-func (s *apiServer) ListRcaAgentReports(ctx context.Context, request gen.ListRcaAgentReportsRequestObject) (gen.ListRcaAgentReportsResponseObject, error) {
+func (s *legacyHandlers) ListRcaAgentReports(ctx context.Context, request gen.ListRcaAgentReportsRequestObject) (gen.ListRcaAgentReportsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	cursor, limit := "", 0
 	if request.Params.Cursor != "" {
@@ -47,7 +47,7 @@ func (s *apiServer) ListRcaAgentReports(ctx context.Context, request gen.ListRca
 	return gen.ListRcaAgentReports200JSONResponse(*out), nil
 }
 
-func (s *apiServer) CreateRcaAgentReport(ctx context.Context, request gen.CreateRcaAgentReportRequestObject) (gen.CreateRcaAgentReportResponseObject, error) {
+func (s *legacyHandlers) CreateRcaAgentReport(ctx context.Context, request gen.CreateRcaAgentReportRequestObject) (gen.CreateRcaAgentReportResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	out, err := s.deps.RcaAgentReportSvc.CreateReport(ctx, org, request.Body)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s *apiServer) CreateRcaAgentReport(ctx context.Context, request gen.Create
 	return gen.CreateRcaAgentReport201JSONResponse(*out), nil
 }
 
-func (s *apiServer) GetRcaAgentReport(ctx context.Context, request gen.GetRcaAgentReportRequestObject) (gen.GetRcaAgentReportResponseObject, error) {
+func (s *legacyHandlers) GetRcaAgentReport(ctx context.Context, request gen.GetRcaAgentReportRequestObject) (gen.GetRcaAgentReportResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	out, err := s.deps.RcaAgentReportSvc.GetReport(ctx, org, request.ReportID)
 	if err != nil {

@@ -36,7 +36,7 @@ import (
 // All handler logic lives in orgconfig.Service; this file only maps HTTP <->
 // domain and translates SectionError into section-pointered envelopes.
 
-func (s *apiServer) GetConfig(ctx context.Context, _ gen.GetConfigRequestObject) (gen.GetConfigResponseObject, error) {
+func (s *legacyHandlers) GetConfig(ctx context.Context, _ gen.GetConfigRequestObject) (gen.GetConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	proj, err := s.deps.OrgConfigSvc.Get(ctx, org)
 	if err != nil {
@@ -45,7 +45,7 @@ func (s *apiServer) GetConfig(ctx context.Context, _ gen.GetConfigRequestObject)
 	return gen.GetConfig200JSONResponse(*proj), nil
 }
 
-func (s *apiServer) UpdateConfig(ctx context.Context, request gen.UpdateConfigRequestObject) (gen.UpdateConfigResponseObject, error) {
+func (s *legacyHandlers) UpdateConfig(ctx context.Context, request gen.UpdateConfigRequestObject) (gen.UpdateConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	proj, err := s.deps.OrgConfigSvc.Patch(ctx, org, actor, *request.Body)
@@ -55,7 +55,7 @@ func (s *apiServer) UpdateConfig(ctx context.Context, request gen.UpdateConfigRe
 	return gen.UpdateConfig200JSONResponse(*proj), nil
 }
 
-func (s *apiServer) StartGitProviderConnect(ctx context.Context, request gen.StartGitProviderConnectRequestObject) (gen.StartGitProviderConnectResponseObject, error) {
+func (s *legacyHandlers) StartGitProviderConnect(ctx context.Context, request gen.StartGitProviderConnectRequestObject) (gen.StartGitProviderConnectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	var installationID int64
@@ -72,7 +72,7 @@ func (s *apiServer) StartGitProviderConnect(ctx context.Context, request gen.Sta
 	return gen.StartGitProviderConnect200JSONResponse(gen.StartConnectOutputBody{AuthorizeURL: authorizeURL}), nil
 }
 
-func (s *apiServer) DisconnectGitProvider(ctx context.Context, request gen.DisconnectGitProviderRequestObject) (gen.DisconnectGitProviderResponseObject, error) {
+func (s *legacyHandlers) DisconnectGitProvider(ctx context.Context, request gen.DisconnectGitProviderRequestObject) (gen.DisconnectGitProviderResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// App-mode only: when false, leave the install on GitHub for later
 	// re-adoption. Defaults true (contract default, previously a Huma default).
@@ -91,7 +91,7 @@ func (s *apiServer) DisconnectGitProvider(ctx context.Context, request gen.Disco
 	return gen.DisconnectGitProvider200JSONResponse(gen.DisconnectOutputBody{Status: status}), nil
 }
 
-func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ gen.RotateIdpClientSecretRequestObject) (gen.RotateIdpClientSecretResponseObject, error) {
+func (s *legacyHandlers) RotateIdpClientSecret(ctx context.Context, _ gen.RotateIdpClientSecretRequestObject) (gen.RotateIdpClientSecretResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	newSecret, err := s.deps.OrgConfigSvc.RotateIDPClientSecret(ctx, org, actor)
@@ -104,7 +104,7 @@ func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ gen.RotateIdpCl
 	return gen.RotateIdpClientSecret200JSONResponse(gen.ClientSecretOutputBody{ClientSecret: newSecret}), nil
 }
 
-func (s *apiServer) DiscoverIdp(ctx context.Context, request gen.DiscoverIdpRequestObject) (gen.DiscoverIdpResponseObject, error) {
+func (s *legacyHandlers) DiscoverIdp(ctx context.Context, request gen.DiscoverIdpRequestObject) (gen.DiscoverIdpResponseObject, error) {
 	issuer := ""
 	if request.Params.Issuer != "" {
 		issuer = request.Params.Issuer

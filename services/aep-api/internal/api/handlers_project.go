@@ -32,7 +32,7 @@ import (
 // the deny-by-default tenant gate bound the token org into the context before
 // these run, and the handlers pass it to the service as an explicit argument.
 
-func (s *apiServer) ListProjects(ctx context.Context, request gen.ListProjectsRequestObject) (gen.ListProjectsResponseObject, error) {
+func (s *legacyHandlers) ListProjects(ctx context.Context, request gen.ListProjectsRequestObject) (gen.ListProjectsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	cursor, search := "", ""
 	if request.Params.Cursor != "" {
@@ -48,7 +48,7 @@ func (s *apiServer) ListProjects(ctx context.Context, request gen.ListProjectsRe
 	return gen.ListProjects200JSONResponse(*list), nil
 }
 
-func (s *apiServer) CreateProject(ctx context.Context, request gen.CreateProjectRequestObject) (gen.CreateProjectResponseObject, error) {
+func (s *legacyHandlers) CreateProject(ctx context.Context, request gen.CreateProjectRequestObject) (gen.CreateProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body.Name == "" {
 		return nil, errBadRequest("name is required")
@@ -68,7 +68,7 @@ func (s *apiServer) CreateProject(ctx context.Context, request gen.CreateProject
 	return gen.CreateProject201JSONResponse(*p), nil
 }
 
-func (s *apiServer) GetProject(ctx context.Context, request gen.GetProjectRequestObject) (gen.GetProjectResponseObject, error) {
+func (s *legacyHandlers) GetProject(ctx context.Context, request gen.GetProjectRequestObject) (gen.GetProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	p, err := s.deps.ProjectSvc.GetProject(ctx, org, request.ProjectName)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *apiServer) GetProject(ctx context.Context, request gen.GetProjectReques
 	return gen.GetProject200JSONResponse(*p), nil
 }
 
-func (s *apiServer) DeleteProject(ctx context.Context, request gen.DeleteProjectRequestObject) (gen.DeleteProjectResponseObject, error) {
+func (s *legacyHandlers) DeleteProject(ctx context.Context, request gen.DeleteProjectRequestObject) (gen.DeleteProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := s.deps.ProjectSvc.DeleteProject(ctx, org, request.ProjectName); err != nil {
 		return nil, mapProjectError(err)
@@ -85,7 +85,7 @@ func (s *apiServer) DeleteProject(ctx context.Context, request gen.DeleteProject
 	return gen.DeleteProject204Response{}, nil
 }
 
-func (s *apiServer) GetProjectStatus(ctx context.Context, request gen.GetProjectStatusRequestObject) (gen.GetProjectStatusResponseObject, error) {
+func (s *legacyHandlers) GetProjectStatus(ctx context.Context, request gen.GetProjectStatusRequestObject) (gen.GetProjectStatusResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.ProjectSvc.GetProjectStatus(ctx, org, request.ProjectName)
 	if err != nil {

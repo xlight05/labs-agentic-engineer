@@ -38,7 +38,7 @@ import (
 // former 422 spec-gate problem is a 400 validation_failed with details[] now
 // (the error-model break).
 
-func (s *apiServer) BuildProject(ctx context.Context, request gen.BuildProjectRequestObject) (gen.BuildProjectResponseObject, error) {
+func (s *legacyHandlers) BuildProject(ctx context.Context, request gen.BuildProjectRequestObject) (gen.BuildProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	var inputs []build.BuildInputItem
 	if request.Body != nil {
@@ -54,7 +54,7 @@ func (s *apiServer) BuildProject(ctx context.Context, request gen.BuildProjectRe
 	return gen.BuildProject200JSONResponse(gen.BuildResponse{Tag: tag}), nil
 }
 
-func (s *apiServer) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
+func (s *legacyHandlers) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.BuildSvc.Status(ctx, org, request.ProjectName, request.Tag)
 	if err != nil {
@@ -66,7 +66,7 @@ func (s *apiServer) GetProjectBuild(ctx context.Context, request gen.GetProjectB
 	return gen.GetProjectBuild200JSONResponse(toBuildStatus(st)), nil
 }
 
-func (s *apiServer) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
+func (s *legacyHandlers) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	list, err := s.deps.BuildSvc.List(ctx, org, request.ProjectName)
 	if err != nil {
@@ -78,7 +78,7 @@ func (s *apiServer) ListProjectBuilds(ctx context.Context, request gen.ListProje
 // GetBuildPreflight computes the build dependency-drawer preflight. A nil
 // service answers 503, mirroring the retired RegisterPreflight nil guard (the
 // surface exists with the feature unwired).
-func (s *apiServer) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
+func (s *legacyHandlers) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.PreflightSvc == nil {
 		return nil, errServiceUnavailable("build preflight is not configured")

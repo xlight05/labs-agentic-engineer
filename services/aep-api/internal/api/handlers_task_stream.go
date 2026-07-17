@@ -36,7 +36,7 @@ import (
 // line/done frames, keep-alives, settle semantics) is TaskStreamService.run,
 // reused verbatim.
 
-func (s *apiServer) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
+func (s *legacyHandlers) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
 	if s.deps.TaskStream == nil {
 		return nil, errServiceUnavailable("task stream not configured")
 	}

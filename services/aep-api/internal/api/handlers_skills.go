@@ -42,7 +42,7 @@ import (
 // skill_huma.go).
 const skillImportMaxUploadBytes = 4 << 20 // 4 MiB
 
-func (s *apiServer) ListSkills(ctx context.Context, _ gen.ListSkillsRequestObject) (gen.ListSkillsResponseObject, error) {
+func (s *legacyHandlers) ListSkills(ctx context.Context, _ gen.ListSkillsRequestObject) (gen.ListSkillsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	summaries, err := s.deps.SkillSvc.ListSummaries(ctx, org)
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *apiServer) ListSkills(ctx context.Context, _ gen.ListSkillsRequestObjec
 	return gen.ListSkills200JSONResponse(out), nil
 }
 
-func (s *apiServer) CreateSkill(ctx context.Context, request gen.CreateSkillRequestObject) (gen.CreateSkillResponseObject, error) {
+func (s *legacyHandlers) CreateSkill(ctx context.Context, request gen.CreateSkillRequestObject) (gen.CreateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
@@ -85,7 +85,7 @@ func (s *apiServer) CreateSkill(ctx context.Context, request gen.CreateSkillRequ
 	return gen.CreateSkill201JSONResponse(skillDetailBody(sk, true)), nil
 }
 
-func (s *apiServer) ImportSkill(ctx context.Context, request gen.ImportSkillRequestObject) (gen.ImportSkillResponseObject, error) {
+func (s *legacyHandlers) ImportSkill(ctx context.Context, request gen.ImportSkillRequestObject) (gen.ImportSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillImportSvc == nil {
 		return nil, errServiceUnavailable("skill import not configured")
@@ -110,7 +110,7 @@ func (s *apiServer) ImportSkill(ctx context.Context, request gen.ImportSkillRequ
 	}), nil
 }
 
-func (s *apiServer) ListSkillUpdates(ctx context.Context, _ gen.ListSkillUpdatesRequestObject) (gen.ListSkillUpdatesResponseObject, error) {
+func (s *legacyHandlers) ListSkillUpdates(ctx context.Context, _ gen.ListSkillUpdatesRequestObject) (gen.ListSkillUpdatesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	updates, err := s.deps.SkillSvc.UpdatesAvailable(ctx, org)
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *apiServer) ListSkillUpdates(ctx context.Context, _ gen.ListSkillUpdates
 	return gen.ListSkillUpdates200JSONResponse(out), nil
 }
 
-func (s *apiServer) SyncSkills(ctx context.Context, _ gen.SyncSkillsRequestObject) (gen.SyncSkillsResponseObject, error) {
+func (s *legacyHandlers) SyncSkills(ctx context.Context, _ gen.SyncSkillsRequestObject) (gen.SyncSkillsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	updated, err := s.deps.SkillSvc.Reconcile(ctx, org)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *apiServer) SyncSkills(ctx context.Context, _ gen.SyncSkillsRequestObjec
 	}), nil
 }
 
-func (s *apiServer) GetSkill(ctx context.Context, request gen.GetSkillRequestObject) (gen.GetSkillResponseObject, error) {
+func (s *legacyHandlers) GetSkill(ctx context.Context, request gen.GetSkillRequestObject) (gen.GetSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireSlug("name", request.Name); err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (s *apiServer) GetSkill(ctx context.Context, request gen.GetSkillRequestObj
 	return gen.GetSkill200JSONResponse(skillDetailBody(sk, skillEditable(sk.Kind))), nil
 }
 
-func (s *apiServer) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequestObject) (gen.UpdateSkillResponseObject, error) {
+func (s *legacyHandlers) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequestObject) (gen.UpdateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
@@ -174,7 +174,7 @@ func (s *apiServer) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequ
 	return gen.UpdateSkill200JSONResponse(skillDetailBody(sk, true)), nil
 }
 
-func (s *apiServer) DeleteSkill(ctx context.Context, request gen.DeleteSkillRequestObject) (gen.DeleteSkillResponseObject, error) {
+func (s *legacyHandlers) DeleteSkill(ctx context.Context, request gen.DeleteSkillRequestObject) (gen.DeleteSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")

@@ -54,7 +54,7 @@ const createTurnMaxInstructionBytes = 64 << 10
 // stream so proxies keep the connection open and a dead client is noticed.
 const genaiStreamKeepAliveEvery = 15 * time.Second
 
-func (s *apiServer) CreateTurn(ctx context.Context, request gen.CreateTurnRequestObject) (gen.CreateTurnResponseObject, error) {
+func (s *legacyHandlers) CreateTurn(ctx context.Context, request gen.CreateTurnRequestObject) (gen.CreateTurnResponseObject, error) {
 	// The retired edge capped this body at 64 KiB (it carries no file content —
 	// useCase + instruction + target); the edge-wide 10 MiB cap alone would be
 	// a 160x loosening on a payload that is buffered whole and forwarded to
@@ -86,7 +86,7 @@ func (s *apiServer) CreateTurn(ctx context.Context, request gen.CreateTurnReques
 	return gen.CreateTurn202JSONResponse(gen.TurnOutputBody{TurnID: turnID}), nil
 }
 
-func (s *apiServer) GetTurn(ctx context.Context, request gen.GetTurnRequestObject) (gen.GetTurnResponseObject, error) {
+func (s *legacyHandlers) GetTurn(ctx context.Context, request gen.GetTurnRequestObject) (gen.GetTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.GenAISvc.TurnStatus(ctx, org, request.ProjectName, request.TurnID)
 	if err != nil {
@@ -95,7 +95,7 @@ func (s *apiServer) GetTurn(ctx context.Context, request gen.GetTurnRequestObjec
 	return gen.GetTurn200JSONResponse(turnStatusModel(st)), nil
 }
 
-func (s *apiServer) GetActiveTurn(ctx context.Context, request gen.GetActiveTurnRequestObject) (gen.GetActiveTurnResponseObject, error) {
+func (s *legacyHandlers) GetActiveTurn(ctx context.Context, request gen.GetActiveTurnRequestObject) (gen.GetActiveTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.GenAISvc.ActiveTurn(ctx, org, request.ProjectName)
 	if err != nil {
@@ -107,7 +107,7 @@ func (s *apiServer) GetActiveTurn(ctx context.Context, request gen.GetActiveTurn
 	return gen.GetActiveTurn200JSONResponse(turnStatusModel(st)), nil
 }
 
-func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnRequestObject) (gen.StreamTurnResponseObject, error) {
+func (s *legacyHandlers) StreamTurn(ctx context.Context, request gen.StreamTurnRequestObject) (gen.StreamTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// ?from wins over Last-Event-ID; the header names the last RECEIVED
 	// event, so resumption starts at the next index.
@@ -135,7 +135,7 @@ func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnReques
 	}}, nil
 }
 
-func (s *apiServer) GetConversation(ctx context.Context, request gen.GetConversationRequestObject) (gen.GetConversationResponseObject, error) {
+func (s *legacyHandlers) GetConversation(ctx context.Context, request gen.GetConversationRequestObject) (gen.GetConversationResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	raw, err := s.deps.GenAISvc.Rehydrate(ctx, org, request.ProjectName, request.ConversationID)
 	if err != nil {
