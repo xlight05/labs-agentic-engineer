@@ -35,8 +35,9 @@ type legacyHandlers struct {
 	deps Deps
 }
 
-// legacyShim exists for exactly one reason: to equalise embedding depth. It is
-// deleted in P9 with legacyHandlers.
+// legacyShim exists for exactly one reason: to equalise embedding depth.
+//
+// aep:migration-shim retires=P9 reason=deleted with legacyHandlers once every op has moved into its domain
 //
 // The domain path is two levels deep — apiServer → <domain>/httpapi.Handlers →
 // <slice>.Handler — so a migrated op's method reaches apiServer at depth-2. If
