@@ -180,3 +180,33 @@ _Avoid_: task list (unbounded detail — the opposite of a tally).
 The spec version whose implementation most recently completed a build run —
 what the platform reports as live in the dev environment.
 _Avoid_: deployed tag (no tag is cut at deploy time today).
+
+## Spec collaboration
+
+**Committed truth**:
+The durable, git-stored form of a project's spec bundle — the authority. Every
+read that must be correct (a build tag, a plan turn, validation) reads it. There
+is exactly one write chokepoint to it.
+_Avoid_: saved state, draft store (the live doc is not a draft of it — see below).
+
+**Live doc**:
+The ephemeral, co-edited representation of the *same* spec bundle while people (and
+agents) are editing it together — a snapshot that exists only while a session is
+open. It is a second representation of the committed-truth aggregate, not a separate
+aggregate: rejoining reseeds it from committed truth. Not durable on its own.
+_Avoid_: draft, working copy (it is not a fork of the truth; it *is* the truth's
+live face while a room is open).
+
+**Room**:
+One live collaboration session over a single project's spec bundle. While a room is
+live for a project, the live doc is that project's spec authority and the session's
+committer is the sole writer to committed truth.
+_Avoid_: workspace, session-id (a room is scoped to one project's spec bundle).
+
+**Room-mode (turn)**:
+A generation Turn that runs while a room is live: it streams its file mutations into
+the live doc and commits nothing itself — the room's committer lands them. This is
+what keeps the two write paths from racing (only one writer to committed truth while
+a room is open).
+_Avoid_: dry-run, preview turn (a room-mode turn's edits are real, just landed by the
+committer rather than the turn).

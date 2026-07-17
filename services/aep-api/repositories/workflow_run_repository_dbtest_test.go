@@ -216,14 +216,17 @@ func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByProject: %v", err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("ListByProject(dev) = %d rows, want 2 (task row filtered)", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("ListByProject(dev) = %d rows, want 3 (v2, vfail, v1 — the task row filtered)", len(rows))
 	}
-	if rows[0].Tag != "v2" || rows[1].Tag != "v1" {
-		t.Fatalf("order = [%s, %s], want newest-first [v2, v1]", rows[0].Tag, rows[1].Tag)
+	if rows[0].Tag != "v2" || rows[1].Tag != "vfail" || rows[2].Tag != "v1" {
+		t.Fatalf("order = [%s, %s, %s], want newest-first [v2, vfail, v1]", rows[0].Tag, rows[1].Tag, rows[2].Tag)
 	}
-	if rows[0].Status != models.WorkflowStatusRunning || rows[1].Status != models.WorkflowStatusCompleted {
-		t.Fatalf("statuses = [%s, %s], want [running, completed]", rows[0].Status, rows[1].Status)
+	if rows[0].Status != models.WorkflowStatusRunning ||
+		rows[1].Status != models.WorkflowStatusFailed ||
+		rows[2].Status != models.WorkflowStatusCompleted {
+		t.Fatalf("statuses = [%s, %s, %s], want [running, failed, completed]",
+			rows[0].Status, rows[1].Status, rows[2].Status)
 	}
 
 	// The delete cascade purges every row (dev AND task kinds) so a
