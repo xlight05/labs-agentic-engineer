@@ -24,14 +24,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 )
 
 // Client fetches build logs from the observability service.
 type Client interface {
-	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error)
+	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
 }
 
 type observabilityClient struct {
@@ -69,7 +69,7 @@ type buildLogsResponse struct {
 	TotalCount *int        `json:"totalCount,omitempty"`
 }
 
-func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error) {
+func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
 	now := time.Now()
 	body := buildLogsRequest{
 		ComponentName: componentName,
@@ -111,13 +111,13 @@ func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, project
 		return nil, fmt.Errorf("observability: decode response: %w", err)
 	}
 
-	logs := &apigen.BuildLogs{}
+	logs := &gen.BuildLogs{}
 	if result.TotalCount != nil {
 		logs.TotalCount = int64(*result.TotalCount)
 	}
 	if result.Logs != nil {
 		for _, e := range *result.Logs {
-			entry := apigen.BuildLogEntry{}
+			entry := gen.BuildLogEntry{}
 			if e.Timestamp != nil {
 				entry.Timestamp = e.Timestamp.UTC().Format(time.RFC3339)
 			}
@@ -131,7 +131,7 @@ func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, project
 		}
 	}
 	if logs.Logs == nil {
-		logs.Logs = []apigen.BuildLogEntry{}
+		logs.Logs = []gen.BuildLogEntry{}
 	}
 	return logs, nil
 }

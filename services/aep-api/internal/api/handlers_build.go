@@ -21,8 +21,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -38,7 +38,7 @@ import (
 // former 422 spec-gate problem is a 400 validation_failed with details[] now
 // (the error-model break).
 
-func (s *apiServer) BuildProject(ctx context.Context, request apigen.BuildProjectRequestObject) (apigen.BuildProjectResponseObject, error) {
+func (s *apiServer) BuildProject(ctx context.Context, request gen.BuildProjectRequestObject) (gen.BuildProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	var inputs []build.BuildInputItem
 	if request.Body != nil {
@@ -49,12 +49,12 @@ func (s *apiServer) BuildProject(ctx context.Context, request apigen.BuildProjec
 		return nil, mapBuildRunError(err)
 	}
 	if len(failures) > 0 {
-		return apigen.BuildProject200JSONResponse(apigen.BuildResponse{Failures: toInputFailures(failures)}), nil
+		return gen.BuildProject200JSONResponse(gen.BuildResponse{Failures: toInputFailures(failures)}), nil
 	}
-	return apigen.BuildProject200JSONResponse(apigen.BuildResponse{Tag: tag}), nil
+	return gen.BuildProject200JSONResponse(gen.BuildResponse{Tag: tag}), nil
 }
 
-func (s *apiServer) GetProjectBuild(ctx context.Context, request apigen.GetProjectBuildRequestObject) (apigen.GetProjectBuildResponseObject, error) {
+func (s *apiServer) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.BuildSvc.Status(ctx, org, request.ProjectName, request.Tag)
 	if err != nil {
@@ -63,22 +63,22 @@ func (s *apiServer) GetProjectBuild(ctx context.Context, request apigen.GetProje
 		}
 		return nil, errInternal("lookup build")
 	}
-	return apigen.GetProjectBuild200JSONResponse(toBuildStatus(st)), nil
+	return gen.GetProjectBuild200JSONResponse(toBuildStatus(st)), nil
 }
 
-func (s *apiServer) ListProjectBuilds(ctx context.Context, request apigen.ListProjectBuildsRequestObject) (apigen.ListProjectBuildsResponseObject, error) {
+func (s *apiServer) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	list, err := s.deps.BuildSvc.List(ctx, org, request.ProjectName)
 	if err != nil {
 		return nil, errInternal("list builds")
 	}
-	return apigen.ListProjectBuilds200JSONResponse(toBuildList(list)), nil
+	return gen.ListProjectBuilds200JSONResponse(toBuildList(list)), nil
 }
 
 // GetBuildPreflight computes the build dependency-drawer preflight. A nil
 // service answers 503, mirroring the retired RegisterPreflight nil guard (the
 // surface exists with the feature unwired).
-func (s *apiServer) GetBuildPreflight(ctx context.Context, request apigen.GetBuildPreflightRequestObject) (apigen.GetBuildPreflightResponseObject, error) {
+func (s *apiServer) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.PreflightSvc == nil {
 		return nil, errServiceUnavailable("build preflight is not configured")
@@ -87,7 +87,7 @@ func (s *apiServer) GetBuildPreflight(ctx context.Context, request apigen.GetBui
 	if err != nil {
 		return nil, errInternal("compute build preflight: " + err.Error())
 	}
-	return apigen.GetBuildPreflight200JSONResponse(toBuildPreflight(pf)), nil
+	return gen.GetBuildPreflight200JSONResponse(toBuildPreflight(pf)), nil
 }
 
 // mapBuildRunError translates build.Run's failures onto the envelope: the
@@ -116,7 +116,7 @@ func mapBuildRunError(err error) error {
 
 // --- schema <-> feature projections ------------------------------------------
 
-func toBuildInputItems(in []apigen.BuildInputItem) []build.BuildInputItem {
+func toBuildInputItems(in []gen.BuildInputItem) []build.BuildInputItem {
 	if len(in) == 0 {
 		return nil
 	}
@@ -140,10 +140,10 @@ func toBuildInputItems(in []apigen.BuildInputItem) []build.BuildInputItem {
 	return out
 }
 
-func toInputFailures(in []build.InputFailure) []apigen.InputFailure {
-	out := make([]apigen.InputFailure, 0, len(in))
+func toInputFailures(in []build.InputFailure) []gen.InputFailure {
+	out := make([]gen.InputFailure, 0, len(in))
 	for _, f := range in {
-		out = append(out, apigen.InputFailure{
+		out = append(out, gen.InputFailure{
 			Component:  f.Component,
 			Dependency: f.Dependency,
 			Kind:       f.Kind,
@@ -153,16 +153,16 @@ func toInputFailures(in []build.InputFailure) []apigen.InputFailure {
 	return out
 }
 
-func toBuildStatus(st build.BuildStatus) apigen.BuildStatus {
-	var tasks []apigen.BuildStatusTask
+func toBuildStatus(st build.BuildStatus) gen.BuildStatus {
+	var tasks []gen.BuildStatusTask
 	for _, t := range st.Tasks {
-		tasks = append(tasks, apigen.BuildStatusTask{
+		tasks = append(tasks, gen.BuildStatusTask{
 			IssueNumber: t.IssueNumber,
 			Title:       t.Title,
-			Status:      apigen.BuildStatusTaskStatus(t.Status),
+			Status:      gen.BuildStatusTaskStatus(t.Status),
 		})
 	}
-	return apigen.BuildStatus{
+	return gen.BuildStatus{
 		Status:         st.Status,
 		WorkflowStatus: st.WorkflowStatus,
 		Reason:         st.Reason,
@@ -170,16 +170,16 @@ func toBuildStatus(st build.BuildStatus) apigen.BuildStatus {
 	}
 }
 
-func toBuildList(l build.BuildList) apigen.BuildList {
+func toBuildList(l build.BuildList) gen.BuildList {
 	// Builds stays non-nil so the JSON body is [] rather than null.
-	builds := make([]apigen.BuildSummary, 0, len(l.Builds))
+	builds := make([]gen.BuildSummary, 0, len(l.Builds))
 	for _, b := range l.Builds {
-		s := apigen.BuildSummary{
+		s := gen.BuildSummary{
 			Tag:       b.Tag,
-			Status:    apigen.BuildSummaryStatus(b.Status),
+			Status:    gen.BuildSummaryStatus(b.Status),
 			Reason:    b.Reason,
 			StartedAt: b.StartedAt,
-			Tasks: apigen.BuildTally{
+			Tasks: gen.BuildTally{
 				Total:  b.Tasks.Total,
 				Done:   b.Tasks.Done,
 				Failed: b.Tasks.Failed,
@@ -189,31 +189,31 @@ func toBuildList(l build.BuildList) apigen.BuildList {
 		s.CompletedAt = b.CompletedAt // nil while running — omitted on the wire
 		builds = append(builds, s)
 	}
-	return apigen.BuildList{Builds: builds}
+	return gen.BuildList{Builds: builds}
 }
 
-func toBuildPreflight(pf build.BuildPreflight) apigen.BuildPreflight {
+func toBuildPreflight(pf build.BuildPreflight) gen.BuildPreflight {
 	// Items stays non-nil so the JSON body is [] rather than null.
-	items := make([]apigen.PreflightItem, 0, len(pf.Items))
+	items := make([]gen.PreflightItem, 0, len(pf.Items))
 	for _, it := range pf.Items {
-		var cfg []apigen.ConfigKeyView
+		var cfg []gen.ConfigKeyView
 		for _, k := range it.Config {
-			cfg = append(cfg, apigen.ConfigKeyView{
+			cfg = append(cfg, gen.ConfigKeyView{
 				Key:          k.Key,
 				Secret:       k.Secret,
 				Description:  k.Description,
 				DefaultValue: k.DefaultValue,
 			})
 		}
-		items = append(items, apigen.PreflightItem{
+		items = append(items, gen.PreflightItem{
 			Component:    it.Component,
 			Dependency:   it.Dependency,
-			Kind:         apigen.PreflightItemKind(it.Kind),
+			Kind:         gen.PreflightItemKind(it.Kind),
 			Description:  it.Description,
 			Config:       cfg,
 			ResourceType: it.ResourceType,
 			Parameters:   it.Parameters,
 		})
 	}
-	return apigen.BuildPreflight{NeedsInput: pf.NeedsInput, Items: items}
+	return gen.BuildPreflight{NeedsInput: pf.NeedsInput, Items: items}
 }

@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
 // The flat error envelope every non-2xx response carries (contract schema
@@ -47,7 +47,7 @@ type apiError struct {
 	Status  int
 	Code    string
 	Message string
-	Details []apigen.ErrorDetail
+	Details []gen.ErrorDetail
 }
 
 func (e *apiError) Error() string { return e.Message }
@@ -93,8 +93,8 @@ func errFromStatus(status int, msg string) error {
 
 // writeErrorEnvelope writes the flat envelope. It is the single place a
 // non-2xx body is produced on the public edge.
-func writeErrorEnvelope(w http.ResponseWriter, status int, code, msg string, details []apigen.ErrorDetail) {
-	body := apigen.Error{Code: code, Message: msg, Details: details}
+func writeErrorEnvelope(w http.ResponseWriter, status int, code, msg string, details []gen.ErrorDetail) {
+	body := gen.Error{Code: code, Message: msg, Details: details}
 	writeJSON(w, status, body)
 }
 

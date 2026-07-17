@@ -29,7 +29,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"golang.org/x/sync/errgroup"
 
@@ -86,7 +86,7 @@ func (s *Service) SetStageSources(runs devRunRows, bindings bindingsReader) {
 // fields from three concurrently-read sources — strict join: any source
 // failing fails the whole read (the console's poller keeps last-good data
 // and retries; the endpoint never fabricates emptiness).
-func (s *Service) populateStages(ctx context.Context, orgName, projectName string, status *apigen.ProjectStatus) error {
+func (s *Service) populateStages(ctx context.Context, orgName, projectName string, status *gen.ProjectStatus) error {
 	if s.artifactSvc == nil || s.runReader == nil || s.bindingsReader == nil {
 		return fmt.Errorf("project status: stage sources not wired")
 	}
@@ -177,7 +177,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 
 	// Spec stage + flat artifact fields: one snapshot, same semantics as the
 	// retired per-call reads — minus their per-poll origin fetches.
-	status.Spec = apigen.SpecStage{
+	status.Spec = gen.SpecStage{
 		Exists:  snap.HasSpec,
 		Version: snap.SpecVersion,
 		Dirty:   snap.SpecDirty,
@@ -222,7 +222,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	// Validation: the coarse run state of the newest build's validation child,
 	// plus a link to its PR (the validation issue as a fallback before a PR
 	// exists). Both derived from cheap DB reads above — no GitHub in the poll.
-	status.Deploy.Validation = apigen.DeployStageValidation(validationStageStatus(validationRun))
+	status.Deploy.Validation = gen.DeployStageValidation(validationStageStatus(validationRun))
 	status.Deploy.ValidationURL = validationURL(status.RepoURL, validationRun, validationPR)
 	return nil
 }
@@ -268,7 +268,7 @@ func validationURL(repoURL string, run *models.DevflowRun, prNumber int) string 
 // present here, where the old ReadDesign failed the whole status read — see
 // artifacts.StatusSnapshot.HasDesign. HasTasks stays false — tasks are
 // counted live from GitHub, never here.
-func applyFlatArtifactFields(status *apigen.ProjectStatus, snap *artifacts.StatusSnapshot) {
+func applyFlatArtifactFields(status *gen.ProjectStatus, snap *artifacts.StatusSnapshot) {
 	status.HasSpec = snap.HasSpec
 	switch {
 	case snap.SpecVersion != "":

@@ -54,7 +54,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -124,10 +124,10 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t) // skips under -short
 	ns := &ocmocks.NamespaceClientMock{
-		ListNamespacesFunc: func(context.Context) ([]apigen.OrganizationView, error) {
+		ListNamespacesFunc: func(context.Context) ([]gen.OrganizationView, error) {
 			// DisplayName/Description left empty → omitempty drops them, matching
 			// the golden's element shape {createdAt, name, status, uuid}.
-			return []apigen.OrganizationView{{Name: "default", Status: "Active"}}, nil
+			return []gen.OrganizationView{{Name: "default", Status: "Active"}}, nil
 		},
 	}
 	svc := organization.NewOrganizationService(db, ns)
@@ -148,7 +148,7 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 
 	// Semantics (values are scrubbed in the golden): the OC namespace name and
 	// status flow through, and the item carries a non-nil backfilled UUID.
-	var out apigen.OrganizationList
+	var out gen.OrganizationList
 	if err := json.Unmarshal(resp.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ns := &ocmocks.NamespaceClientMock{
-				ListNamespacesFunc: func(context.Context) ([]apigen.OrganizationView, error) {
+				ListNamespacesFunc: func(context.Context) ([]gen.OrganizationView, error) {
 					return nil, tc.clientErr
 				},
 			}
@@ -211,7 +211,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 func TestOrganizationComponent_CarveOut_NoGate(t *testing.T) {
 	t.Parallel()
 	ns := &ocmocks.NamespaceClientMock{
-		ListNamespacesFunc: func(context.Context) ([]apigen.OrganizationView, error) {
+		ListNamespacesFunc: func(context.Context) ([]gen.OrganizationView, error) {
 			return nil, nil // empty → List short-circuits before the DB (nil DB safe)
 		},
 	}

@@ -22,8 +22,8 @@ import (
 	"io"
 	"mime/multipart"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -42,7 +42,7 @@ import (
 // skill_huma.go).
 const skillImportMaxUploadBytes = 4 << 20 // 4 MiB
 
-func (s *apiServer) ListSkills(ctx context.Context, _ apigen.ListSkillsRequestObject) (apigen.ListSkillsResponseObject, error) {
+func (s *apiServer) ListSkills(ctx context.Context, _ gen.ListSkillsRequestObject) (gen.ListSkillsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	summaries, err := s.deps.SkillSvc.ListSummaries(ctx, org)
 	if err != nil {
@@ -52,12 +52,12 @@ func (s *apiServer) ListSkills(ctx context.Context, _ apigen.ListSkillsRequestOb
 	// SkillSummaryList.repoUrl) — "" while the repo can't be provisioned
 	// (e.g. GitHub not connected yet); the console keys its Import dialog's
 	// via-pull-request guidance off it.
-	out := apigen.SkillSummaryList{
-		Skills:  make([]apigen.SkillSummary, 0, len(summaries)),
+	out := gen.SkillSummaryList{
+		Skills:  make([]gen.SkillSummary, 0, len(summaries)),
 		RepoURL: s.deps.SkillSvc.RepoWebURL(ctx, org),
 	}
 	for _, sum := range summaries {
-		out.Skills = append(out.Skills, apigen.SkillSummary{
+		out.Skills = append(out.Skills, gen.SkillSummary{
 			Name:        sum.Name,
 			Kind:        sum.Kind,
 			Description: sum.Description,
@@ -65,10 +65,10 @@ func (s *apiServer) ListSkills(ctx context.Context, _ apigen.ListSkillsRequestOb
 			Editable:    sum.Editable,
 		})
 	}
-	return apigen.ListSkills200JSONResponse(out), nil
+	return gen.ListSkills200JSONResponse(out), nil
 }
 
-func (s *apiServer) CreateSkill(ctx context.Context, request apigen.CreateSkillRequestObject) (apigen.CreateSkillResponseObject, error) {
+func (s *apiServer) CreateSkill(ctx context.Context, request gen.CreateSkillRequestObject) (gen.CreateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
@@ -82,10 +82,10 @@ func (s *apiServer) CreateSkill(ctx context.Context, request apigen.CreateSkillR
 	if err != nil {
 		return nil, mapSkillError(err)
 	}
-	return apigen.CreateSkill201JSONResponse(skillDetailBody(sk, true)), nil
+	return gen.CreateSkill201JSONResponse(skillDetailBody(sk, true)), nil
 }
 
-func (s *apiServer) ImportSkill(ctx context.Context, request apigen.ImportSkillRequestObject) (apigen.ImportSkillResponseObject, error) {
+func (s *apiServer) ImportSkill(ctx context.Context, request gen.ImportSkillRequestObject) (gen.ImportSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillImportSvc == nil {
 		return nil, errServiceUnavailable("skill import not configured")
@@ -101,7 +101,7 @@ func (s *apiServer) ImportSkill(ctx context.Context, request apigen.ImportSkillR
 	if err != nil {
 		return nil, mapSkillError(err)
 	}
-	return apigen.ImportSkill201JSONResponse(apigen.ImportResult{
+	return gen.ImportSkill201JSONResponse(gen.ImportResult{
 		Name:          result.Name,
 		Kind:          result.Kind,
 		License:       result.License,
@@ -110,7 +110,7 @@ func (s *apiServer) ImportSkill(ctx context.Context, request apigen.ImportSkillR
 	}), nil
 }
 
-func (s *apiServer) ListSkillUpdates(ctx context.Context, _ apigen.ListSkillUpdatesRequestObject) (apigen.ListSkillUpdatesResponseObject, error) {
+func (s *apiServer) ListSkillUpdates(ctx context.Context, _ gen.ListSkillUpdatesRequestObject) (gen.ListSkillUpdatesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	updates, err := s.deps.SkillSvc.UpdatesAvailable(ctx, org)
 	if err != nil {
@@ -118,29 +118,29 @@ func (s *apiServer) ListSkillUpdates(ctx context.Context, _ apigen.ListSkillUpda
 	}
 	// Non-nil so JSON marshals as [] not null — the console reads
 	// updates.length directly.
-	out := apigen.SkillUpdateList{
-		Updates: make([]apigen.SkillUpdate, 0, len(updates)),
+	out := gen.SkillUpdateList{
+		Updates: make([]gen.SkillUpdate, 0, len(updates)),
 		Count:   int64(len(updates)),
 	}
 	for _, u := range updates {
-		out.Updates = append(out.Updates, apigen.SkillUpdate{Name: u.Name})
+		out.Updates = append(out.Updates, gen.SkillUpdate{Name: u.Name})
 	}
-	return apigen.ListSkillUpdates200JSONResponse(out), nil
+	return gen.ListSkillUpdates200JSONResponse(out), nil
 }
 
-func (s *apiServer) SyncSkills(ctx context.Context, _ apigen.SyncSkillsRequestObject) (apigen.SyncSkillsResponseObject, error) {
+func (s *apiServer) SyncSkills(ctx context.Context, _ gen.SyncSkillsRequestObject) (gen.SyncSkillsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	updated, err := s.deps.SkillSvc.Reconcile(ctx, org)
 	if err != nil {
 		return nil, mapSkillError(err)
 	}
-	return apigen.SyncSkills200JSONResponse(apigen.SkillSyncOutput{
+	return gen.SyncSkills200JSONResponse(gen.SkillSyncOutput{
 		Status:  "synced",
 		Updated: int64(updated),
 	}), nil
 }
 
-func (s *apiServer) GetSkill(ctx context.Context, request apigen.GetSkillRequestObject) (apigen.GetSkillResponseObject, error) {
+func (s *apiServer) GetSkill(ctx context.Context, request gen.GetSkillRequestObject) (gen.GetSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireSlug("name", request.Name); err != nil {
 		return nil, err
@@ -152,10 +152,10 @@ func (s *apiServer) GetSkill(ctx context.Context, request apigen.GetSkillRequest
 	if sk == nil {
 		return nil, errNotFound("skill not found")
 	}
-	return apigen.GetSkill200JSONResponse(skillDetailBody(sk, skillEditable(sk.Kind))), nil
+	return gen.GetSkill200JSONResponse(skillDetailBody(sk, skillEditable(sk.Kind))), nil
 }
 
-func (s *apiServer) UpdateSkill(ctx context.Context, request apigen.UpdateSkillRequestObject) (apigen.UpdateSkillResponseObject, error) {
+func (s *apiServer) UpdateSkill(ctx context.Context, request gen.UpdateSkillRequestObject) (gen.UpdateSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
@@ -171,10 +171,10 @@ func (s *apiServer) UpdateSkill(ctx context.Context, request apigen.UpdateSkillR
 	if err != nil {
 		return nil, mapSkillError(err)
 	}
-	return apigen.UpdateSkill200JSONResponse(skillDetailBody(sk, true)), nil
+	return gen.UpdateSkill200JSONResponse(skillDetailBody(sk, true)), nil
 }
 
-func (s *apiServer) DeleteSkill(ctx context.Context, request apigen.DeleteSkillRequestObject) (apigen.DeleteSkillResponseObject, error) {
+func (s *apiServer) DeleteSkill(ctx context.Context, request gen.DeleteSkillRequestObject) (gen.DeleteSkillResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
@@ -185,7 +185,7 @@ func (s *apiServer) DeleteSkill(ctx context.Context, request apigen.DeleteSkillR
 	if err := s.deps.SkillMutationSvc.Delete(ctx, org, org, request.Name); err != nil {
 		return nil, mapSkillError(err)
 	}
-	return apigen.DeleteSkill200JSONResponse(map[string]any{
+	return gen.DeleteSkill200JSONResponse(map[string]any{
 		"status": "deleted",
 		"name":   request.Name,
 	}), nil
@@ -193,8 +193,8 @@ func (s *apiServer) DeleteSkill(ctx context.Context, request apigen.DeleteSkillR
 
 // skillDetailBody projects a resolved Skill + the derived editable flag onto
 // the contract's SkillDetailBody (the full single-skill response).
-func skillDetailBody(sk *skills.Skill, editable bool) apigen.SkillDetailBody {
-	return apigen.SkillDetailBody{
+func skillDetailBody(sk *skills.Skill, editable bool) gen.SkillDetailBody {
+	return gen.SkillDetailBody{
 		OrgID:         sk.OrgID,
 		Name:          sk.Name,
 		Kind:          sk.Kind,

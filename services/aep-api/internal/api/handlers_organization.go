@@ -20,7 +20,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 )
 
@@ -30,12 +30,12 @@ import (
 // exists — and the service scopes itself. It still requires a user JWT at the
 // outer middleware.
 
-func (s *apiServer) ListOrganizations(ctx context.Context, _ apigen.ListOrganizationsRequestObject) (apigen.ListOrganizationsResponseObject, error) {
+func (s *apiServer) ListOrganizations(ctx context.Context, _ gen.ListOrganizationsRequestObject) (gen.ListOrganizationsResponseObject, error) {
 	list, err := s.deps.OrgSvc.List(ctx)
 	if err != nil {
 		return nil, mapOrganizationError(err)
 	}
-	return apigen.ListOrganizations200JSONResponse(*list), nil
+	return gen.ListOrganizations200JSONResponse(*list), nil
 }
 
 // mapOrganizationError maps the List error to its envelope. The BFF is

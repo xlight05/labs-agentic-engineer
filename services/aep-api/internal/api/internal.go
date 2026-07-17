@@ -21,16 +21,16 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/igen"
 	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
+	"github.com/wso2/aep/aep-api/internal/igen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
 // The internal service-to-service surface (/internal/v1), served CONTRACT-FIRST
 // from packages/contracts/api/internal/v1 (generated strict server in
-// internal/api/igen). It is NOT wrapped by the user-JWT middleware: every
+// internal/igen). It is NOT wrapped by the user-JWT middleware: every
 // operation passes runnerAuthGate, which verifies the caller's BFF Task-JWT or
 // publisher-cc bearer against the execution named in the path (the INT-6
 // fence) and binds the verified org into the context. The spec is non-public —

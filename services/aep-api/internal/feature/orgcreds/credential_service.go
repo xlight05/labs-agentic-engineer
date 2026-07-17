@@ -296,4 +296,3 @@ func truncateForError(b []byte) string {
 	}
 	return strings.ReplaceAll(s, "\n", " ")
 }
-

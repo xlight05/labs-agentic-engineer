@@ -7,9 +7,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
-
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
 // Ensure, that ProjectClientMock does implement openchoreo.ProjectClient.
@@ -22,16 +21,16 @@ var _ openchoreo.ProjectClient = &ProjectClientMock{}
 //
 //		// make and configure a mocked openchoreo.ProjectClient
 //		mockedProjectClient := &ProjectClientMock{
-//			CreateProjectFunc: func(ctx context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
+//			CreateProjectFunc: func(ctx context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error) {
 //				panic("mock out the CreateProject method")
 //			},
 //			DeleteProjectFunc: func(ctx context.Context, orgName string, projectName string) error {
 //				panic("mock out the DeleteProject method")
 //			},
-//			GetProjectFunc: func(ctx context.Context, orgName string, projectName string) (*apigen.Project, error) {
+//			GetProjectFunc: func(ctx context.Context, orgName string, projectName string) (*gen.Project, error) {
 //				panic("mock out the GetProject method")
 //			},
-//			ListProjectsFunc: func(ctx context.Context, orgName string, limit int, cursor string) (*apigen.ProjectList, error) {
+//			ListProjectsFunc: func(ctx context.Context, orgName string, limit int, cursor string) (*gen.ProjectList, error) {
 //				panic("mock out the ListProjects method")
 //			},
 //		}
@@ -42,16 +41,16 @@ var _ openchoreo.ProjectClient = &ProjectClientMock{}
 //	}
 type ProjectClientMock struct {
 	// CreateProjectFunc mocks the CreateProject method.
-	CreateProjectFunc func(ctx context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error)
+	CreateProjectFunc func(ctx context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error)
 
 	// DeleteProjectFunc mocks the DeleteProject method.
 	DeleteProjectFunc func(ctx context.Context, orgName string, projectName string) error
 
 	// GetProjectFunc mocks the GetProject method.
-	GetProjectFunc func(ctx context.Context, orgName string, projectName string) (*apigen.Project, error)
+	GetProjectFunc func(ctx context.Context, orgName string, projectName string) (*gen.Project, error)
 
 	// ListProjectsFunc mocks the ListProjects method.
-	ListProjectsFunc func(ctx context.Context, orgName string, limit int, cursor string) (*apigen.ProjectList, error)
+	ListProjectsFunc func(ctx context.Context, orgName string, limit int, cursor string) (*gen.ProjectList, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -62,7 +61,7 @@ type ProjectClientMock struct {
 			// OrgName is the orgName argument value.
 			OrgName string
 			// Req is the req argument value.
-			Req *apigen.CreateProjectRequest
+			Req *gen.CreateProjectRequest
 		}
 		// DeleteProject holds details about calls to the DeleteProject method.
 		DeleteProject []struct {
@@ -101,14 +100,14 @@ type ProjectClientMock struct {
 }
 
 // CreateProject calls CreateProjectFunc.
-func (mock *ProjectClientMock) CreateProject(ctx context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
+func (mock *ProjectClientMock) CreateProject(ctx context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error) {
 	if mock.CreateProjectFunc == nil {
 		panic("ProjectClientMock.CreateProjectFunc: method is nil but ProjectClient.CreateProject was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
 		OrgName string
-		Req     *apigen.CreateProjectRequest
+		Req     *gen.CreateProjectRequest
 	}{
 		Ctx:     ctx,
 		OrgName: orgName,
@@ -127,12 +126,12 @@ func (mock *ProjectClientMock) CreateProject(ctx context.Context, orgName string
 func (mock *ProjectClientMock) CreateProjectCalls() []struct {
 	Ctx     context.Context
 	OrgName string
-	Req     *apigen.CreateProjectRequest
+	Req     *gen.CreateProjectRequest
 } {
 	var calls []struct {
 		Ctx     context.Context
 		OrgName string
-		Req     *apigen.CreateProjectRequest
+		Req     *gen.CreateProjectRequest
 	}
 	mock.lockCreateProject.RLock()
 	calls = mock.calls.CreateProject
@@ -181,7 +180,7 @@ func (mock *ProjectClientMock) DeleteProjectCalls() []struct {
 }
 
 // GetProject calls GetProjectFunc.
-func (mock *ProjectClientMock) GetProject(ctx context.Context, orgName string, projectName string) (*apigen.Project, error) {
+func (mock *ProjectClientMock) GetProject(ctx context.Context, orgName string, projectName string) (*gen.Project, error) {
 	if mock.GetProjectFunc == nil {
 		panic("ProjectClientMock.GetProjectFunc: method is nil but ProjectClient.GetProject was just called")
 	}
@@ -221,7 +220,7 @@ func (mock *ProjectClientMock) GetProjectCalls() []struct {
 }
 
 // ListProjects calls ListProjectsFunc.
-func (mock *ProjectClientMock) ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*apigen.ProjectList, error) {
+func (mock *ProjectClientMock) ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*gen.ProjectList, error) {
 	if mock.ListProjectsFunc == nil {
 		panic("ProjectClientMock.ListProjectsFunc: method is nil but ProjectClient.ListProjects was just called")
 	}

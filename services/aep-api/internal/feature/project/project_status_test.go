@@ -19,7 +19,7 @@ package project
 import (
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -67,7 +67,7 @@ func TestApplyRepoToProjectStatus(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			status := &apigen.ProjectStatus{}
+			status := &gen.ProjectStatus{}
 			done := applyRepoToProjectStatus(status, c.repo)
 			if done != c.wantDone {
 				t.Fatalf("done: got %v want %v", done, c.wantDone)

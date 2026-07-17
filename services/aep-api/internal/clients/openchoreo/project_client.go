@@ -21,23 +21,22 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
-
-	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/gen"
+	ocgen "github.com/wso2/aep/aep-api/internal/clients/openchoreo/gen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
 //go:generate go run github.com/matryer/moq@v0.7.1 -rm -fmt goimports -pkg mocks -out mocks/project_client_mock.go . ProjectClient
 
 // ProjectClient defines operations for managing OpenChoreo projects.
 type ProjectClient interface {
-	ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*apigen.ProjectList, error)
-	GetProject(ctx context.Context, orgName, projectName string) (*apigen.Project, error)
-	CreateProject(ctx context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error)
+	ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*gen.ProjectList, error)
+	GetProject(ctx context.Context, orgName, projectName string) (*gen.Project, error)
+	CreateProject(ctx context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error)
 	DeleteProject(ctx context.Context, orgName, projectName string) error
 }
 
 type projectClient struct {
-	oc *gen.ClientWithResponses
+	oc *ocgen.ClientWithResponses
 }
 
 func NewProjectClient(cfg Config) ProjectClient {
@@ -48,14 +47,14 @@ func NewProjectClient(cfg Config) ProjectClient {
 	return &projectClient{oc: oc}
 }
 
-func (c *projectClient) ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*apigen.ProjectList, error) {
-	params := &gen.ListProjectsParams{}
+func (c *projectClient) ListProjects(ctx context.Context, orgName string, limit int, cursor string) (*gen.ProjectList, error) {
+	params := &ocgen.ListProjectsParams{}
 	if limit > 0 {
-		l := gen.LimitParam(limit)
+		l := ocgen.LimitParam(limit)
 		params.Limit = &l
 	}
 	if cursor != "" {
-		cur := gen.CursorParam(cursor)
+		cur := ocgen.CursorParam(cursor)
 		params.Cursor = &cur
 	}
 	resp, err := c.oc.ListProjectsWithResponse(ctx, orgName, params)
@@ -71,11 +70,11 @@ func (c *projectClient) ListProjects(ctx context.Context, orgName string, limit 
 			JSON500: resp.JSON500,
 		})
 	}
-	items := make([]apigen.Project, len(resp.JSON200.Items))
+	items := make([]gen.Project, len(resp.JSON200.Items))
 	for i, p := range resp.JSON200.Items {
 		items[i] = projectToModel(p)
 	}
-	out := &apigen.ProjectList{Items: items}
+	out := &gen.ProjectList{Items: items}
 	// Surface OC's continuation token verbatim (absent = last page); the
 	// console pages on it.
 	if nc := resp.JSON200.Pagination.NextCursor; nc != nil {
@@ -84,7 +83,7 @@ func (c *projectClient) ListProjects(ctx context.Context, orgName string, limit 
 	return out, nil
 }
 
-func (c *projectClient) GetProject(ctx context.Context, orgName, projectName string) (*apigen.Project, error) {
+func (c *projectClient) GetProject(ctx context.Context, orgName, projectName string) (*gen.Project, error) {
 	resp, err := c.oc.GetProjectWithResponse(ctx, orgName, projectName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project: %w", err)
@@ -101,7 +100,7 @@ func (c *projectClient) GetProject(ctx context.Context, orgName, projectName str
 	return &p, nil
 }
 
-func (c *projectClient) CreateProject(ctx context.Context, orgName string, body *apigen.CreateProjectRequest) (*apigen.Project, error) {
+func (c *projectClient) CreateProject(ctx context.Context, orgName string, body *gen.CreateProjectRequest) (*gen.Project, error) {
 	resp, err := c.oc.CreateProjectWithResponse(ctx, orgName, buildCreateProjectBody(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create project: %w", err)
@@ -136,12 +135,12 @@ func (c *projectClient) DeleteProject(ctx context.Context, orgName, projectName 
 	return nil
 }
 
-func projectToModel(p gen.Project) apigen.Project {
+func projectToModel(p ocgen.Project) gen.Project {
 	var deploymentPipeline string
 	if p.Spec != nil && p.Spec.DeploymentPipelineRef != nil {
 		deploymentPipeline = p.Spec.DeploymentPipelineRef.Name
 	}
-	return apigen.Project{
+	return gen.Project{
 		UID:                derefStr(p.Metadata.Uid),
 		Name:               p.Metadata.Name,
 		NamespaceName:      derefStr(p.Metadata.Namespace),
@@ -153,9 +152,9 @@ func projectToModel(p gen.Project) apigen.Project {
 	}
 }
 
-func buildCreateProjectBody(req *apigen.CreateProjectRequest) gen.CreateProjectJSONRequestBody {
-	body := gen.Project{
-		Metadata: gen.ObjectMeta{Name: req.Name},
+func buildCreateProjectBody(req *gen.CreateProjectRequest) ocgen.CreateProjectJSONRequestBody {
+	body := ocgen.Project{
+		Metadata: ocgen.ObjectMeta{Name: req.Name},
 	}
 	if req.DisplayName != "" || req.Description != "" {
 		ann := map[string]string{}
@@ -168,17 +167,17 @@ func buildCreateProjectBody(req *apigen.CreateProjectRequest) gen.CreateProjectJ
 		body.Metadata.Annotations = &ann
 	}
 	if req.DeploymentPipeline != "" {
-		body.Spec = &gen.ProjectSpec{
+		body.Spec = &ocgen.ProjectSpec{
 			DeploymentPipelineRef: &struct {
-				Kind *gen.ProjectSpecDeploymentPipelineRefKind `json:"kind,omitempty"`
-				Name string                                    `json:"name"`
+				Kind *ocgen.ProjectSpecDeploymentPipelineRefKind `json:"kind,omitempty"`
+				Name string                                      `json:"name"`
 			}{Name: req.DeploymentPipeline},
 		}
 	}
 	return body
 }
 
-func latestProjectStatusReason(status *gen.ProjectStatus) string {
+func latestProjectStatusReason(status *ocgen.ProjectStatus) string {
 	if status == nil {
 		return ""
 	}

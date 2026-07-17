@@ -138,7 +138,7 @@ func TestWorkflowRunRepository_ValidationRunByParent(t *testing.T) {
 	}
 	validation := &models.DevflowRun{
 		WorkflowID: "validationflow-orga-proj-v1", RunID: "r-validation",
-		Kind: models.WorkflowKindValidation,
+		Kind:  models.WorkflowKindValidation,
 		OrgID: "orga", ProjectID: "proj", Repo: "acme/proj", IssueNumber: 9,
 		ParentWorkflowID: dev.WorkflowID,
 	}

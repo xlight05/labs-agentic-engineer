@@ -46,7 +46,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
@@ -74,11 +74,11 @@ func storeWith(files map[string]string) *artifacts.ArtifactStore {
 // empty deployment list (no URL resolved yet) for any unmapped component.
 func ocResolving(urlsByComponent map[string]string) *ocmocks.ComponentClientMock {
 	return &ocmocks.ComponentClientMock{
-		ListDeploymentsFunc: func(_ context.Context, _, _, componentName string) (*apigen.DeploymentList, error) {
+		ListDeploymentsFunc: func(_ context.Context, _, _, componentName string) (*gen.DeploymentList, error) {
 			if u, ok := urlsByComponent[componentName]; ok && u != "" {
-				return &apigen.DeploymentList{Items: []apigen.Deployment{{EndpointURL: u}}}, nil
+				return &gen.DeploymentList{Items: []gen.Deployment{{EndpointURL: u}}}, nil
 			}
-			return &apigen.DeploymentList{}, nil
+			return &gen.DeploymentList{}, nil
 		},
 	}
 }
@@ -560,7 +560,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 		web := componentNamed(t, design, "web")
 
 		oc := &ocmocks.ComponentClientMock{
-			ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
+			ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
 				return nil, errors.New("oc: transient")
 			},
 		}
@@ -752,7 +752,7 @@ func Test_componentExternalURL(t *testing.T) {
 
 	t.Run("ListDeployments error → empty", func(t *testing.T) {
 		t.Parallel()
-		oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
+		oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
 			return nil, errors.New("boom")
 		}}
 		if got := NewRuntimeConfigService(oc, nil, nil).componentExternalURL(ctx, "acme", "proj", "web"); got != "" {
@@ -762,8 +762,8 @@ func Test_componentExternalURL(t *testing.T) {
 
 	t.Run("returns first non-empty EndpointURL verbatim", func(t *testing.T) {
 		t.Parallel()
-		oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
-			return &apigen.DeploymentList{Items: []apigen.Deployment{
+		oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
+			return &gen.DeploymentList{Items: []gen.Deployment{
 				{EndpointURL: ""},                  // skipped
 				{EndpointURL: "http://web.local/"}, // returned untrimmed
 			}}, nil

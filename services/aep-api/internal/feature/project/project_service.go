@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -93,7 +93,7 @@ func NewProjectService(
 	}
 }
 
-func (s *Service) ListProjects(ctx context.Context, orgName string, limit int, cursor, search string) (*apigen.ProjectList, error) {
+func (s *Service) ListProjects(ctx context.Context, orgName string, limit int, cursor, search string) (*gen.ProjectList, error) {
 	list, err := s.client.ListProjects(ctx, orgName, limit, cursor)
 	if err != nil {
 		return nil, translateHTTPError(err)
@@ -120,7 +120,7 @@ func (s *Service) ListProjects(ctx context.Context, orgName string, limit int, c
 	// each page. Acceptable for the console's org-sized project counts.
 	if search != "" {
 		needle := strings.ToLower(search)
-		filtered := make([]apigen.Project, 0, len(list.Items))
+		filtered := make([]gen.Project, 0, len(list.Items))
 		for _, p := range list.Items {
 			if strings.Contains(strings.ToLower(p.Name), needle) ||
 				strings.Contains(strings.ToLower(p.DisplayName), needle) {
@@ -132,7 +132,7 @@ func (s *Service) ListProjects(ctx context.Context, orgName string, limit int, c
 	return list, nil
 }
 
-func (s *Service) GetProject(ctx context.Context, orgName, projectName string) (*apigen.Project, error) {
+func (s *Service) GetProject(ctx context.Context, orgName, projectName string) (*gen.Project, error) {
 	project, err := s.client.GetProject(ctx, orgName, projectName)
 	if err != nil {
 		return nil, translateHTTPError(err)
@@ -140,7 +140,7 @@ func (s *Service) GetProject(ctx context.Context, orgName, projectName string) (
 	return project, nil
 }
 
-func (s *Service) CreateProject(ctx context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
+func (s *Service) CreateProject(ctx context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error) {
 	project, err := s.client.CreateProject(ctx, orgName, req)
 	if err != nil {
 		return nil, translateHTTPError(err)
@@ -252,10 +252,10 @@ func (s *Service) DeleteProject(ctx context.Context, orgName, projectName string
 	return nil
 }
 
-func (s *Service) GetProjectStatus(ctx context.Context, orgName, projectName string) (*apigen.ProjectStatus, error) {
+func (s *Service) GetProjectStatus(ctx context.Context, orgName, projectName string) (*gen.ProjectStatus, error) {
 	// The nested stages are contract-required: always present, zero-valued
 	// (idle build, no deploy) until the repo is ready and the sources read.
-	status := &apigen.ProjectStatus{}
+	status := &gen.ProjectStatus{}
 	status.Build.Status = buildIdle
 	status.Deploy.Status = deployNone
 
@@ -291,7 +291,7 @@ func (s *Service) GetProjectStatus(ctx context.Context, orgName, projectName str
 // applyRepoToProjectStatus maps a provisioned git_repositories row onto the
 // status fields that depend on repo lifecycle. Returns true when phase is
 // fully determined (no-repo, cloning, or error) and artifact checks can stop.
-func applyRepoToProjectStatus(status *apigen.ProjectStatus, repo *models.GitRepository) bool {
+func applyRepoToProjectStatus(status *gen.ProjectStatus, repo *models.GitRepository) bool {
 	if repo == nil {
 		status.Phase = "no-repo"
 		return true

@@ -20,10 +20,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -32,7 +32,7 @@ import (
 // the deny-by-default tenant gate bound the token org into the context before
 // these run, and the handlers pass it to the service as an explicit argument.
 
-func (s *apiServer) ListProjects(ctx context.Context, request apigen.ListProjectsRequestObject) (apigen.ListProjectsResponseObject, error) {
+func (s *apiServer) ListProjects(ctx context.Context, request gen.ListProjectsRequestObject) (gen.ListProjectsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	cursor, search := "", ""
 	if request.Params.Cursor != "" {
@@ -45,10 +45,10 @@ func (s *apiServer) ListProjects(ctx context.Context, request apigen.ListProject
 	if err != nil {
 		return nil, mapProjectError(err)
 	}
-	return apigen.ListProjects200JSONResponse(*list), nil
+	return gen.ListProjects200JSONResponse(*list), nil
 }
 
-func (s *apiServer) CreateProject(ctx context.Context, request apigen.CreateProjectRequestObject) (apigen.CreateProjectResponseObject, error) {
+func (s *apiServer) CreateProject(ctx context.Context, request gen.CreateProjectRequestObject) (gen.CreateProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body.Name == "" {
 		return nil, errBadRequest("name is required")
@@ -65,33 +65,33 @@ func (s *apiServer) CreateProject(ctx context.Context, request apigen.CreateProj
 	if err != nil {
 		return nil, mapProjectError(err)
 	}
-	return apigen.CreateProject201JSONResponse(*p), nil
+	return gen.CreateProject201JSONResponse(*p), nil
 }
 
-func (s *apiServer) GetProject(ctx context.Context, request apigen.GetProjectRequestObject) (apigen.GetProjectResponseObject, error) {
+func (s *apiServer) GetProject(ctx context.Context, request gen.GetProjectRequestObject) (gen.GetProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	p, err := s.deps.ProjectSvc.GetProject(ctx, org, request.ProjectName)
 	if err != nil {
 		return nil, mapProjectError(err)
 	}
-	return apigen.GetProject200JSONResponse(*p), nil
+	return gen.GetProject200JSONResponse(*p), nil
 }
 
-func (s *apiServer) DeleteProject(ctx context.Context, request apigen.DeleteProjectRequestObject) (apigen.DeleteProjectResponseObject, error) {
+func (s *apiServer) DeleteProject(ctx context.Context, request gen.DeleteProjectRequestObject) (gen.DeleteProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := s.deps.ProjectSvc.DeleteProject(ctx, org, request.ProjectName); err != nil {
 		return nil, mapProjectError(err)
 	}
-	return apigen.DeleteProject204Response{}, nil
+	return gen.DeleteProject204Response{}, nil
 }
 
-func (s *apiServer) GetProjectStatus(ctx context.Context, request apigen.GetProjectStatusRequestObject) (apigen.GetProjectStatusResponseObject, error) {
+func (s *apiServer) GetProjectStatus(ctx context.Context, request gen.GetProjectStatusRequestObject) (gen.GetProjectStatusResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.ProjectSvc.GetProjectStatus(ctx, org, request.ProjectName)
 	if err != nil {
 		return nil, mapProjectError(err)
 	}
-	return apigen.GetProjectStatus200JSONResponse(*st), nil
+	return gen.GetProjectStatus200JSONResponse(*st), nil
 }
 
 // mapProjectError translates project + OpenChoreo sentinel errors into the

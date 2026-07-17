@@ -15,7 +15,7 @@
 // under the License.
 
 // Package contracttest gives arch-guard tests the committed OpenAPI contract's
-// raw bytes. The runtime validator loads the contract from apigen.GetSpec()
+// raw bytes. The runtime validator loads the contract from gen.GetSpec()
 // (baked into the binary); tests assert the SOURCE of truth directly instead,
 // so a contract edit is caught against the file developers actually edit.
 package contracttest

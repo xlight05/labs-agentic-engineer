@@ -20,8 +20,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/requirements"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -33,7 +33,7 @@ import (
 // display identity — the JWT signature is verified by the outer middleware.
 // The project-ownership oracle (§6.6g) is deps.CollabRepo (gitrepo.RepoService).
 
-func (s *apiServer) GetSpecCollabSession(ctx context.Context, request apigen.GetSpecCollabSessionRequestObject) (apigen.GetSpecCollabSessionResponseObject, error) {
+func (s *apiServer) GetSpecCollabSession(ctx context.Context, request gen.GetSpecCollabSessionRequestObject) (gen.GetSpecCollabSessionResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// The tenant gate already bound the caller's org. Confirm the project
 	// exists under it via the repo oracle — 404 otherwise.
@@ -41,7 +41,7 @@ func (s *apiServer) GetSpecCollabSession(ctx context.Context, request apigen.Get
 		return nil, errNotFound("project not found")
 	}
 	name, email := requirements.ParseDisplayIdentity(request.Params.Authorization)
-	return apigen.GetSpecCollabSession200JSONResponse(apigen.CollabSessionOutputBody{
+	return gen.GetSpecCollabSession200JSONResponse(gen.CollabSessionOutputBody{
 		RoomID:   "spec-" + org + "-" + request.ProjectName,
 		WsURL:    "/collab",
 		UserName: name,
@@ -56,7 +56,7 @@ func (s *apiServer) GetSpecCollabSession(ctx context.Context, request apigen.Get
 // the room exists. The claims check stays even though the tenant gate 401s
 // claimless requests in ENFORCE: in LOG mode the gate passes them through, and
 // this handler must still refuse (the collab server relies on it).
-func (s *apiServer) ValidateCollabAccess(ctx context.Context, request apigen.ValidateCollabAccessRequestObject) (apigen.ValidateCollabAccessResponseObject, error) {
+func (s *apiServer) ValidateCollabAccess(ctx context.Context, request gen.ValidateCollabAccessRequestObject) (gen.ValidateCollabAccessResponseObject, error) {
 	claims := auth.ClaimsFromContext(ctx)
 	org := auth.ResolveOuHandle(claims)
 	if claims == nil || org == "" {
@@ -82,7 +82,7 @@ func (s *apiServer) ValidateCollabAccess(ctx context.Context, request apigen.Val
 	}
 
 	name, email := requirements.ParseDisplayIdentity(request.Params.Authorization)
-	return apigen.ValidateCollabAccess200JSONResponse(apigen.CollabValidateOutputBody{
+	return gen.ValidateCollabAccess200JSONResponse(gen.CollabValidateOutputBody{
 		Name:        name,
 		Email:       email,
 		ProjectName: project,

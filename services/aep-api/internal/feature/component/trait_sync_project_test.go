@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -71,11 +71,11 @@ func traitReadDesign(t *testing.T, files map[string]string) *artifacts.DesignFil
 // override them to inject failure.
 func ocDeployments(urlsByComponent map[string]string) *mocks.ComponentClientMock {
 	return &mocks.ComponentClientMock{
-		ListDeploymentsFunc: func(_ context.Context, _, _, componentName string) (*apigen.DeploymentList, error) {
+		ListDeploymentsFunc: func(_ context.Context, _, _, componentName string) (*gen.DeploymentList, error) {
 			if u, ok := urlsByComponent[componentName]; ok && u != "" {
-				return &apigen.DeploymentList{Items: []apigen.Deployment{{EndpointURL: u}}}, nil
+				return &gen.DeploymentList{Items: []gen.Deployment{{EndpointURL: u}}}, nil
 			}
-			return &apigen.DeploymentList{}, nil
+			return &gen.DeploymentList{}, nil
 		},
 		UpdateComponentTraitsFunc: func(context.Context, string, string, string, []models.ComponentTrait) error {
 			return nil
@@ -357,8 +357,8 @@ func Test_siblingSPAOrigins(t *testing.T) {
 		}
 		design := traitReadDesign(t, files)
 		oc := &mocks.ComponentClientMock{
-			ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
-				return &apigen.DeploymentList{Items: []apigen.Deployment{
+			ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
+				return &gen.DeploymentList{Items: []gen.Deployment{
 					{EndpointURL: "http://web.local/a"},
 					{EndpointURL: "http://web.local/b"}, // same origin
 				}}, nil
@@ -382,7 +382,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 		}
 		design := traitReadDesign(t, files)
 		oc := &mocks.ComponentClientMock{
-			ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
+			ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
 				return nil, errors.New("oc: transient")
 			},
 		}

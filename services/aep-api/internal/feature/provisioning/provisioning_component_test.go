@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -185,7 +185,7 @@ func TestProvisioningComponent_ListExternalResources(t *testing.T) {
 	if resp.Code != 200 {
 		t.Fatalf("list: got %d body=%s", resp.Code, resp.Body.String())
 	}
-	var got []apigen.ExternalResourceDTO
+	var got []gen.ExternalResourceDTO
 	if err := json.Unmarshal(resp.Body.Bytes(), &got); err != nil {
 		t.Fatalf("body: %v\n%s", err, resp.Body.String())
 	}
@@ -248,7 +248,7 @@ func TestProvisioningComponent_DependencyStatus(t *testing.T) {
 	if resp.Code != 200 {
 		t.Fatalf("status: got %d body=%s", resp.Code, resp.Body.String())
 	}
-	var st apigen.DependencyStatus
+	var st gen.DependencyStatus
 	if err := json.Unmarshal(resp.Body.Bytes(), &st); err != nil {
 		t.Fatalf("body: %v\n%s", err, resp.Body.String())
 	}

@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -35,7 +35,7 @@ import (
 // here with PathValue-decoded (unescaped) bytes, so unicode/escaped paths
 // survive the chain byte-identically.
 
-func (s *apiServer) ListFiles(ctx context.Context, request apigen.ListFilesRequestObject) (apigen.ListFilesResponseObject, error) {
+func (s *apiServer) ListFiles(ctx context.Context, request gen.ListFilesRequestObject) (gen.ListFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	prefix := ""
 	if request.Params.Prefix != "" {
@@ -45,14 +45,14 @@ func (s *apiServer) ListFiles(ctx context.Context, request apigen.ListFilesReque
 	if err != nil {
 		return nil, mapFilesError(err)
 	}
-	out := make([]apigen.FileMeta, 0, len(metas))
+	out := make([]gen.FileMeta, 0, len(metas))
 	for _, m := range metas {
-		out = append(out, apigen.FileMeta{Path: m.Path, Sha: m.SHA, Size: m.Size})
+		out = append(out, gen.FileMeta{Path: m.Path, Sha: m.SHA, Size: m.Size})
 	}
-	return apigen.ListFiles200JSONResponse(out), nil
+	return gen.ListFiles200JSONResponse(out), nil
 }
 
-func (s *apiServer) ReadFile(ctx context.Context, request apigen.ReadFileRequestObject) (apigen.ReadFileResponseObject, error) {
+func (s *apiServer) ReadFile(ctx context.Context, request gen.ReadFileRequestObject) (gen.ReadFileResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Path == "" {
 		return nil, errBadRequest("path is required")
@@ -61,14 +61,14 @@ func (s *apiServer) ReadFile(ctx context.Context, request apigen.ReadFileRequest
 	if err != nil {
 		return nil, mapFilesError(err)
 	}
-	return apigen.ReadFile200JSONResponse(apigen.FileContent{
+	return gen.ReadFile200JSONResponse(gen.FileContent{
 		Path:    fc.Path,
 		Content: fc.Content,
 		Sha:     fc.SHA,
 	}), nil
 }
 
-func (s *apiServer) ApplyFiles(ctx context.Context, request apigen.ApplyFilesRequestObject) (apigen.ApplyFilesResponseObject, error) {
+func (s *apiServer) ApplyFiles(ctx context.Context, request gen.ApplyFilesRequestObject) (gen.ApplyFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body == nil {
 		return nil, errBadRequest("request body required")
@@ -80,25 +80,25 @@ func (s *apiServer) ApplyFiles(ctx context.Context, request apigen.ApplyFilesReq
 		}
 		return nil, mapFilesError(err)
 	}
-	return apigen.ApplyFiles200JSONResponse(applyResultToWire(res)), nil
+	return gen.ApplyFiles200JSONResponse(applyResultToWire(res)), nil
 }
 
 // applyConflictsToWire projects the service conflicts onto the contract's
 // declared 409 body (ApplyConflicts — the FE's baseSha CAS flow consumes it;
 // nothing was applied when this is returned). files_component_test.go pins the
 // field set + values.
-func applyConflictsToWire(conflicts []files.Conflict) apigen.ApplyFiles409JSONResponse {
-	out := apigen.ApplyConflicts{Conflicts: make([]apigen.ApplyConflict, 0, len(conflicts))}
+func applyConflictsToWire(conflicts []files.Conflict) gen.ApplyFiles409JSONResponse {
+	out := gen.ApplyConflicts{Conflicts: make([]gen.ApplyConflict, 0, len(conflicts))}
 	for _, c := range conflicts {
-		out.Conflicts = append(out.Conflicts, apigen.ApplyConflict{
+		out.Conflicts = append(out.Conflicts, gen.ApplyConflict{
 			Path: c.Path, BaseSha: c.BaseSHA, CurrentSha: c.CurrentSHA,
 		})
 	}
-	return apigen.ApplyFiles409JSONResponse(out)
+	return gen.ApplyFiles409JSONResponse(out)
 }
 
 // applyRequestFromWire converts the generated body into the service's shape.
-func applyRequestFromWire(in apigen.ApplyRequest) files.ApplyRequest {
+func applyRequestFromWire(in gen.ApplyRequest) files.ApplyRequest {
 	out := files.ApplyRequest{Message: in.Message}
 	for _, w := range in.Writes {
 		out.Writes = append(out.Writes, files.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSha})
@@ -110,13 +110,13 @@ func applyRequestFromWire(in apigen.ApplyRequest) files.ApplyRequest {
 }
 
 // applyResultToWire converts the service result into the contract schema.
-func applyResultToWire(res *files.ApplyResult) apigen.ApplyResult {
-	out := apigen.ApplyResult{CommitSha: res.CommitSHA, Files: make([]apigen.FileMeta, 0, len(res.Files))}
+func applyResultToWire(res *files.ApplyResult) gen.ApplyResult {
+	out := gen.ApplyResult{CommitSha: res.CommitSHA, Files: make([]gen.FileMeta, 0, len(res.Files))}
 	for _, f := range res.Files {
-		out.Files = append(out.Files, apigen.FileMeta{Path: f.Path, Sha: f.SHA, Size: f.Size})
+		out.Files = append(out.Files, gen.FileMeta{Path: f.Path, Sha: f.SHA, Size: f.Size})
 	}
 	for _, w := range res.Warnings {
-		out.Warnings = append(out.Warnings, apigen.Warning{Path: w.Path, Code: w.Code, Message: w.Message})
+		out.Warnings = append(out.Warnings, gen.Warning{Path: w.Path, Code: w.Code, Message: w.Message})
 	}
 	return out
 }

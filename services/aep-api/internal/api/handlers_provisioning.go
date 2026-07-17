@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -40,7 +40,7 @@ func errProvisioningUnavailable() error {
 	return errServiceUnavailable("provisioning is not configured")
 }
 
-func (s *apiServer) ListExternalResources(ctx context.Context, _ apigen.ListExternalResourcesRequestObject) (apigen.ListExternalResourcesResponseObject, error) {
+func (s *apiServer) ListExternalResources(ctx context.Context, _ gen.ListExternalResourcesRequestObject) (gen.ListExternalResourcesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -49,10 +49,10 @@ func (s *apiServer) ListExternalResources(ctx context.Context, _ apigen.ListExte
 	if err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.ListExternalResources200JSONResponse(toExternalResourceDTOs(views)), nil
+	return gen.ListExternalResources200JSONResponse(toExternalResourceDTOs(views)), nil
 }
 
-func (s *apiServer) DeleteExternalResource(ctx context.Context, request apigen.DeleteExternalResourceRequestObject) (apigen.DeleteExternalResourceResponseObject, error) {
+func (s *apiServer) DeleteExternalResource(ctx context.Context, request gen.DeleteExternalResourceRequestObject) (gen.DeleteExternalResourceResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -60,10 +60,10 @@ func (s *apiServer) DeleteExternalResource(ctx context.Context, request apigen.D
 	if err := s.deps.ProvisioningSvc.DeleteExternalResource(ctx, org, request.Name); err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.DeleteExternalResource204Response{}, nil
+	return gen.DeleteExternalResource204Response{}, nil
 }
 
-func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request apigen.CollectExternalResourceValuesRequestObject) (apigen.CollectExternalResourceValuesResponseObject, error) {
+func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request gen.CollectExternalResourceValuesRequestObject) (gen.CollectExternalResourceValuesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -77,10 +77,10 @@ func (s *apiServer) CollectExternalResourceValues(ctx context.Context, request a
 	if err := s.deps.ProvisioningSvc.SaveValues(ctx, org, org, request.ProjectName, request.Name, envs); err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.CollectExternalResourceValues200JSONResponse(apigen.StatusMsg{Status: "provisioned"}), nil
+	return gen.CollectExternalResourceValues200JSONResponse(gen.StatusMsg{Status: "provisioned"}), nil
 }
 
-func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request apigen.ProvisionPlatformResourceRequestObject) (apigen.ProvisionPlatformResourceResponseObject, error) {
+func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request gen.ProvisionPlatformResourceRequestObject) (gen.ProvisionPlatformResourceResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -96,10 +96,10 @@ func (s *apiServer) ProvisionPlatformResource(ctx context.Context, request apige
 	if err := s.deps.ProvisioningSvc.Provision(ctx, org, request.ProjectName, request.DepName, params, envs); err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.ProvisionPlatformResource202JSONResponse(apigen.StatusMsg{Status: "provisioning"}), nil
+	return gen.ProvisionPlatformResource202JSONResponse(gen.StatusMsg{Status: "provisioning"}), nil
 }
 
-func (s *apiServer) GetDependencyStatus(ctx context.Context, request apigen.GetDependencyStatusRequestObject) (apigen.GetDependencyStatusResponseObject, error) {
+func (s *apiServer) GetDependencyStatus(ctx context.Context, request gen.GetDependencyStatusRequestObject) (gen.GetDependencyStatusResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -112,14 +112,14 @@ func (s *apiServer) GetDependencyStatus(ctx context.Context, request apigen.GetD
 	if err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.GetDependencyStatus200JSONResponse(apigen.DependencyStatus{
+	return gen.GetDependencyStatus200JSONResponse(gen.DependencyStatus{
 		Status:  st.Status,
 		Ready:   st.Ready,
 		Outputs: st.Outputs,
 	}), nil
 }
 
-func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request apigen.RequestOrgServiceAccessRequestObject) (apigen.RequestOrgServiceAccessResponseObject, error) {
+func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request gen.RequestOrgServiceAccessRequestObject) (gen.RequestOrgServiceAccessResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -128,10 +128,10 @@ func (s *apiServer) RequestOrgServiceAccess(ctx context.Context, request apigen.
 	if err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return apigen.RequestOrgServiceAccess201JSONResponse(*ar), nil
+	return gen.RequestOrgServiceAccess201JSONResponse(*ar), nil
 }
 
-func (s *apiServer) ListAccessRequests(ctx context.Context, request apigen.ListAccessRequestsRequestObject) (apigen.ListAccessRequestsResponseObject, error) {
+func (s *apiServer) ListAccessRequests(ctx context.Context, request gen.ListAccessRequestsRequestObject) (gen.ListAccessRequestsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if s.deps.ProvisioningSvc == nil {
 		return nil, errProvisioningUnavailable()
@@ -143,7 +143,7 @@ func (s *apiServer) ListAccessRequests(ctx context.Context, request apigen.ListA
 	if reqs == nil {
 		reqs = []models.AccessRequest{}
 	}
-	return apigen.ListAccessRequests200JSONResponse(reqs), nil
+	return gen.ListAccessRequests200JSONResponse(reqs), nil
 }
 
 // mapProvisionError translates the provisioning sentinels into the envelope:
@@ -165,18 +165,18 @@ func mapProvisionError(err error) error {
 	return errInternal("provisioning failed")
 }
 
-func toExternalResourceDTOs(views []provisioning.ExternalResourceView) []apigen.ExternalResourceDTO {
-	out := make([]apigen.ExternalResourceDTO, 0, len(views))
+func toExternalResourceDTOs(views []provisioning.ExternalResourceView) []gen.ExternalResourceDTO {
+	out := make([]gen.ExternalResourceDTO, 0, len(views))
 	for _, v := range views {
-		keys := make([]apigen.ConfigKeyDTO, 0, len(v.Config))
+		keys := make([]gen.ConfigKeyDTO, 0, len(v.Config))
 		for _, k := range v.Config {
-			keys = append(keys, apigen.ConfigKeyDTO{Key: k.Key, Secret: k.Secret, Description: k.Description, DefaultValue: k.DefaultValue})
+			keys = append(keys, gen.ConfigKeyDTO{Key: k.Key, Secret: k.Secret, Description: k.Description, DefaultValue: k.DefaultValue})
 		}
-		consumers := make([]apigen.ConsumerDTO, 0, len(v.Consumers))
+		consumers := make([]gen.ConsumerDTO, 0, len(v.Consumers))
 		for _, c := range v.Consumers {
-			consumers = append(consumers, apigen.ConsumerDTO{ProjectID: c.ProjectID, ComponentName: c.ComponentName})
+			consumers = append(consumers, gen.ConsumerDTO{ProjectID: c.ProjectID, ComponentName: c.ComponentName})
 		}
-		out = append(out, apigen.ExternalResourceDTO{
+		out = append(out, gen.ExternalResourceDTO{
 			Name:        v.Name,
 			Description: v.Description,
 			Config:      keys,

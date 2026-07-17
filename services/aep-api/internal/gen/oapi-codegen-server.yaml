@@ -5,7 +5,7 @@
 # companion models pass into the SAME gen package (models_gen.go), so the server
 # references them by bare name. No import-mapping: there is nothing to redirect
 # now that schemas and server share one package.
-package: apigen
+package: gen
 generate:
   std-http-server: true
   strict-server: true
@@ -14,7 +14,7 @@ generate:
   # validator loads it from here, so no vendored copy of the YAML is embedded
   # (go:embed can't reach across the module boundary to packages/contracts).
   embedded-spec: true
-output: internal/api/apigen/server_gen.go
+output: internal/gen/server_gen.go
 output-options:
   name-normalizer: ToCamelCaseWithInitialisms
   # Must match the models pass: the Params structs are emitted there (value

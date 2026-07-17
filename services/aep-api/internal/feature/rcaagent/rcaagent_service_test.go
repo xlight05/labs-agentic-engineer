@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/models"
@@ -55,7 +55,7 @@ func newFakeRepo() *fakeRepo {
 	return &fakeRepo{byID: map[string]*models.RcaAgentReport{}}
 }
 
-func (f *fakeRepo) Create(_ context.Context, orgID string, in *apigen.CreateRcaAgentReportRequest) (*models.RcaAgentReport, error) {
+func (f *fakeRepo) Create(_ context.Context, orgID string, in *gen.CreateRcaAgentReportRequest) (*models.RcaAgentReport, error) {
 	report := &models.RcaAgentReport{
 		ID:             "generated-id",
 		OrgID:          orgID,
@@ -147,8 +147,8 @@ func TestGetReport_noReader_servesStoredSnapshot(t *testing.T) {
 	}
 }
 
-func validCreateRequest() *apigen.CreateRcaAgentReportRequest {
-	return &apigen.CreateRcaAgentReportRequest{
+func validCreateRequest() *gen.CreateRcaAgentReportRequest {
+	return &gen.CreateRcaAgentReportRequest{
 		Project:        "demo-shop",
 		Title:          "Checkout requests failing",
 		Summary:        "summary",
@@ -176,13 +176,13 @@ func TestCreateReport_Valid(t *testing.T) {
 func TestCreateReport_MissingRequiredFields(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*apigen.CreateRcaAgentReportRequest)
+		mutate func(*gen.CreateRcaAgentReportRequest)
 	}{
-		{"missing project", func(r *apigen.CreateRcaAgentReportRequest) { r.Project = "" }},
-		{"missing title", func(r *apigen.CreateRcaAgentReportRequest) { r.Title = "" }},
-		{"missing summary", func(r *apigen.CreateRcaAgentReportRequest) { r.Summary = "" }},
-		{"missing diagnosis", func(r *apigen.CreateRcaAgentReportRequest) { r.Diagnosis = "" }},
-		{"missing classification", func(r *apigen.CreateRcaAgentReportRequest) { r.Classification = "" }},
+		{"missing project", func(r *gen.CreateRcaAgentReportRequest) { r.Project = "" }},
+		{"missing title", func(r *gen.CreateRcaAgentReportRequest) { r.Title = "" }},
+		{"missing summary", func(r *gen.CreateRcaAgentReportRequest) { r.Summary = "" }},
+		{"missing diagnosis", func(r *gen.CreateRcaAgentReportRequest) { r.Diagnosis = "" }},
+		{"missing classification", func(r *gen.CreateRcaAgentReportRequest) { r.Classification = "" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

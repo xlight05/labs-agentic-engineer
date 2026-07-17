@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/rcaagent"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -31,7 +31,7 @@ import (
 // separate service-auth scheme; the deny-by-default tenant gate binds the
 // active org from the verified token before these run.
 
-func (s *apiServer) ListRcaAgentReports(ctx context.Context, request apigen.ListRcaAgentReportsRequestObject) (apigen.ListRcaAgentReportsResponseObject, error) {
+func (s *apiServer) ListRcaAgentReports(ctx context.Context, request gen.ListRcaAgentReportsRequestObject) (gen.ListRcaAgentReportsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	cursor, limit := "", 0
 	if request.Params.Cursor != "" {
@@ -44,10 +44,10 @@ func (s *apiServer) ListRcaAgentReports(ctx context.Context, request apigen.List
 	if err != nil {
 		return nil, errInternal("failed to list rca-agent reports")
 	}
-	return apigen.ListRcaAgentReports200JSONResponse(*out), nil
+	return gen.ListRcaAgentReports200JSONResponse(*out), nil
 }
 
-func (s *apiServer) CreateRcaAgentReport(ctx context.Context, request apigen.CreateRcaAgentReportRequestObject) (apigen.CreateRcaAgentReportResponseObject, error) {
+func (s *apiServer) CreateRcaAgentReport(ctx context.Context, request gen.CreateRcaAgentReportRequestObject) (gen.CreateRcaAgentReportResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	out, err := s.deps.RcaAgentReportSvc.CreateReport(ctx, org, request.Body)
 	if err != nil {
@@ -56,10 +56,10 @@ func (s *apiServer) CreateRcaAgentReport(ctx context.Context, request apigen.Cre
 		}
 		return nil, errInternal("failed to create rca-agent report")
 	}
-	return apigen.CreateRcaAgentReport201JSONResponse(*out), nil
+	return gen.CreateRcaAgentReport201JSONResponse(*out), nil
 }
 
-func (s *apiServer) GetRcaAgentReport(ctx context.Context, request apigen.GetRcaAgentReportRequestObject) (apigen.GetRcaAgentReportResponseObject, error) {
+func (s *apiServer) GetRcaAgentReport(ctx context.Context, request gen.GetRcaAgentReportRequestObject) (gen.GetRcaAgentReportResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	out, err := s.deps.RcaAgentReportSvc.GetReport(ctx, org, request.ReportID)
 	if err != nil {
@@ -68,5 +68,5 @@ func (s *apiServer) GetRcaAgentReport(ctx context.Context, request apigen.GetRca
 		}
 		return nil, errInternal("failed to get rca-agent report")
 	}
-	return apigen.GetRcaAgentReport200JSONResponse(*out), nil
+	return gen.GetRcaAgentReport200JSONResponse(*out), nil
 }

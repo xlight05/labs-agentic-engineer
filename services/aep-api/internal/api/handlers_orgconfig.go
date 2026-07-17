@@ -21,9 +21,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/idp"
 	"github.com/wso2/aep/aep-api/internal/feature/orgconfig"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -36,26 +36,26 @@ import (
 // All handler logic lives in orgconfig.Service; this file only maps HTTP <->
 // domain and translates SectionError into section-pointered envelopes.
 
-func (s *apiServer) GetConfig(ctx context.Context, _ apigen.GetConfigRequestObject) (apigen.GetConfigResponseObject, error) {
+func (s *apiServer) GetConfig(ctx context.Context, _ gen.GetConfigRequestObject) (gen.GetConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	proj, err := s.deps.OrgConfigSvc.Get(ctx, org)
 	if err != nil {
 		return nil, errInternal("failed to load config")
 	}
-	return apigen.GetConfig200JSONResponse(*proj), nil
+	return gen.GetConfig200JSONResponse(*proj), nil
 }
 
-func (s *apiServer) UpdateConfig(ctx context.Context, request apigen.UpdateConfigRequestObject) (apigen.UpdateConfigResponseObject, error) {
+func (s *apiServer) UpdateConfig(ctx context.Context, request gen.UpdateConfigRequestObject) (gen.UpdateConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	proj, err := s.deps.OrgConfigSvc.Patch(ctx, org, actor, *request.Body)
 	if err != nil {
 		return nil, mapPatchError(err)
 	}
-	return apigen.UpdateConfig200JSONResponse(*proj), nil
+	return gen.UpdateConfig200JSONResponse(*proj), nil
 }
 
-func (s *apiServer) StartGitProviderConnect(ctx context.Context, request apigen.StartGitProviderConnectRequestObject) (apigen.StartGitProviderConnectResponseObject, error) {
+func (s *apiServer) StartGitProviderConnect(ctx context.Context, request gen.StartGitProviderConnectRequestObject) (gen.StartGitProviderConnectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	var installationID int64
@@ -69,10 +69,10 @@ func (s *apiServer) StartGitProviderConnect(ctx context.Context, request apigen.
 		}
 		return nil, errInternal("could not start connect")
 	}
-	return apigen.StartGitProviderConnect200JSONResponse(apigen.StartConnectOutputBody{AuthorizeURL: authorizeURL}), nil
+	return gen.StartGitProviderConnect200JSONResponse(gen.StartConnectOutputBody{AuthorizeURL: authorizeURL}), nil
 }
 
-func (s *apiServer) DisconnectGitProvider(ctx context.Context, request apigen.DisconnectGitProviderRequestObject) (apigen.DisconnectGitProviderResponseObject, error) {
+func (s *apiServer) DisconnectGitProvider(ctx context.Context, request gen.DisconnectGitProviderRequestObject) (gen.DisconnectGitProviderResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// App-mode only: when false, leave the install on GitHub for later
 	// re-adoption. Defaults true (contract default, previously a Huma default).
@@ -88,10 +88,10 @@ func (s *apiServer) DisconnectGitProvider(ctx context.Context, request apigen.Di
 	if connected {
 		status = "disconnected"
 	}
-	return apigen.DisconnectGitProvider200JSONResponse(apigen.DisconnectOutputBody{Status: status}), nil
+	return gen.DisconnectGitProvider200JSONResponse(gen.DisconnectOutputBody{Status: status}), nil
 }
 
-func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ apigen.RotateIdpClientSecretRequestObject) (apigen.RotateIdpClientSecretResponseObject, error) {
+func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ gen.RotateIdpClientSecretRequestObject) (gen.RotateIdpClientSecretResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	actor := auth.ActorFromContext(ctx)
 	newSecret, err := s.deps.OrgConfigSvc.RotateIDPClientSecret(ctx, org, actor)
@@ -101,10 +101,10 @@ func (s *apiServer) RotateIdpClientSecret(ctx context.Context, _ apigen.RotateId
 		}
 		return nil, errInternal("failed to regenerate client secret")
 	}
-	return apigen.RotateIdpClientSecret200JSONResponse(apigen.ClientSecretOutputBody{ClientSecret: newSecret}), nil
+	return gen.RotateIdpClientSecret200JSONResponse(gen.ClientSecretOutputBody{ClientSecret: newSecret}), nil
 }
 
-func (s *apiServer) DiscoverIdp(ctx context.Context, request apigen.DiscoverIdpRequestObject) (apigen.DiscoverIdpResponseObject, error) {
+func (s *apiServer) DiscoverIdp(ctx context.Context, request gen.DiscoverIdpRequestObject) (gen.DiscoverIdpResponseObject, error) {
 	issuer := ""
 	if request.Params.Issuer != "" {
 		issuer = request.Params.Issuer
@@ -116,7 +116,7 @@ func (s *apiServer) DiscoverIdp(ctx context.Context, request apigen.DiscoverIdpR
 	if err != nil {
 		return nil, errBadGateway(err.Error())
 	}
-	return apigen.DiscoverIdp200JSONResponse(apigen.DiscoverOutputBody{Issuer: issuerOut, JwksURL: jwksURL}), nil
+	return gen.DiscoverIdp200JSONResponse(gen.DiscoverOutputBody{Issuer: issuerOut, JwksURL: jwksURL}), nil
 }
 
 // mapPatchError turns a PATCH failure into the envelope. A SectionError
@@ -128,7 +128,7 @@ func (s *apiServer) DiscoverIdp(ctx context.Context, request apigen.DiscoverIdpR
 func mapPatchError(err error) error {
 	var se *orgconfig.SectionError
 	if errors.As(err, &se) {
-		details := []apigen.ErrorDetail{{Field: "body." + se.Section, Message: se.Message}}
+		details := []gen.ErrorDetail{{Field: "body." + se.Section, Message: se.Message}}
 		switch se.Status {
 		case http.StatusConflict:
 			return &apiError{http.StatusConflict, CodeConflict, se.Message, details}

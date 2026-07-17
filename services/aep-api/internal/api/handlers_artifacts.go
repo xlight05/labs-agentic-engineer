@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -29,7 +29,7 @@ import (
 // The console's overview and spec view poll it for the "vN published" /
 // "draft changes" chips.
 
-func (s *apiServer) ListProjectTags(ctx context.Context, request apigen.ListProjectTagsRequestObject) (apigen.ListProjectTagsResponseObject, error) {
+func (s *apiServer) ListProjectTags(ctx context.Context, request gen.ListProjectTagsRequestObject) (gen.ListProjectTagsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	tags, err := s.deps.ArtifactSvc.ListSpecVersionTags(ctx, org, request.ProjectName)
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *apiServer) ListProjectTags(ctx context.Context, request apigen.ListProj
 			return nil, errInternal("internal error")
 		}
 	}
-	return apigen.ListProjectTags200JSONResponse(apigen.TagList{
+	return gen.ListProjectTags200JSONResponse(gen.TagList{
 		Tags:      tags.Tags,
 		Latest:    tags.Latest,
 		SpecDirty: tags.SpecDirty,

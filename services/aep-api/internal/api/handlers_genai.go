@@ -27,8 +27,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/genai"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -54,7 +54,7 @@ const createTurnMaxInstructionBytes = 64 << 10
 // stream so proxies keep the connection open and a dead client is noticed.
 const genaiStreamKeepAliveEvery = 15 * time.Second
 
-func (s *apiServer) CreateTurn(ctx context.Context, request apigen.CreateTurnRequestObject) (apigen.CreateTurnResponseObject, error) {
+func (s *apiServer) CreateTurn(ctx context.Context, request gen.CreateTurnRequestObject) (gen.CreateTurnResponseObject, error) {
 	// The retired edge capped this body at 64 KiB (it carries no file content —
 	// useCase + instruction + target); the edge-wide 10 MiB cap alone would be
 	// a 160x loosening on a payload that is buffered whole and forwarded to
@@ -83,31 +83,31 @@ func (s *apiServer) CreateTurn(ctx context.Context, request apigen.CreateTurnReq
 		}
 		return nil, mapGenAITurnError(ctx, err)
 	}
-	return apigen.CreateTurn202JSONResponse(apigen.TurnOutputBody{TurnID: turnID}), nil
+	return gen.CreateTurn202JSONResponse(gen.TurnOutputBody{TurnID: turnID}), nil
 }
 
-func (s *apiServer) GetTurn(ctx context.Context, request apigen.GetTurnRequestObject) (apigen.GetTurnResponseObject, error) {
+func (s *apiServer) GetTurn(ctx context.Context, request gen.GetTurnRequestObject) (gen.GetTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.GenAISvc.TurnStatus(ctx, org, request.ProjectName, request.TurnID)
 	if err != nil {
 		return nil, mapGenAITurnError(ctx, err)
 	}
-	return apigen.GetTurn200JSONResponse(turnStatusModel(st)), nil
+	return gen.GetTurn200JSONResponse(turnStatusModel(st)), nil
 }
 
-func (s *apiServer) GetActiveTurn(ctx context.Context, request apigen.GetActiveTurnRequestObject) (apigen.GetActiveTurnResponseObject, error) {
+func (s *apiServer) GetActiveTurn(ctx context.Context, request gen.GetActiveTurnRequestObject) (gen.GetActiveTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	st, err := s.deps.GenAISvc.ActiveTurn(ctx, org, request.ProjectName)
 	if err != nil {
 		return nil, mapGenAITurnError(ctx, err)
 	}
 	if st == nil {
-		return apigen.GetActiveTurn204Response{}, nil
+		return gen.GetActiveTurn204Response{}, nil
 	}
-	return apigen.GetActiveTurn200JSONResponse(turnStatusModel(st)), nil
+	return gen.GetActiveTurn200JSONResponse(turnStatusModel(st)), nil
 }
 
-func (s *apiServer) StreamTurn(ctx context.Context, request apigen.StreamTurnRequestObject) (apigen.StreamTurnResponseObject, error) {
+func (s *apiServer) StreamTurn(ctx context.Context, request gen.StreamTurnRequestObject) (gen.StreamTurnResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	// ?from wins over Last-Event-ID; the header names the last RECEIVED
 	// event, so resumption starts at the next index.
@@ -135,7 +135,7 @@ func (s *apiServer) StreamTurn(ctx context.Context, request apigen.StreamTurnReq
 	}}, nil
 }
 
-func (s *apiServer) GetConversation(ctx context.Context, request apigen.GetConversationRequestObject) (apigen.GetConversationResponseObject, error) {
+func (s *apiServer) GetConversation(ctx context.Context, request gen.GetConversationRequestObject) (gen.GetConversationResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	raw, err := s.deps.GenAISvc.Rehydrate(ctx, org, request.ProjectName, request.ConversationID)
 	if err != nil {
@@ -150,15 +150,15 @@ func (s *apiServer) GetConversation(ctx context.Context, request apigen.GetConve
 // contract's 409 TurnConflict body ({"code":"turn_in_progress","activeTurnId"}
 // / {"code":"requirements_missing"} — declared in the contract, generated
 // type); every other error stays on the envelope path (mapGenAITurnError).
-func turnConflictOf(err error) (apigen.CreateTurnResponseObject, bool) {
+func turnConflictOf(err error) (gen.CreateTurnResponseObject, bool) {
 	var inProgress *genai.TurnInProgressError
 	if errors.As(err, &inProgress) {
-		return apigen.CreateTurn409JSONResponse(apigen.TurnConflict{
-			Code: apigen.TurnInProgress, ActiveTurnID: inProgress.ActiveTurnID,
+		return gen.CreateTurn409JSONResponse(gen.TurnConflict{
+			Code: gen.TurnInProgress, ActiveTurnID: inProgress.ActiveTurnID,
 		}), true
 	}
 	if errors.Is(err, genai.ErrRequirementsMissing) {
-		return apigen.CreateTurn409JSONResponse(apigen.TurnConflict{Code: apigen.RequirementsMissing}), true
+		return gen.CreateTurn409JSONResponse(gen.TurnConflict{Code: gen.RequirementsMissing}), true
 	}
 	return nil, false
 }
@@ -190,8 +190,8 @@ func (r conversationJSONResponse) VisitGetConversationResponse(w http.ResponseWr
 
 // turnStatusModel converts the feature's read view into the contract schema
 // type (field-for-field; the JSON tags are identical).
-func turnStatusModel(st *genai.TurnStatus) apigen.TurnStatus {
-	return apigen.TurnStatus{
+func turnStatusModel(st *genai.TurnStatus) gen.TurnStatus {
+	return gen.TurnStatus{
 		TurnID:         st.TurnID,
 		ConversationID: st.ConversationID,
 		UseCase:        st.UseCase,

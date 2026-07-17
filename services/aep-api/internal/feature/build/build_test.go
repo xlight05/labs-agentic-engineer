@@ -33,7 +33,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -193,7 +193,7 @@ func TestBuild_TagsAndStartsWorkflow(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("build: got %d body=%s", code, body)
 	}
-	out := decodeBody[apigen.BuildResponse](t, body)
+	out := decodeBody[gen.BuildResponse](t, body)
 	if out.Tag != "v1" {
 		t.Errorf("tag = %q, want v1", out.Tag)
 	}
@@ -232,7 +232,7 @@ func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillStarts(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("build: got %d body=%s", code, body)
 	}
-	if out := decodeBody[apigen.BuildResponse](t, body); out.Tag != "v2" {
+	if out := decodeBody[gen.BuildResponse](t, body); out.Tag != "v2" {
 		t.Errorf("tag = %q, want the existing v2", out.Tag)
 	}
 	if len(runner.started) != 1 {
@@ -418,7 +418,7 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 		if code != 200 {
 			t.Fatalf("get(%s): got %d body=%s", tc.phase, code, rawBody)
 		}
-		body := decodeBody[apigen.BuildStatus](t, rawBody)
+		body := decodeBody[gen.BuildStatus](t, rawBody)
 		if body.Status != tc.want {
 			t.Errorf("phase %s → status %q, want %q", tc.phase, body.Status, tc.want)
 		}
@@ -455,7 +455,7 @@ func TestGetBuild_QueryFails_StillListsDurableTasks(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("get: got %d body=%s", code, rawBody)
 	}
-	body := decodeBody[apigen.BuildStatus](t, rawBody)
+	body := decodeBody[gen.BuildStatus](t, rawBody)
 	if body.Status != "completed" {
 		t.Errorf("status = %q, want completed (from the archived row)", body.Status)
 	}
@@ -488,7 +488,7 @@ func TestListBuilds_NewestFirstOneEntryPerTag(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("list: got %d body=%s", code, rawBody)
 	}
-	builds := decodeBody[apigen.BuildList](t, rawBody).Builds
+	builds := decodeBody[gen.BuildList](t, rawBody).Builds
 	if len(builds) != 2 {
 		t.Fatalf("builds = %+v, want 2 (v1's older run folded into its newest)", builds)
 	}
@@ -521,7 +521,7 @@ func TestListBuilds_ActiveClampedAndEmptyList(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("list: got %d body=%s", code, rawBody)
 	}
-	if got := decodeBody[apigen.BuildList](t, rawBody).Builds[0].Tasks.Active; got != 0 {
+	if got := decodeBody[gen.BuildList](t, rawBody).Builds[0].Tasks.Active; got != 0 {
 		t.Errorf("active = %d, want 0 (clamped)", got)
 	}
 
@@ -569,7 +569,7 @@ func TestGetBuild_QueryFails_FallsBackToRowStatus(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("get: got %d body=%s", code, rawBody)
 	}
-	body := decodeBody[apigen.BuildStatus](t, rawBody)
+	body := decodeBody[gen.BuildStatus](t, rawBody)
 	if body.Status != "failed" || body.WorkflowStatus != models.WorkflowStatusFailed {
 		t.Errorf("fallback body = %+v, want failed/failed", body)
 	}
@@ -587,7 +587,7 @@ func TestGetBuild_TitleFetchFailure_Degrades(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("get must not fail on a title-read hiccup: %d body=%s", code, rawBody)
 	}
-	body := decodeBody[apigen.BuildStatus](t, rawBody)
+	body := decodeBody[gen.BuildStatus](t, rawBody)
 	if body.Tasks[0].Title != "Task #3" {
 		t.Errorf("title = %q, want the numbered placeholder", body.Tasks[0].Title)
 	}
@@ -620,7 +620,7 @@ func TestGetPreflight_WiredThroughRealService(t *testing.T) {
 	if resp.Code != 200 {
 		t.Fatalf("preflight: got %d body=%s", resp.Code, resp.Body.String())
 	}
-	pf := decodeBody[apigen.BuildPreflight](t, resp.Body.String())
+	pf := decodeBody[gen.BuildPreflight](t, resp.Body.String())
 	if !pf.NeedsInput || len(pf.Items) != 1 {
 		t.Fatalf("preflight = %+v, want one platform-resource item", pf)
 	}

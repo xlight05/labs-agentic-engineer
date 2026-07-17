@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
@@ -54,9 +54,9 @@ func (ensureRepoSvc) DeleteRepo(context.Context, string, string) error {
 func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 	var captured *models.CreateComponentRequest
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*apigen.Component, error) {
+		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*gen.Component, error) {
 			captured = req
-			return &apigen.Component{Name: req.Name}, nil
+			return &gen.Component{Name: req.Name}, nil
 		},
 	}
 	// A design with one service component named "order-service".
@@ -118,9 +118,9 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 	var captured *models.CreateComponentRequest
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*apigen.Component, error) {
+		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*gen.Component, error) {
 			captured = req
-			return &apigen.Component{Name: req.Name}, nil
+			return &gen.Component{Name: req.Name}, nil
 		},
 	}
 	files := map[string]string{
@@ -153,7 +153,7 @@ func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 
 func TestEnsureComponent_DesignMissingComponent_Errors(t *testing.T) {
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(context.Context, string, string, *models.CreateComponentRequest) (*apigen.Component, error) {
+		CreateComponentFunc: func(context.Context, string, string, *models.CreateComponentRequest) (*gen.Component, error) {
 			t.Error("CreateComponent must not be called when the component is absent from the design")
 			return nil, nil
 		},

@@ -24,7 +24,7 @@ package component
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
@@ -35,12 +35,12 @@ import (
 // --- observability.Client ----------------------------------------------------
 
 type stubObservClient struct {
-	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error)
+	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
 }
 
 var _ observability.Client = (*stubObservClient)(nil)
 
-func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error) {
+func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
 	if s.GetBuildLogsFunc == nil {
 		panic("stubObservClient: GetBuildLogs not set")
 	}
@@ -106,31 +106,31 @@ func (s *stubComponentSvc) UpdateWorkflowEnvVars(ctx context.Context, orgName, p
 	}
 	return s.UpdateWorkflowEnvVarsFunc(ctx, orgName, projectName, componentName, envVars)
 }
-func (s *stubComponentSvc) ListComponents(context.Context, string, string, int, string) (*apigen.ComponentList, error) {
+func (s *stubComponentSvc) ListComponents(context.Context, string, string, int, string) (*gen.ComponentList, error) {
 	panic("stubComponentSvc: ListComponents not expected")
 }
-func (s *stubComponentSvc) GetComponent(context.Context, string, string, string) (*apigen.Component, error) {
+func (s *stubComponentSvc) GetComponent(context.Context, string, string, string) (*gen.Component, error) {
 	panic("stubComponentSvc: GetComponent not expected")
 }
 func (s *stubComponentSvc) EnsureComponent(context.Context, string, string, string) error {
 	return nil
 }
-func (s *stubComponentSvc) CreateComponent(context.Context, string, string, *models.CreateComponentRequest) (*apigen.Component, error) {
+func (s *stubComponentSvc) CreateComponent(context.Context, string, string, *models.CreateComponentRequest) (*gen.Component, error) {
 	panic("stubComponentSvc: CreateComponent not expected")
 }
-func (s *stubComponentSvc) ListDeployments(context.Context, string, string, string) (*apigen.DeploymentList, error) {
+func (s *stubComponentSvc) ListDeployments(context.Context, string, string, string) (*gen.DeploymentList, error) {
 	panic("stubComponentSvc: ListDeployments not expected")
 }
-func (s *stubComponentSvc) GetComponentOpenAPI(context.Context, string, string, string) (*apigen.ComponentOpenAPI, error) {
+func (s *stubComponentSvc) GetComponentOpenAPI(context.Context, string, string, string) (*gen.ComponentOpenAPI, error) {
 	panic("stubComponentSvc: GetComponentOpenAPI not expected")
 }
-func (s *stubComponentSvc) TriggerBuild(context.Context, string, string, string) (*apigen.WorkflowRun, error) {
+func (s *stubComponentSvc) TriggerBuild(context.Context, string, string, string) (*gen.WorkflowRun, error) {
 	panic("stubComponentSvc: TriggerBuild not expected")
 }
-func (s *stubComponentSvc) ListBuilds(context.Context, string, string, string, int, string) (*apigen.WorkflowRunList, error) {
+func (s *stubComponentSvc) ListBuilds(context.Context, string, string, string, int, string) (*gen.WorkflowRunList, error) {
 	panic("stubComponentSvc: ListBuilds not expected")
 }
-func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string, string) (*apigen.BuildLogs, error) {
+func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string, string) (*gen.BuildLogs, error) {
 	panic("stubComponentSvc: GetBuildLogs not expected")
 }
 

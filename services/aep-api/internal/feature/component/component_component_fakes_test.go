@@ -24,7 +24,7 @@ package component_test
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/models"
@@ -34,12 +34,12 @@ import (
 // --- observability.Client -----------------------------------------------------
 
 type extObservClient struct {
-	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error)
+	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
 }
 
 var _ observability.Client = (*extObservClient)(nil)
 
-func (s *extObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*apigen.BuildLogs, error) {
+func (s *extObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
 	if s.GetBuildLogsFunc == nil {
 		panic("extObservClient: GetBuildLogs not set")
 	}

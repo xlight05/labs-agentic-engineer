@@ -30,7 +30,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
@@ -72,7 +72,7 @@ func TestPlatformResourceTypes_MapsDomainToDTOs(t *testing.T) {
 	if resp.Code != 200 {
 		t.Fatalf("list: got %d body=%s", resp.Code, resp.Body.String())
 	}
-	var got []apigen.PlatformResourceTypeDTO
+	var got []gen.PlatformResourceTypeDTO
 	if err := json.Unmarshal(resp.Body.Bytes(), &got); err != nil {
 		t.Fatalf("body: %v\n%s", err, resp.Body.String())
 	}

@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 )
@@ -62,7 +62,7 @@ var authFailureMarkers = []string{
 // {Failed,Error} on the checkout-source step AND a substring of Tasks[].Message.
 // An empty Message returns false conservatively (a non-auth failure is safer
 // than a runaway retry budget). Ported from the legacy build watcher.
-func isGitCloneAuthFailure(run *apigen.WorkflowRun) bool {
+func isGitCloneAuthFailure(run *gen.WorkflowRun) bool {
 	if run == nil {
 		return false
 	}
@@ -87,7 +87,7 @@ func isGitCloneAuthFailure(run *apigen.WorkflowRun) bool {
 // succeeded is true only for ReasonWorkflowSucceeded; authFailure is true when a
 // non-succeeded run's checkout-source step matches a git-clone auth marker. Both
 // false means a plain (non-auth) failure — the terminal-failed path.
-func classifyBuildRun(run *apigen.WorkflowRun) (succeeded, authFailure bool) {
+func classifyBuildRun(run *gen.WorkflowRun) (succeeded, authFailure bool) {
 	if run == nil || !run.Completed {
 		return false, false
 	}

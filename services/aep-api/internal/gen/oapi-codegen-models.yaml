@@ -1,4 +1,4 @@
-# Schema types generated INTO package gen (internal/api/gen), alongside the
+# Schema types generated INTO package gen (internal/gen), alongside the
 # strict server that references them. Input: the single committed contract
 # packages/contracts/api/v1/openapi.yaml (schemas + paths in one document) —
 # the source of truth; run via `make gen-api`.
@@ -8,10 +8,10 @@
 # codegen can't express). Each carries `x-go-type: models.X` in the contract, so
 # this pass emits a transparent alias (`type X = models.X`) instead of a wrong
 # generated struct — no exclude-schemas list to drift.
-package: apigen
+package: gen
 generate:
   models: true
-output: internal/api/apigen/models_gen.go
+output: internal/gen/models_gen.go
 output-options:
   # Keep schemas that no path references (e.g. types used only via x-go-type or
   # constructed directly in Go) — pruning would drop their generated form.

@@ -22,8 +22,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -36,7 +36,7 @@ import (
 // line/done frames, keep-alives, settle semantics) is TaskStreamService.run,
 // reused verbatim.
 
-func (s *apiServer) StreamTaskLog(ctx context.Context, request apigen.StreamTaskLogRequestObject) (apigen.StreamTaskLogResponseObject, error) {
+func (s *apiServer) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
 	if s.deps.TaskStream == nil {
 		return nil, errServiceUnavailable("task stream not configured")
 	}

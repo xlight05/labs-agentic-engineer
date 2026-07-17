@@ -19,8 +19,8 @@ package api
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
+	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
 // Dependencies feature on the strict interface: the platform-resource-type
@@ -31,7 +31,7 @@ import (
 // fence). A nil catalog answers 503, mirroring the retired
 // RegisterResourceTypes nil guard.
 
-func (s *apiServer) ListPlatformResourceTypes(ctx context.Context, _ apigen.ListPlatformResourceTypesRequestObject) (apigen.ListPlatformResourceTypesResponseObject, error) {
+func (s *apiServer) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
 	if s.deps.ResourceTypeCatalog == nil {
 		return nil, errServiceUnavailable("resource-type catalog is not configured")
 	}
@@ -41,16 +41,16 @@ func (s *apiServer) ListPlatformResourceTypes(ctx context.Context, _ apigen.List
 		// failure is an upstream (data-plane) fault, not the caller's.
 		return nil, errBadGateway("failed to list platform resource types")
 	}
-	return apigen.ListPlatformResourceTypes200JSONResponse(toPlatformResourceTypeDTOs(types)), nil
+	return gen.ListPlatformResourceTypes200JSONResponse(toPlatformResourceTypeDTOs(types)), nil
 }
 
 // toPlatformResourceTypeDTOs projects the domain resource types onto the wire
 // DTO: the architect-facing fields (name, description, parameters, outputs)
 // minus the AEP-internal markers.
-func toPlatformResourceTypeDTOs(in []resources.PlatformResourceType) []apigen.PlatformResourceTypeDTO {
-	out := make([]apigen.PlatformResourceTypeDTO, 0, len(in))
+func toPlatformResourceTypeDTOs(in []resources.PlatformResourceType) []gen.PlatformResourceTypeDTO {
+	out := make([]gen.PlatformResourceTypeDTO, 0, len(in))
 	for _, t := range in {
-		out = append(out, apigen.PlatformResourceTypeDTO{
+		out = append(out, gen.PlatformResourceTypeDTO{
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  t.Parameters,

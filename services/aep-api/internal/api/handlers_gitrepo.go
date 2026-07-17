@@ -21,8 +21,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/gitrepo"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
@@ -33,7 +33,7 @@ import (
 // sre-agent). NOTE the wire quirk the contract documents: IssueInfo's keys
 // are CAPITALIZED (historical shape the deployed MCP server parses).
 
-func (s *apiServer) CreateIssue(ctx context.Context, request apigen.CreateIssueRequestObject) (apigen.CreateIssueResponseObject, error) {
+func (s *apiServer) CreateIssue(ctx context.Context, request gen.CreateIssueRequestObject) (gen.CreateIssueResponseObject, error) {
 	if s.deps.IssueSvc == nil {
 		return nil, errServiceUnavailable("issue service not configured")
 	}
@@ -50,7 +50,7 @@ func (s *apiServer) CreateIssue(ctx context.Context, request apigen.CreateIssueR
 		}
 		return nil, errInternal("failed to create issue")
 	}
-	return apigen.CreateIssue200JSONResponse(apigen.IssueResult{
+	return gen.CreateIssue200JSONResponse(gen.IssueResult{
 		Number:  int64(issue.Number),
 		URL:     issue.URL,
 		NodeID:  issue.NodeID,
@@ -58,7 +58,7 @@ func (s *apiServer) CreateIssue(ctx context.Context, request apigen.CreateIssueR
 	}), nil
 }
 
-func (s *apiServer) ListIssues(ctx context.Context, request apigen.ListIssuesRequestObject) (apigen.ListIssuesResponseObject, error) {
+func (s *apiServer) ListIssues(ctx context.Context, request gen.ListIssuesRequestObject) (gen.ListIssuesResponseObject, error) {
 	if s.deps.IssueSvc == nil {
 		return nil, errServiceUnavailable("issue service not configured")
 	}
@@ -83,9 +83,9 @@ func (s *apiServer) ListIssues(ctx context.Context, request apigen.ListIssuesReq
 		query = request.Params.Q
 	}
 	ranked := gitrepo.RankIssuesByQuery(issues, query)
-	out := make([]apigen.IssueInfo, 0, len(ranked))
+	out := make([]gen.IssueInfo, 0, len(ranked))
 	for _, iss := range ranked {
-		out = append(out, apigen.IssueInfo{
+		out = append(out, gen.IssueInfo{
 			Number: int64(iss.Number),
 			Title:  iss.Title,
 			Body:   iss.Body,
@@ -94,5 +94,5 @@ func (s *apiServer) ListIssues(ctx context.Context, request apigen.ListIssuesReq
 			Labels: iss.Labels,
 		})
 	}
-	return apigen.ListIssues200JSONResponse(out), nil
+	return gen.ListIssues200JSONResponse(out), nil
 }

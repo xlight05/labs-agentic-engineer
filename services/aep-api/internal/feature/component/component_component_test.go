@@ -61,7 +61,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
@@ -187,8 +187,8 @@ func storeReturning(files map[string]string) *artifacts.ArtifactStore {
 
 // goldenComponent mirrors testdata/harvest/golden/get_component.json's populated
 // field set (autoBuild is omitted there, so it stays false → dropped by omitempty).
-func goldenComponent() apigen.Component {
-	return apigen.Component{
+func goldenComponent() gen.Component {
+	return gen.Component{
 		UID:         "bd8b1849-98d5-4dc3-812a-568183cddfbd",
 		Name:        "hello-api",
 		ProjectName: "hello-world-api",
@@ -201,20 +201,20 @@ func goldenComponent() apigen.Component {
 	}
 }
 
-func goldenWorkflowRun() apigen.WorkflowRun {
-	return apigen.WorkflowRun{
+func goldenWorkflowRun() gen.WorkflowRun {
+	return gen.WorkflowRun{
 		Name:          "hello-world-api-hello-api-1782887236864",
 		Status:        "WorkflowSucceeded",
 		StartedAt:     "2026-07-01T06:27:17Z",
 		ComponentName: "hello-api",
 		ProjectName:   "hello-world-api",
 		Completed:     true,
-		Tasks:         []apigen.WorkflowRunTask{{Name: "checkout-source", Phase: "Succeeded", StartedAt: "2026-07-01T06:27:20Z", CompletedAt: "2026-07-01T06:27:54Z"}},
+		Tasks:         []gen.WorkflowRunTask{{Name: "checkout-source", Phase: "Succeeded", StartedAt: "2026-07-01T06:27:20Z", CompletedAt: "2026-07-01T06:27:54Z"}},
 	}
 }
 
-func goldenDeployment() apigen.Deployment {
-	return apigen.Deployment{
+func goldenDeployment() gen.Deployment {
+	return gen.Deployment{
 		Name:          "hello-world-api-hello-api-development",
 		Environment:   "development",
 		ReleaseName:   "hello-world-api-hello-api-77767bbd6",
@@ -230,9 +230,9 @@ func goldenDeployment() apigen.Deployment {
 func TestComponentComponent_ListMatchesGoldenElementShape(t *testing.T) {
 	t.Parallel()
 	var sawOrg, sawProject string
-	oc := &ocmocks.ComponentClientMock{ListComponentsFunc: func(_ context.Context, org, proj string, _ int, _ string) (*apigen.ComponentList, error) {
+	oc := &ocmocks.ComponentClientMock{ListComponentsFunc: func(_ context.Context, org, proj string, _ int, _ string) (*gen.ComponentList, error) {
 		sawOrg, sawProject = org, proj
-		return &apigen.ComponentList{Items: []apigen.Component{goldenComponent()}}, nil
+		return &gen.ComponentList{Items: []gen.Component{goldenComponent()}}, nil
 	}}
 	h := newHarness(t, compFakes{oc: oc})
 
@@ -254,7 +254,7 @@ func TestComponentComponent_ListMatchesGoldenElementShape(t *testing.T) {
 
 func TestComponentComponent_GetMatchesGoldenFieldSet(t *testing.T) {
 	t.Parallel()
-	oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(_ context.Context, _, _, comp string) (*apigen.Component, error) {
+	oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(_ context.Context, _, _, comp string) (*gen.Component, error) {
 		c := goldenComponent()
 		return &c, nil
 	}}
@@ -274,8 +274,8 @@ func TestComponentComponent_GetMatchesGoldenFieldSet(t *testing.T) {
 
 func TestComponentComponent_ListBuildsMatchesGoldenElementShape(t *testing.T) {
 	t.Parallel()
-	oc := &ocmocks.ComponentClientMock{ListWorkflowRunsFunc: func(context.Context, string, string, string, int, string) (*apigen.WorkflowRunList, error) {
-		return &apigen.WorkflowRunList{Items: []apigen.WorkflowRun{goldenWorkflowRun()}}, nil
+	oc := &ocmocks.ComponentClientMock{ListWorkflowRunsFunc: func(context.Context, string, string, string, int, string) (*gen.WorkflowRunList, error) {
+		return &gen.WorkflowRunList{Items: []gen.WorkflowRun{goldenWorkflowRun()}}, nil
 	}}
 	h := newHarness(t, compFakes{oc: oc})
 	resp := h.AsOrg("acme").Get(compProjectPrefix + "/hello-api/builds")
@@ -291,8 +291,8 @@ func TestComponentComponent_ListBuildsMatchesGoldenElementShape(t *testing.T) {
 
 func TestComponentComponent_ListDeploymentsMatchesGoldenElementShape(t *testing.T) {
 	t.Parallel()
-	oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*apigen.DeploymentList, error) {
-		return &apigen.DeploymentList{Items: []apigen.Deployment{goldenDeployment()}}, nil
+	oc := &ocmocks.ComponentClientMock{ListDeploymentsFunc: func(context.Context, string, string, string) (*gen.DeploymentList, error) {
+		return &gen.DeploymentList{Items: []gen.Deployment{goldenDeployment()}}, nil
 	}}
 	h := newHarness(t, compFakes{oc: oc})
 	resp := h.AsOrg("acme").Get(compProjectPrefix + "/hello-api/deployments")
@@ -355,8 +355,8 @@ func TestComponentComponent_OpenAPINoComponentIs404(t *testing.T) {
 func TestComponentComponent_TriggerBuild_HappyAndError(t *testing.T) {
 	t.Parallel()
 	// Happy → 201 with the WorkflowRun body; exactly one OC TriggerBuild call.
-	oc := &ocmocks.ComponentClientMock{TriggerBuildFunc: func(_ context.Context, org, proj, comp, secretRef, runName string) (*apigen.WorkflowRun, error) {
-		return &apigen.WorkflowRun{Name: runName, Status: "Pending"}, nil
+	oc := &ocmocks.ComponentClientMock{TriggerBuildFunc: func(_ context.Context, org, proj, comp, secretRef, runName string) (*gen.WorkflowRun, error) {
+		return &gen.WorkflowRun{Name: runName, Status: "Pending"}, nil
 	}}
 	h := newHarness(t, compFakes{oc: oc})
 	resp := h.AsOrg("acme").Post(compProjectPrefix+"/hello-api/builds", "")
@@ -368,7 +368,7 @@ func TestComponentComponent_TriggerBuild_HappyAndError(t *testing.T) {
 	}
 
 	// OC error → 500 (opaque, no internal leak).
-	ocErr := &ocmocks.ComponentClientMock{TriggerBuildFunc: func(context.Context, string, string, string, string, string) (*apigen.WorkflowRun, error) {
+	ocErr := &ocmocks.ComponentClientMock{TriggerBuildFunc: func(context.Context, string, string, string, string, string) (*gen.WorkflowRun, error) {
 		return nil, errors.New("oc: workflow rejected")
 	}}
 	resp = newHarness(t, compFakes{oc: ocErr}).AsOrg("acme").Post(compProjectPrefix+"/hello-api/builds", "")
@@ -387,7 +387,7 @@ func TestComponentComponent_BuildLogs_HarvestedError500(t *testing.T) {
 	// Reproduces the harvested golden (get_component_build_logs.json): the
 	// observability client is configured but its fetch fails → the service wraps
 	// the error → mapComponentError's default 500 with detail "failed to get build logs".
-	observ := &extObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string) (*apigen.BuildLogs, error) {
+	observ := &extObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string) (*gen.BuildLogs, error) {
 		return nil, errors.New("observability service 500")
 	}}
 	h := newHarness(t, compFakes{observ: observ})
@@ -529,7 +529,7 @@ func TestComponentComponent_MalformedSlugIs400(t *testing.T) {
 	t.Parallel()
 	// A componentName that isn't a DNS-label slug is rejected at the handler's
 	// requireComponentSlugs guard — before the service (OC client) is touched.
-	oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(context.Context, string, string, string) (*apigen.Component, error) {
+	oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(context.Context, string, string, string) (*gen.Component, error) {
 		t.Error("service must not be reached for a malformed slug")
 		return nil, nil
 	}}
@@ -566,7 +566,7 @@ func TestComponentComponent_ErrorMapping(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(context.Context, string, string, string) (*apigen.Component, error) {
+			oc := &ocmocks.ComponentClientMock{GetComponentFunc: func(context.Context, string, string, string) (*gen.Component, error) {
 				return nil, tc.err
 			}}
 			resp := newHarness(t, compFakes{oc: oc}).AsOrg("acme").Get(compProjectPrefix + "/hello-api")

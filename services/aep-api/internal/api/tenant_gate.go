@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -55,7 +55,7 @@ var tenantGateCarveOuts = map[string]struct{}{
 // Gate mode rides the request context (stamped by mountSurfaces): ENFORCE
 // denies claimless requests with 401; LOG passes them through with a canary
 // warning and no bound org.
-func tenantGate(f apigen.StrictHandlerFunc, operationID string) apigen.StrictHandlerFunc {
+func tenantGate(f gen.StrictHandlerFunc, operationID string) gen.StrictHandlerFunc {
 	if _, ok := tenantGateCarveOuts[operationID]; ok {
 		return f
 	}

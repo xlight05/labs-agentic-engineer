@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -83,8 +83,8 @@ func newProjectHarness(t *testing.T) (*componenttest.Harness, *ocmocks.ProjectCl
 func TestProjectComponent_ListAuthedReachesRealService(t *testing.T) {
 	t.Parallel()
 	h, oc := newProjectHarness(t)
-	oc.ListProjectsFunc = func(_ context.Context, orgName string, _ int, _ string) (*apigen.ProjectList, error) {
-		return &apigen.ProjectList{Items: []apigen.Project{{Name: "hello-world-api", NamespaceName: orgName}}}, nil
+	oc.ListProjectsFunc = func(_ context.Context, orgName string, _ int, _ string) (*gen.ProjectList, error) {
+		return &gen.ProjectList{Items: []gen.Project{{Name: "hello-world-api", NamespaceName: orgName}}}, nil
 	}
 
 	resp := h.AsOrg("acme").Get("/api/v1/projects")
@@ -122,8 +122,8 @@ func TestProjectComponent_NoClaimsDeniedByEnforceGate(t *testing.T) {
 func TestProjectComponent_CreateValidationAndHappyPath(t *testing.T) {
 	t.Parallel()
 	h, oc := newProjectHarness(t)
-	oc.CreateProjectFunc = func(_ context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-		return &apigen.Project{Name: req.Name, NamespaceName: orgName}, nil
+	oc.CreateProjectFunc = func(_ context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+		return &gen.Project{Name: req.Name, NamespaceName: orgName}, nil
 	}
 
 	// name ABSENT → the contract validator's 400 (the error-model break:
@@ -192,8 +192,8 @@ func TestProjectComponent_CreateValidationAndHappyPath(t *testing.T) {
 func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(_ context.Context, orgName string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-			return &apigen.Project{Name: req.Name, NamespaceName: orgName}, nil
+		CreateProjectFunc: func(_ context.Context, orgName string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+			return &gen.Project{Name: req.Name, NamespaceName: orgName}, nil
 		},
 		DeleteProjectFunc: func(context.Context, string, string) error { return nil },
 	}
@@ -216,7 +216,7 @@ func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 func TestProjectComponent_GetMapsNotFoundToGoldenProblem(t *testing.T) {
 	t.Parallel()
 	h, oc := newProjectHarness(t)
-	oc.GetProjectFunc = func(context.Context, string, string) (*apigen.Project, error) {
+	oc.GetProjectFunc = func(context.Context, string, string) (*gen.Project, error) {
 		return nil, openchoreo.ErrNotFound
 	}
 
@@ -250,7 +250,7 @@ func TestProjectComponent_ErrorMapping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			h, oc := newProjectHarness(t)
-			oc.GetProjectFunc = func(context.Context, string, string) (*apigen.Project, error) {
+			oc.GetProjectFunc = func(context.Context, string, string) (*gen.Project, error) {
 				return nil, tc.err
 			}
 			resp := h.AsOrg("acme").Get("/api/v1/projects/web")
@@ -271,8 +271,8 @@ func TestProjectComponent_ErrorMapping(t *testing.T) {
 func TestProjectComponent_GetHappyPath(t *testing.T) {
 	t.Parallel()
 	h, oc := newProjectHarness(t)
-	oc.GetProjectFunc = func(_ context.Context, org, name string) (*apigen.Project, error) {
-		return &apigen.Project{Name: name, NamespaceName: org}, nil
+	oc.GetProjectFunc = func(_ context.Context, org, name string) (*gen.Project, error) {
+		return &gen.Project{Name: name, NamespaceName: org}, nil
 	}
 	resp := h.AsOrg("acme").Get("/api/v1/projects/web")
 	if resp.Code != 200 || !strings.Contains(resp.Body.String(), `"name":"web"`) {
@@ -304,7 +304,7 @@ func TestProjectComponent_StatusWiredThroughRealService(t *testing.T) {
 	if resp.Code != 200 {
 		t.Fatalf("status: want 200, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	var st apigen.ProjectStatus
+	var st gen.ProjectStatus
 	if err := json.Unmarshal(resp.Body.Bytes(), &st); err != nil {
 		t.Fatalf("status body: %v\n%s", err, resp.Body.String())
 	}

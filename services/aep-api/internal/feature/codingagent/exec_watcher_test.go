@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
@@ -39,25 +39,25 @@ func runningBuild(id, runName, reason string) *models.Execution {
 }
 
 // ocRuns serves a fixed WorkflowRun for any GetWorkflowRun by run name.
-func ocRuns(byRun map[string]*apigen.WorkflowRun) *ocmocks.ComponentClientMock {
+func ocRuns(byRun map[string]*gen.WorkflowRun) *ocmocks.ComponentClientMock {
 	return &ocmocks.ComponentClientMock{
-		GetWorkflowRunFunc: func(_ context.Context, _, runName string) (*apigen.WorkflowRun, error) {
+		GetWorkflowRunFunc: func(_ context.Context, _, runName string) (*gen.WorkflowRun, error) {
 			return byRun[runName], nil
 		},
 	}
 }
 
-func authFailedRun(name string) *apigen.WorkflowRun {
-	return &apigen.WorkflowRun{
+func authFailedRun(name string) *gen.WorkflowRun {
+	return &gen.WorkflowRun{
 		Name: name, Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-		Tasks: []apigen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "fatal: Authentication failed for 'https://github.com/acme/widgets'"}},
+		Tasks: []gen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "fatal: Authentication failed for 'https://github.com/acme/widgets'"}},
 	}
 }
 
-func plainFailedRun(name string) *apigen.WorkflowRun {
-	return &apigen.WorkflowRun{
+func plainFailedRun(name string) *gen.WorkflowRun {
+	return &gen.WorkflowRun{
 		Name: name, Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-		Tasks: []apigen.WorkflowRunTask{{Name: "build", Phase: "Failed", Message: "compilation error"}},
+		Tasks: []gen.WorkflowRunTask{{Name: "build", Phase: "Failed", Message: "compilation error"}},
 	}
 }
 
@@ -65,7 +65,7 @@ func TestExecWatcher_BuildGitAuthFailure_WithinBudget_ReMintsAndRetries(t *testi
 	row := runningBuild("b1", "run-1", "") // first failure — no retry marker yet
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{newRun: "run-2"}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -90,7 +90,7 @@ func TestExecWatcher_BuildGitAuthFailure_BudgetExhausted_FinishesFailed(t *testi
 	row := runningBuild("b1", "run-3", "build_auth_retry:3") // already at budget
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{newRun: "run-4"}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"run-3": authFailedRun("run-3")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-3": authFailedRun("run-3")}), repo, nil, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -109,7 +109,7 @@ func TestExecWatcher_BuildGitAuthFailure_ReMintErrorStillMarchesToBudget(t *test
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{err: errors.New("org disconnected")}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -130,7 +130,7 @@ func TestExecWatcher_BuildPlainFailure_FinishesFailed(t *testing.T) {
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"run-1": plainFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": plainFailedRun("run-1")}), repo, nil, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -148,8 +148,8 @@ func TestExecWatcher_BuildSuccess_FinishesAndReevaluates(t *testing.T) {
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
 	reeval := &fakeReeval{}
-	ok := &apigen.WorkflowRun{Name: "run-1", Completed: true, Status: openchoreo.ReasonWorkflowSucceeded}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"run-1": ok}), repo, reeval, nil, 0)
+	ok := &gen.WorkflowRun{Name: "run-1", Completed: true, Status: openchoreo.ReasonWorkflowSucceeded}
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": ok}), repo, reeval, nil, 0)
 
 	if err := w.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
@@ -175,9 +175,9 @@ func TestExecWatcher_SkipsProxyJobRuns(t *testing.T) {
 
 	var polled []string
 	oc := &ocmocks.ComponentClientMock{
-		GetWorkflowRunFunc: func(_ context.Context, _, runName string) (*apigen.WorkflowRun, error) {
+		GetWorkflowRunFunc: func(_ context.Context, _, runName string) (*gen.WorkflowRun, error) {
 			polled = append(polled, runName)
-			return &apigen.WorkflowRun{Name: runName, Completed: false}, nil // still running
+			return &gen.WorkflowRun{Name: runName, Completed: false}, nil // still running
 		},
 	}
 	w := NewExecWatcher(oc, repo, nil, nil, 0)
@@ -196,8 +196,8 @@ func TestExecWatcher_CodingFailure_FinishesFailed_SuccessRidesPRWebhook(t *testi
 	coding := &models.Execution{ID: "c1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "wf-1"}
 	repo := newFakeExecRepo(coding)
-	failed := &apigen.WorkflowRun{Name: "wf-1", Completed: true, Status: openchoreo.ReasonWorkflowFailed}
-	w := NewExecWatcher(ocRuns(map[string]*apigen.WorkflowRun{"wf-1": failed}), repo, nil, nil, 0)
+	failed := &gen.WorkflowRun{Name: "wf-1", Completed: true, Status: openchoreo.ReasonWorkflowFailed}
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"wf-1": failed}), repo, nil, nil, 0)
 
 	if err := w.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)

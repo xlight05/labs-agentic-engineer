@@ -8,7 +8,7 @@ generate:
   std-http-server: true
   strict-server: true
   models: true
-output: internal/api/igen/igen_gen.go
+output: internal/igen/igen_gen.go
 output-options:
   skip-prune: true
   prefer-skip-optional-pointer: true

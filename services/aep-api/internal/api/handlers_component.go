@@ -21,8 +21,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/platform/validate"
@@ -36,7 +36,7 @@ import (
 // validated as DNS-label slugs (400 on malformed) via the requireSlug helpers
 // below — before any service (OC client / repo) is touched.
 
-func (s *apiServer) ListComponents(ctx context.Context, request apigen.ListComponentsRequestObject) (apigen.ListComponentsResponseObject, error) {
+func (s *apiServer) ListComponents(ctx context.Context, request gen.ListComponentsRequestObject) (gen.ListComponentsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireSlug("projectName", request.ProjectName); err != nil {
 		return nil, err
@@ -45,10 +45,10 @@ func (s *apiServer) ListComponents(ctx context.Context, request apigen.ListCompo
 	if err != nil {
 		return nil, mapComponentError(err, "failed to list components")
 	}
-	return apigen.ListComponents200JSONResponse(*list), nil
+	return gen.ListComponents200JSONResponse(*list), nil
 }
 
-func (s *apiServer) GetComponent(ctx context.Context, request apigen.GetComponentRequestObject) (apigen.GetComponentResponseObject, error) {
+func (s *apiServer) GetComponent(ctx context.Context, request gen.GetComponentRequestObject) (gen.GetComponentResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -61,12 +61,12 @@ func (s *apiServer) GetComponent(ctx context.Context, request apigen.GetComponen
 		// openapi handler below does.)
 		return nil, mapComponentError(err, "failed to get component")
 	}
-	return apigen.GetComponent200JSONResponse(*comp), nil
+	return gen.GetComponent200JSONResponse(*comp), nil
 }
 
 // --- Build operations --------------------------------------------------------
 
-func (s *apiServer) TriggerBuild(ctx context.Context, request apigen.TriggerBuildRequestObject) (apigen.TriggerBuildResponseObject, error) {
+func (s *apiServer) TriggerBuild(ctx context.Context, request gen.TriggerBuildRequestObject) (gen.TriggerBuildResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -75,10 +75,10 @@ func (s *apiServer) TriggerBuild(ctx context.Context, request apigen.TriggerBuil
 	if err != nil {
 		return nil, mapComponentError(err, "failed to trigger build")
 	}
-	return apigen.TriggerBuild201JSONResponse(*run), nil
+	return gen.TriggerBuild201JSONResponse(*run), nil
 }
 
-func (s *apiServer) ListBuilds(ctx context.Context, request apigen.ListBuildsRequestObject) (apigen.ListBuildsResponseObject, error) {
+func (s *apiServer) ListBuilds(ctx context.Context, request gen.ListBuildsRequestObject) (gen.ListBuildsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -87,10 +87,10 @@ func (s *apiServer) ListBuilds(ctx context.Context, request apigen.ListBuildsReq
 	if err != nil {
 		return nil, mapComponentError(err, "failed to list builds")
 	}
-	return apigen.ListBuilds200JSONResponse(*list), nil
+	return gen.ListBuilds200JSONResponse(*list), nil
 }
 
-func (s *apiServer) GetBuildLogs(ctx context.Context, request apigen.GetBuildLogsRequestObject) (apigen.GetBuildLogsResponseObject, error) {
+func (s *apiServer) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRequestObject) (gen.GetBuildLogsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -105,14 +105,14 @@ func (s *apiServer) GetBuildLogs(ctx context.Context, request apigen.GetBuildLog
 		}
 		return nil, mapComponentError(err, "failed to get build logs")
 	}
-	return apigen.GetBuildLogs200JSONResponse(*logs), nil
+	return gen.GetBuildLogs200JSONResponse(*logs), nil
 }
 
 // --- Deploy operations (read-only) --------------------------------------------
 // OC's Component controller drives the deploy chain via AutoDeploy. The list
 // reflects materialised ReleaseBindings for this component.
 
-func (s *apiServer) ListDeployments(ctx context.Context, request apigen.ListDeploymentsRequestObject) (apigen.ListDeploymentsResponseObject, error) {
+func (s *apiServer) ListDeployments(ctx context.Context, request gen.ListDeploymentsRequestObject) (gen.ListDeploymentsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (s *apiServer) ListDeployments(ctx context.Context, request apigen.ListDepl
 	if err != nil {
 		return nil, mapComponentError(err, "failed to list deployments")
 	}
-	return apigen.ListDeployments200JSONResponse(*list), nil
+	return gen.ListDeployments200JSONResponse(*list), nil
 }
 
 // --- OpenAPI spec (drives the Test tab) ----------------------------------------
@@ -129,7 +129,7 @@ func (s *apiServer) ListDeployments(ctx context.Context, request apigen.ListDepl
 // have a guaranteed OpenAPI 3.0 doc; non-service components return 409 with
 // the componentType so the UI can render a typed empty state.
 
-func (s *apiServer) GetComponentOpenapi(ctx context.Context, request apigen.GetComponentOpenapiRequestObject) (apigen.GetComponentOpenapiResponseObject, error) {
+func (s *apiServer) GetComponentOpenapi(ctx context.Context, request gen.GetComponentOpenapiRequestObject) (gen.GetComponentOpenapiResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -147,11 +147,11 @@ func (s *apiServer) GetComponentOpenapi(ctx context.Context, request apigen.GetC
 			if spec == nil {
 				return nil, errConflict("component does not expose an API")
 			}
-			return apigen.GetComponentOpenapi409JSONResponse(*spec), nil
+			return gen.GetComponentOpenapi409JSONResponse(*spec), nil
 		}
 		return nil, mapComponentError(err, "failed to get OpenAPI spec")
 	}
-	return apigen.GetComponentOpenapi200JSONResponse(*spec), nil
+	return gen.GetComponentOpenapi200JSONResponse(*spec), nil
 }
 
 // --- Config -------------------------------------------------------------------
@@ -166,7 +166,7 @@ func (getComponentConfigNull200Response) VisitGetComponentConfigResponse(w http.
 	return writeJSONBody(w, http.StatusOK, nil) // literal null body
 }
 
-func (s *apiServer) GetComponentConfig(ctx context.Context, request apigen.GetComponentConfigRequestObject) (apigen.GetComponentConfigResponseObject, error) {
+func (s *apiServer) GetComponentConfig(ctx context.Context, request gen.GetComponentConfigRequestObject) (gen.GetComponentConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -178,10 +178,10 @@ func (s *apiServer) GetComponentConfig(ctx context.Context, request apigen.GetCo
 	if config == nil {
 		return getComponentConfigNull200Response{}, nil
 	}
-	return apigen.GetComponentConfig200JSONResponse(*config), nil
+	return gen.GetComponentConfig200JSONResponse(*config), nil
 }
 
-func (s *apiServer) UpdateComponentConfig(ctx context.Context, request apigen.UpdateComponentConfigRequestObject) (apigen.UpdateComponentConfigResponseObject, error) {
+func (s *apiServer) UpdateComponentConfig(ctx context.Context, request gen.UpdateComponentConfigRequestObject) (gen.UpdateComponentConfigResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if err := requireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func (s *apiServer) UpdateComponentConfig(ctx context.Context, request apigen.Up
 		// (validation: empty/duplicate keys, or repo upsert failure).
 		return nil, errBadRequest(err.Error())
 	}
-	return apigen.UpdateComponentConfig200JSONResponse(*config), nil
+	return gen.UpdateComponentConfig200JSONResponse(*config), nil
 }
 
 // --- error mapping + slug guards ------------------------------------------------

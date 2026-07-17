@@ -19,7 +19,7 @@ package rcaagent
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -27,7 +27,7 @@ import (
 // Repository is the storage port RcaAgentService depends on — narrow enough
 // to fake in unit tests without a database.
 type Repository interface {
-	Create(ctx context.Context, orgID string, in *apigen.CreateRcaAgentReportRequest) (*models.RcaAgentReport, error)
+	Create(ctx context.Context, orgID string, in *gen.CreateRcaAgentReportRequest) (*models.RcaAgentReport, error)
 	Get(ctx context.Context, orgID, id string) (*models.RcaAgentReport, error)
 	List(ctx context.Context, orgID string, cursor string, limit int) ([]models.RcaAgentReport, string, error)
 }

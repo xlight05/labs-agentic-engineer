@@ -25,7 +25,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/contracttest"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
@@ -38,7 +38,7 @@ import (
 // dead entry that looks like an un-gated operation.
 func TestTenantGateCarveOuts_NameContractOperations(t *testing.T) {
 	t.Parallel()
-	iface := reflect.TypeOf((*apigen.StrictServerInterface)(nil)).Elem()
+	iface := reflect.TypeOf((*gen.StrictServerInterface)(nil)).Elem()
 	for op := range tenantGateCarveOuts {
 		if _, ok := iface.MethodByName(op); !ok {
 			t.Errorf("carve-out %q is not an operation of the generated strict interface", op)

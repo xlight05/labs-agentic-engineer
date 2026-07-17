@@ -47,7 +47,7 @@ type fakeIssues struct {
 	// LIST: when true, an issue just returned by CreateIssue is hidden from
 	// ListIssues (as if the list index has not caught up yet). CreateIssue still
 	// returns the real number — this is exactly the read-after-write race #164 hits.
-	raceNewIssues bool
+	raceNewIssues  bool
 	hiddenFromList map[int]bool
 }
 

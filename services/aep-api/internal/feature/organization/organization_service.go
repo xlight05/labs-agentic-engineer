@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
@@ -54,7 +54,7 @@ const ensureCacheTTL = 5 * time.Minute
 // `seed-admin-org.sh` step in `setup.sh` does the equivalent at install time.
 // Both paths land identical state in OC; the BFF reads it.
 type OrganizationService interface {
-	List(ctx context.Context) (*apigen.OrganizationList, error)
+	List(ctx context.Context) (*gen.OrganizationList, error)
 	// EnsureForOuHandle verifies that the OC namespace named after the
 	// caller's `ouHandle` exists, and caches the local Organization row's
 	// UUID for FK use. It does NOT create the namespace — if OC reports
@@ -139,7 +139,7 @@ func (s *organizationService) ouIsTrustworthy(ctx context.Context, ouID string) 
 // Organization rows. Namespaces without a local row get one inserted on the
 // fly (idempotent on UNIQUE name) so OC namespaces pick up a UUID without
 // an explicit migration step.
-func (s *organizationService) List(ctx context.Context) (*apigen.OrganizationList, error) {
+func (s *organizationService) List(ctx context.Context) (*gen.OrganizationList, error) {
 	views, err := s.nsCli.ListNamespaces(ctx)
 	if err != nil {
 		// Raw OC sentinel — the huma edge (mapOrganizationError) classifies it.
@@ -147,7 +147,7 @@ func (s *organizationService) List(ctx context.Context) (*apigen.OrganizationLis
 	}
 
 	if len(views) == 0 {
-		return &apigen.OrganizationList{Items: []apigen.OrganizationView{}}, nil
+		return &gen.OrganizationList{Items: []gen.OrganizationView{}}, nil
 	}
 
 	names := make([]string, 0, len(views))
@@ -179,7 +179,7 @@ func (s *organizationService) List(ctx context.Context) (*apigen.OrganizationLis
 		}
 	}
 
-	return &apigen.OrganizationList{Items: views}, nil
+	return &gen.OrganizationList{Items: views}, nil
 }
 
 // EnsureForOuHandle is the auth-middleware verify-and-cache path. It
@@ -313,7 +313,7 @@ func (s *organizationService) ensureThunderUUID(ctx context.Context, ouHandle, t
 // the org handle (the identifier the BFF puts in OC URLs and every per-org
 // lookup), while List keys by the OC namespace name it enumerated. Returns the
 // resulting (possibly racing) row; on hard failure returns a zero row and logs.
-func (s *organizationService) backfillRow(ctx context.Context, name string, view apigen.OrganizationView, thunderOrgUUID string) models.Organization {
+func (s *organizationService) backfillRow(ctx context.Context, name string, view gen.OrganizationView, thunderOrgUUID string) models.Organization {
 	row := models.Organization{
 		UUID:        uuid.New(),
 		Name:        name,

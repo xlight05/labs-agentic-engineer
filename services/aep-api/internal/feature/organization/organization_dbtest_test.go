@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -59,8 +59,8 @@ import (
 // never calls it.
 func nsMockReturning() *ocmocks.NamespaceClientMock {
 	return &ocmocks.NamespaceClientMock{
-		GetNamespaceFunc: func(_ context.Context, name string) (*apigen.OrganizationView, error) {
-			return &apigen.OrganizationView{Name: name, DisplayName: name + " Inc", Status: "Active"}, nil
+		GetNamespaceFunc: func(_ context.Context, name string) (*gen.OrganizationView, error) {
+			return &gen.OrganizationView{Name: name, DisplayName: name + " Inc", Status: "Active"}, nil
 		},
 	}
 }
@@ -181,7 +181,7 @@ func TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := &ocmocks.NamespaceClientMock{
-		GetNamespaceFunc: func(context.Context, string) (*apigen.OrganizationView, error) {
+		GetNamespaceFunc: func(context.Context, string) (*gen.OrganizationView, error) {
 			return nil, openchoreo.ErrNotFound
 		},
 	}
@@ -345,11 +345,11 @@ func TestEnsureForOuHandle_ConcurrentSameHandleCollapses_DB(t *testing.T) {
 
 	release := make(chan struct{})
 	ns := &ocmocks.NamespaceClientMock{
-		GetNamespaceFunc: func(_ context.Context, name string) (*apigen.OrganizationView, error) {
+		GetNamespaceFunc: func(_ context.Context, name string) (*gen.OrganizationView, error) {
 			// Hold the flight open so all racers pile into singleflight.Do before
 			// the leader finishes and warms the cache.
 			<-release
-			return &apigen.OrganizationView{Name: name, Status: "Active"}, nil
+			return &gen.OrganizationView{Name: name, Status: "Active"}, nil
 		},
 	}
 	svc := NewOrganizationService(db, ns)

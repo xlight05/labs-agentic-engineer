@@ -81,12 +81,12 @@ func newVisibilityService(t *testing.T) (*Service, visibilitySpies) {
 		{Kind: models.DependencyKindOrgService, Name: "billing"},
 	}}
 	svc := NewService(Deps{
-		Issues:    issues,
-		Execs:     &fakeExecStore{},
-		Reeval:    &fakeReeval{},
-		Design:    fakeDesign{comps: []models.DesignComponent{consumer}},
-		Repos:     fakeRepos{},
-		Access:    access,
+		Issues: issues,
+		Execs:  &fakeExecStore{},
+		Reeval: &fakeReeval{},
+		Design: fakeDesign{comps: []models.DesignComponent{consumer}},
+		Repos:  fakeRepos{},
+		Access: access,
 		Providers: fakeProviders{byName: map[string]openchoreo.WorkloadEndpointInfo{
 			"billing": {Project: "payments", Component: "payments-billing", Name: "http"},
 		}},

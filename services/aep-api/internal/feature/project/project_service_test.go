@@ -32,7 +32,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
@@ -196,7 +196,7 @@ func TestTranslateHTTPError(t *testing.T) {
 func TestListProjects_TranslatesOCError(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		ListProjectsFunc: func(context.Context, string, int, string) (*apigen.ProjectList, error) {
+		ListProjectsFunc: func(context.Context, string, int, string) (*gen.ProjectList, error) {
 			return nil, openchoreo.ErrNotFound
 		},
 	}
@@ -209,8 +209,8 @@ func TestListProjects_TranslatesOCError(t *testing.T) {
 func TestListProjects_SearchFiltersPageCaseInsensitive(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		ListProjectsFunc: func(context.Context, string, int, string) (*apigen.ProjectList, error) {
-			return &apigen.ProjectList{Items: []apigen.Project{
+		ListProjectsFunc: func(context.Context, string, int, string) (*gen.ProjectList, error) {
+			return &gen.ProjectList{Items: []gen.Project{
 				{Name: "billing-api", DisplayName: "Billing"},
 				{Name: "web-shop", DisplayName: "Shop Front"},
 				{Name: "svc-x", DisplayName: "Mobile BILLING helper"},
@@ -237,9 +237,9 @@ func TestListProjects_SurfacesNextCursorAndPassesParams(t *testing.T) {
 	var gotLimit int
 	var gotCursor string
 	oc := &ocmocks.ProjectClientMock{
-		ListProjectsFunc: func(_ context.Context, _ string, limit int, cursor string) (*apigen.ProjectList, error) {
+		ListProjectsFunc: func(_ context.Context, _ string, limit int, cursor string) (*gen.ProjectList, error) {
 			gotLimit, gotCursor = limit, cursor
-			return &apigen.ProjectList{Items: []apigen.Project{{Name: "a"}}, NextCursor: "next-tok"}, nil
+			return &gen.ProjectList{Items: []gen.Project{{Name: "a"}}, NextCursor: "next-tok"}, nil
 		},
 	}
 	svc := NewProjectService(oc, nil, nil, nil, nil)
@@ -262,8 +262,8 @@ func TestListProjects_SurfacesNextCursorAndPassesParams(t *testing.T) {
 func TestListProjects_JoinsRepoURLBestEffort(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		ListProjectsFunc: func(context.Context, string, int, string) (*apigen.ProjectList, error) {
-			return &apigen.ProjectList{Items: []apigen.Project{
+		ListProjectsFunc: func(context.Context, string, int, string) (*gen.ProjectList, error) {
+			return &gen.ProjectList{Items: []gen.Project{
 				{Name: "web"},
 				{Name: "no-repo"},
 			}}, nil
@@ -310,8 +310,8 @@ func TestListProjects_JoinsRepoURLBestEffort(t *testing.T) {
 func TestCreateProject_HappyPath_ProvisionsRepoWebhookAndSkills(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(_ context.Context, org string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-			return &apigen.Project{Name: req.Name, NamespaceName: org}, nil
+		CreateProjectFunc: func(_ context.Context, org string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+			return &gen.Project{Name: req.Name, NamespaceName: org}, nil
 		},
 	}
 	var repoOrg, repoProject, repoProjectName, repoOverride string
@@ -327,7 +327,7 @@ func TestCreateProject_HappyPath_ProvisionsRepoWebhookAndSkills(t *testing.T) {
 	svc := NewProjectService(oc, repoSvc, webhooks, nil, nil)
 	svc.SetSkillsProvisioner(skills)
 
-	p, err := svc.CreateProject(context.Background(), "acme", &apigen.CreateProjectRequest{Name: "web"})
+	p, err := svc.CreateProject(context.Background(), "acme", &gen.CreateProjectRequest{Name: "web"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -353,8 +353,8 @@ func TestCreateProject_HappyPath_ProvisionsRepoWebhookAndSkills(t *testing.T) {
 func TestCreateProject_RepoNameOverridesProvisionedRepoName(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(_ context.Context, org string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-			return &apigen.Project{Name: req.Name, NamespaceName: org}, nil
+		CreateProjectFunc: func(_ context.Context, org string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+			return &gen.Project{Name: req.Name, NamespaceName: org}, nil
 		},
 	}
 	var repoProject, repoOverride string
@@ -366,7 +366,7 @@ func TestCreateProject_RepoNameOverridesProvisionedRepoName(t *testing.T) {
 	}
 	svc := NewProjectService(oc, repoSvc, &fakeWebhookSvc{}, nil, nil)
 
-	req := &apigen.CreateProjectRequest{Name: "gym", RepoName: "gym-repo", Prompt: "a workout tracker"}
+	req := &gen.CreateProjectRequest{Name: "gym", RepoName: "gym-repo", Prompt: "a workout tracker"}
 	if _, err := svc.CreateProject(context.Background(), "acme", req); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -394,8 +394,8 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 			t.Parallel()
 			var deletedProject string
 			oc := &ocmocks.ProjectClientMock{
-				CreateProjectFunc: func(_ context.Context, org string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-					return &apigen.Project{Name: req.Name, NamespaceName: org}, nil
+				CreateProjectFunc: func(_ context.Context, org string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+					return &gen.Project{Name: req.Name, NamespaceName: org}, nil
 				},
 				DeleteProjectFunc: func(_ context.Context, _, projectName string) error {
 					deletedProject = projectName
@@ -412,7 +412,7 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 				return nil, nil
 			}}, nil, nil)
 
-			req := &apigen.CreateProjectRequest{Name: "gym", RepoName: tc.repoName}
+			req := &gen.CreateProjectRequest{Name: "gym", RepoName: tc.repoName}
 			_, err := svc.CreateProject(context.Background(), "acme", req)
 			if !gitrepo.IsRepoNameConflict(err) {
 				t.Fatalf("err = %v, want the repo-name-conflict sentinel surfaced", err)
@@ -427,7 +427,7 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 func TestCreateProject_OCErrorShortCircuits(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(context.Context, string, *apigen.CreateProjectRequest) (*apigen.Project, error) {
+		CreateProjectFunc: func(context.Context, string, *gen.CreateProjectRequest) (*gen.Project, error) {
 			return nil, openchoreo.ErrConflict
 		},
 	}
@@ -437,7 +437,7 @@ func TestCreateProject_OCErrorShortCircuits(t *testing.T) {
 		return nil, nil
 	}}, nil, nil)
 
-	if _, err := svc.CreateProject(context.Background(), "acme", &apigen.CreateProjectRequest{Name: "web"}); !errors.Is(err, openchoreo.ErrConflict) {
+	if _, err := svc.CreateProject(context.Background(), "acme", &gen.CreateProjectRequest{Name: "web"}); !errors.Is(err, openchoreo.ErrConflict) {
 		t.Fatalf("want the OC conflict error surfaced, got %v", err)
 	}
 }
@@ -445,8 +445,8 @@ func TestCreateProject_OCErrorShortCircuits(t *testing.T) {
 func TestCreateProject_RepoFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(_ context.Context, _ string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-			return &apigen.Project{Name: req.Name}, nil
+		CreateProjectFunc: func(_ context.Context, _ string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+			return &gen.Project{Name: req.Name}, nil
 		},
 	}
 	repoSvc := &fakeRepoSvc{
@@ -457,7 +457,7 @@ func TestCreateProject_RepoFailureIsBestEffort(t *testing.T) {
 	webhooks := &fakeWebhookSvc{}
 	svc := NewProjectService(oc, repoSvc, webhooks, nil, nil)
 
-	p, err := svc.CreateProject(context.Background(), "acme", &apigen.CreateProjectRequest{Name: "web"})
+	p, err := svc.CreateProject(context.Background(), "acme", &gen.CreateProjectRequest{Name: "web"})
 	if err != nil || p == nil {
 		t.Fatalf("repo provisioning failure must not fail project creation: p=%v err=%v", p, err)
 	}
@@ -469,8 +469,8 @@ func TestCreateProject_RepoFailureIsBestEffort(t *testing.T) {
 func TestCreateProject_WebhookFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	oc := &ocmocks.ProjectClientMock{
-		CreateProjectFunc: func(_ context.Context, _ string, req *apigen.CreateProjectRequest) (*apigen.Project, error) {
-			return &apigen.Project{Name: req.Name}, nil
+		CreateProjectFunc: func(_ context.Context, _ string, req *gen.CreateProjectRequest) (*gen.Project, error) {
+			return &gen.Project{Name: req.Name}, nil
 		},
 	}
 	repoSvc := &fakeRepoSvc{
@@ -483,7 +483,7 @@ func TestCreateProject_WebhookFailureIsBestEffort(t *testing.T) {
 	}}
 	svc := NewProjectService(oc, repoSvc, webhooks, nil, nil)
 
-	if _, err := svc.CreateProject(context.Background(), "acme", &apigen.CreateProjectRequest{Name: "web"}); err != nil {
+	if _, err := svc.CreateProject(context.Background(), "acme", &gen.CreateProjectRequest{Name: "web"}); err != nil {
 		t.Fatalf("webhook failure must not fail project creation: %v", err)
 	}
 }
@@ -793,7 +793,7 @@ func TestGetProjectStatus_PhaseLadder(t *testing.T) {
 				t.Errorf("hasDesign = %v, want %v", st.HasDesign, tc.wantHasDesign)
 			}
 			// The nested spec stage mirrors the snapshot ungated.
-			want := apigen.SpecStage{
+			want := gen.SpecStage{
 				Exists:  tc.fx.snap.HasSpec,
 				Version: tc.fx.snap.SpecVersion,
 				Dirty:   tc.fx.snap.SpecDirty,

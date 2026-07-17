@@ -22,10 +22,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -74,7 +74,7 @@ func (l validationExecLocator) LookupExecutionProject(ctx context.Context, orgHa
 // componentDeployLister is the ListDeployments slice of ComponentService the
 // endpoint resolver needs (satisfied structurally by *component.componentService).
 type componentDeployLister interface {
-	ListDeployments(ctx context.Context, orgName, projectName, componentName string) (*apigen.DeploymentList, error)
+	ListDeployments(ctx context.Context, orgName, projectName, componentName string) (*gen.DeploymentList, error)
 }
 
 // validationEndpointResolver adapts the design read + ComponentService to
@@ -119,7 +119,7 @@ func (r validationEndpointResolver) ResolveEndpoints(ctx context.Context, orgHan
 }
 
 // firstDeploymentURL returns the first non-empty deployed endpoint URL.
-func firstDeploymentURL(list *apigen.DeploymentList) string {
+func firstDeploymentURL(list *gen.DeploymentList) string {
 	if list == nil {
 		return ""
 	}

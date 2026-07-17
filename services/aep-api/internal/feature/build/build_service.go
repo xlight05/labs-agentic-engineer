@@ -30,7 +30,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
@@ -46,7 +46,7 @@ import (
 type EdgeError struct {
 	Status  int
 	Message string
-	Details []apigen.ErrorDetail
+	Details []gen.ErrorDetail
 }
 
 func (e *EdgeError) Error() string { return e.Message }
@@ -382,9 +382,9 @@ func mapTagError(err error) error {
 	var se *artifacts.SpecValidationError
 	switch {
 	case errors.As(err, &se):
-		details := make([]apigen.ErrorDetail, 0, len(se.Files))
+		details := make([]gen.ErrorDetail, 0, len(se.Files))
 		for _, f := range se.Files {
-			details = append(details, apigen.ErrorDetail{
+			details = append(details, gen.ErrorDetail{
 				Field:   f.Path,
 				Message: f.Code + ": " + f.Message,
 			})

@@ -35,7 +35,7 @@ func derefStr(s *string) string {
 }
 
 // derefTimeRFC3339 returns t formatted in RFC3339 UTC, or "" if t is nil.
-// apigen.Project.CreatedAt is a string; OC surfaces *time.Time.
+// gen.Project.CreatedAt is a string; OC surfaces *time.Time.
 func derefTimeRFC3339(t *time.Time) string {
 	if t == nil {
 		return ""

@@ -19,11 +19,11 @@ package api
 import (
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 )
 
-// apiServer implements the generated strict interface (apigen.StrictServerInterface)
+// apiServer implements the generated strict interface (gen.StrictServerInterface)
 // for the public /api/v1 edge — every operation of the committed contract, one
 // per-feature handlers_*.go file. Handlers read the gate-bound org via
 // tenant.BoundOrgFromContext and pass it to services as an explicit argument —
@@ -32,7 +32,7 @@ type apiServer struct {
 	deps Deps
 }
 
-var _ apigen.StrictServerInterface = (*apiServer)(nil)
+var _ gen.StrictServerInterface = (*apiServer)(nil)
 
 // newAPIV1Handler assembles the whole contract-first serving chain for the
 // public edge, innermost first:
@@ -47,17 +47,17 @@ var _ apigen.StrictServerInterface = (*apiServer)(nil)
 // The caller mounts the result under the outer jwt → orgensure → gate-mode
 // middleware (mountSurfaces), exactly where the Huma mux used to sit.
 func newAPIV1Handler(deps Deps) http.Handler {
-	strict := apigen.NewStrictHandlerWithOptions(
+	strict := gen.NewStrictHandlerWithOptions(
 		&apiServer{deps: deps},
-		[]apigen.StrictMiddlewareFunc{tenantGate},
-		apigen.StrictHTTPServerOptions{
+		[]gen.StrictMiddlewareFunc{tenantGate},
+		gen.StrictHTTPServerOptions{
 			RequestErrorHandlerFunc:  writeRequestError,
 			ResponseErrorHandlerFunc: writeResponseError,
 		},
 	)
 
 	mux := http.NewServeMux()
-	apigen.HandlerWithOptions(strict, apigen.StdHTTPServerOptions{
+	gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseURL:          httpkit.APIV1,
 		BaseRouter:       mux,
 		ErrorHandlerFunc: writeRequestError,
@@ -68,7 +68,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 	// the same wrapped handler is also registered under the ServeMux catch-all.
 	// Single-segment requests keep hitting the generated pattern (more
 	// specific); multi-segment ones land here. PathValue("path") serves both.
-	siw := &apigen.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: writeRequestError}
+	siw := &gen.ServerInterfaceWrapper{Handler: strict, ErrorHandlerFunc: writeRequestError}
 	mux.HandleFunc("GET "+httpkit.APIV1+"/projects/{projectName}/files/{path...}", siw.ReadFile)
 
 	return capRequestBody(requestValidator(mux))

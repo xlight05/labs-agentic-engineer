@@ -210,12 +210,12 @@ func TestProvisionForBuild_OrgServiceApprovedStartsVisibility(t *testing.T) {
 		{Kind: models.DependencyKindOrgService, Name: "inventory"},
 	}}
 	svc := NewService(Deps{
-		Issues:    issues,
-		Execs:     &fakeExecStore{},
-		Reeval:    &fakeReeval{},
-		Design:    fakeDesign{comps: []models.DesignComponent{consumer}},
-		Repos:     fakeRepos{},
-		Access:    access,
+		Issues: issues,
+		Execs:  &fakeExecStore{},
+		Reeval: &fakeReeval{},
+		Design: fakeDesign{comps: []models.DesignComponent{consumer}},
+		Repos:  fakeRepos{},
+		Access: access,
 		Providers: fakeProviders{byName: map[string]openchoreo.WorkloadEndpointInfo{
 			"inventory": {Project: "warehouse", Component: "warehouse-inventory", Name: "http"},
 		}},

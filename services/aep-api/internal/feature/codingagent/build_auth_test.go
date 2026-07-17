@@ -19,7 +19,7 @@ package codingagent
 import (
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 )
@@ -27,35 +27,35 @@ import (
 func TestClassifyBuildRun(t *testing.T) {
 	cases := []struct {
 		name          string
-		run           *apigen.WorkflowRun
+		run           *gen.WorkflowRun
 		wantSucceeded bool
 		wantAuth      bool
 	}{
 		{"nil", nil, false, false},
-		{"not completed", &apigen.WorkflowRun{Status: openchoreo.ReasonWorkflowSucceeded}, false, false},
-		{"succeeded", &apigen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowSucceeded}, true, false},
+		{"not completed", &gen.WorkflowRun{Status: openchoreo.ReasonWorkflowSucceeded}, false, false},
+		{"succeeded", &gen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowSucceeded}, true, false},
 		{
 			"git-auth failure on checkout-source",
-			&apigen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-				Tasks: []apigen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "fatal: could not read Username for 'https://github.com'"}}},
+			&gen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
+				Tasks: []gen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "fatal: could not read Username for 'https://github.com'"}}},
 			false, true,
 		},
 		{
 			"non-auth checkout failure",
-			&apigen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-				Tasks: []apigen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "disk full"}}},
+			&gen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
+				Tasks: []gen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: "disk full"}}},
 			false, false,
 		},
 		{
 			"failure in a non-checkout step is not auth",
-			&apigen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-				Tasks: []apigen.WorkflowRunTask{{Name: "build", Phase: "Failed", Message: "the requested URL returned error: 403"}}},
+			&gen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
+				Tasks: []gen.WorkflowRunTask{{Name: "build", Phase: "Failed", Message: "the requested URL returned error: 403"}}},
 			false, false,
 		},
 		{
 			"empty checkout message is conservatively non-auth",
-			&apigen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
-				Tasks: []apigen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: ""}}},
+			&gen.WorkflowRun{Completed: true, Status: openchoreo.ReasonWorkflowFailed,
+				Tasks: []gen.WorkflowRunTask{{Name: "checkout-source", Phase: "Failed", Message: ""}}},
 			false, false,
 		},
 	}

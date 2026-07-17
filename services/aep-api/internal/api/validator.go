@@ -28,7 +28,7 @@ import (
 	"github.com/getkin/kin-openapi/routers"
 	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
 // contractRouter memoizes the parsed contract + kin router: both are
@@ -41,7 +41,7 @@ var contractRouter = sync.OnceValue(func() routers.Router {
 	// (embedded-spec) — the same committed contract the handlers generate from.
 	// It panics on failure: a decode error is a build defect, not a runtime
 	// condition.
-	doc, err := apigen.GetSpec()
+	doc, err := gen.GetSpec()
 	if err != nil {
 		panic(fmt.Sprintf("embedded contract failed to load: %v", err))
 	}
@@ -131,7 +131,7 @@ func writeValidationError(w http.ResponseWriter, err error) {
 			field = loc + "." + ptr
 		}
 		writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, "request validation failed",
-			[]apigen.ErrorDetail{{Field: field, Message: schemaErr.Reason}})
+			[]gen.ErrorDetail{{Field: field, Message: schemaErr.Reason}})
 		return
 	}
 
@@ -140,5 +140,5 @@ func writeValidationError(w http.ResponseWriter, err error) {
 		msg = reqErr.Error()
 	}
 	writeErrorEnvelope(w, http.StatusBadRequest, CodeValidationFailed, "request validation failed",
-		[]apigen.ErrorDetail{{Field: loc, Message: msg}})
+		[]gen.ErrorDetail{{Field: loc, Message: msg}})
 }

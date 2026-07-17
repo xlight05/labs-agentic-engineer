@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
@@ -43,7 +43,7 @@ var ErrExecutionNotFound = errors.New("execution not found")
 // OCProgress reads an OpenChoreo WorkflowRun's status (build steps). Wired from
 // openchoreo.ComponentClient.
 type OCProgress interface {
-	GetWorkflowRun(ctx context.Context, orgName, runName string) (*apigen.WorkflowRun, error)
+	GetWorkflowRun(ctx context.Context, orgName, runName string) (*gen.WorkflowRun, error)
 }
 
 // CodingProgress serves a coding execution's live activity — the ca-… pod-log
@@ -119,7 +119,7 @@ func (s *ProgressService) GetProgress(ctx context.Context, orgHandle, executionI
 
 // buildStepEvents synthesizes build_step progress events from a WorkflowRun's
 // per-task status (the same shape the legacy build-progress endpoint produced).
-func buildStepEvents(run *apigen.WorkflowRun) []contracts.ProgressEvent {
+func buildStepEvents(run *gen.WorkflowRun) []contracts.ProgressEvent {
 	out := make([]contracts.ProgressEvent, 0, len(run.Tasks))
 	for i, t := range run.Tasks {
 		out = append(out, contracts.ProgressEvent{

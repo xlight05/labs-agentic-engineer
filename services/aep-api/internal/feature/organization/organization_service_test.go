@@ -32,7 +32,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api/apigen"
+	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
@@ -41,7 +41,7 @@ import (
 func TestList_EmptyNamespacesShortCircuits(t *testing.T) {
 	t.Parallel()
 	nsCli := &ocmocks.NamespaceClientMock{
-		ListNamespacesFunc: func(context.Context) ([]apigen.OrganizationView, error) {
+		ListNamespacesFunc: func(context.Context) ([]gen.OrganizationView, error) {
 			return nil, nil
 		},
 	}
@@ -63,7 +63,7 @@ func TestList_EmptyNamespacesShortCircuits(t *testing.T) {
 func TestList_PropagatesClientError(t *testing.T) {
 	t.Parallel()
 	nsCli := &ocmocks.NamespaceClientMock{
-		ListNamespacesFunc: func(context.Context) ([]apigen.OrganizationView, error) {
+		ListNamespacesFunc: func(context.Context) ([]gen.OrganizationView, error) {
 			return nil, openchoreo.ErrUnauthorized
 		},
 	}

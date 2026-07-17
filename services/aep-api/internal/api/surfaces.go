@@ -116,7 +116,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 
 	// ── internal S2S surface ─────────────────────────────────────────────────
 	// Served contract-first from packages/contracts/api/internal/v1 (strict
-	// server in internal/api/igen), NOT wrapped by the /api/ user-JWT
+	// server in internal/igen), NOT wrapped by the /api/ user-JWT
 	// middleware. Every operation passes the deny-by-default runnerAuthGate
 	// (BFF Task-JWT or publisher-cc verified against the path execution id)
 	// and is never gateway-advertised. All runner callbacks are keyed to the
