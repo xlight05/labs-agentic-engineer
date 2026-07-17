@@ -19,6 +19,7 @@ package api
 import (
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
+	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 
 	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
@@ -48,7 +49,6 @@ type Deps struct {
 	ComponentSvc        component.ComponentService
 	ConfigSvc           component.ConfigService
 	CollabRepo          sourcecontrol.RepoService
-	IssueSvc            sourcecontrol.IssueService
 	ProvisioningSvc     *provisioning.Service
 	ResourceTypeCatalog dependencies.ResourceTypeLister
 	TaskReads           *task.Reads
@@ -69,5 +69,6 @@ type Deps struct {
 	// into apiServer, so the edge holds no ops service and no ops handler file.
 	// Every later domain arrives the same way, and this bag shrinks to nothing
 	// by P9 — it is the legacy handlers' dependency bag, not the edge's.
-	Ops *opshttpapi.Handlers
+	Ops           *opshttpapi.Handlers
+	SourceControl *schttpapi.Handlers
 }

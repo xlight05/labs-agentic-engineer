@@ -22,6 +22,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 )
 
 // legacyHandlers holds every operation that has NOT yet moved into its domain
@@ -68,14 +70,18 @@ type legacyShim struct{ *legacyHandlers }
 type apiServer struct {
 	legacyShim
 	// One embed per landed domain phase (P1–P8).
-	*opsHandlers // P1 — ops (Incident RCA)
+	*opsHandlers           // P1 — ops (Incident RCA)
+	*sourcecontrolHandlers // P2 — sourcecontrol (Source Control & Webhooks)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
 // *httpapi.Handlers would collide as "Handlers". Local aliases give distinct
 // field names while each domain keeps the clean, unstuttering type name (§6).
 // One alias per landed domain.
-type opsHandlers = opshttpapi.Handlers
+type (
+	opsHandlers           = opshttpapi.Handlers
+	sourcecontrolHandlers = schttpapi.Handlers
+)
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
 // nil sub-handler inside a Module still satisfies this and panics at runtime.
@@ -98,8 +104,9 @@ var _ gen.StrictServerInterface = (*apiServer)(nil)
 func newAPIV1Handler(deps Deps) http.Handler {
 	strict := gen.NewStrictHandlerWithOptions(
 		&apiServer{
-			legacyShim:  legacyShim{&legacyHandlers{deps: deps}},
-			opsHandlers: deps.Ops,
+			legacyShim:            legacyShim{&legacyHandlers{deps: deps}},
+			opsHandlers:           deps.Ops,
+			sourcecontrolHandlers: sourceControlOrEmpty(deps.SourceControl),
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{
@@ -124,6 +131,28 @@ func newAPIV1Handler(deps Deps) http.Handler {
 	mux.HandleFunc("GET "+httpkit.APIV1+"/projects/{projectName}/files/{path...}", siw.ReadFile)
 
 	return capRequestBody(requestValidator(mux))
+}
+
+// sourceControlOrEmpty keeps the harness contract Deps documents: a component
+// test wires only the feature under test, and an unwired surface answers 503
+// rather than panicking.
+//
+// A domain is embedded as a POINTER, so an unwired domain is a nil embed and any
+// of its ops panics — a 500 where the pre-migration handler nil-guarded to 503.
+// Assembling the domain with zero Deps restores it: sourcecontrol's ports are
+// nil-tolerant by design, so every slice degrades to 503 exactly as before.
+// (ops is different and deliberately so: its pre-migration handlers had no nil
+// guard either, so it keeps failing loudly.)
+func sourceControlOrEmpty(h *sourcecontrolHandlers) *sourcecontrolHandlers {
+	if h != nil {
+		return h
+	}
+	empty, err := schttpapi.New(sourcecontrol.Deps{})
+	if err != nil {
+		// Unreachable: zero Deps is a supported configuration for this domain.
+		panic("api: assembling an empty sourcecontrol domain: " + err.Error())
+	}
+	return empty
 }
 
 // maxBodyBytes is the edge-wide request-body ceiling (413 beyond it). 10 MiB

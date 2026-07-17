@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 )
 
 // fakeIssueService is a minimal sourcecontrol.IssueService: create echoes, list
@@ -57,13 +58,26 @@ func (f *fakeIssueService) ListIssues(_ context.Context, org, _ string, _ []stri
 	return f.issues, nil
 }
 
+// scWith assembles the real sourcecontrol domain around a faked port — the same
+// New the composition root calls.
+func scWith(t *testing.T, svc sourcecontrol.IssueService) *httpapi.Handlers {
+	t.Helper()
+	h, err := httpapi.New(sourcecontrol.Deps{Issues: svc})
+	if err != nil {
+		t.Fatalf("assemble sourcecontrol: %v", err)
+	}
+	return h
+}
+
 func TestIssueComponent_CreateAndList(t *testing.T) {
 	t.Parallel()
 	svc := &fakeIssueService{issues: []sourcecontrol.IssueInfo{
 		{Number: 1, Title: "service1 timeout on checkout", Body: "…", URL: "u1", State: "open", Labels: []string{"sre"}},
 		{Number: 2, Title: "docs typo", Body: "…", URL: "u2", State: "open"},
 	}}
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{IssueSvc: svc}})
+	// The harness wires the DOMAIN, not a loose service: the edge embeds
+	// sourcecontrol's handlers, so this assembles the same graph production does.
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{SourceControl: scWith(t, svc)}})
 
 	// Create: org from the verified token, result keys lowercase.
 	resp := h.AsOrg("acme").Post("/api/v1/projects/web/issues",

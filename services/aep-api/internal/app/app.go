@@ -76,6 +76,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
+	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -730,7 +731,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		ComponentSvc:     componentService,
 		ConfigSvc:        configService,
 		CollabRepo:       repoService,
-		IssueSvc:         issueService,
 		TaskReads:        taskReads,
 		TaskCommands:     taskCommands,
 		TaskStream:       taskStreamSvc,
@@ -774,6 +774,14 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// This is the whole domain's wiring: its ports in, its handlers out. The
 	// handlers are embedded directly into the edge's composite — the edge holds
 	// no ops service.
+	// sourcecontrol — the git-host substrate (P2). Its handlers are embedded
+	// straight into the edge's composite; the edge holds no issue service.
+	scHandlers, err := schttpapi.New(sourcecontrol.Deps{Issues: issueService})
+	if err != nil {
+		return nil, fmt.Errorf("assemble sourcecontrol domain: %w", err)
+	}
+	params.Deps.SourceControl = scHandlers
+
 	opsHandlers, err := opshttpapi.New(ops.Deps{
 		Reports: ops.NewRepository(db),
 		Execs:   opsExecutionBridge{execs: executionRepo},
