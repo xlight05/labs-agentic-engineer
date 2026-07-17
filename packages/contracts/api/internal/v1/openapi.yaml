@@ -129,11 +129,11 @@ components:
       - expiresAt
       - identity
       - taskId
-      # Byte-compat: the served body is the orgcreds service's own struct —
-      # no mapping layer, so the runner-lockstep wire shape cannot drift.
-      x-go-type: orgcreds.RefreshResponse
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/internal/feature/orgcreds
+      # Generated as igen.RefreshResponse (no x-go-type). The org domain owns the
+      # RefreshResponse value type and projects onto this wire shape at the edge —
+      # igen must stay a leaf, so it cannot import the domain that owns the type
+      # (domain-oriented-architecture.md §7). This schema IS the runner-lockstep
+      # wire contract; keep it field-aligned with the domain's mapping.
     Identity:
       description: 'Git commit identity. Field names are CAPITALIZED on the
         wire (historical lockstep — changing them needs a coordinated runner

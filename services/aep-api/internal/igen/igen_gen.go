@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
-	"github.com/wso2/aep/aep-api/internal/feature/orgcreds"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 )
 
@@ -53,7 +53,14 @@ type Identity struct {
 }
 
 // RefreshResponse Fresh GitHub token + commit identity for the execution.
-type RefreshResponse = orgcreds.RefreshResponse
+type RefreshResponse struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Identity Git commit identity. Field names are CAPITALIZED on the wire (historical lockstep — changing them needs a coordinated runner release). KNOWN GAP: the runner's credhelper currently reads lowercase keys, so its identity-drift rewrite never fires; fix belongs runner-side (case-tolerant parse), not here.
+	Identity Identity `json:"identity"`
+	TaskID   string   `json:"taskId"`
+	Token    string   `json:"token"`
+}
 
 // TestCredential Test login credentials for a validation run. Served as the validation service's own struct (no mapping layer).
 type TestCredential = validation.TestCredential

@@ -137,7 +137,27 @@ func (s *internalServer) RunnerRefreshCredentials(ctx context.Context, request i
 	if err != nil {
 		return nil, errInternal("failed to refresh credentials")
 	}
-	return igen.RunnerRefreshCredentials200JSONResponse(*resp), nil
+	return igen.RunnerRefreshCredentials200JSONResponse(toIgenRefresh(*resp)), nil
+}
+
+// toIgenRefresh projects the org domain's RefreshResponse onto the S2S wire
+// shape. igen must stay a leaf, so it cannot import the domain that owns the
+// value type (domain-oriented-architecture.md §7) — hence a mapping here rather
+// than the former x-go-type alias. The wire keys are byte-identical (the
+// Identity sub-object marshals capitalized either way); only Go field ORDER
+// differs between the two Identity structs, which forbids a whole-struct
+// conversion, so the three fields are copied by name.
+func toIgenRefresh(r orgcreds.RefreshResponse) igen.RefreshResponse {
+	return igen.RefreshResponse{
+		Token:     r.Token,
+		ExpiresAt: r.ExpiresAt,
+		Identity: igen.Identity{
+			Name:  r.Identity.Name,
+			Email: r.Identity.Email,
+			Login: r.Identity.Login,
+		},
+		TaskID: r.TaskID,
+	}
 }
 
 func (s *internalServer) RunnerValidationContext(ctx context.Context, request igen.RunnerValidationContextRequestObject) (igen.RunnerValidationContextResponseObject, error) {
