@@ -21,8 +21,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // RepoRepository manages GitRepository persistence. All lookups/deletes are
@@ -30,24 +28,24 @@ import (
 // the org filter" is a compile error. project_id is only composite-unique with
 // org_id, so an org-less query could touch another org's row.
 type RepoRepository interface {
-	GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*models.GitRepository, error)
-	GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*models.GitRepository, error)
+	GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*GitRepository, error)
+	GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*GitRepository, error)
 	// ListAllReady returns every repo in `ready` status. Used by the
 	// startup pre-warm path to ensure clones are on disk before traffic
 	// arrives. Bounded by the table size; not paginated because the
 	// caller bounds concurrency separately.
-	ListAllReady(ctx context.Context) ([]models.GitRepository, error)
+	ListAllReady(ctx context.Context) ([]GitRepository, error)
 	// ListAll returns every repo row across all orgs and ALL statuses. The
 	// disk reaper's orphan reconciliation set-differences the on-disk mirror
 	// tree against this — pending/error rows must be included so their dirs
 	// are not misread as orphans. Bounded by the table size, like
 	// ListAllReady.
-	ListAll(ctx context.Context) ([]models.GitRepository, error)
+	ListAll(ctx context.Context) ([]GitRepository, error)
 	// ListByOrg returns the org's repo rows (all statuses). Feeds the
 	// project-list repoUrl annotation (#108); one indexed query per page.
-	ListByOrg(ctx context.Context, ocOrgID string) ([]models.GitRepository, error)
-	Create(ctx context.Context, repo *models.GitRepository) error
-	Update(ctx context.Context, repo *models.GitRepository) error
+	ListByOrg(ctx context.Context, ocOrgID string) ([]GitRepository, error)
+	Create(ctx context.Context, repo *GitRepository) error
+	Update(ctx context.Context, repo *GitRepository) error
 	// DeleteByOrgAndProjectID deletes the repo row scoped to (ocOrgID,
 	// projectID). Org-scoped because project_id is only composite-unique with
 	// org_id — an org-less delete could remove another org's row.
@@ -67,8 +65,8 @@ func NewRepoRepository(db *gorm.DB) RepoRepository {
 // /api/v1/repos/{orgId}/{projectId}/... routes to fail loudly (404) when a
 // caller passes a path that doesn't match a stored row, instead of silently
 // cross-accessing another org's repo.
-func (r *repoRepository) GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*models.GitRepository, error) {
-	var repo models.GitRepository
+func (r *repoRepository) GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*GitRepository, error) {
+	var repo GitRepository
 	if err := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", ocOrgID, projectID).
 		First(&repo).Error; err != nil {
@@ -83,8 +81,8 @@ func (r *repoRepository) GetByOrgAndProjectID(ctx context.Context, ocOrgID, proj
 // GetByOrgAndSlug returns the repo row matching the (ocOrgID, repoSlug) tuple
 // or nil. The fence behind MintBuildToken — `repoSlug` is treated as untrusted
 // input from the BFF and only resolves if there's an active matching row.
-func (r *repoRepository) GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*models.GitRepository, error) {
-	var repo models.GitRepository
+func (r *repoRepository) GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*GitRepository, error) {
+	var repo GitRepository
 	if err := r.db.WithContext(ctx).
 		Where("org_id = ? AND repo_slug = ?", ocOrgID, repoSlug).
 		First(&repo).Error; err != nil {
@@ -96,8 +94,8 @@ func (r *repoRepository) GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug 
 	return &repo, nil
 }
 
-func (r *repoRepository) ListAllReady(ctx context.Context) ([]models.GitRepository, error) {
-	var rows []models.GitRepository
+func (r *repoRepository) ListAllReady(ctx context.Context) ([]GitRepository, error) {
+	var rows []GitRepository
 	if err := r.db.WithContext(ctx).
 		Where("status = ?", "ready").
 		Find(&rows).Error; err != nil {
@@ -106,16 +104,16 @@ func (r *repoRepository) ListAllReady(ctx context.Context) ([]models.GitReposito
 	return rows, nil
 }
 
-func (r *repoRepository) ListAll(ctx context.Context) ([]models.GitRepository, error) {
-	var rows []models.GitRepository
+func (r *repoRepository) ListAll(ctx context.Context) ([]GitRepository, error) {
+	var rows []GitRepository
 	if err := r.db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
 }
 
-func (r *repoRepository) ListByOrg(ctx context.Context, ocOrgID string) ([]models.GitRepository, error) {
-	var rows []models.GitRepository
+func (r *repoRepository) ListByOrg(ctx context.Context, ocOrgID string) ([]GitRepository, error) {
+	var rows []GitRepository
 	if err := r.db.WithContext(ctx).
 		Where("org_id = ?", ocOrgID).
 		Find(&rows).Error; err != nil {
@@ -124,18 +122,18 @@ func (r *repoRepository) ListByOrg(ctx context.Context, ocOrgID string) ([]model
 	return rows, nil
 }
 
-func (r *repoRepository) Create(ctx context.Context, repo *models.GitRepository) error {
+func (r *repoRepository) Create(ctx context.Context, repo *GitRepository) error {
 	return r.db.WithContext(ctx).Create(repo).Error
 }
 
-func (r *repoRepository) Update(ctx context.Context, repo *models.GitRepository) error {
+func (r *repoRepository) Update(ctx context.Context, repo *GitRepository) error {
 	return r.db.WithContext(ctx).Save(repo).Error
 }
 
 func (r *repoRepository) DeleteByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) error {
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", ocOrgID, projectID).
-		Delete(&models.GitRepository{}).Error
+		Delete(&GitRepository{}).Error
 }
 
 // LookupOrgProjectByRepoURL translates a GitHub repo full_name to its owning

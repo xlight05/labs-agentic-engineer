@@ -22,12 +22,12 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // stagedRef is the secretRef our fake stager returns (mirrors the real per-org
@@ -70,7 +70,7 @@ func buildDispatch(row *delivery.Execution) delivery.DispatchRequest {
 	}
 }
 
-func newBuildExecutor(oc openchoreo.ComponentClient, repo *models.GitRepository, execRows *fakeExecRepo) *CodingExecutor {
+func newBuildExecutor(oc openchoreo.ComponentClient, repo *sourcecontrol.GitRepository, execRows *fakeExecRepo) *CodingExecutor {
 	return NewCodingExecutor(oc, fakeRepos{repo: repo}, nil, nil, nil, execRows, "http://git", "http://platform", nil, nil, nil, nil)
 }
 
@@ -79,7 +79,7 @@ func TestRunBuild_StagesSecret_PassesRefToBuild(t *testing.T) {
 	row := buildRow("e1")
 	repoRows := newFakeExecRepo(row)
 	stager := &fakeStager{ref: stagedRef}
-	e := newBuildExecutor(ocWithBuildCapture(cap), &models.GitRepository{RepoSlug: "acme-widgets"}, repoRows).
+	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, repoRows).
 		WithBuildSecrets(stager, 0)
 
 	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
@@ -107,7 +107,7 @@ func TestRunBuild_StagingRefusal_BlocksBuild(t *testing.T) {
 	cap := &buildTrigger{}
 	row := buildRow("e1")
 	stager := &fakeStager{err: errors.New("org disconnected")}
-	e := newBuildExecutor(ocWithBuildCapture(cap), &models.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row)).
+	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row)).
 		WithBuildSecrets(stager, 0)
 
 	err := e.Run(context.Background(), buildDispatch(row))
@@ -123,7 +123,7 @@ func TestRunBuild_NoStager_ClonesUnauthenticated(t *testing.T) {
 	cap := &buildTrigger{}
 	row := buildRow("e1")
 	// No WithBuildSecrets → public-repo path, empty secretRef.
-	e := newBuildExecutor(ocWithBuildCapture(cap), &models.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row))
+	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row))
 
 	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
 		t.Fatalf("Run(build): %v", err)
@@ -138,7 +138,7 @@ func TestRunBuild_NoRepoSlug_Degrades(t *testing.T) {
 	row := buildRow("e1")
 	stager := &fakeStager{ref: "should-not-be-used"}
 	// Repo row present but no slug → cannot stage; degrade to unauthenticated.
-	e := newBuildExecutor(ocWithBuildCapture(cap), &models.GitRepository{RepoSlug: ""}, newFakeExecRepo(row)).
+	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: ""}, newFakeExecRepo(row)).
 		WithBuildSecrets(stager, 0)
 
 	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
@@ -155,7 +155,7 @@ func TestRunBuild_NoRepoSlug_Degrades(t *testing.T) {
 func TestRetryAuthFailedBuild_ReMintsAndReTriggersAtCommit(t *testing.T) {
 	cap := &buildTrigger{}
 	stager := &fakeStager{ref: stagedRef}
-	e := newBuildExecutor(ocWithBuildCapture(cap), &models.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo()).
+	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo()).
 		WithBuildSecrets(stager, 0)
 
 	row := buildRow("e1")
@@ -176,7 +176,7 @@ func TestRetryAuthFailedBuild_ReMintsAndReTriggersAtCommit(t *testing.T) {
 }
 
 func TestRetryAuthFailedBuild_MissingFacts_Errors(t *testing.T) {
-	e := newBuildExecutor(ocWithBuildCapture(&buildTrigger{}), &models.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo()).
+	e := newBuildExecutor(ocWithBuildCapture(&buildTrigger{}), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo()).
 		WithBuildSecrets(&fakeStager{}, 0)
 
 	if _, err := e.RetryAuthFailedBuild(context.Background(), &delivery.Execution{ID: "e1", Component: "x"}); err == nil {

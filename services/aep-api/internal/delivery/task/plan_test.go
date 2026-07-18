@@ -32,7 +32,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 type planVersions struct{ specTag string }
@@ -77,9 +76,9 @@ func newPlanRig(t *testing.T, seed map[string]string, specTag string) *planRig {
 	skillsOrigin := gittest.NewRemote(t, gittest.WithSeed(map[string]string{
 		"skills/task-planning/SKILL.md": "---\nname: task-planning\ndescription: plan tasks\nmetadata:\n  aep:\n    kind: platform\n---\n# Task planning",
 	}, "seed skills"))
-	repoRow := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
+	repoRow := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	skillsRow := &models.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
+	skillsRow := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 
 	turn := &capturingTurn{}
@@ -92,7 +91,7 @@ func newPlanRig(t *testing.T, seed map[string]string, specTag string) *planRig {
 		turn,
 		issues,
 		fx.Engine,
-		func(context.Context, string) (*models.GitRepository, error) { return skillsRow, nil },
+		func(context.Context, string) (*sourcecontrol.GitRepository, error) { return skillsRow, nil },
 	)
 	return &planRig{fx: fx, skillsOrigin: skillsOrigin, turn: turn, issues: issues, svc: svc}
 }
@@ -218,9 +217,9 @@ func TestStartPlan_SkillsRepoGone_TypedError(t *testing.T) {
 		"specs/design/components/hello-world-api/design.json": `{"name":"hello-world-api"}`,
 		"specs/requirements/requirements.md":                  "# reqs",
 	})
-	repoRow := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
+	repoRow := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	staleSkills := &models.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
+	staleSkills := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: "file:///nonexistent/skills-repo-gone.git", DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 
 	turn := &capturingTurn{}
@@ -232,7 +231,7 @@ func TestStartPlan_SkillsRepoGone_TypedError(t *testing.T) {
 		turn,
 		newFakeIssues(),
 		fx.Engine,
-		func(context.Context, string) (*models.GitRepository, error) { return staleSkills, nil },
+		func(context.Context, string) (*sourcecontrol.GitRepository, error) { return staleSkills, nil },
 	)
 
 	_, err := svc.StartPlan(context.Background(), "org1", "proj1")

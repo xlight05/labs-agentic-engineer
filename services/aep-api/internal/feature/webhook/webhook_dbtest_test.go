@@ -74,14 +74,14 @@ func TestDeliveryStore_Persist_FirstDeliveryIsCreated(t *testing.T) {
 	}
 
 	// The dedup row AND the split payload row are both written.
-	var deliv models.WebhookDelivery
+	var deliv sourcecontrol.WebhookDelivery
 	if err := db.Where("delivery_id = ?", "delivery-1").First(&deliv).Error; err != nil {
 		t.Fatalf("delivery row must exist: %v", err)
 	}
 	if deliv.OcOrgID != "org-acme" || deliv.Event != "push" || deliv.ProcessedAt != nil {
 		t.Fatalf("delivery row shape wrong: %+v", deliv)
 	}
-	var payload models.WebhookPayload
+	var payload sourcecontrol.WebhookPayload
 	if err := db.Where("delivery_id = ?", "delivery-1").First(&payload).Error; err != nil {
 		t.Fatalf("payload row must exist alongside the delivery: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestDeliveryStore_MarkProcessed_ClearsErrorAndStampsTime(t *testing.T) {
 		t.Fatalf("MarkProcessed: %v", err)
 	}
 
-	var row models.WebhookDelivery
+	var row sourcecontrol.WebhookDelivery
 	if err := db.Where("delivery_id = ?", "mp-1").First(&row).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestDeliveryStore_MarkFailed_RecordsErrorLeavesUnprocessed(t *testing.T) {
 		t.Fatalf("MarkFailed: %v", err)
 	}
 
-	var row models.WebhookDelivery
+	var row sourcecontrol.WebhookDelivery
 	if err := db.Where("delivery_id = ?", "mf-1").First(&row).Error; err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestInstall_ReposRemoved_PhaseAMergesSelectedRepos(t *testing.T) {
 	credSvc := newInstallCredSvc(t, db)
 	insertAppRow(t, db, "acme", 777, "active", []string{"acme/web", "acme/api"})
 
-	if err := sourcecontrol.NewRepoRepository(db).Create(context.Background(), &models.GitRepository{
+	if err := sourcecontrol.NewRepoRepository(db).Create(context.Background(), &sourcecontrol.GitRepository{
 		OrgID: "acme", ProjectID: "web", Status: "ready", RepoURL: "https://github.com/acme/web.git",
 	}); err != nil {
 		t.Fatalf("seed repo: %v", err)

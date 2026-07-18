@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // RepoService manages git repository lifecycle (create, get, delete).
@@ -33,7 +32,7 @@ type RepoService interface {
 	// the name from projectName (slug); either way the name is used VERBATIM —
 	// a conflict fails with ErrRepoNameConflict (never suffixed away) so the
 	// user can be asked for a different name.
-	CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error)
+	CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*GitRepository, error)
 	// EnsureBareRepo idempotently provisions a private repo with a STABLE name
 	// (no random suffix) and NO local clone — used for the per-org skills repo
 	// (sentinel projectID, e.g. "_skills"). AutoInit gives it a `main` branch +
@@ -41,11 +40,11 @@ type RepoService interface {
 	// exists (name conflict), it is adopted (cloneURL derived from owner+name)
 	// so the call stays idempotent across a lost DB row.
 	// See docs/design/skills-repo-storage.md §10.
-	EnsureBareRepo(ctx context.Context, orgID, projectID, repoName string) (*models.GitRepository, error)
-	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	EnsureBareRepo(ctx context.Context, orgID, projectID, repoName string) (*GitRepository, error)
+	GetRepo(ctx context.Context, orgID, projectID string) (*GitRepository, error)
 	// ListByOrg returns the org's repo rows (all statuses) — the source for
 	// the project-list repoUrl annotation (#108).
-	ListByOrg(ctx context.Context, orgID string) ([]models.GitRepository, error)
+	ListByOrg(ctx context.Context, orgID string) ([]GitRepository, error)
 	// SetWebhookID is called by the webhook registration service after a hook
 	// is provisioned for the repo on GitHub. Stored alongside the repo record
 	// so cleanup can deregister.
@@ -96,7 +95,7 @@ func NewRepoService(
 	return s
 }
 
-func (s *repoService) CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error) {
+func (s *repoService) CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*GitRepository, error) {
 	slog.InfoContext(ctx, "creating repository", "org", orgID, "project", projectID, "name", projectName, "repoName", repoName)
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID is required")
@@ -146,12 +145,12 @@ func (s *repoService) CreateRepo(ctx context.Context, orgID, projectID, projectN
 	// as a K8s Secret in workflows-<ocOrgID> (see
 	// docs/design/build-credential-injection.md), so no SecretReference
 	// name is computed here; OcSecretRefName is left nil on new rows.
-	repoSlug := models.SlugForURL(cloneURL)
+	repoSlug := SlugForURL(cloneURL)
 
 	// The repo is ready the moment GitHub has it: reads/writes/tags go through
 	// the Git Data API (docs/design/agents-generation-migration.md §5), so there
 	// is no local clone to warm and no "cloning" state to wait through.
-	gitRepo := &models.GitRepository{
+	gitRepo := &GitRepository{
 		OrgID:         orgID,
 		ProjectID:     projectID,
 		RepoURL:       cloneURL,
@@ -170,7 +169,7 @@ func (s *repoService) CreateRepo(ctx context.Context, orgID, projectID, projectN
 	return gitRepo, nil
 }
 
-func (s *repoService) EnsureBareRepo(ctx context.Context, orgID, projectID, repoName string) (*models.GitRepository, error) {
+func (s *repoService) EnsureBareRepo(ctx context.Context, orgID, projectID, repoName string) (*GitRepository, error) {
 	if orgID == "" || projectID == "" || repoName == "" {
 		return nil, fmt.Errorf("orgID, projectID and repoName are required")
 	}
@@ -203,13 +202,13 @@ func (s *repoService) EnsureBareRepo(ctx context.Context, orgID, projectID, repo
 		slog.InfoContext(ctx, "adopting pre-existing skills repo", "owner", cred.RepoOwner(), "name", repoName, "org", orgID)
 	}
 
-	gitRepo := &models.GitRepository{
+	gitRepo := &GitRepository{
 		OrgID:         orgID,
 		ProjectID:     projectID,
 		RepoURL:       cloneURL,
 		DefaultBranch: "main",
 		Status:        "ready", // no clone — the BFF reads/writes via the GitHub API
-		RepoSlug:      models.SlugForURL(cloneURL),
+		RepoSlug:      SlugForURL(cloneURL),
 	}
 	if err := s.repo.Create(ctx, gitRepo); err != nil {
 		// A concurrent caller (e.g. the skills list + updates-badge requests
@@ -227,7 +226,7 @@ func (s *repoService) EnsureBareRepo(ctx context.Context, orgID, projectID, repo
 	return gitRepo, nil
 }
 
-func (s *repoService) GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (s *repoService) GetRepo(ctx context.Context, orgID, projectID string) (*GitRepository, error) {
 	repo, err := s.repo.GetByOrgAndProjectID(ctx, orgID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("get repo: %w", err)
@@ -238,7 +237,7 @@ func (s *repoService) GetRepo(ctx context.Context, orgID, projectID string) (*mo
 	return repo, nil
 }
 
-func (s *repoService) ListByOrg(ctx context.Context, orgID string) ([]models.GitRepository, error) {
+func (s *repoService) ListByOrg(ctx context.Context, orgID string) ([]GitRepository, error) {
 	rows, err := s.repo.ListByOrg(ctx, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("list repos by org: %w", err)

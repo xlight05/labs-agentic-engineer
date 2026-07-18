@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/designspec"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- errors ----------------------------------------------------------------
@@ -126,7 +125,7 @@ type Conflict struct {
 // FilesRepoResolver looks up the project's git repo row. *sourcecontrol.repoService
 // satisfies it via GetRepo (which returns sourcecontrol.ErrRepoNotFound when absent).
 type FilesRepoResolver interface {
-	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 // FilesGitGateway is the narrow git surface + credential resolver + save identities.
@@ -162,7 +161,7 @@ func NewFilesService(repos FilesRepoResolver, git FilesGitGateway) FilesService 
 
 // repoRow looks up the project's repo row, mapping absence to
 // ErrProjectRepoNotFound (the 404).
-func (s *service) repoRow(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (s *service) repoRow(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	if s == nil || s.repos == nil || s.git == nil {
 		return nil, ErrProjectRepoNotFound
 	}

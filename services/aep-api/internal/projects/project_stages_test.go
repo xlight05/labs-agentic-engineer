@@ -25,12 +25,12 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 func devBinding(name, readyStatus, readyReason string) openchoreo.ReleaseBindingSummary {
@@ -352,8 +352,8 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 func TestRepoNotReady_ZeroValueStages(t *testing.T) {
 	t.Parallel()
 	repoSvc := &fakeRepoSvc{
-		GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{Status: "pending", RepoURL: "https://github.com/o/r.git"}, nil
+		GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{Status: "pending", RepoURL: "https://github.com/o/r.git"}, nil
 		},
 	}
 	// Sources deliberately unwired: the short-circuit must not touch them.

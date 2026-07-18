@@ -41,6 +41,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -430,16 +431,16 @@ func TestOrgIDByRepoFullName_DB(t *testing.T) {
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
 
 	// Canonical clone URL for acme/web.
-	if err := db.Create(&models.GitRepository{OrgID: "acme", ProjectID: "web", RepoURL: "https://github.com/acme-org/web"}).Error; err != nil {
+	if err := db.Create(&sourcecontrol.GitRepository{OrgID: "acme", ProjectID: "web", RepoURL: "https://github.com/acme-org/web"}).Error; err != nil {
 		t.Fatalf("seed repo: %v", err)
 	}
 	// A .git-suffixed clone URL for a second repo.
-	if err := db.Create(&models.GitRepository{OrgID: "globex", ProjectID: "svc", RepoURL: "https://github.com/globex-org/svc.git"}).Error; err != nil {
+	if err := db.Create(&sourcecontrol.GitRepository{OrgID: "globex", ProjectID: "svc", RepoURL: "https://github.com/globex-org/svc.git"}).Error; err != nil {
 		t.Fatalf("seed repo 2: %v", err)
 	}
 	// A same-suffix repo hosted elsewhere — must NOT match "acme-org/web"
 	// (the lookup is anchored on host+owner+repo, not an unanchored LIKE).
-	if err := db.Create(&models.GitRepository{OrgID: "evil", ProjectID: "x", RepoURL: "https://evil.example.com/acme-org/web"}).Error; err != nil {
+	if err := db.Create(&sourcecontrol.GitRepository{OrgID: "evil", ProjectID: "x", RepoURL: "https://evil.example.com/acme-org/web"}).Error; err != nil {
 		t.Fatalf("seed repo 3: %v", err)
 	}
 

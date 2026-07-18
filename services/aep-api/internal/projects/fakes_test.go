@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- observability.Client ----------------------------------------------------
@@ -50,24 +49,24 @@ func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectNam
 // --- sourcecontrol.RepoService (only GetRepo is consulted by TriggerBuild) ----------
 
 type stubRepoSvc struct {
-	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 var _ sourcecontrol.RepoService = (*stubRepoSvc)(nil)
 
-func (s *stubRepoSvc) GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (s *stubRepoSvc) GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	if s.GetRepoFunc == nil {
 		panic("stubRepoSvc: GetRepo not set")
 	}
 	return s.GetRepoFunc(ctx, orgID, projectID)
 }
-func (s *stubRepoSvc) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (s *stubRepoSvc) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	panic("stubRepoSvc: ListByOrg not expected in component tests")
 }
-func (s *stubRepoSvc) CreateRepo(context.Context, string, string, string, string) (*models.GitRepository, error) {
+func (s *stubRepoSvc) CreateRepo(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("stubRepoSvc: CreateRepo not expected")
 }
-func (s *stubRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*models.GitRepository, error) {
+func (s *stubRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("stubRepoSvc: EnsureBareRepo not expected")
 }
 func (s *stubRepoSvc) SetWebhookID(context.Context, string, string, int64) error {

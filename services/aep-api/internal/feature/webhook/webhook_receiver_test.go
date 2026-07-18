@@ -50,7 +50,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // receiverSecret is the per-org HMAC key the fake SecretProvider serves; valid
@@ -127,9 +127,9 @@ func (h *receiverHarness) post(t *testing.T, deliveryID, event, signature string
 	return rec
 }
 
-func (h *receiverHarness) loadDelivery(t *testing.T, deliveryID string) models.WebhookDelivery {
+func (h *receiverHarness) loadDelivery(t *testing.T, deliveryID string) sourcecontrol.WebhookDelivery {
 	t.Helper()
-	var row models.WebhookDelivery
+	var row sourcecontrol.WebhookDelivery
 	if err := h.db.Where("delivery_id = ?", deliveryID).First(&row).Error; err != nil {
 		t.Fatalf("delivery row %s must exist: %v", deliveryID, err)
 	}
@@ -181,7 +181,7 @@ func TestReceiver_BadSignature_401NoDispatchNoPersist(t *testing.T) {
 	}
 	// Verify runs BEFORE Persist: a forged event never writes a delivery row.
 	var count int64
-	h.db.Model(&models.WebhookDelivery{}).Where("delivery_id = ?", "delivery-forged").Count(&count)
+	h.db.Model(&sourcecontrol.WebhookDelivery{}).Where("delivery_id = ?", "delivery-forged").Count(&count)
 	if count != 0 {
 		t.Fatal("a forged event must not be persisted")
 	}
@@ -275,7 +275,7 @@ func TestReceiver_UnroutableRepo_Acks200Noop(t *testing.T) {
 		t.Fatalf("an unroutable event must NOT dispatch, got %d calls", len(h.handler.calls))
 	}
 	var count int64
-	h.db.Model(&models.WebhookDelivery{}).Where("delivery_id = ?", "delivery-stranger").Count(&count)
+	h.db.Model(&sourcecontrol.WebhookDelivery{}).Where("delivery_id = ?", "delivery-stranger").Count(&count)
 	if count != 0 {
 		t.Fatal("an unroutable event must not be persisted")
 	}

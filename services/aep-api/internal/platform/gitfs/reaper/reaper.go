@@ -50,7 +50,7 @@ import (
 )
 
 // RepoCoordinate is the reaper's own view of a repo row: just its on-disk
-// identity. Deliberately NOT models.GitRepository — the reaper is a kernel
+// identity. Deliberately NOT sourcecontrol.GitRepository — the reaper is a kernel
 // package, and naming the domain entity would be the kernel depending on a
 // domain. It needs three things to decide whether a directory is an orphan;
 // this names exactly those. The composition root projects the DB rows onto it.

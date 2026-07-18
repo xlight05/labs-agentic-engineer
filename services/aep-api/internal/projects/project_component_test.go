@@ -44,7 +44,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/projects"
 	projectshttpapi "github.com/wso2/aep/aep-api/internal/projects/httpapi"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // mustProjects assembles the projects domain from its Deps or fails the harness
@@ -61,16 +60,16 @@ func mustProjects(h *projectshttpapi.Handlers, err error) *projectshttpapi.Handl
 // reports a name conflict; every other method is unreachable from create.
 type conflictRepoSvc struct{}
 
-func (conflictRepoSvc) CreateRepo(context.Context, string, string, string, string) (*models.GitRepository, error) {
+func (conflictRepoSvc) CreateRepo(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 	return nil, fmt.Errorf("create github repo: %w", sourcecontrol.ErrRepoNameConflict)
 }
-func (conflictRepoSvc) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (conflictRepoSvc) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (conflictRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*models.GitRepository, error) {
+func (conflictRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("EnsureBareRepo not expected")
 }
-func (conflictRepoSvc) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
+func (conflictRepoSvc) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("GetRepo not expected")
 }
 func (conflictRepoSvc) SetWebhookID(context.Context, string, string, int64) error {

@@ -21,28 +21,28 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ensureRepoSvc is a minimal sourcecontrol.RepoService — only GetRepo is exercised by
 // EnsureComponent; the rest panic if reached.
-type ensureRepoSvc struct{ repo *models.GitRepository }
+type ensureRepoSvc struct{ repo *sourcecontrol.GitRepository }
 
-func (r ensureRepoSvc) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (r ensureRepoSvc) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	panic("ensureRepoSvc: ListByOrg not expected")
 }
-func (r ensureRepoSvc) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
+func (r ensureRepoSvc) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	return r.repo, nil
 }
-func (ensureRepoSvc) CreateRepo(context.Context, string, string, string, string) (*models.GitRepository, error) {
+func (ensureRepoSvc) CreateRepo(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("CreateRepo not expected")
 }
-func (ensureRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*models.GitRepository, error) {
+func (ensureRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("EnsureBareRepo not expected")
 }
 func (ensureRepoSvc) SetWebhookID(context.Context, string, string, int64) error {
@@ -75,7 +75,7 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 			return files, nil
 		},
 	})
-	repo := &models.GitRepository{RepoURL: "https://github.com/acme/widgets", DefaultBranch: "main"}
+	repo := &sourcecontrol.GitRepository{RepoURL: "https://github.com/acme/widgets", DefaultBranch: "main"}
 	svc := NewComponentService(oc, nil, store, ensureRepoSvc{repo: repo}, nil)
 
 	if err := svc.EnsureComponent(context.Background(), "acme", "widgets", "order-service"); err != nil {
@@ -138,7 +138,7 @@ func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 			return files, nil
 		},
 	})
-	repo := &models.GitRepository{RepoURL: "https://github.com/acme/widgets", DefaultBranch: "main"}
+	repo := &sourcecontrol.GitRepository{RepoURL: "https://github.com/acme/widgets", DefaultBranch: "main"}
 	svc := NewComponentService(oc, nil, store, ensureRepoSvc{repo: repo}, nil)
 
 	if err := svc.EnsureComponent(context.Background(), "acme", "widgets", "web-ui"); err != nil {
@@ -165,7 +165,7 @@ func TestEnsureComponent_DesignMissingComponent_Errors(t *testing.T) {
 			return files, nil
 		},
 	})
-	svc := NewComponentService(oc, nil, store, ensureRepoSvc{repo: &models.GitRepository{RepoURL: "u"}}, nil)
+	svc := NewComponentService(oc, nil, store, ensureRepoSvc{repo: &sourcecontrol.GitRepository{RepoURL: "u"}}, nil)
 
 	if err := svc.EnsureComponent(context.Background(), "acme", "widgets", "ghost"); err == nil {
 		t.Fatal("a component absent from the design must error (no CR to build)")

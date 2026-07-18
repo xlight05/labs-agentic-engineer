@@ -22,8 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // TestSkillsRepoGone_Clear503 reproduces the live incident's failure shape: the
@@ -32,7 +32,7 @@ import (
 // skills repository unavailable"), NOT the old opaque unlogged 500 — and agents
 // must never be dispatched, no turn row created.
 func TestSkillsRepoGone_Clear503(t *testing.T) {
-	staleRow := &models.GitRepository{
+	staleRow := &sourcecontrol.GitRepository{
 		OrgID:         testOrg,
 		ProjectID:     spec.SkillsRepoSentinelProjectID,
 		RepoURL:       "file:///nonexistent/skills-repo-gone.git",
@@ -41,7 +41,7 @@ func TestSkillsRepoGone_Clear503(t *testing.T) {
 		RepoSlug:      "org-skills",
 	}
 	r := newGenaiRig(t, map[string]string{"specs/requirements/requirements.md": "# Reqs\n"},
-		withSkillsRepo(func(context.Context, string) (*models.GitRepository, error) {
+		withSkillsRepo(func(context.Context, string) (*sourcecontrol.GitRepository, error) {
 			return staleRow, nil
 		}))
 

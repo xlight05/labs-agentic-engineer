@@ -20,14 +20,13 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
-
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 func TestApplyRepoToProjectStatus(t *testing.T) {
 	cases := []struct {
 		name       string
-		repo       *models.GitRepository
+		repo       *sourcecontrol.GitRepository
 		wantPhase  string
 		wantDone   bool
 		wantErrMsg string
@@ -40,26 +39,26 @@ func TestApplyRepoToProjectStatus(t *testing.T) {
 		},
 		{
 			name:      "pending",
-			repo:      &models.GitRepository{Status: "pending", RepoURL: "https://github.com/o/r"},
+			repo:      &sourcecontrol.GitRepository{Status: "pending", RepoURL: "https://github.com/o/r"},
 			wantPhase: "repo-cloning",
 			wantDone:  true,
 		},
 		{
 			name:      "cloning",
-			repo:      &models.GitRepository{Status: "cloning", RepoURL: "https://github.com/o/r"},
+			repo:      &sourcecontrol.GitRepository{Status: "cloning", RepoURL: "https://github.com/o/r"},
 			wantPhase: "repo-cloning",
 			wantDone:  true,
 		},
 		{
 			name:       "error",
-			repo:       &models.GitRepository{Status: "error", RepoURL: "https://github.com/o/r", ErrorMessage: "create directory: permission denied"},
+			repo:       &sourcecontrol.GitRepository{Status: "error", RepoURL: "https://github.com/o/r", ErrorMessage: "create directory: permission denied"},
 			wantPhase:  "repo-error",
 			wantDone:   true,
 			wantErrMsg: "create directory: permission denied",
 		},
 		{
 			name:      "ready continues",
-			repo:      &models.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r"},
+			repo:      &sourcecontrol.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r"},
 			wantPhase: "",
 			wantDone:  false,
 		},

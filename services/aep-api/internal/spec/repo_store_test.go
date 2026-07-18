@@ -31,7 +31,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- engine-backed test host -------------------------------------------------
@@ -48,7 +47,7 @@ type testGitHost struct {
 	t       *testing.T
 	engine  *gitfs.Engine
 	mu      sync.Mutex // models the DB's concurrency safety (the real GetRepo/EnsureBareRepo are serialized by Postgres)
-	rows    map[string]*models.GitRepository
+	rows    map[string]*sourcecontrol.GitRepository
 	origins map[string]*gittest.Remote
 }
 
@@ -56,12 +55,12 @@ func newTestGitHost(t *testing.T) *testGitHost {
 	return &testGitHost{
 		t:       t,
 		engine:  workspacetest.NewEngine(t),
-		rows:    map[string]*models.GitRepository{},
+		rows:    map[string]*sourcecontrol.GitRepository{},
 		origins: map[string]*gittest.Remote{},
 	}
 }
 
-func (h *testGitHost) GetRepo(_ context.Context, orgID, _ string) (*models.GitRepository, error) {
+func (h *testGitHost) GetRepo(_ context.Context, orgID, _ string) (*sourcecontrol.GitRepository, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if r, ok := h.rows[orgID]; ok {
@@ -70,20 +69,20 @@ func (h *testGitHost) GetRepo(_ context.Context, orgID, _ string) (*models.GitRe
 	return nil, sourcecontrol.ErrRepoNotFound
 }
 
-func (h *testGitHost) EnsureBareRepo(_ context.Context, orgID, projectID, repoName string) (*models.GitRepository, error) {
+func (h *testGitHost) EnsureBareRepo(_ context.Context, orgID, projectID, repoName string) (*sourcecontrol.GitRepository, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if r, ok := h.rows[orgID]; ok {
 		return r, nil
 	}
 	origin := workspacetest.NewOrigin(h.t, nil)
-	r := &models.GitRepository{
+	r := &sourcecontrol.GitRepository{
 		OrgID:         orgID,
 		ProjectID:     projectID,
 		RepoURL:       origin.URL(),
 		DefaultBranch: "main",
 		Status:        "ready",
-		// Production persists models.SlugForURL(cloneURL); file:// URLs have no
+		// Production persists sourcecontrol.SlugForURL(cloneURL); file:// URLs have no
 		// owner/repo shape, so the tests pin the stable repo name as the slug —
 		// the path key the engine derives the mirror location from.
 		RepoSlug: repoName,

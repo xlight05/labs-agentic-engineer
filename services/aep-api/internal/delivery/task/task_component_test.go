@@ -50,7 +50,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -114,8 +113,8 @@ func (f *fakeIssues) RemoveLabel(context.Context, string, string, int, string) e
 
 type fakeRepos struct{}
 
-func (fakeRepos) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
-	return &models.GitRepository{OrgID: org, ProjectID: proj, RepoURL: "https://github.com/acme/widgets"}, nil
+func (fakeRepos) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+	return &sourcecontrol.GitRepository{OrgID: org, ProjectID: proj, RepoURL: "https://github.com/acme/widgets"}, nil
 }
 
 type fakeExecs struct {
@@ -271,15 +270,15 @@ func TestPlan_InProgress_409(t *testing.T) {
 	skillsOrigin := gittest.NewRemote(t, gittest.WithSeed(map[string]string{
 		"skills/task-planning/SKILL.md": "---\nname: task-planning\nmetadata:\n  aep:\n    kind: platform\n---\nbody",
 	}, "seed"))
-	repoRow := &models.GitRepository{OrgID: org, ProjectID: proj, RepoURL: fx.Origin.URL(),
+	repoRow := &sourcecontrol.GitRepository{OrgID: org, ProjectID: proj, RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	skillsRow := &models.GitRepository{OrgID: org, ProjectID: spec.SkillsRepoSentinelProjectID,
+	skillsRow := &sourcecontrol.GitRepository{OrgID: org, ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 	git := sourcecontrol.NewGitOpsService(nilCredResolver{}, fx.Engine)
 	plan := task.NewPlanService(fixedRepos{repo: repoRow},
 		fakeVersions{spec: []spec.RequirementsVersionInfo{{Tag: "v1"}}}, git,
 		func(context.Context, string) (string, error) { return "sk-key", nil }, bt, iss, fx.Engine,
-		func(context.Context, string) (*models.GitRepository, error) { return skillsRow, nil })
+		func(context.Context, string) (*sourcecontrol.GitRepository, error) { return skillsRow, nil })
 
 	firstErr := make(chan error, 1)
 	go func() {
@@ -301,9 +300,9 @@ func TestPlan_InProgress_409(t *testing.T) {
 }
 
 // fixedRepos serves one fixed row (the workspace-backed plan rig's repo).
-type fixedRepos struct{ repo *models.GitRepository }
+type fixedRepos struct{ repo *sourcecontrol.GitRepository }
 
-func (f fixedRepos) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
+func (f fixedRepos) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	return f.repo, nil
 }
 

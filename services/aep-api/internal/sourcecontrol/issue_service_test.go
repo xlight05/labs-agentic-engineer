@@ -25,7 +25,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // newIssueSvcOnStub wires a REAL issueService (and REAL REST client) at the
@@ -35,7 +34,7 @@ import (
 func newIssueSvcOnStub(t *testing.T, stub *gittest.Stub) sourcecontrol.IssueService {
 	t.Helper()
 	repo := newFakeRepoRepo()
-	repo.preload(&models.GitRepository{
+	repo.preload(&sourcecontrol.GitRepository{
 		OrgID: "org1", ProjectID: "proj1",
 		RepoURL: "https://github.com/acme/widgets",
 	})

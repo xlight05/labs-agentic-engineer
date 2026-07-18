@@ -33,7 +33,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // Identities resolves the org's git identity (author/committer + login) for a
@@ -98,7 +98,7 @@ type TokenIssuer interface {
 // ProjectRepos resolves a project's git repo row (RepoURL/RepoSlug). Wired from
 // sourcecontrol.RepoService.
 type ProjectRepos interface {
-	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 // Reevaluator re-runs the funnel gates — called after a build succeeds so Tasks

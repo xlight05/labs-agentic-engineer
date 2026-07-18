@@ -49,7 +49,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -371,9 +370,9 @@ func (m *memTurnRepo) row(t *testing.T, id string) spec.AgentTurn {
 
 // ---- faked credential edges ---------------------------------------------------
 
-type stubRepoResolver struct{ rec *models.GitRepository }
+type stubRepoResolver struct{ rec *sourcecontrol.GitRepository }
 
-func (s stubRepoResolver) GetRepo(_ context.Context, _, _ string) (*models.GitRepository, error) {
+func (s stubRepoResolver) GetRepo(_ context.Context, _, _ string) (*sourcecontrol.GitRepository, error) {
 	if s.rec == nil {
 		return nil, sourcecontrol.ErrRepoNotFound
 	}
@@ -468,7 +467,7 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 		"skills/high-level-architecture/SKILL.md": "---\nname: high-level-architecture\ndescription: d\nmetadata:\n  aep:\n    kind: platform\n---\nbody",
 	}, "seed skills"))
 
-	rec := &models.GitRepository{
+	rec := &sourcecontrol.GitRepository{
 		OrgID:         testOrg,
 		ProjectID:     testProj,
 		RepoURL:       fx.Origin.URL(),
@@ -476,7 +475,7 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 		Status:        "ready",
 		RepoSlug:      workspacetest.DefaultSlug,
 	}
-	skillsRow := &models.GitRepository{
+	skillsRow := &sourcecontrol.GitRepository{
 		OrgID:         testOrg,
 		ProjectID:     spec.SkillsRepoSentinelProjectID,
 		RepoURL:       skillsOrigin.URL(),
@@ -494,7 +493,7 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 	if cfg.client != nil {
 		client = cfg.client
 	}
-	skillsRepo := spec.SkillsRepoResolver(func(context.Context, string) (*models.GitRepository, error) {
+	skillsRepo := spec.SkillsRepoResolver(func(context.Context, string) (*sourcecontrol.GitRepository, error) {
 		return skillsRow, nil
 	})
 	if cfg.skillsRepo != nil {

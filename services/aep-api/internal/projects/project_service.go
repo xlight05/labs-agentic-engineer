@@ -32,7 +32,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/async"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Error sentinels for the project feature. ErrProjectNotFound is owned here.
@@ -292,7 +291,7 @@ func (s *Service) GetProjectStatus(ctx context.Context, orgName, projectName str
 // applyRepoToProjectStatus maps a provisioned git_repositories row onto the
 // status fields that depend on repo lifecycle. Returns true when phase is
 // fully determined (no-repo, cloning, or error) and artifact checks can stop.
-func applyRepoToProjectStatus(status *gen.ProjectStatus, repo *models.GitRepository) bool {
+func applyRepoToProjectStatus(status *gen.ProjectStatus, repo *sourcecontrol.GitRepository) bool {
 	if repo == nil {
 		status.Phase = "no-repo"
 		return true

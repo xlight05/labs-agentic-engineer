@@ -24,7 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // fakeGitSecretClient records CreateGitSecret/DeleteGitSecret calls.
@@ -53,29 +53,29 @@ func (f *fakeGitSecretClient) ListGitSecrets(ctx context.Context, orgNS string) 
 // fakeRepoRepo is a minimal in-memory RepoRepository for the
 // stage-build-secret tests.
 type fakeRepoRepo struct {
-	rows map[string]*models.GitRepository // key = ocOrgID + "/" + repoSlug
+	rows map[string]*sourcecontrol.GitRepository // key = ocOrgID + "/" + repoSlug
 }
 
-func (f *fakeRepoRepo) GetByProjectID(ctx context.Context, projectID string) (*models.GitRepository, error) {
+func (f *fakeRepoRepo) GetByProjectID(ctx context.Context, projectID string) (*sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (f *fakeRepoRepo) GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*models.GitRepository, error) {
+func (f *fakeRepoRepo) GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (f *fakeRepoRepo) ListAllReady(context.Context) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListAllReady(context.Context) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (f *fakeRepoRepo) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	panic("fakeRepoRepo: ListByOrg not expected in orgcreds tests")
 }
-func (f *fakeRepoRepo) ListAll(context.Context) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListAll(context.Context) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (f *fakeRepoRepo) GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*models.GitRepository, error) {
+func (f *fakeRepoRepo) GetByOrgAndSlug(ctx context.Context, ocOrgID, repoSlug string) (*sourcecontrol.GitRepository, error) {
 	return f.rows[ocOrgID+"/"+repoSlug], nil
 }
-func (f *fakeRepoRepo) Create(context.Context, *models.GitRepository) error           { return nil }
-func (f *fakeRepoRepo) Update(context.Context, *models.GitRepository) error           { return nil }
+func (f *fakeRepoRepo) Create(context.Context, *sourcecontrol.GitRepository) error    { return nil }
+func (f *fakeRepoRepo) Update(context.Context, *sourcecontrol.GitRepository) error    { return nil }
 func (f *fakeRepoRepo) Delete(context.Context, string) error                          { return nil }
 func (f *fakeRepoRepo) DeleteByOrgAndProjectID(context.Context, string, string) error { return nil }
 func (f *fakeRepoRepo) DeleteAll(context.Context) error                               { return nil }
@@ -112,12 +112,12 @@ func (c *fakeCred) WebhookStrategy() secrets.WebhookStrategy {
 const testRunName = "default-greeting-api-1731538100123"
 
 func TestStageBuildSecret_Happy(t *testing.T) {
-	repo := &models.GitRepository{
+	repo := &sourcecontrol.GitRepository{
 		OrgID:     "default",
 		ProjectID: "p1",
 		RepoSlug:  "aep-repos-myrepo",
 	}
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{"default/aep-repos-myrepo": repo}}
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{"default/aep-repos-myrepo": repo}}
 	res := &fakeResolver{cred: &fakeCred{token: "ghs_abc123", exp: time.Now().Add(time.Hour)}}
 	gs := &fakeGitSecretClient{}
 
@@ -148,7 +148,7 @@ func TestStageBuildSecret_Happy(t *testing.T) {
 // A 404 on the delete leg (first-ever build for the org) must be tolerated —
 // the create still proceeds.
 func TestStageBuildSecret_DeleteNotFoundTolerated(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
 	res := &fakeResolver{cred: &fakeCred{token: "t", exp: time.Now().Add(time.Hour)}}
@@ -168,7 +168,7 @@ func TestStageBuildSecret_DeleteNotFoundTolerated(t *testing.T) {
 // between our delete and create) must be tolerated — the secret exists with a
 // valid token, so the build proceeds.
 func TestStageBuildSecret_CreateConflictTolerated(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
 	res := &fakeResolver{cred: &fakeCred{token: "t", exp: time.Now().Add(time.Hour)}}
@@ -190,7 +190,7 @@ func TestStageBuildSecret_CreateConflictTolerated(t *testing.T) {
 // (public) repo unauthenticated. Private-repo support is tracked by
 // wso2-enterprise/wso2cloud#319.
 func TestStageBuildSecret_ProvisionFailureDegrades(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
 	res := &fakeResolver{cred: &fakeCred{token: "t", exp: time.Now().Add(time.Hour)}}
@@ -209,7 +209,7 @@ func TestStageBuildSecret_ProvisionFailureDegrades(t *testing.T) {
 // With no git-secret client wired (degraded), provisioning is skipped and an
 // empty SecretRef is returned so the build clones unauthenticated.
 func TestStageBuildSecret_NilClientDegraded(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
 	res := &fakeResolver{cred: &fakeCred{token: "t", exp: time.Now().Add(time.Hour)}}
@@ -225,7 +225,7 @@ func TestStageBuildSecret_NilClientDegraded(t *testing.T) {
 }
 
 func TestStageBuildSecret_RepoNotInOrg(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{}}
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{}}
 	svc := NewBuildCredentialsService(repos, &fakeResolver{}, nil)
 	_, err := svc.StageBuildSecret(context.Background(), "default", "missing-slug", testRunName)
 	if !errors.Is(err, ErrRepoNotInOrg) {
@@ -234,7 +234,7 @@ func TestStageBuildSecret_RepoNotInOrg(t *testing.T) {
 }
 
 func TestStageBuildSecret_OrgDisconnected(t *testing.T) {
-	repos := &fakeRepoRepo{rows: map[string]*models.GitRepository{
+	repos := &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{
 		"default/slug": {OrgID: "default", RepoSlug: "slug"},
 	}}
 	res := &fakeResolver{err: &secrets.OrgNotActiveError{OcOrgID: "default", Status: "disconnected"}}

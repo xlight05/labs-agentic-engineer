@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/organization"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/google/uuid"
 
@@ -32,7 +33,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // CodingExecutor is the coding-class executor. Run dispatches the right OC work
@@ -115,7 +115,7 @@ type CodingExecutor struct {
 // SkillsRepoResolver ensures the org's skills repo exists and returns its row.
 // Satisfied at the composition root by the same EnsureProvisioned+GetRepo
 // closure the genai + task-plan turns use, so this feature grows no skills edge.
-type SkillsRepoResolver func(ctx context.Context, orgID string) (*models.GitRepository, error)
+type SkillsRepoResolver func(ctx context.Context, orgID string) (*sourcecontrol.GitRepository, error)
 
 // NewCodingExecutor wires the base coding executor. anthropic may be nil. Call
 // WithProxy and/or WithK8sJobDispatch to enable a dispatch path.
@@ -401,7 +401,7 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 // configured for the proxy path (fall back). The runner env AEP_TASK_ID carries
 // the EXECUTION id (JobInputs.TaskID) and the bearer's task claim is the
 // execution id — the re-keyed runner contract (§9.2).
-func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.DispatchRequest, repo *models.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
+func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.DispatchRequest, repo *sourcecontrol.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
 	t := req.Task
 	if e.proxy == nil || disp.image == "" || e.clusterSecretStore == "" {
 		return false, "", nil

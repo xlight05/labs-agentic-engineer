@@ -21,7 +21,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The on-disk leaf for the per-org skills repo is pinned to
@@ -31,7 +30,7 @@ import (
 // the wire — an owner-prefixed leaf here means every turn dispatch 400s with
 // "unknown skills snapshot ref" (found in e2e 2026-07-06).
 func TestWorkspaceRefFor_PinsSkillsRepoDirName(t *testing.T) {
-	row := &models.GitRepository{
+	row := &sourcecontrol.GitRepository{
 		OrgID:         "default",
 		ProjectID:     spec.SkillsRepoSentinelProjectID,
 		RepoURL:       "https://github.com/asdlc-repos/org-skills",
@@ -46,7 +45,7 @@ func TestWorkspaceRefFor_PinsSkillsRepoDirName(t *testing.T) {
 
 // Ordinary project repos keep the row slug (URL-backfilled when absent).
 func TestWorkspaceRefFor_ProjectReposKeepRowSlug(t *testing.T) {
-	withSlug := &models.GitRepository{
+	withSlug := &sourcecontrol.GitRepository{
 		OrgID:     "default",
 		ProjectID: "proj-1",
 		RepoURL:   "https://github.com/acme/widgets",
@@ -55,7 +54,7 @@ func TestWorkspaceRefFor_ProjectReposKeepRowSlug(t *testing.T) {
 	if got := sourcecontrol.WorkspaceRefFor("default", withSlug, nil).RepoSlug; got != "acme-widgets" {
 		t.Fatalf("RepoSlug = %q, want %q", got, "acme-widgets")
 	}
-	backfilled := &models.GitRepository{
+	backfilled := &sourcecontrol.GitRepository{
 		OrgID:     "default",
 		ProjectID: "proj-2",
 		RepoURL:   "https://github.com/acme/Gadgets.git",

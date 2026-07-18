@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // repoOracle is the project-ownership port the collab handlers consult: it
@@ -30,7 +30,7 @@ import (
 // confirmed to belong to the caller's org. RegisterCollab is wired with the
 // concrete repo at the composition root.
 type repoOracle interface {
-	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 // collabUserClaims projects the display fields off a verified user JWT. The

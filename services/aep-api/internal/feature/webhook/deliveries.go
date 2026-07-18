@@ -25,7 +25,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // DeliveryStore persists inbound webhook deliveries with free dedup via the
@@ -59,7 +59,7 @@ func (s *DeliveryStore) Persist(ctx context.Context, deliveryID, ocOrgID, event,
 	}
 
 	now := time.Now().UTC()
-	row := models.WebhookDelivery{
+	row := sourcecontrol.WebhookDelivery{
 		DeliveryID: deliveryID,
 		OcOrgID:    ocOrgID,
 		Event:      event,
@@ -69,7 +69,7 @@ func (s *DeliveryStore) Persist(ctx context.Context, deliveryID, ocOrgID, event,
 	res := s.db.WithContext(ctx).Clauses().Create(&row)
 	if res.Error == nil {
 		// Fresh insert. Persist the payload too.
-		if err := s.db.WithContext(ctx).Create(&models.WebhookPayload{
+		if err := s.db.WithContext(ctx).Create(&sourcecontrol.WebhookPayload{
 			DeliveryID: deliveryID,
 			Payload:    payload,
 			CreatedAt:  now,
@@ -85,7 +85,7 @@ func (s *DeliveryStore) Persist(ctx context.Context, deliveryID, ocOrgID, event,
 		return PersistResult{}, fmt.Errorf("persist delivery: %w", res.Error)
 	}
 
-	var existing models.WebhookDelivery
+	var existing sourcecontrol.WebhookDelivery
 	if err := s.db.WithContext(ctx).
 		Where("delivery_id = ?", deliveryID).
 		First(&existing).Error; err != nil {
@@ -99,7 +99,7 @@ func (s *DeliveryStore) Persist(ctx context.Context, deliveryID, ocOrgID, event,
 func (s *DeliveryStore) MarkProcessed(ctx context.Context, deliveryID string) error {
 	now := time.Now().UTC()
 	return s.db.WithContext(ctx).
-		Model(&models.WebhookDelivery{}).
+		Model(&sourcecontrol.WebhookDelivery{}).
 		Where("delivery_id = ?", deliveryID).
 		Updates(map[string]any{
 			"processed_at":  &now,
@@ -111,7 +111,7 @@ func (s *DeliveryStore) MarkProcessed(ctx context.Context, deliveryID string) er
 // processed_at stays null so GitHub redelivery re-runs the handler.
 func (s *DeliveryStore) MarkFailed(ctx context.Context, deliveryID string, errMsg string) error {
 	return s.db.WithContext(ctx).
-		Model(&models.WebhookDelivery{}).
+		Model(&sourcecontrol.WebhookDelivery{}).
 		Where("delivery_id = ?", deliveryID).
 		Update("process_error", errMsg).Error
 }

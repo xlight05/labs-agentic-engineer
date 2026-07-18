@@ -41,35 +41,34 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- port fakes --------------------------------------------------------------
 
 // fakeRepoSvc fakes sourcecontrol.RepoService. Unset funcs panic loudly.
 type fakeRepoSvc struct {
-	CreateRepoFunc func(ctx context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error)
-	GetRepoFunc    func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	CreateRepoFunc func(ctx context.Context, orgID, projectID, projectName, repoName string) (*sourcecontrol.GitRepository, error)
+	GetRepoFunc    func(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 	DeleteRepoFunc func(ctx context.Context, orgID, projectID string) error
-	ListByOrgFunc  func(ctx context.Context, orgID string) ([]models.GitRepository, error)
+	ListByOrgFunc  func(ctx context.Context, orgID string) ([]sourcecontrol.GitRepository, error)
 }
 
-func (f *fakeRepoSvc) CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error) {
+func (f *fakeRepoSvc) CreateRepo(ctx context.Context, orgID, projectID, projectName, repoName string) (*sourcecontrol.GitRepository, error) {
 	if f.CreateRepoFunc == nil {
 		panic("fakeRepoSvc: CreateRepo not set")
 	}
 	return f.CreateRepoFunc(ctx, orgID, projectID, projectName, repoName)
 }
-func (f *fakeRepoSvc) ListByOrg(ctx context.Context, orgID string) ([]models.GitRepository, error) {
+func (f *fakeRepoSvc) ListByOrg(ctx context.Context, orgID string) ([]sourcecontrol.GitRepository, error) {
 	if f.ListByOrgFunc == nil {
 		panic("fakeRepoSvc: ListByOrg not set")
 	}
 	return f.ListByOrgFunc(ctx, orgID)
 }
-func (f *fakeRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*models.GitRepository, error) {
+func (f *fakeRepoSvc) EnsureBareRepo(context.Context, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("fakeRepoSvc: EnsureBareRepo not expected in project tests")
 }
-func (f *fakeRepoSvc) GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (f *fakeRepoSvc) GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	if f.GetRepoFunc == nil {
 		panic("fakeRepoSvc: GetRepo not set")
 	}
@@ -275,11 +274,11 @@ func TestListProjects_JoinsRepoURLBestEffort(t *testing.T) {
 		},
 	}
 	repoSvc := &fakeRepoSvc{
-		ListByOrgFunc: func(_ context.Context, orgID string) ([]models.GitRepository, error) {
+		ListByOrgFunc: func(_ context.Context, orgID string) ([]sourcecontrol.GitRepository, error) {
 			if orgID != "acme" {
 				t.Errorf("ListByOrg org = %q, want acme", orgID)
 			}
-			return []models.GitRepository{
+			return []sourcecontrol.GitRepository{
 				{OrgID: "acme", ProjectID: "web", RepoURL: "https://github.com/acme/web.git"},
 			}, nil
 		},
@@ -298,7 +297,7 @@ func TestListProjects_JoinsRepoURLBestEffort(t *testing.T) {
 	}
 
 	// Join failure → list still returns, just unannotated.
-	repoSvc.ListByOrgFunc = func(context.Context, string) ([]models.GitRepository, error) {
+	repoSvc.ListByOrgFunc = func(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 		return nil, errors.New("db down")
 	}
 	list, err = svc.ListProjects(context.Background(), "acme", 100, "", "")
@@ -321,9 +320,9 @@ func TestCreateProject_HappyPath_ProvisionsRepoWebhookAndSkills(t *testing.T) {
 	}
 	var repoOrg, repoProject, repoProjectName, repoOverride string
 	repoSvc := &fakeRepoSvc{
-		CreateRepoFunc: func(_ context.Context, orgID, projectID, projectName, repoName string) (*models.GitRepository, error) {
+		CreateRepoFunc: func(_ context.Context, orgID, projectID, projectName, repoName string) (*sourcecontrol.GitRepository, error) {
 			repoOrg, repoProject, repoProjectName, repoOverride = orgID, projectID, projectName, repoName
-			return &models.GitRepository{Status: "ready"}, nil
+			return &sourcecontrol.GitRepository{Status: "ready"}, nil
 		},
 	}
 	webhooks := &fakeWebhookSvc{}
@@ -364,9 +363,9 @@ func TestCreateProject_RepoNameOverridesProvisionedRepoName(t *testing.T) {
 	}
 	var repoProject, repoOverride string
 	repoSvc := &fakeRepoSvc{
-		CreateRepoFunc: func(_ context.Context, _, projectID, _, repoName string) (*models.GitRepository, error) {
+		CreateRepoFunc: func(_ context.Context, _, projectID, _, repoName string) (*sourcecontrol.GitRepository, error) {
 			repoProject, repoOverride = projectID, repoName
-			return &models.GitRepository{Status: "ready"}, nil
+			return &sourcecontrol.GitRepository{Status: "ready"}, nil
 		},
 	}
 	svc := NewProjectService(oc, repoSvc, &fakeWebhookSvc{}, nil, nil)
@@ -408,7 +407,7 @@ func TestCreateProject_RepoNameConflictRollsBackProject(t *testing.T) {
 				},
 			}
 			repoSvc := &fakeRepoSvc{
-				CreateRepoFunc: func(context.Context, string, string, string, string) (*models.GitRepository, error) {
+				CreateRepoFunc: func(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 					return nil, fmt.Errorf("create github repo: %w", sourcecontrol.ErrRepoNameConflict)
 				},
 			}
@@ -455,7 +454,7 @@ func TestCreateProject_RepoFailureIsBestEffort(t *testing.T) {
 		},
 	}
 	repoSvc := &fakeRepoSvc{
-		CreateRepoFunc: func(context.Context, string, string, string, string) (*models.GitRepository, error) {
+		CreateRepoFunc: func(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 			return nil, errors.New("github down")
 		},
 	}
@@ -479,8 +478,8 @@ func TestCreateProject_WebhookFailureIsBestEffort(t *testing.T) {
 		},
 	}
 	repoSvc := &fakeRepoSvc{
-		CreateRepoFunc: func(context.Context, string, string, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{Status: "ready"}, nil
+		CreateRepoFunc: func(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{Status: "ready"}, nil
 		},
 	}
 	webhooks := &fakeWebhookSvc{RegisterFunc: func(context.Context, string, string) (*int64, error) {
@@ -647,8 +646,8 @@ func (fx statusFixture) service() *Service {
 		},
 	}
 	repoSvc := &fakeRepoSvc{
-		GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r.git"}, nil
+		GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r.git"}, nil
 		},
 	}
 	svc := NewProjectService(nil, repoSvc, nil, fakeArtifacts, fx.execs)
@@ -666,14 +665,14 @@ func TestGetProjectStatus_NilOrFailingRepoMeansNoRepo(t *testing.T) {
 		t.Fatalf("nil repoSvc: want phase no-repo, got %q (err %v)", st.Phase, err)
 	}
 
-	failing := &fakeRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
+	failing := &fakeRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 		return nil, errors.New("db down")
 	}}
 	if st, err := NewProjectService(nil, failing, nil, nil, nil).GetProjectStatus(context.Background(), "acme", "web"); err != nil || st.Phase != "no-repo" {
 		t.Fatalf("GetRepo error: want phase no-repo, got %q (err %v)", st.Phase, err)
 	}
 
-	norow := &fakeRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
+	norow := &fakeRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 		return nil, nil
 	}}
 	if st, err := NewProjectService(nil, norow, nil, nil, nil).GetProjectStatus(context.Background(), "acme", "web"); err != nil || st.Phase != "no-repo" {
@@ -720,8 +719,8 @@ func TestGetProjectStatus_StrictSourceFailures(t *testing.T) {
 func TestGetProjectStatus_SourcesNotWired(t *testing.T) {
 	t.Parallel()
 	repoSvc := &fakeRepoSvc{
-		GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r.git"}, nil
+		GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r.git"}, nil
 		},
 	}
 	svc := NewProjectService(nil, repoSvc, nil, &artifactstest.FakeArtifactService{}, nil)

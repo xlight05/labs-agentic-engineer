@@ -35,7 +35,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The composition-root adapters that satisfy the tasks/execution/codingagent
@@ -275,7 +274,7 @@ func (l repoLister) ListAll(ctx context.Context) ([]execution.RepoRef, error) {
 	}
 	out := make([]execution.RepoRef, 0, len(rows))
 	for i := range rows {
-		owner, name := models.OwnerRepoFromURL(rows[i].RepoURL)
+		owner, name := sourcecontrol.OwnerRepoFromURL(rows[i].RepoURL)
 		if owner == "" || name == "" {
 			continue
 		}

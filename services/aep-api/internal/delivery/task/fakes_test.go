@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeIssues is an in-memory IssueClient: issues keyed by number, recording
@@ -176,18 +175,18 @@ func issueHasAll(have, want []string) bool {
 
 // fakeRepos returns a fixed repo row.
 type fakeRepos struct {
-	repo *models.GitRepository
+	repo *sourcecontrol.GitRepository
 }
 
-func (f fakeRepos) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
+func (f fakeRepos) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	if f.repo == nil {
 		return nil, sourcecontrol.ErrRepoNotFound
 	}
 	return f.repo, nil
 }
 
-func defaultRepo() *models.GitRepository {
-	return &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/o/r"}
+func defaultRepo() *sourcecontrol.GitRepository {
+	return &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/o/r"}
 }
 
 // fakeExecReader serves seeded execution rows.

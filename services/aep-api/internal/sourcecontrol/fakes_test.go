@@ -37,7 +37,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- credential seam -------------------------------------------------------
@@ -101,7 +100,7 @@ var _ secrets.Resolver = fakeResolver{}
 // Updates so a test can prove a status write actually happened.
 type fakeRepoRepo struct {
 	mu      sync.Mutex
-	rows    map[string]*models.GitRepository
+	rows    map[string]*sourcecontrol.GitRepository
 	updates int
 
 	getErr    error // injected into GetByOrgAndProjectID
@@ -109,17 +108,17 @@ type fakeRepoRepo struct {
 }
 
 func newFakeRepoRepo() *fakeRepoRepo {
-	return &fakeRepoRepo{rows: map[string]*models.GitRepository{}}
+	return &fakeRepoRepo{rows: map[string]*sourcecontrol.GitRepository{}}
 }
 
 func repoKey(orgID, projectID string) string { return orgID + "|" + projectID }
 
-func (f *fakeRepoRepo) put(r *models.GitRepository) {
+func (f *fakeRepoRepo) put(r *sourcecontrol.GitRepository) {
 	cp := *r
 	f.rows[repoKey(r.OrgID, r.ProjectID)] = &cp
 }
 
-func (f *fakeRepoRepo) GetByOrgAndProjectID(_ context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (f *fakeRepoRepo) GetByOrgAndProjectID(_ context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.getErr != nil {
@@ -133,7 +132,7 @@ func (f *fakeRepoRepo) GetByOrgAndProjectID(_ context.Context, orgID, projectID 
 	return &cp, nil
 }
 
-func (f *fakeRepoRepo) GetByOrgAndSlug(_ context.Context, orgID, repoSlug string) (*models.GitRepository, error) {
+func (f *fakeRepoRepo) GetByOrgAndSlug(_ context.Context, orgID, repoSlug string) (*sourcecontrol.GitRepository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, r := range f.rows {
@@ -145,10 +144,10 @@ func (f *fakeRepoRepo) GetByOrgAndSlug(_ context.Context, orgID, repoSlug string
 	return nil, nil
 }
 
-func (f *fakeRepoRepo) ListAllReady(context.Context) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListAllReady(context.Context) ([]sourcecontrol.GitRepository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []models.GitRepository
+	var out []sourcecontrol.GitRepository
 	for _, r := range f.rows {
 		if r.Status == "ready" {
 			out = append(out, *r)
@@ -157,10 +156,10 @@ func (f *fakeRepoRepo) ListAllReady(context.Context) ([]models.GitRepository, er
 	return out, nil
 }
 
-func (f *fakeRepoRepo) ListByOrg(_ context.Context, ocOrgID string) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListByOrg(_ context.Context, ocOrgID string) ([]sourcecontrol.GitRepository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []models.GitRepository
+	var out []sourcecontrol.GitRepository
 	for _, r := range f.rows {
 		if r.OrgID == ocOrgID {
 			out = append(out, *r)
@@ -169,17 +168,17 @@ func (f *fakeRepoRepo) ListByOrg(_ context.Context, ocOrgID string) ([]models.Gi
 	return out, nil
 }
 
-func (f *fakeRepoRepo) ListAll(context.Context) ([]models.GitRepository, error) {
+func (f *fakeRepoRepo) ListAll(context.Context) ([]sourcecontrol.GitRepository, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []models.GitRepository
+	var out []sourcecontrol.GitRepository
 	for _, r := range f.rows {
 		out = append(out, *r)
 	}
 	return out, nil
 }
 
-func (f *fakeRepoRepo) Create(_ context.Context, repo *models.GitRepository) error {
+func (f *fakeRepoRepo) Create(_ context.Context, repo *sourcecontrol.GitRepository) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.createErr != nil {
@@ -189,7 +188,7 @@ func (f *fakeRepoRepo) Create(_ context.Context, repo *models.GitRepository) err
 	return nil
 }
 
-func (f *fakeRepoRepo) Update(_ context.Context, repo *models.GitRepository) error {
+func (f *fakeRepoRepo) Update(_ context.Context, repo *sourcecontrol.GitRepository) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.put(repo)
@@ -212,7 +211,7 @@ func (f *fakeRepoRepo) updateCount() int {
 
 // preload seeds a row directly (bypassing Create's semantics) so tests can
 // arrange existing repo state.
-func (f *fakeRepoRepo) preload(rows ...*models.GitRepository) {
+func (f *fakeRepoRepo) preload(rows ...*sourcecontrol.GitRepository) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, r := range rows {

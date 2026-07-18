@@ -26,7 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // newWebhookSvcOnStub wires a REAL webhookService with a REAL issueService (for
@@ -38,7 +37,7 @@ import (
 func newWebhookSvcOnStub(t *testing.T, stub *gittest.Stub, strategy secrets.WebhookStrategy) (sourcecontrol.WebhookService, *fakeRepoRepo) {
 	t.Helper()
 	repo := newFakeRepoRepo()
-	repo.preload(&models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
+	repo.preload(&sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
 	resolver := fakeResolver{cred: fakeCred{strategy: strategy}}
 	gh := githubclient.NewClient(githubclient.WithAPIBase(stub.URL))
 	issueSvc := sourcecontrol.NewIssueService(repo, nil, resolver)
@@ -127,7 +126,7 @@ func TestWebhookRegister_PlatformStrategyShortCircuits(t *testing.T) {
 func TestWebhookRegister_MissingConfigErrors(t *testing.T) {
 	t.Parallel()
 	issRepo := newFakeRepoRepo()
-	issRepo.preload(&models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
+	issRepo.preload(&sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/acme/widgets"})
 	issueSvc := sourcecontrol.NewIssueService(issRepo, nil, fakeResolver{})
 	repoSvc := sourcecontrol.NewRepoService(issRepo, githubclient.NewClient(), fakeResolver{}, "public")
 	// Empty delivery URL + secret.

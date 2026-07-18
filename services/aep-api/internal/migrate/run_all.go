@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/projects"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -55,8 +56,8 @@ import (
 func BaseModels() []any {
 	return []any{
 		&projects.ComponentConfig{},
-		&models.WebhookDelivery{},
-		&models.WebhookPayload{},
+		&sourcecontrol.WebhookDelivery{},
+		&sourcecontrol.WebhookPayload{},
 		&models.Organization{},
 		&delivery.Execution{},
 		&spec.AgentTurn{},
@@ -100,7 +101,7 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		ctxStep("phase3_thunder_org_uuid", RunPhase3ThunderOrgUUID),
 		ctxStep("phase3_coding_agent_logs", RunPhase3CodingAgentLogs),
 		// GitRepository table from the model tag (creates the new composite index).
-		dbStep("automigrate_git_repository", func(db *gorm.DB) error { return db.AutoMigrate(&models.GitRepository{}) }),
+		dbStep("automigrate_git_repository", func(db *gorm.DB) error { return db.AutoMigrate(&sourcecontrol.GitRepository{}) }),
 		// Composite (org_id, project_id) unique — must run AFTER AutoMigrate,
 		// which creates the new index from the tag but never drops the old one.
 		ctxStep("git_repositories_composite_unique", RunGitRepoCompositeUnique),

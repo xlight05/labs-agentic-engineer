@@ -32,12 +32,12 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- List / Get / Deployments / Builds (OC passthrough + error propagation) ---
@@ -175,11 +175,11 @@ func TestComponentService_TriggerBuild_StagesSecretWithSameRunName(t *testing.T)
 		ocSecretRef, ocRun = secretRef, runName
 		return &gen.WorkflowRun{Name: runName}, nil
 	}}
-	repo := &stubRepoSvc{GetRepoFunc: func(_ context.Context, orgID, projectID string) (*models.GitRepository, error) {
+	repo := &stubRepoSvc{GetRepoFunc: func(_ context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 		if orgID != "acme" || projectID != "web" {
 			t.Errorf("GetRepo scope: (%q,%q)", orgID, projectID)
 		}
-		return &models.GitRepository{RepoSlug: "owner-repo"}, nil
+		return &sourcecontrol.GitRepository{RepoSlug: "owner-repo"}, nil
 	}}
 	stager := &stubBuildStager{StageBuildSecretFunc: func(_ context.Context, ocOrgID, repoSlug, runName string) (string, error) {
 		stagerSlug, stagerRun = repoSlug, runName
@@ -209,14 +209,14 @@ func TestComponentService_TriggerBuild_GetRepoFailuresAreBestEffort(t *testing.T
 		name string
 		repo *stubRepoSvc
 	}{
-		{"GetRepo errors", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
+		{"GetRepo errors", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 			return nil, errors.New("db down")
 		}}},
-		{"no repo row", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
+		{"no repo row", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 			return nil, nil
 		}}},
-		{"empty repoSlug", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{RepoSlug: ""}, nil
+		{"empty repoSlug", &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{RepoSlug: ""}, nil
 		}}},
 	}
 	for _, tc := range cases {
@@ -250,8 +250,8 @@ func TestComponentService_TriggerBuild_StagerFailureAborts(t *testing.T) {
 		t.Error("build must not fire when the secret staging failed")
 		return nil, nil
 	}}
-	repo := &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-		return &models.GitRepository{RepoSlug: "owner-repo"}, nil
+	repo := &stubRepoSvc{GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+		return &sourcecontrol.GitRepository{RepoSlug: "owner-repo"}, nil
 	}}
 	stager := &stubBuildStager{StageBuildSecretFunc: func(context.Context, string, string, string) (string, error) {
 		return "", errors.New("openbao unreachable")

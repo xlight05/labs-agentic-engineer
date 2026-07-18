@@ -74,7 +74,6 @@ import (
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Watcher is a long-running background loop. Every watcher blocks on its
@@ -356,7 +355,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// embedded builtin/flow skills on first touch) and hands back its row —
 	// the SkillsRef source for genai + task-plan turns. A closure at the
 	// composition root so neither feature grows a skills edge.
-	skillsRepoForTurns := func(ctx context.Context, orgID string) (*models.GitRepository, error) {
+	skillsRepoForTurns := func(ctx context.Context, orgID string) (*sourcecontrol.GitRepository, error) {
 		if err := skillSvc.EnsureProvisioned(ctx, orgID); err != nil {
 			return nil, err
 		}

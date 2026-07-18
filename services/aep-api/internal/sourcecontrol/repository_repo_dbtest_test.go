@@ -22,7 +22,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // TestRepoRepository_OrgScopedIsolation exercises real Postgres (no mock) to
@@ -38,7 +37,7 @@ func TestRepoRepository_OrgScopedIsolation(t *testing.T) {
 
 	mk := func(org, proj, url string) {
 		t.Helper()
-		if err := repo.Create(ctx, &models.GitRepository{
+		if err := repo.Create(ctx, &sourcecontrol.GitRepository{
 			OrgID: org, ProjectID: proj, RepoURL: url, Status: "ready",
 		}); err != nil {
 			t.Fatalf("create (%s,%s): %v", org, proj, err)
@@ -79,10 +78,10 @@ func TestRepoRepository_TwoOrgsSameProjectSlug(t *testing.T) {
 	const slug = "shared-slug"
 	// Same project slug under two different orgs — permitted by the composite
 	// (org_id, project_id) unique.
-	if err := repo.Create(ctx, &models.GitRepository{OrgID: "orga", ProjectID: slug, RepoURL: "https://github.com/a/x", Status: "ready"}); err != nil {
+	if err := repo.Create(ctx, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: slug, RepoURL: "https://github.com/a/x", Status: "ready"}); err != nil {
 		t.Fatalf("create (orga,%s): %v", slug, err)
 	}
-	if err := repo.Create(ctx, &models.GitRepository{OrgID: "orgb", ProjectID: slug, RepoURL: "https://github.com/b/x", Status: "ready"}); err != nil {
+	if err := repo.Create(ctx, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: slug, RepoURL: "https://github.com/b/x", Status: "ready"}); err != nil {
 		t.Fatalf("create (orgb,%s) — composite unique should permit a same-slug project in another org: %v", slug, err)
 	}
 
@@ -103,7 +102,7 @@ func TestRepoRepository_TwoOrgsSameProjectSlug(t *testing.T) {
 }
 
 // mkRepo persists a GitRepository row against real Postgres and returns it.
-func mkRepo(t *testing.T, repo sourcecontrol.RepoRepository, r *models.GitRepository) *models.GitRepository {
+func mkRepo(t *testing.T, repo sourcecontrol.RepoRepository, r *sourcecontrol.GitRepository) *sourcecontrol.GitRepository {
 	t.Helper()
 	if r.Status == "" {
 		r.Status = "ready"
@@ -123,8 +122,8 @@ func TestRepoRepository_GetByOrgAndSlug_OrgScoped(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/a/todo", RepoSlug: "a-todo"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "proj-b", RepoURL: "https://github.com/b/todo", RepoSlug: "a-todo"}) // same slug, other org
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/a/todo", RepoSlug: "a-todo"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: "proj-b", RepoURL: "https://github.com/b/todo", RepoSlug: "a-todo"}) // same slug, other org
 
 	got, err := repo.GetByOrgAndSlug(ctx, "orga", "a-todo")
 	if err != nil {
@@ -152,9 +151,9 @@ func TestRepoRepository_ListAllReady(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "p2", RepoURL: "https://github.com/b/p2", Status: "ready"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p3", RepoURL: "https://github.com/a/p3", Status: "pending"}) // excluded
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: "p2", RepoURL: "https://github.com/b/p2", Status: "ready"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "p3", RepoURL: "https://github.com/a/p3", Status: "pending"}) // excluded
 
 	got, err := repo.ListAllReady(ctx)
 	if err != nil {
@@ -179,9 +178,9 @@ func TestRepoRepository_ListAll(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "p2", RepoURL: "https://github.com/b/p2", Status: "pending"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p3", RepoURL: "https://github.com/a/p3", Status: "error"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: "p2", RepoURL: "https://github.com/b/p2", Status: "pending"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "p3", RepoURL: "https://github.com/a/p3", Status: "error"})
 
 	got, err := repo.ListAll(ctx)
 	if err != nil {
@@ -199,7 +198,7 @@ func TestRepoRepository_Update(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	r := mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj", RepoURL: "https://github.com/a/proj", Status: "pending"})
+	r := mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "proj", RepoURL: "https://github.com/a/proj", Status: "pending"})
 	r.Status = "ready"
 	r.DefaultBranch = "trunk"
 	if err := repo.Update(ctx, r); err != nil {
@@ -222,8 +221,8 @@ func TestRepoRepository_DeleteByOrgAndProjectID_OrgScoped(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "shared", RepoURL: "https://github.com/a/x"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "shared", RepoURL: "https://github.com/b/x"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "shared", RepoURL: "https://github.com/a/x"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: "shared", RepoURL: "https://github.com/b/x"})
 
 	if err := repo.DeleteByOrgAndProjectID(ctx, "orga", "shared"); err != nil {
 		t.Fatalf("DeleteByOrgAndProjectID: %v", err)
@@ -246,8 +245,8 @@ func TestLookupOrgProjectByRepoURL(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/acme/todo"})
-	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "proj-b", RepoURL: "https://github.com/other/todo.git"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/acme/todo"})
+	mkRepo(t, repo, &sourcecontrol.GitRepository{OrgID: "orgb", ProjectID: "proj-b", RepoURL: "https://github.com/other/todo.git"})
 
 	// Bare full_name resolves the bare-URL row.
 	org, proj, err := sourcecontrol.LookupOrgProjectByRepoURL(db.WithContext(ctx), "acme/todo")
@@ -288,7 +287,7 @@ func TestRepoRepository_ListByOrg(t *testing.T) {
 	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
-	for _, r := range []models.GitRepository{
+	for _, r := range []sourcecontrol.GitRepository{
 		{OrgID: "orga", ProjectID: "web", RepoURL: "https://github.com/a/web.git", Status: "ready"},
 		{OrgID: "orga", ProjectID: "api", RepoURL: "https://github.com/a/api.git", Status: "pending"},
 		{OrgID: "orgb", ProjectID: "web", RepoURL: "https://github.com/b/web.git", Status: "ready"},

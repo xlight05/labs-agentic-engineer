@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 func TestCreateRepo_HappyPathMarksReady(t *testing.T) {
@@ -93,7 +92,7 @@ func TestCreateRepo_DerivedNameConflictFailsWithoutRetry(t *testing.T) {
 func TestCreateRepo_IsIdempotentOnExistingRow(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepoRepo()
-	existing := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/test-org/pre", Status: "ready"}
+	existing := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: "https://github.com/test-org/pre", Status: "ready"}
 	repo.preload(existing)
 	stub := gittest.NewStub(t) // no create route registered — must NOT be hit
 	svc := sourcecontrol.NewRepoService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{}, "private")

@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // OrgComponentEndpoint is a catalog row enriched with the provider's repo
@@ -82,7 +82,7 @@ const (
 // endpoint's Project field keys these lookups directly — no name→id mapping
 // table is needed.
 type RepoLocator interface {
-	GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*models.GitRepository, error)
+	GetByOrgAndProjectID(ctx context.Context, ocOrgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 // DesignBundleReader reads a provider project's committed design bundle (assembled
@@ -296,7 +296,7 @@ func (c *Catalog) resolveRepoCoords(ctx context.Context, orgHandle, project stri
 	if gr == nil {
 		return
 	}
-	owner, repo := models.OwnerRepoFromURL(gr.RepoURL)
+	owner, repo := sourcecontrol.OwnerRepoFromURL(gr.RepoURL)
 	oce.Owner, oce.Repo, oce.Branch = owner, repo, gr.DefaultBranch
 	if comp != nil {
 		oce.Subdir = comp.AppPath

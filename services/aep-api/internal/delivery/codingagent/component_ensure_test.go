@@ -27,7 +27,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/gen"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // noDispatchPathErr is the error runCoding returns once it clears the pre-flight
@@ -43,7 +43,7 @@ const noDispatchPathErr = "no coding-agent dispatch path configured"
 // noDispatchPathErr — enough to assert the pre-flight behavior in isolation.
 func codingExecutorFor(t *testing.T, ensurer ComponentEnsurer, oc openchoreo.ComponentClient, row *delivery.Execution) *CodingExecutor {
 	t.Helper()
-	e := NewCodingExecutor(oc, fakeRepos{repo: &models.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
+	e := NewCodingExecutor(oc, fakeRepos{repo: &sourcecontrol.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
 		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform", nil, nil, nil, nil)
 	return e.WithComponentEnsurer(ensurer)
 }
@@ -165,7 +165,7 @@ func TestRunBuild_ComponentMissing_ActionableError(t *testing.T) {
 		},
 	}
 	row := buildRow("b1")
-	e := NewCodingExecutor(oc, fakeRepos{repo: &models.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
+	e := NewCodingExecutor(oc, fakeRepos{repo: &sourcecontrol.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
 		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform", nil, nil, nil, nil)
 
 	err := e.Run(context.Background(), buildDispatch(row))

@@ -42,7 +42,6 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -225,7 +224,7 @@ func (s *SkillService) catalog(ctx context.Context, orgID string) []Skill {
 // in-memory — with per-entry layout info for the reconciler. Branch-tip reads
 // always revalidate origin, so freshness matches the retired REST walk without
 // any cache.
-func (s *SkillService) loadCatalogEntries(ctx context.Context, orgID string, repo *models.GitRepository) ([]catalogEntry, error) {
+func (s *SkillService) loadCatalogEntries(ctx context.Context, orgID string, repo *sourcecontrol.GitRepository) ([]catalogEntry, error) {
 	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return nil, err
@@ -238,7 +237,7 @@ func (s *SkillService) loadCatalogEntries(ctx context.Context, orgID string, rep
 }
 
 // loadCatalog is loadCatalogEntries projected to the Skill catalog shape.
-func (s *SkillService) loadCatalog(ctx context.Context, orgID string, repo *models.GitRepository) ([]Skill, error) {
+func (s *SkillService) loadCatalog(ctx context.Context, orgID string, repo *sourcecontrol.GitRepository) ([]Skill, error) {
 	entries, err := s.loadCatalogEntries(ctx, orgID, repo)
 	if err != nil {
 		return nil, err
@@ -399,7 +398,7 @@ func parseBundle(ctx context.Context, files map[string]string) []Skill {
 // commitFiles applies a set of blob writes + path/prefix deletes to the skills
 // repo's default branch in a single commit through Workspace.Mutate, which
 // owns the bounded fast-forward CAS retry (design D5). §9.
-func (s *SkillService) commitFiles(ctx context.Context, orgID string, repo *models.GitRepository, message string, writes map[string][]byte, deletePrefixes []string) (string, error) {
+func (s *SkillService) commitFiles(ctx context.Context, orgID string, repo *sourcecontrol.GitRepository, message string, writes map[string][]byte, deletePrefixes []string) (string, error) {
 	ref, err := sourcecontrol.ResolveWorkspaceRef(ctx, s.git.Resolver(), orgID, repo)
 	if err != nil {
 		return "", err

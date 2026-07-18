@@ -22,16 +22,16 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeRepos returns a fixed project repo (its RepoSlug drives build-secret
 // staging). A nil repo simulates "no repo row".
-type fakeRepos struct{ repo *models.GitRepository }
+type fakeRepos struct{ repo *sourcecontrol.GitRepository }
 
-func (f fakeRepos) GetRepo(context.Context, string, string) (*models.GitRepository, error) {
+func (f fakeRepos) GetRepo(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	return f.repo, nil
 }
 

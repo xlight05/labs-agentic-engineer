@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // The opsExecutionBridge that used to live here (satisfying ops.ExecutionReader
@@ -39,7 +39,7 @@ import (
 // provider's model.
 type reaperRepoLister struct {
 	repos interface {
-		ListAll(ctx context.Context) ([]models.GitRepository, error)
+		ListAll(ctx context.Context) ([]sourcecontrol.GitRepository, error)
 	}
 }
 

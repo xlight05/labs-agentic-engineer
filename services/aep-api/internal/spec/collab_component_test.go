@@ -50,7 +50,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const specPrefix = "/api/v1/projects/web/spec"
@@ -60,24 +59,24 @@ const specPrefix = "/api/v1/projects/web/spec"
 // fakeCollabRepos is the collab project-ownership oracle (sourcecontrol.RepoService).
 // Only GetRepo is consulted by the collab handlers; the other methods panic.
 type fakeCollabRepos struct {
-	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
+	GetRepoFunc func(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error)
 }
 
 var _ sourcecontrol.RepoService = (*fakeCollabRepos)(nil)
 
-func (f *fakeCollabRepos) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (f *fakeCollabRepos) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	panic("fakeCollabRepos: ListByOrg not expected")
 }
-func (f *fakeCollabRepos) GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error) {
+func (f *fakeCollabRepos) GetRepo(ctx context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 	if f.GetRepoFunc == nil {
 		panic("fakeCollabRepos: GetRepo not set")
 	}
 	return f.GetRepoFunc(ctx, orgID, projectID)
 }
-func (f *fakeCollabRepos) CreateRepo(context.Context, string, string, string, string) (*models.GitRepository, error) {
+func (f *fakeCollabRepos) CreateRepo(context.Context, string, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("fakeCollabRepos: CreateRepo not expected")
 }
-func (f *fakeCollabRepos) EnsureBareRepo(context.Context, string, string, string) (*models.GitRepository, error) {
+func (f *fakeCollabRepos) EnsureBareRepo(context.Context, string, string, string) (*sourcecontrol.GitRepository, error) {
 	panic("fakeCollabRepos: EnsureBareRepo not expected")
 }
 func (f *fakeCollabRepos) SetWebhookID(context.Context, string, string, int64) error {
@@ -117,8 +116,8 @@ func sansSchema(keys []string) []string {
 func TestReqComponent_CollabSession_HappyMatchesGoldenFieldSet(t *testing.T) {
 	t.Parallel()
 	repos := &fakeCollabRepos{
-		GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
-			return &models.GitRepository{RepoURL: "https://github.com/o/r.git"}, nil
+		GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
+			return &sourcecontrol.GitRepository{RepoURL: "https://github.com/o/r.git"}, nil
 		},
 	}
 	h := newReqHarness(t, repos)
@@ -151,7 +150,7 @@ func TestReqComponent_CollabSession_HappyMatchesGoldenFieldSet(t *testing.T) {
 func TestReqComponent_CollabSession_UnknownProjectIs404(t *testing.T) {
 	t.Parallel()
 	repos := &fakeCollabRepos{
-		GetRepoFunc: func(context.Context, string, string) (*models.GitRepository, error) {
+		GetRepoFunc: func(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 			return nil, nil // no repo row → project not found
 		},
 	}
@@ -188,11 +187,11 @@ func TestReqComponent_CollabValidate_MissingRoom(t *testing.T) {
 func TestReqComponent_CollabValidate_ReturnsProjectName(t *testing.T) {
 	t.Parallel()
 	repos := &fakeCollabRepos{
-		GetRepoFunc: func(_ context.Context, orgID, projectID string) (*models.GitRepository, error) {
+		GetRepoFunc: func(_ context.Context, orgID, projectID string) (*sourcecontrol.GitRepository, error) {
 			if orgID != "acme" || projectID != "demo-shop" {
 				return nil, nil
 			}
-			return &models.GitRepository{Status: "ready"}, nil
+			return &sourcecontrol.GitRepository{Status: "ready"}, nil
 		},
 	}
 	h := newReqHarness(t, repos)

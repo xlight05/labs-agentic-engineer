@@ -23,8 +23,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Structural compile-time check (dependency-management Phase 5): *Catalog is the
@@ -213,10 +213,10 @@ func TestCatalog_FindByComponent(t *testing.T) {
 
 // fakeRepoLocator resolves an app-factory provider's git repo row by project id.
 type fakeRepoLocator struct {
-	byProject map[string]*models.GitRepository
+	byProject map[string]*sourcecontrol.GitRepository
 }
 
-func (f fakeRepoLocator) GetByOrgAndProjectID(_ context.Context, _, projectID string) (*models.GitRepository, error) {
+func (f fakeRepoLocator) GetByOrgAndProjectID(_ context.Context, _, projectID string) (*sourcecontrol.GitRepository, error) {
 	return f.byProject[projectID], nil
 }
 
@@ -242,7 +242,7 @@ func TestResolve_InlineFromSchema(t *testing.T) {
 		Visibility: []string{"namespace"}, SchemaType: "openapi", SchemaContent: "openapi: 3.0.3\ninfo: {}\n",
 	}
 	cat := NewCatalog(fakeRC([]openchoreo.WorkloadEndpointInfo{e}),
-		WithRepoLocator(fakeRepoLocator{byProject: map[string]*models.GitRepository{
+		WithRepoLocator(fakeRepoLocator{byProject: map[string]*sourcecontrol.GitRepository{
 			"hr": {RepoURL: "https://github.com/acme/hr.git", DefaultBranch: "main"},
 		}}),
 	)
@@ -278,7 +278,7 @@ func TestResolve_InlineFromDesignBundle(t *testing.T) {
 		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
 			"hr": designWith(spec.DesignComponent{Name: "employee-api", AppPath: "svc", OpenAPISpec: openapiSpec}),
 		}}),
-		WithRepoLocator(fakeRepoLocator{byProject: map[string]*models.GitRepository{
+		WithRepoLocator(fakeRepoLocator{byProject: map[string]*sourcecontrol.GitRepository{
 			"hr": {RepoURL: "https://github.com/acme/hr.git", DefaultBranch: "main"},
 		}}),
 	)
@@ -370,7 +370,7 @@ func TestResolve_RepoCoords(t *testing.T) {
 		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
 			"hr": designWith(spec.DesignComponent{Name: "employee-api", AppPath: "services/employee"}),
 		}}),
-		WithRepoLocator(fakeRepoLocator{byProject: map[string]*models.GitRepository{
+		WithRepoLocator(fakeRepoLocator{byProject: map[string]*sourcecontrol.GitRepository{
 			"hr": {RepoURL: "https://github.com/acme/hr", DefaultBranch: "main"},
 		}}),
 	)

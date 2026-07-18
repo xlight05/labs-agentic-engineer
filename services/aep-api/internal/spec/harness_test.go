@@ -52,33 +52,32 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ----- faked edges: RepoRepository row + credential resolver -----
 
 // stubRepoRepo returns one fixed GitRepository row.
-type stubRepoRepo struct{ rec *models.GitRepository }
+type stubRepoRepo struct{ rec *sourcecontrol.GitRepository }
 
 var _ sourcecontrol.RepoRepository = (*stubRepoRepo)(nil)
 
-func (s *stubRepoRepo) GetByOrgAndProjectID(context.Context, string, string) (*models.GitRepository, error) {
+func (s *stubRepoRepo) GetByOrgAndProjectID(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	return s.rec, nil
 }
-func (s *stubRepoRepo) GetByOrgAndSlug(context.Context, string, string) (*models.GitRepository, error) {
+func (s *stubRepoRepo) GetByOrgAndSlug(context.Context, string, string) (*sourcecontrol.GitRepository, error) {
 	return nil, sourcecontrol.ErrRepoNotFound
 }
-func (s *stubRepoRepo) ListAllReady(context.Context) ([]models.GitRepository, error) {
+func (s *stubRepoRepo) ListAllReady(context.Context) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (s *stubRepoRepo) ListByOrg(context.Context, string) ([]models.GitRepository, error) {
+func (s *stubRepoRepo) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	panic("stubRepoRepo: ListByOrg not expected in artifacts tests")
 }
-func (s *stubRepoRepo) ListAll(context.Context) ([]models.GitRepository, error) {
+func (s *stubRepoRepo) ListAll(context.Context) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (s *stubRepoRepo) Create(context.Context, *models.GitRepository) error { return nil }
-func (s *stubRepoRepo) Update(context.Context, *models.GitRepository) error { return nil }
+func (s *stubRepoRepo) Create(context.Context, *sourcecontrol.GitRepository) error { return nil }
+func (s *stubRepoRepo) Update(context.Context, *sourcecontrol.GitRepository) error { return nil }
 func (s *stubRepoRepo) DeleteByOrgAndProjectID(context.Context, string, string) error {
 	return nil
 }
@@ -144,7 +143,7 @@ type rig struct {
 	remote *gittest.Remote
 	engine *gitfs.Engine
 	ws     *hookedWorkspace
-	rec    *models.GitRepository
+	rec    *sourcecontrol.GitRepository
 	org    string
 	proj   string
 }
@@ -167,7 +166,7 @@ func newRig(t *testing.T, seed map[string]string) *rig {
 	org, proj := idsFor(t)
 	remote := gittest.NewRemote(t, gittest.WithSeed(seed, "seed"))
 
-	rec := &models.GitRepository{
+	rec := &sourcecontrol.GitRepository{
 		OrgID:         org,
 		ProjectID:     proj,
 		RepoURL:       remote.URL(),

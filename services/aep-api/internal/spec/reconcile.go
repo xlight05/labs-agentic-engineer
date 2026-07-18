@@ -42,7 +42,6 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // SkillUpdate is one row of the "updates available" badge: an org-kind skill
@@ -63,7 +62,7 @@ type SkillUpdate struct {
 // first-load ordering), and the GitHub repo creation itself runs under no
 // flock at all — this narrow in-process guard covers exactly that first-time
 // step. In steady state it wraps only a ~1ms GetRepo at design/task QPS.
-func (s *SkillService) ensureSkillsRepo(ctx context.Context, orgID string) (*models.GitRepository, error) {
+func (s *SkillService) ensureSkillsRepo(ctx context.Context, orgID string) (*sourcecontrol.GitRepository, error) {
 	mu := s.orgLock(orgID)
 	mu.Lock()
 	defer mu.Unlock()
@@ -131,7 +130,7 @@ func isUserKind(kind string) bool {
 // A rewritten skill's flat directory is replaced wholesale (delete staged
 // before the writes) so references removed by the new content never linger.
 // Returns the number of skills written + migrated + purged. §6.2.
-func (s *SkillService) reconcileEmbedded(ctx context.Context, orgID string, repo *models.GitRepository) (int, error) {
+func (s *SkillService) reconcileEmbedded(ctx context.Context, orgID string, repo *sourcecontrol.GitRepository) (int, error) {
 	embedded, err := loadLibrary(s.library)
 	if err != nil {
 		return 0, err
