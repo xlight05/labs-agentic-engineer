@@ -1364,6 +1364,43 @@ merges three features whose *cores* are the shared thing, which inverts the deli
   in P9. P8c (secrets) was a no-op like every prior domain's (the `SecretWriter` port keeps the fence green),
   and `AccessRequest` stays `x-go-type: models.X` — the same deferral P3/P7 made for their kernel-typed schemas.
 
+**P9 (strict lock-down) findings** — the migration's completion, and the surprises of dissolving the last two
+shared kernels:
+
+- **`migrate` importing a domain cycles that domain's WHITE-BOX dbtests.** `migrate.BaseModels` names every
+  domain's gorm entity, so once an entity moves home, `migrate` imports that domain. `platform/dbtest.New`
+  imports `migrate` to build the schema, so any `package <domain>` (white-box) test that calls `dbtest.New`
+  closes `<domain>(test) → dbtest → migrate → <domain>`. There is no injection escape (the test must
+  transitively reach `migrate` to get the production schema, and `migrate` must name the domain). The fix is
+  **black-box dbtests** (`package <domain>_test`), the pattern delivery/dependencies/sourcecontrol already used;
+  spec, platform/secrets, and all 7 organization dbtests were converted. Where a black-box test needed an
+  unexported production type/field/const, the assertion was rewritten to a BEHAVIOURAL check through the exported
+  API (e.g. secrets verifies credential mode via `WebhookStrategy()` instead of asserting `*userPATCred`), a pure
+  helper was duplicated into a `_test` file, or a literal replaced the const — never a weakened check. `_test.go`
+  files are exempt from the `platform → domain` scan (and `go list -deps` ignores test imports), so a kernel test
+  referencing a domain entity to seed a row is legal and acyclic.
+- **A gorm-entity-as-wire-type costs a wire/domain SPLIT; a hand-written-uncodegennable DTO costs a LEAF
+  RELOCATE.** The 3 splits (AccessRequest→dependencies, ComponentConfig+EnvVar→projects) put the gorm entity in
+  its domain, drop the contract `x-go-type`, let `gen` generate the wire struct, and add a `<domain>` wire
+  projection at the handler boundary — byte-identical (only key order + an `int→int64` widening), and because
+  dropping `x-go-type` is Go-only the CONSOLE is untouched (the P1 console ripple was a *schema* accuracy fix, not
+  the split). The 5 org-config DTOs (`ConfigPatch` three-state + pointer-null projections) can't be generated, so
+  they RELOCATED to a new gen-importable leaf `platform/orgconfig` keeping `x-go-type` — no split.
+- **A consumer-side PORT must name no other domain's entity, or the fold cycles.** spec's design-service
+  registrar returned `*dependencies.ExternalResource` (discarded), coupling spec→dependencies while dependencies
+  already read the design bundle. Return `error` and adapt the repo in a root func-adapter. (Finding #1, now
+  proven on a domain↔domain edge, not just kernel.)
+- **`component.go` was the OC client's request contract, not a projects entity.** The `CreateComponentRequest`/
+  `Workflow*` DTOs are used in `clients/openchoreo`'s `ComponentClient` interface; the kernel adapter can't import
+  a domain, so they moved INTO `clients/openchoreo`, consumed by projects+dependencies via `openchoreo.X`.
+- **Fold the tool, not by hand: `goimports` (`-local github.com/wso2/aep`) settles imports deterministically.** A
+  hand-rolled add/remove-imports fixer kept mangling `pkg.`-in-comments/strings and fighting itself; switching to
+  `goimports` ended the churn. And extract the COMPLETE symbol set (const-block members included:
+  `IDPAudit*`/`DependencyStatus*`/`SkillKind*`) before requalifying — the first pass missed them.
+- **The webhook fold's "gorm payoff" was mostly a delete.** `DeliveryStore` was already a clean store (→
+  `sourcecontrol/repository_webhook_delivery.go`); the installation handler's `db *gorm.DB` was DEAD (every op
+  delegates to organization services), so removing it — not extracting it — made the slice gorm-free.
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |
@@ -1395,3 +1432,13 @@ fires**; exactly one late-binder.
 **Behaviour + docs** — unchanged except P5 (proven by its CI divergence regression); the doc ladder
 complete at all four levels with the zoom rule holding; and a **final fresh-env e2e ALL-PASS with zero
 manual intervention** (teardown → fresh spawn → seed → prompt→spec→build→deploy→validate).
+
+> **Status (2026-07-18): the CODE migration is COMPLETE and every automated gate is green.** All of P0–P9
+> landed on branch `domain-migration`. `go list` fails for `internal/api`, `internal/feature`, `models`, and
+> `repositories`; `internal/` holds exactly the seven domains + `platform/` + `edge/` + `gen`/`igen` +
+> `migrate` + `app`; every shim/bridge is deleted and `currentPhase = P9` with the strict ruleset (all
+> fires-proofs intact). `make build && make test && make lint && make typecheck && make license-check`, the
+> **full `make test-db`** (every domain, zero failures), `gen-api-check`, and `golangci-lint` (0 issues) all
+> pass. The one **outstanding** DoD item is the **final fresh-env e2e**, which is human/infra-gated: it needs a
+> live cluster (teardown → spawn → seed → prompt→spec→build→deploy→validate, driven by playwright) and cannot
+> be run in a code-only session. Everything a code change can prove is proven.
