@@ -171,8 +171,14 @@ func gormFenceViolations(t *testing.T, root string, domains []string) []string {
 					continue
 				}
 				rel, _ := filepath.Rel(root, path)
-				// The ONE sanctioned home: the domain-root's repository.go.
-				if rel != filepath.Join(d, "repository.go") {
+				// The sanctioned home: the domain ROOT's repository seam —
+				// repository.go, or repository_<name>.go when a domain owns
+				// several tables and one file per table reads better than one
+				// 600-line merge (AGENTS.md: separate by responsibility). Gorm in
+				// a SLICE (a sub-dir) is still banned, however it is named.
+				base := filepath.Base(rel)
+				atRoot := filepath.Dir(rel) == d
+				if !(atRoot && (base == "repository.go" || strings.HasPrefix(base, "repository_"))) {
 					bad = append(bad, rel)
 				}
 			}
@@ -348,19 +354,32 @@ func plantDomain(t *testing.T, root string, files map[string]string) {
 func TestGormFenceFires(t *testing.T) {
 	root := t.TempDir()
 	plantDomain(t, root, map[string]string{
-		// Sanctioned: the domain-root's repository.
-		"ops/repository.go": "package ops\n\nimport _ \"gorm.io/gorm\"\n",
-		// The violation: a slice reaching past its repository straight to the ORM.
+		// Sanctioned: the domain-root's repository seam — the canonical file and
+		// a per-table repository_<name>.go both count.
+		"ops/repository.go":         "package ops\n\nimport _ \"gorm.io/gorm\"\n",
+		"ops/repository_reports.go": "package ops\n\nimport _ \"gorm.io/gorm\"\n",
+		// The violations: a slice reaching past its repository straight to the ORM,
+		// and a non-repository file at the domain root.
 		"ops/listreports/handler.go": "package listreports\n\nimport _ \"gorm.io/gorm\"\n",
+		"ops/model.go":               "package ops\n\nimport _ \"gorm.io/gorm\"\n",
+		// A repository.go inside a SLICE is NOT the root seam — still a violation.
+		"ops/listreports/repository.go": "package listreports\n\nimport _ \"gorm.io/gorm\"\n",
 	})
 	bad := gormFenceViolations(t, root, []string{"ops"})
-	if len(bad) != 1 || bad[0] != filepath.Join("ops", "listreports", "handler.go") {
-		t.Fatalf("gorm fence did not fire on a slice importing gorm: got %v", bad)
+	want := map[string]bool{
+		filepath.Join("ops", "listreports", "handler.go"):    true,
+		filepath.Join("ops", "model.go"):                     true,
+		filepath.Join("ops", "listreports", "repository.go"): true,
 	}
-	// And it must not fire on the sanctioned file.
+	if len(bad) != len(want) {
+		t.Fatalf("gorm fence: got %v, want exactly the 3 non-root-seam files", bad)
+	}
 	for _, b := range bad {
-		if strings.HasSuffix(b, "repository.go") {
-			t.Fatalf("gorm fence wrongly flagged the domain's own repository.go: %v", bad)
+		if !want[b] {
+			t.Fatalf("gorm fence flagged an unexpected file %q (want %v)", b, want)
+		}
+		if b == filepath.Join("ops", "repository.go") || b == filepath.Join("ops", "repository_reports.go") {
+			t.Fatalf("gorm fence wrongly flagged the domain's own repository seam: %v", bad)
 		}
 	}
 }

@@ -755,7 +755,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		dependencies.WithRepoLocator(repoRepo),
 		dependencies.WithDesignReader(artifactStore),
 	)
-	externalResourceRepo := repositories.NewExternalResourceRepository(db)
+	externalResourceRepo := dependencies.NewExternalResourceRepository(db)
 	params.MCPExternalResources = externalResourceRepo
 	// ops — the Incident RCA domain (P1, the first landed domain). Alerts
 	// (console issues #154, #155, BE handshake #156): the org-scoped store for
@@ -887,7 +887,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		PlatProv:  platformProvisioner,
 		Bindings:  resourceClient,
 		Projects:  provisionProjects{repos: repoRepo},
-		Access:    repositories.NewAccessRequestRepository(db),
+		Access:    dependencies.NewAccessRequestRepository(db),
 		Providers: orgEndpointCatalog,
 	})
 	// Assemble the dependencies domain (P8): the provisioning slice (7 ops over

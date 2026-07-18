@@ -19,10 +19,10 @@ package provisioning
 import (
 	"context"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"strings"
 
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ExternalResourceView is one org external-resource catalog entry with its
@@ -32,7 +32,7 @@ type ExternalResourceView struct {
 	Name        string
 	Description string
 	Config      []models.ConfigKey
-	Consumers   []repositories.ExternalResourceConsumer
+	Consumers   []dependencies.ExternalResourceConsumer
 }
 
 // ListExternalResources returns the org's external-resource catalog with each
@@ -77,7 +77,7 @@ func (s *Service) DeleteExternalResource(ctx context.Context, orgID, name string
 // consumersOf scans every project's committed design for components declaring an
 // `external` dependency of the given name. Best-effort per project (a design read
 // error skips that project). Returns nil when no project lister is wired.
-func (s *Service) consumersOf(ctx context.Context, orgID, externalName string) ([]repositories.ExternalResourceConsumer, error) {
+func (s *Service) consumersOf(ctx context.Context, orgID, externalName string) ([]dependencies.ExternalResourceConsumer, error) {
 	byName, err := s.externalConsumersByName(ctx, orgID)
 	if err != nil {
 		return nil, err
@@ -88,8 +88,8 @@ func (s *Service) consumersOf(ctx context.Context, orgID, externalName string) (
 // externalConsumersByName builds, in one project sweep, the consumers of every
 // external dependency name in the org (lowercased name → consumers). One sweep
 // serves both the list (all entries) and a single-name delete guard.
-func (s *Service) externalConsumersByName(ctx context.Context, orgID string) (map[string][]repositories.ExternalResourceConsumer, error) {
-	out := map[string][]repositories.ExternalResourceConsumer{}
+func (s *Service) externalConsumersByName(ctx context.Context, orgID string) (map[string][]dependencies.ExternalResourceConsumer, error) {
+	out := map[string][]dependencies.ExternalResourceConsumer{}
 	if s.projects == nil {
 		return out, nil
 	}
@@ -108,7 +108,7 @@ func (s *Service) externalConsumersByName(ctx context.Context, orgID string) (ma
 					continue
 				}
 				key := strings.ToLower(d.Name)
-				out[key] = append(out[key], repositories.ExternalResourceConsumer{
+				out[key] = append(out[key], dependencies.ExternalResourceConsumer{
 					ProjectID:     ref.ProjectID,
 					ComponentName: c.Name,
 				})

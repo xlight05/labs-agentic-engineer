@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package repositories_test
+package dependencies_test
 
 import (
 	"context"
@@ -22,14 +22,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // mkAccessRequest persists an AccessRequest against real Postgres via the
 // repository under test and returns the (mutated-in-place) row.
-func mkAccessRequest(t *testing.T, repo *repositories.AccessRequestRepository, ar *models.AccessRequest) *models.AccessRequest {
+func mkAccessRequest(t *testing.T, repo *dependencies.AccessRequestRepository, ar *models.AccessRequest) *models.AccessRequest {
 	t.Helper()
 	if err := repo.Create(context.Background(), ar); err != nil {
 		t.Fatalf("create access request (%s/%s): %v", ar.OrgID, ar.ConsumerProjectID, err)
@@ -45,7 +45,7 @@ func mkAccessRequest(t *testing.T, repo *repositories.AccessRequestRepository, a
 func TestAccessRequestRepository_Create_MintsIDAndDefaultStatus(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	ar := &models.AccessRequest{
@@ -79,7 +79,7 @@ func TestAccessRequestRepository_Create_MintsIDAndDefaultStatus(t *testing.T) {
 func TestAccessRequestRepository_Get_OrgScoped_NotFoundSentinel(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	ar := mkAccessRequest(t, repo, &models.AccessRequest{
@@ -95,12 +95,12 @@ func TestAccessRequestRepository_Get_OrgScoped_NotFoundSentinel(t *testing.T) {
 	}
 
 	_, err = repo.Get(ctx, "orgb", ar.ID)
-	if !errors.Is(err, repositories.ErrAccessRequestNotFound) {
+	if !errors.Is(err, dependencies.ErrAccessRequestNotFound) {
 		t.Fatalf("Get(cross-org) = %v; want ErrAccessRequestNotFound", err)
 	}
 
 	_, err = repo.Get(ctx, "orga", "00000000-0000-0000-0000-000000000000")
-	if !errors.Is(err, repositories.ErrAccessRequestNotFound) {
+	if !errors.Is(err, dependencies.ErrAccessRequestNotFound) {
 		t.Fatalf("Get(bogus id) = %v; want ErrAccessRequestNotFound", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestAccessRequestRepository_Get_OrgScoped_NotFoundSentinel(t *testing.T) {
 func TestAccessRequestRepository_ListByConsumerProject_ScopedNewestFirst(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	base := time.Now().Add(-1 * time.Hour)
@@ -149,7 +149,7 @@ func TestAccessRequestRepository_ListByConsumerProject_ScopedNewestFirst(t *test
 func TestAccessRequestRepository_FindOpenForTarget(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	// No requests at all yet for this target.
@@ -215,7 +215,7 @@ func TestAccessRequestRepository_FindOpenForTarget(t *testing.T) {
 func TestAccessRequestRepository_UpdateStatus(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	ar := mkAccessRequest(t, repo, &models.AccessRequest{
@@ -234,7 +234,7 @@ func TestAccessRequestRepository_UpdateStatus(t *testing.T) {
 	}
 
 	err = repo.UpdateStatus(ctx, "00000000-0000-0000-0000-000000000000", models.AccessRequestStatusGranted)
-	if !errors.Is(err, repositories.ErrAccessRequestNotFound) {
+	if !errors.Is(err, dependencies.ErrAccessRequestNotFound) {
 		t.Fatalf("UpdateStatus(bogus id) = %v; want ErrAccessRequestNotFound", err)
 	}
 }
@@ -245,7 +245,7 @@ func TestAccessRequestRepository_UpdateStatus(t *testing.T) {
 func TestAccessRequestRepository_ListByProviderTask(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewAccessRequestRepository(db)
+	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
 	const providerTask = "11111111-1111-1111-1111-111111111111"
