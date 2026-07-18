@@ -1144,6 +1144,20 @@ surprise:
   `models.OrgCredential` — the same "kernel names a domain entity" shape as P2c's reaper. It is fine only
   because the entity stays in `models/`; it gets the P2c treatment (a port in the kernel's vocabulary,
   projected at the root) whenever the entity finally moves.
+- **HTTP-vertical ops that share an orchestrator + a component test must move together** (not freely
+  op-by-op). P3b's six `/config` ops all delegate to one `organization.Service` and share
+  `config_component_test`; moving one alone would force the test to wire *both* the new domain handler and
+  the legacy `OrgConfigSvc` at once — a transitional mess. Group a phase's slice-carving by
+  (orchestrator, component-test), not by individual op. `ListOrganizations` (its own service + test + a
+  tenant-gate carve-out) was a separate group.
+- **The domain's edge nil-contract is set by what its handlers did before, not a house default.**
+  organization is embedded **fail-loud** (direct `deps.Organization`, no `OrEmpty`) because its
+  pre-migration handlers had no nil guard — the opposite of sourcecontrol's 503-tolerant `sourceControlOrEmpty`.
+- **"Secrets rerouting" was mostly pre-paid by P0.** The enforceable requirement — the OpenBao-SDK import
+  fence — already holds: `organization` reaches OpenBao only through the `secrets.OpenBaoStore` interface,
+  never the SDK, so `TestImportFences` passes unchanged. The §10.4 *consolidation* (relocating the SM-API
+  mirror + ExternalSecret-push mechanics into `platform/secrets` as purpose-specific ports) is target polish,
+  not fence-required, and is deferred while those mechanics stay coupled to the credential lifecycle.
 
 ### 19.6 Cross-cutting risks
 
