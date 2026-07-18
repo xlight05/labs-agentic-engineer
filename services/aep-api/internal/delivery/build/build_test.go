@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ----- fakes -----------------------------------------------------------------
@@ -609,9 +608,9 @@ func TestGetBuild_TitleFetchFailure_Degrades(t *testing.T) {
 // pfDesign / pfStatus are the preflight ports' fakes for the HTTP-surface
 // wiring test (the filtering rules themselves are unit-proven in
 // preflight_test.go).
-type pfDesign struct{ comps []models.DesignComponent }
+type pfDesign struct{ comps []spec.DesignComponent }
 
-func (f pfDesign) ReadDesignComponents(context.Context, string, string) ([]models.DesignComponent, error) {
+func (f pfDesign) ReadDesignComponents(context.Context, string, string) ([]spec.DesignComponent, error) {
 	return f.comps, nil
 }
 
@@ -620,9 +619,9 @@ type pfStatus struct{}
 func (pfStatus) Ready(context.Context, string, string, string) (bool, error) { return false, nil }
 
 func TestGetPreflight_WiredThroughRealService(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
 		}}}
 	pfSvc := build.NewPreflightService(build.PreflightDeps{Design: pfDesign{comps: comps}, Status: pfStatus{}})
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{

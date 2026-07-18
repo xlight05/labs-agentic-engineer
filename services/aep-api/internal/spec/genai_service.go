@@ -172,7 +172,7 @@ type TurnStatus struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-func turnStatusOf(t *models.AgentTurn) *TurnStatus {
+func turnStatusOf(t *AgentTurn) *TurnStatus {
 	return &TurnStatus{
 		TurnID:         t.ID,
 		ConversationID: t.ConversationID,
@@ -366,7 +366,7 @@ func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 	}
 
 	// D18 guard: one active turn per project, any use case.
-	row, err := s.turns.TryStart(ctx, &models.AgentTurn{
+	row, err := s.turns.TryStart(ctx, &AgentTurn{
 		OrgID:          orgID,
 		ProjectID:      projectID,
 		ConversationID: in.ConversationID,

@@ -19,7 +19,7 @@ package projects
 import (
 	"testing"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // TestBaseline_NoExposesAPI_ProducesNoTrait is the baseline-diff
@@ -30,21 +30,21 @@ import (
 func TestBaseline_NoExposesAPI_ProducesNoTrait(t *testing.T) {
 	cases := []struct {
 		name    string
-		exposes *models.ExposesAPI
+		exposes *spec.ExposesAPI
 	}{
 		{"nil exposesAPI block", nil},
-		{"empty auth string", &models.ExposesAPI{Auth: ""}},
-		{"explicit none", &models.ExposesAPI{Auth: "none"}},
-		{"unrecognised value defensive none", &models.ExposesAPI{Auth: "yes"}},
+		{"empty auth string", &spec.ExposesAPI{Auth: ""}},
+		{"explicit none", &spec.ExposesAPI{Auth: "none"}},
+		{"unrecognised value defensive none", &spec.ExposesAPI{Auth: "yes"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			comp := models.DesignComponent{
+			comp := spec.DesignComponent{
 				Name:          "svc",
 				ComponentType: "service",
 				ExposesAPI:    c.exposes,
 			}
-			enabled := models.ResolveAPISecurityEnabled(comp)
+			enabled := spec.ResolveAPISecurityEnabled(comp)
 			if enabled {
 				t.Fatalf("ResolveAPISecurityEnabled = true for %s (exposesAPI=%+v); want false", c.name, c.exposes)
 			}
@@ -75,12 +75,12 @@ func TestBaseline_NoExposesAPI_ProducesNoTrait(t *testing.T) {
 // expects. Pins the on-cluster CR contents so a future refactor of the
 // helper can't silently change the wire shape.
 func TestProtected_ProducesCanonicalTrait(t *testing.T) {
-	comp := models.DesignComponent{
+	comp := spec.DesignComponent{
 		Name:          "todo-api",
 		ComponentType: "service",
-		ExposesAPI:    &models.ExposesAPI{Auth: "end-user-required", UserContext: "X-User-Id"},
+		ExposesAPI:    &spec.ExposesAPI{Auth: "end-user-required", UserContext: "X-User-Id"},
 	}
-	if !models.ResolveAPISecurityEnabled(comp) {
+	if !spec.ResolveAPISecurityEnabled(comp) {
 		t.Fatal("ResolveAPISecurityEnabled should be true for auth=end-user-required")
 	}
 	traits, configs := DesiredAPIConfigurationTrait("todo-api", "", true)

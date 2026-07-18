@@ -16,10 +16,6 @@
 
 package spec
 
-import (
-	"github.com/wso2/aep/aep-api/models"
-)
-
 // Generic conditional skill attachment (Task G4,
 // learning/thunder-resource/PLAN-generalization.md): a `platform-resource`
 // dependency whose ClusterResourceType carries the PE-authored
@@ -27,7 +23,7 @@ import (
 // design needs that skill's agent instructions to work with the dependency —
 // so design save ensures the skill name is present in the OWNING component's
 // skillsApplied (per-component design.json — see
-// models.DesignComponent.SkillsApplied). Membership keys ONLY on the CRT
+// DesignComponent.SkillsApplied). Membership keys ONLY on the CRT
 // annotation, never on a resourceType name or component type: any dependency
 // kind carrying the marker qualifies, exactly like deriveEndUserAuth keys on
 // the role label rather than a hardcoded name.
@@ -60,7 +56,7 @@ func attachAnnotatedSkills(designFile *DesignFile, markers map[string]CRTMarkers
 		}
 		added := false
 		for _, dep := range comp.Dependencies {
-			if dep.Kind != models.DependencyKindPlatformResource {
+			if dep.Kind != DependencyKindPlatformResource {
 				continue
 			}
 			skill := markers[dep.ResourceType].Skill

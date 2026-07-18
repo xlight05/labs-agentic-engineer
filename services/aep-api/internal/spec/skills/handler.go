@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/platform/validate"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Handler serves the org-scoped skills catalogue (list/get/create/update/
@@ -224,7 +223,7 @@ func skillDetailBody(sk *spec.Skill, editable bool) gen.SkillDetailBody {
 // skillEditable mirrors the skills feature's user-kind rule: only user-owned
 // kinds (custom/imported) are editable — org + platform are reconcile-managed.
 func skillEditable(kind string) bool {
-	return kind == models.SkillKindCustom || kind == models.SkillKindImported
+	return kind == spec.SkillKindCustom || kind == spec.SkillKindImported
 }
 
 // requireSlug validates a single DNS-label slug path param, returning a 400

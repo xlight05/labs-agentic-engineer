@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package models
+package spec
 
 import (
 	"time"
@@ -30,7 +30,7 @@ import (
 //
 // Lives in models (the shared value-type layer) so the skills feature and its
 // consumers can reference it without crossing a feature boundary. The skills
-// package keeps a `type Skill = models.Skill` alias.
+// package keeps a `type Skill = Skill` alias.
 type Skill struct {
 	OrgID         string            `json:"orgId"`
 	Name          string            `json:"name"`

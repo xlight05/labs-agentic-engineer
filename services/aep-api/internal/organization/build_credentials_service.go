@@ -45,8 +45,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"log/slog"
+
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"

@@ -16,12 +16,14 @@
 
 package dependencies
 
-import "github.com/wso2/aep/aep-api/models"
+import (
+	"time"
 
-import "time"
+	"github.com/wso2/aep/aep-api/internal/spec"
+)
 
 // ConfigKeySlice is a slice of ConfigKey persisted as a single JSONB column.
-type ConfigKeySlice []models.ConfigKey
+type ConfigKeySlice []spec.ConfigKey
 
 // ExternalResource is an org-level registered external dependency — the
 // reusable "definition" layer: name + description + the config key schema +

@@ -22,7 +22,7 @@ import (
 	"log/slog"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // Provision authors the OC Resource model for a platform-resource dependency
@@ -53,7 +53,7 @@ func (s *Service) Provision(ctx context.Context, orgID, projectID, depName strin
 // the public Provision resolves it via findProvisionIssue for its HTTP callers. A
 // gateNumber of 0 authors the resource with no run admitted (a safe no-op gate).
 func (s *Service) provisionResource(ctx context.Context, orgID, projectID, depName string, gateNumber int, params map[string]any, envs []string) error {
-	dep, err := s.findDepInProject(ctx, orgID, projectID, depName, models.DependencyKindPlatformResource)
+	dep, err := s.findDepInProject(ctx, orgID, projectID, depName, spec.DependencyKindPlatformResource)
 	if err != nil {
 		return err
 	}

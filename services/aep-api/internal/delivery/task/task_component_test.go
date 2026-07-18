@@ -273,7 +273,7 @@ func TestPlan_InProgress_409(t *testing.T) {
 	}, "seed"))
 	repoRow := &models.GitRepository{OrgID: org, ProjectID: proj, RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	skillsRow := &models.GitRepository{OrgID: org, ProjectID: models.SkillsRepoSentinelProjectID,
+	skillsRow := &models.GitRepository{OrgID: org, ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 	git := sourcecontrol.NewGitOpsService(nilCredResolver{}, fx.Engine)
 	plan := task.NewPlanService(fixedRepos{repo: repoRow},

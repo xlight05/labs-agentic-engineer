@@ -18,9 +18,10 @@ package runtimeconfig
 
 import (
 	"context"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"log/slog"
 	"time"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // DeployedProjectLister enumerates every project with something dispatched —

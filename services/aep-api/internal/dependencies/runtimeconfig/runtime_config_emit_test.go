@@ -34,7 +34,7 @@
 //     resourceType name; the consumer-URL patch keys on its markers.
 //   - spec.ArtifactStore → the REAL spec.NewArtifactStore decorator
 //     over artifactstest.FakeArtifactService, fed a valid design working-tree
-//     map. The frontmatter → models.DesignComponent parse (componentType,
+//     map. The frontmatter → spec.DesignComponent parse (componentType,
 //     dependencies) is therefore the real one, not a stub.
 package runtimeconfig
 
@@ -53,7 +53,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- test doubles ------------------------------------------------------------
@@ -180,7 +179,7 @@ func readDesign(t *testing.T, files map[string]string) *spec.DesignFile {
 	return d
 }
 
-func componentNamed(t *testing.T, d *spec.DesignFile, name string) *models.DesignComponent {
+func componentNamed(t *testing.T, d *spec.DesignFile, name string) *spec.DesignComponent {
 	t.Helper()
 	for i := range d.Components {
 		if d.Components[i].Name == name {
@@ -223,7 +222,7 @@ func serviceComponentMd() string {
 type prDep struct{ name, resourceType string }
 
 // webappMd renders a web-application component with only component-kind
-// dependencies (canonical type: models.ComponentTypeWebApplication —
+// dependencies (canonical type: spec.ComponentTypeWebApplication —
 // OpenChoreo's own term).
 func webappMd(name string, deps ...string) string {
 	return buildComponentJSON(name, "web-application", deps, nil)
@@ -266,24 +265,24 @@ func buildComponentJSON(name, typ string, deps []string, prDeps []prDep) string 
 
 func Test_platformResourceDeps(t *testing.T) {
 	t.Parallel()
-	auth := models.Dependency{Kind: models.DependencyKindPlatformResource, Name: "user-auth", ResourceType: "thunder-app"}
-	db := models.Dependency{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"}
-	comp := models.Dependency{Kind: models.DependencyKindComponent, Name: "api"}
+	auth := spec.Dependency{Kind: spec.DependencyKindPlatformResource, Name: "user-auth", ResourceType: "thunder-app"}
+	db := spec.Dependency{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"}
+	comp := spec.Dependency{Kind: spec.DependencyKindComponent, Name: "api"}
 
 	cases := []struct {
 		name  string
-		in    *models.DesignComponent
+		in    *spec.DesignComponent
 		wantN []string // dep names, in order
 	}{
 		{"nil component", nil, nil},
-		{"web-application no deps", &models.DesignComponent{ComponentType: models.ComponentTypeWebApplication}, nil},
-		{"service with a PR dep is not a web application", &models.DesignComponent{ComponentType: models.ComponentTypeService, Dependencies: []models.Dependency{auth}}, nil},
-		{"web-application with only component deps", &models.DesignComponent{ComponentType: models.ComponentTypeWebApplication, Dependencies: []models.Dependency{comp}}, nil},
-		{"web-application with two PR deps, in order", &models.DesignComponent{ComponentType: models.ComponentTypeWebApplication, Dependencies: []models.Dependency{comp, auth, db}}, []string{"user-auth", "orders-db"}},
+		{"web-application no deps", &spec.DesignComponent{ComponentType: spec.ComponentTypeWebApplication}, nil},
+		{"service with a PR dep is not a web application", &spec.DesignComponent{ComponentType: spec.ComponentTypeService, Dependencies: []spec.Dependency{auth}}, nil},
+		{"web-application with only component deps", &spec.DesignComponent{ComponentType: spec.ComponentTypeWebApplication, Dependencies: []spec.Dependency{comp}}, nil},
+		{"web-application with two PR deps, in order", &spec.DesignComponent{ComponentType: spec.ComponentTypeWebApplication, Dependencies: []spec.Dependency{comp, auth, db}}, []string{"user-auth", "orders-db"}},
 		// Retired spellings are not understood anywhere — no shims, no
 		// normalization. Designs carrying them must be migrated.
-		{"retired webapp spelling does not match", &models.DesignComponent{ComponentType: "webapp", Dependencies: []models.Dependency{auth}}, nil},
-		{"retired web-app spelling does not match", &models.DesignComponent{ComponentType: "web-app", Dependencies: []models.Dependency{auth}}, nil},
+		{"retired webapp spelling does not match", &spec.DesignComponent{ComponentType: "webapp", Dependencies: []spec.Dependency{auth}}, nil},
+		{"retired web-app spelling does not match", &spec.DesignComponent{ComponentType: "web-app", Dependencies: []spec.Dependency{auth}}, nil},
 	}
 	for _, c := range cases {
 		c := c

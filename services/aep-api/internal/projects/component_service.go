@@ -28,7 +28,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ComponentService handles business logic for component operations.
@@ -167,7 +166,7 @@ func (s *componentService) EnsureComponent(ctx context.Context, orgName, project
 	}
 	// api-configuration trait derived from design.md's exposesAPI.auth (none →
 	// no trait). Set at create time; per-env reconcile is the trait_sync path's job.
-	apiSecurityEnabled := models.ResolveAPISecurityEnabled(*comp)
+	apiSecurityEnabled := spec.ResolveAPISecurityEnabled(*comp)
 	traits, _ := DesiredAPIConfigurationTrait(k8sName, comp.EndpointName(), apiSecurityEnabled)
 
 	// repository.secretRef stays empty: build credentials are pre-staged per
@@ -203,11 +202,11 @@ func (s *componentService) EnsureComponent(ctx context.Context, orgName, project
 
 // ocEntrypoint maps a design component type to its OC Component entrypoint
 // type. AEP's component types ARE OpenChoreo's (minus the `deployment/`
-// prefix — see models.ComponentTypeWebApplication), so this is a prefix
+// prefix — see spec.ComponentTypeWebApplication), so this is a prefix
 // re-attachment, not a translation. Unknown kinds deliberately fall back to
 // deployment/service.
 func ocEntrypoint(componentType string) string {
-	if componentType == models.ComponentTypeWebApplication {
+	if componentType == spec.ComponentTypeWebApplication {
 		return "deployment/web-application"
 	}
 	return "deployment/service"
@@ -253,7 +252,7 @@ func (s *componentService) GetComponentOpenAPI(ctx context.Context, orgName, pro
 		if k8sname.ToK8sName(c.Name) != componentName {
 			continue
 		}
-		if c.ComponentType != models.ComponentTypeService {
+		if c.ComponentType != spec.ComponentTypeService {
 			return &gen.ComponentOpenAPI{
 				ComponentName: componentName,
 				ComponentType: c.ComponentType,

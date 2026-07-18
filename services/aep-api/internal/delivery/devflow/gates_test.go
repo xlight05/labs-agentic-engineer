@@ -22,8 +22,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/testsuite"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 func TestGateConfig_IsAuto(t *testing.T) {

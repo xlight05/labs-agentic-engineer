@@ -28,7 +28,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // decodePaths mirrors the repository's internal Paths decode (nil for
@@ -40,8 +39,8 @@ func decodePaths(raw string) []string {
 	return p
 }
 
-func newTurn(org, project, conv, useCase string) *models.AgentTurn {
-	return &models.AgentTurn{
+func newTurn(org, project, conv, useCase string) *spec.AgentTurn {
+	return &spec.AgentTurn{
 		OrgID:          org,
 		ProjectID:      project,
 		ConversationID: conv,
@@ -148,7 +147,7 @@ func TestTurnRepo_SweepStale(t *testing.T) {
 		t.Fatalf("TryStart fresh: %v", err)
 	}
 	// Backdate the stale row's heartbeat.
-	if err := db.Model(&models.AgentTurn{}).Where("id = ?", stale.ID).
+	if err := db.Model(&spec.AgentTurn{}).Where("id = ?", stale.ID).
 		Update("heartbeat_at", time.Now().Add(-5*time.Minute)).Error; err != nil {
 		t.Fatalf("backdate: %v", err)
 	}

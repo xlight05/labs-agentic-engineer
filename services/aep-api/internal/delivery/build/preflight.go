@@ -19,7 +19,7 @@ package build
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // PreflightDesignReader exposes the project's authored design components at
@@ -27,7 +27,7 @@ import (
 // Satisfied by the app-root designComponents adapter
 // (internal/app/tasks_adapters.go).
 type PreflightDesignReader interface {
-	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]models.DesignComponent, error)
+	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }
 
 // ProvisionStatusReader reports whether a dependency no longer needs the
@@ -50,7 +50,7 @@ type ProvisionStatusReader interface {
 // --- BuildPreflight / PreflightItem / ConfigKeyView) ------------------------
 
 // ConfigKeyView is the key/secret view of an external dependency's config
-// schema — never values. Mirrors models.ConfigKey: the drawer needs the key,
+// schema — never values. Mirrors spec.ConfigKey: the drawer needs the key,
 // whether it is secret-routed, the optional description to render as a hint, and
 // the optional (non-secret) defaultValue to pre-fill the field.
 type ConfigKeyView struct {
@@ -128,7 +128,7 @@ func (s *PreflightService) Preflight(ctx context.Context, orgID, projectID strin
 
 	items := make([]PreflightItem, 0)
 	for _, c := range comps {
-		if c.ComponentType != models.ComponentTypeService {
+		if c.ComponentType != spec.ComponentTypeService {
 			continue
 		}
 		for _, d := range c.Dependencies {
@@ -144,22 +144,22 @@ func (s *PreflightService) Preflight(ctx context.Context, orgID, projectID strin
 }
 
 // itemsFor computes the 0, 1, or 2 drawer items a single dependency raises.
-func (s *PreflightService) itemsFor(ctx context.Context, orgID, projectID, componentName string, d models.Dependency) ([]PreflightItem, error) {
+func (s *PreflightService) itemsFor(ctx context.Context, orgID, projectID, componentName string, d spec.Dependency) ([]PreflightItem, error) {
 	switch d.Kind {
-	case models.DependencyKindExternal:
+	case spec.DependencyKindExternal:
 		return s.externalItems(ctx, orgID, projectID, componentName, d)
-	case models.DependencyKindPlatformResource:
+	case spec.DependencyKindPlatformResource:
 		return s.platformResourceItems(ctx, orgID, projectID, componentName, d)
-	case models.DependencyKindOrgService:
+	case spec.DependencyKindOrgService:
 		return orgServiceItems(componentName, d), nil
-	case models.DependencyKindComponent:
+	case spec.DependencyKindComponent:
 		return nil, nil // sibling components are not provisioned via the drawer.
 	default:
 		return nil, nil
 	}
 }
 
-func (s *PreflightService) externalItems(ctx context.Context, orgID, projectID, componentName string, d models.Dependency) ([]PreflightItem, error) {
+func (s *PreflightService) externalItems(ctx context.Context, orgID, projectID, componentName string, d spec.Dependency) ([]PreflightItem, error) {
 	var out []PreflightItem
 	if d.NeedsSpec && d.SpecPath == "" && d.SpecUrl == "" {
 		out = append(out, PreflightItem{
@@ -185,7 +185,7 @@ func (s *PreflightService) externalItems(ctx context.Context, orgID, projectID, 
 	return out, nil
 }
 
-func (s *PreflightService) platformResourceItems(ctx context.Context, orgID, projectID, componentName string, d models.Dependency) ([]PreflightItem, error) {
+func (s *PreflightService) platformResourceItems(ctx context.Context, orgID, projectID, componentName string, d spec.Dependency) ([]PreflightItem, error) {
 	ready, err := s.status.Ready(ctx, orgID, projectID, d.Name)
 	if err != nil {
 		return nil, err
@@ -203,9 +203,9 @@ func (s *PreflightService) platformResourceItems(ctx context.Context, orgID, pro
 	}}, nil
 }
 
-func orgServiceItems(componentName string, d models.Dependency) []PreflightItem {
+func orgServiceItems(componentName string, d spec.Dependency) []PreflightItem {
 	switch d.Status {
-	case models.DependencyStatusUnresolved, models.DependencyStatusBlocked, models.DependencyStatusAmbiguous:
+	case spec.DependencyStatusUnresolved, spec.DependencyStatusBlocked, spec.DependencyStatusAmbiguous:
 		return []PreflightItem{{
 			Kind:        "org-service",
 			Component:   componentName,
@@ -217,7 +217,7 @@ func orgServiceItems(componentName string, d models.Dependency) []PreflightItem 
 	}
 }
 
-func toConfigKeyViews(keys []models.ConfigKey) []ConfigKeyView {
+func toConfigKeyViews(keys []spec.ConfigKey) []ConfigKeyView {
 	if len(keys) == 0 {
 		return nil
 	}

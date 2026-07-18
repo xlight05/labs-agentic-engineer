@@ -22,8 +22,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The AUTHORED per-component design file lives at
@@ -31,7 +29,7 @@ import (
 // design.md. The wire-contract source of truth is sachiniSam's TS
 // `ComponentDesign` (services/agents/src/contracts/component-design.ts); the
 // on-disk structs below mirror that contract, extended with the unified
-// `dependencies[]` (models.Dependency) in place of her `connections[]` and the
+// `dependencies[]` (Dependency) in place of her `connections[]` and the
 // platform-owned blocks aep-api carries (exposesAPI /
 // componentAgentInstructions). The codec is strict (sachiniSam's strictObject
 // philosophy): unknown top-level keys and unknown keys inside `dependencies[]`
@@ -39,7 +37,7 @@ import (
 // NEVER read from or written to the file — the on-disk dependency struct has no
 // such fields, so any occurrence is rejected as an unknown key.
 //
-// Field mapping (design.json key ↔ models.DesignComponent field), for the TS
+// Field mapping (design.json key ↔ DesignComponent field), for the TS
 // mirror coordination:
 //
 //	name                       ↔ Name          (must equal the component dir, kebab-case)
@@ -92,14 +90,14 @@ type componentDesignJSON struct {
 }
 
 // endpointJSON is the on-disk shape of the optional `endpoint` block. Only the
-// name is carried (mirrors models.ComponentEndpoint); the port stays in
+// name is carried (mirrors ComponentEndpoint); the port stays in
 // workload.yaml.
 type endpointJSON struct {
 	Name string `json:"name"`
 }
 
 // dependencyJSON is the on-disk shape for one unified dependency entry. It
-// mirrors models.Dependency MINUS Status/Reason (read-time computed, never
+// mirrors Dependency MINUS Status/Reason (read-time computed, never
 // persisted): omitting them makes DisallowUnknownFields reject any `status` or
 // `reason` key inside a dependency entry.
 type dependencyJSON struct {
@@ -114,7 +112,7 @@ type dependencyJSON struct {
 	Parameters   map[string]any  `json:"parameters,omitempty"`
 }
 
-// configKeyJSON mirrors models.ConfigKey.
+// configKeyJSON mirrors ConfigKey.
 type configKeyJSON struct {
 	Key          string `json:"key"`
 	Secret       bool   `json:"secret,omitempty"`
@@ -122,7 +120,7 @@ type configKeyJSON struct {
 	DefaultValue string `json:"defaultValue,omitempty"`
 }
 
-// exposesAPIJSON mirrors models.ExposesAPI.
+// exposesAPIJSON mirrors ExposesAPI.
 type exposesAPIJSON struct {
 	Managed      bool   `json:"managed,omitempty"`
 	Auth         string `json:"auth,omitempty"`
@@ -135,34 +133,34 @@ type exposesAPIJSON struct {
 // MUST equal it (kebab-case). Decoding is strict — unknown top-level keys or
 // unknown keys inside a dependency entry (including status/reason) are errors.
 // OpenAPISpec is filled from the sibling openapi.yaml by the caller, not here.
-func parseComponentDesignJSON(dir, raw string) (models.DesignComponent, error) {
+func parseComponentDesignJSON(dir, raw string) (DesignComponent, error) {
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var dj componentDesignJSON
 	if err := dec.Decode(&dj); err != nil {
-		return models.DesignComponent{}, fmt.Errorf("decode design.json: %w", err)
+		return DesignComponent{}, fmt.Errorf("decode design.json: %w", err)
 	}
 	// Reject trailing content after the JSON object.
 	if dec.More() {
-		return models.DesignComponent{}, fmt.Errorf("decode design.json: unexpected trailing content")
+		return DesignComponent{}, fmt.Errorf("decode design.json: unexpected trailing content")
 	}
 
 	if !componentDesignName.MatchString(dir) {
-		return models.DesignComponent{}, fmt.Errorf("component directory %q is not kebab-case", dir)
+		return DesignComponent{}, fmt.Errorf("component directory %q is not kebab-case", dir)
 	}
 	if dj.Name != dir {
-		return models.DesignComponent{}, fmt.Errorf("design.json name %q must equal the component directory %q", dj.Name, dir)
+		return DesignComponent{}, fmt.Errorf("design.json name %q must equal the component directory %q", dj.Name, dir)
 	}
 	if err := validateExposure(dir, dj.Exposure); err != nil {
-		return models.DesignComponent{}, err
+		return DesignComponent{}, err
 	}
 
 	deps, err := assembleDependencies(dir, dj.Dependencies)
 	if err != nil {
-		return models.DesignComponent{}, err
+		return DesignComponent{}, err
 	}
 
-	return models.DesignComponent{
+	return DesignComponent{
 		Name:                       dj.Name,
 		ComponentType:              dj.Type,
 		Version:                    dj.Version,
@@ -189,7 +187,7 @@ const validDependencyKinds = "component | org-service | external | platform-reso
 // dependency kinds.
 func isValidDependencyKind(kind string) bool {
 	switch kind {
-	case models.DependencyKindComponent, models.DependencyKindOrgService, models.DependencyKindExternal, models.DependencyKindPlatformResource:
+	case DependencyKindComponent, DependencyKindOrgService, DependencyKindExternal, DependencyKindPlatformResource:
 		return true
 	default:
 		return false
@@ -216,8 +214,8 @@ func validateExposure(dir, exposure string) error {
 // which quietly lost data the architect authored). Errors are phrased for a
 // writing agent's one-round-trip self-correction: they name the file, the
 // offending entry's index, and the fix.
-func assembleDependencies(dir string, in []dependencyJSON) ([]models.Dependency, error) {
-	out := make([]models.Dependency, 0, len(in))
+func assembleDependencies(dir string, in []dependencyJSON) ([]Dependency, error) {
+	out := make([]Dependency, 0, len(in))
 	for i, d := range in {
 		if d.Kind == "" {
 			return nil, fmt.Errorf("components/%s/design.json: dependencies[%d] is missing required key %q — every dependency needs kind (%s) and name",
@@ -231,7 +229,7 @@ func assembleDependencies(dir string, in []dependencyJSON) ([]models.Dependency,
 			return nil, fmt.Errorf("components/%s/design.json: dependencies[%d] has unknown kind %q — every dependency needs kind (%s) and name",
 				dir, i, d.Kind, validDependencyKinds)
 		}
-		dep := models.Dependency{
+		dep := Dependency{
 			Kind:         d.Kind,
 			Name:         d.Name,
 			Description:  d.Description,
@@ -245,7 +243,7 @@ func assembleDependencies(dir string, in []dependencyJSON) ([]models.Dependency,
 		// External deps that declare needsSpec but carry no specPath yet are
 		// unresolved at read time. Status/Reason are computed here (never read
 		// from the file).
-		if dep.Kind == models.DependencyKindExternal && dep.NeedsSpec && strings.TrimSpace(dep.SpecPath) == "" {
+		if dep.Kind == DependencyKindExternal && dep.NeedsSpec && strings.TrimSpace(dep.SpecPath) == "" {
 			dep.Status = "unresolved"
 			dep.Reason = "needs-spec"
 		}
@@ -258,7 +256,7 @@ func assembleDependencies(dir string, in []dependencyJSON) ([]models.Dependency,
 // stable key order (via the struct), 2-space indent, trailing newline. It never
 // emits status/reason (the on-disk struct has no such fields). `dir` is the
 // component directory the file lives under; the component name must equal it.
-func marshalComponentDesignJSON(dir string, comp models.DesignComponent) ([]byte, error) {
+func marshalComponentDesignJSON(dir string, comp DesignComponent) ([]byte, error) {
 	if comp.Name == "" {
 		return nil, fmt.Errorf("component with empty name")
 	}
@@ -300,7 +298,7 @@ func marshalComponentDesignJSON(dir string, comp models.DesignComponent) ([]byte
 // toJSONDeps converts the unified model back to on-disk dependency entries.
 // Status/Reason are intentionally dropped. The result is always non-nil so the
 // `dependencies` key marshals as `[]` (not null) for a clean, stable contract.
-func toJSONDeps(in []models.Dependency) []dependencyJSON {
+func toJSONDeps(in []Dependency) []dependencyJSON {
 	out := make([]dependencyJSON, 0, len(in))
 	for _, d := range in {
 		if d.Name == "" || d.Kind == "" {
@@ -321,21 +319,21 @@ func toJSONDeps(in []models.Dependency) []dependencyJSON {
 	return out
 }
 
-func toModelConfigKeys(in []configKeyJSON) []models.ConfigKey {
+func toModelConfigKeys(in []configKeyJSON) []ConfigKey {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]models.ConfigKey, 0, len(in))
+	out := make([]ConfigKey, 0, len(in))
 	for _, c := range in {
 		if c.Key == "" {
 			continue
 		}
-		out = append(out, models.ConfigKey{Key: c.Key, Secret: c.Secret, Description: c.Description, DefaultValue: c.DefaultValue})
+		out = append(out, ConfigKey{Key: c.Key, Secret: c.Secret, Description: c.Description, DefaultValue: c.DefaultValue})
 	}
 	return out
 }
 
-func toJSONConfigKeys(in []models.ConfigKey) []configKeyJSON {
+func toJSONConfigKeys(in []ConfigKey) []configKeyJSON {
 	if len(in) == 0 {
 		return nil
 	}
@@ -346,35 +344,35 @@ func toJSONConfigKeys(in []models.ConfigKey) []configKeyJSON {
 	return out
 }
 
-// toModelEndpoint builds *models.ComponentEndpoint from the on-disk block,
+// toModelEndpoint builds *ComponentEndpoint from the on-disk block,
 // returning nil when the block is absent or carries an empty name (so callers
 // fall back to the default endpoint name via DesignComponent.EndpointName).
-func toModelEndpoint(in *endpointJSON) *models.ComponentEndpoint {
+func toModelEndpoint(in *endpointJSON) *ComponentEndpoint {
 	if in == nil || in.Name == "" {
 		return nil
 	}
-	return &models.ComponentEndpoint{Name: in.Name}
+	return &ComponentEndpoint{Name: in.Name}
 }
 
 // toJSONEndpoint mirrors toModelEndpoint for the write path: nil or empty name
 // omits the `endpoint` key entirely (the default is implicit).
-func toJSONEndpoint(in *models.ComponentEndpoint) *endpointJSON {
+func toJSONEndpoint(in *ComponentEndpoint) *endpointJSON {
 	if in == nil || in.Name == "" {
 		return nil
 	}
 	return &endpointJSON{Name: in.Name}
 }
 
-// toModelExposesAPI builds *models.ExposesAPI, returning nil when the block is
+// toModelExposesAPI builds *ExposesAPI, returning nil when the block is
 // absent or carries only zero values (mirrors the prior frontmatter gating).
-func toModelExposesAPI(in *exposesAPIJSON) *models.ExposesAPI {
+func toModelExposesAPI(in *exposesAPIJSON) *ExposesAPI {
 	if in == nil {
 		return nil
 	}
 	if !in.Managed && in.Auth == "" && in.UserContext == "" && !in.OrgPublished {
 		return nil
 	}
-	return &models.ExposesAPI{
+	return &ExposesAPI{
 		Managed:      in.Managed,
 		Auth:         in.Auth,
 		UserContext:  in.UserContext,
@@ -382,7 +380,7 @@ func toModelExposesAPI(in *exposesAPIJSON) *models.ExposesAPI {
 	}
 }
 
-func toJSONExposesAPI(in *models.ExposesAPI) *exposesAPIJSON {
+func toJSONExposesAPI(in *ExposesAPI) *exposesAPIJSON {
 	if in == nil {
 		return nil
 	}

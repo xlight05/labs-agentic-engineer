@@ -23,8 +23,9 @@ package projects_test
 
 import (
 	"context"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"

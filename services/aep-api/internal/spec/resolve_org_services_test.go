@@ -20,8 +20,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // stubDesignListingService is a minimal in-package ArtifactService stub used
@@ -74,18 +72,18 @@ func TestResolveOrgServices_Resolved(t *testing.T) {
 		visible: map[string]bool{"employee-api": true},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "employee-api"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "employee-api"},
 		},
 	}}}
 
 	store.resolveOrgServices(context.Background(), "org", d)
 
 	dep := d.Components[0].Dependencies[0]
-	if dep.Status != models.DependencyStatusResolved {
-		t.Errorf("namespace-visible org-service: status = %q, want %q", dep.Status, models.DependencyStatusResolved)
+	if dep.Status != DependencyStatusResolved {
+		t.Errorf("namespace-visible org-service: status = %q, want %q", dep.Status, DependencyStatusResolved)
 	}
 	if dep.Reason != "" {
 		t.Errorf("namespace-visible org-service: reason = %q, want empty", dep.Reason)
@@ -102,21 +100,21 @@ func TestResolveOrgServices_BlockedAccessRequired(t *testing.T) {
 		exists:  map[string]bool{"payroll-internal": true},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "consumer",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "payroll-internal"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "payroll-internal"},
 		},
 	}}}
 
 	store.resolveOrgServices(context.Background(), "org", d)
 
 	dep := d.Components[0].Dependencies[0]
-	if dep.Status != models.DependencyStatusBlocked {
-		t.Errorf("project-only org-service: status = %q, want %q", dep.Status, models.DependencyStatusBlocked)
+	if dep.Status != DependencyStatusBlocked {
+		t.Errorf("project-only org-service: status = %q, want %q", dep.Status, DependencyStatusBlocked)
 	}
-	if dep.Reason != models.DependencyReasonAccessRequired {
-		t.Errorf("project-only org-service: reason = %q, want %q", dep.Reason, models.DependencyReasonAccessRequired)
+	if dep.Reason != DependencyReasonAccessRequired {
+		t.Errorf("project-only org-service: reason = %q, want %q", dep.Reason, DependencyReasonAccessRequired)
 	}
 }
 
@@ -130,21 +128,21 @@ func TestResolveOrgServices_AbsentNotFound(t *testing.T) {
 		exists:  map[string]bool{},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "consumer",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "ghost-svc"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "ghost-svc"},
 		},
 	}}}
 
 	store.resolveOrgServices(context.Background(), "org", d)
 
 	dep := d.Components[0].Dependencies[0]
-	if dep.Status != models.DependencyStatusUnresolved {
-		t.Errorf("absent org-service: status = %q, want %q", dep.Status, models.DependencyStatusUnresolved)
+	if dep.Status != DependencyStatusUnresolved {
+		t.Errorf("absent org-service: status = %q, want %q", dep.Status, DependencyStatusUnresolved)
 	}
-	if dep.Reason != models.DependencyReasonNotFound {
-		t.Errorf("absent org-service: reason = %q, want %q", dep.Reason, models.DependencyReasonNotFound)
+	if dep.Reason != DependencyReasonNotFound {
+		t.Errorf("absent org-service: reason = %q, want %q", dep.Reason, DependencyReasonNotFound)
 	}
 }
 
@@ -160,13 +158,13 @@ func TestResolveOrgServices_ReasonSplit(t *testing.T) {
 		exists:  map[string]bool{"payroll-internal": true},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "employee-api"},     // namespace-visible
-			{Kind: models.DependencyKindOrgService, Name: "payroll-internal"}, // exists, project-only
-			{Kind: models.DependencyKindOrgService, Name: "ghost"},            // not in catalog
-			{Kind: models.DependencyKindComponent, Name: "cart"},              // untouched — wrong kind
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "employee-api"},     // namespace-visible
+			{Kind: DependencyKindOrgService, Name: "payroll-internal"}, // exists, project-only
+			{Kind: DependencyKindOrgService, Name: "ghost"},            // not in catalog
+			{Kind: DependencyKindComponent, Name: "cart"},              // untouched — wrong kind
 		},
 	}}}
 
@@ -178,9 +176,9 @@ func TestResolveOrgServices_ReasonSplit(t *testing.T) {
 		wantStatus string
 		wantReason string
 	}{
-		{"employee-api", models.DependencyStatusResolved, ""},
-		{"payroll-internal", models.DependencyStatusBlocked, models.DependencyReasonAccessRequired},
-		{"ghost", models.DependencyStatusUnresolved, models.DependencyReasonNotFound},
+		{"employee-api", DependencyStatusResolved, ""},
+		{"payroll-internal", DependencyStatusBlocked, DependencyReasonAccessRequired},
+		{"ghost", DependencyStatusUnresolved, DependencyReasonNotFound},
 		{"cart", "", ""},
 	}
 	for i, c := range cases {
@@ -205,10 +203,10 @@ func TestResolveOrgServices_ReasonSplit(t *testing.T) {
 func TestResolveOrgServices_NoResolverWired(t *testing.T) {
 	store := &ArtifactStore{}
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "employee-api"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "employee-api"},
 		},
 	}}}
 
@@ -233,10 +231,10 @@ func TestResolveOrgServices_IsNamespaceVisibleError(t *testing.T) {
 		visibleErr: map[string]error{"employee-api": errors.New("transient OC error")},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "employee-api"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "employee-api"},
 		},
 	}}}
 
@@ -262,18 +260,18 @@ func TestResolveOrgServices_ExistsAnyVisibilityError(t *testing.T) {
 		existsErr: map[string]error{"payroll-internal": errors.New("transient OC error")},
 	})
 
-	d := &DesignFile{Components: []models.DesignComponent{{
+	d := &DesignFile{Components: []DesignComponent{{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "payroll-internal"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindOrgService, Name: "payroll-internal"},
 		},
 	}}}
 
 	store.resolveOrgServices(context.Background(), "org", d)
 
 	dep := d.Components[0].Dependencies[0]
-	if dep.Status != models.DependencyStatusUnresolved {
-		t.Errorf("ExistsAnyVisibility error: status = %q, want %q", dep.Status, models.DependencyStatusUnresolved)
+	if dep.Status != DependencyStatusUnresolved {
+		t.Errorf("ExistsAnyVisibility error: status = %q, want %q", dep.Status, DependencyStatusUnresolved)
 	}
 	if dep.Reason != "" {
 		t.Errorf("ExistsAnyVisibility error: reason = %q, want empty", dep.Reason)
@@ -317,8 +315,8 @@ func TestReadDesign_ResolvesOrgServiceDependencies(t *testing.T) {
 			t.Fatalf("ReadDesign: %v", err)
 		}
 		dep := design.Components[0].Dependencies[0]
-		if dep.Status != models.DependencyStatusResolved {
-			t.Errorf("status = %q, want %q", dep.Status, models.DependencyStatusResolved)
+		if dep.Status != DependencyStatusResolved {
+			t.Errorf("status = %q, want %q", dep.Status, DependencyStatusResolved)
 		}
 	})
 

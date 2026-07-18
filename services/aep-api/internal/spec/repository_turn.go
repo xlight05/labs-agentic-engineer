@@ -24,8 +24,6 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The agent_turns store was extracted out of the genai turn engine (now internal/spec) during the
@@ -35,14 +33,14 @@ import (
 // one package. The gorm-into-<domain>/repository.go move defers to P9, as with
 // organization's stores (docs/design/domain-oriented-architecture.md §19.5.1).
 
-// Turn statuses (models.AgentTurn.Status).
+// Turn statuses (AgentTurn.Status).
 const (
 	turnStatusRunning   = "running"
 	turnStatusCompleted = "completed"
 	turnStatusFailed    = "failed"
 )
 
-// Failure reasons (models.AgentTurn.Reason and the terminal event's `reason`).
+// Failure reasons (AgentTurn.Reason and the terminal event's `reason`).
 const (
 	turnReasonStreamDied     = "stream-died"
 	turnReasonFoldParity     = "fold-parity"
@@ -72,7 +70,7 @@ type TurnRepository interface {
 	// TryStart INSERTs the running row; on conflict with the D18 partial
 	// unique index it fetches and returns the active row alongside
 	// ErrTurnActive. On success the passed row (ID populated) is returned.
-	TryStart(ctx context.Context, t *models.AgentTurn) (*models.AgentTurn, error)
+	TryStart(ctx context.Context, t *AgentTurn) (*AgentTurn, error)
 
 	// Heartbeat bumps heartbeat_at on a still-running row (no-op otherwise).
 	Heartbeat(ctx context.Context, id string) error
@@ -84,19 +82,19 @@ type TurnRepository interface {
 
 	// Get returns the turn only when it belongs to (orgID, projectID) — the
 	// tenant fence for the status/stream endpoints. (nil, nil) on miss.
-	Get(ctx context.Context, orgID, projectID, turnID string) (*models.AgentTurn, error)
+	Get(ctx context.Context, orgID, projectID, turnID string) (*AgentTurn, error)
 
 	// GetActive returns the project's running turn, or (nil, nil).
-	GetActive(ctx context.Context, orgID, projectID string) (*models.AgentTurn, error)
+	GetActive(ctx context.Context, orgID, projectID string) (*AgentTurn, error)
 
 	// LastTerminal returns the most recent completed/failed turn of a
 	// conversation — the D20 filesChangedExternally / divergence-note input.
-	LastTerminal(ctx context.Context, orgID, projectID, conversationID string) (*models.AgentTurn, error)
+	LastTerminal(ctx context.Context, orgID, projectID, conversationID string) (*AgentTurn, error)
 
 	// SweepStale fails every running row whose heartbeat predates olderThan
 	// (reason stream-died, message "replica crashed or hung") and returns the
 	// swept rows so the caller can emit broker terminals.
-	SweepStale(ctx context.Context, olderThan time.Time) ([]models.AgentTurn, error)
+	SweepStale(ctx context.Context, olderThan time.Time) ([]AgentTurn, error)
 }
 
 type turnRepository struct {
@@ -108,7 +106,7 @@ func NewTurnRepository(db *gorm.DB) TurnRepository {
 	return &turnRepository{db: db}
 }
 
-func (r *turnRepository) TryStart(ctx context.Context, t *models.AgentTurn) (*models.AgentTurn, error) {
+func (r *turnRepository) TryStart(ctx context.Context, t *AgentTurn) (*AgentTurn, error) {
 	if t.Status == "" {
 		t.Status = turnStatusRunning
 	}
@@ -138,14 +136,14 @@ func (r *turnRepository) TryStart(ctx context.Context, t *models.AgentTurn) (*mo
 
 func (r *turnRepository) Heartbeat(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).
-		Model(&models.AgentTurn{}).
+		Model(&AgentTurn{}).
 		Where("id = ? AND status = ?", id, turnStatusRunning).
 		Update("heartbeat_at", time.Now().UTC()).Error
 }
 
 func (r *turnRepository) Finish(ctx context.Context, id string, terminal TurnTerminal) (bool, error) {
 	res := r.db.WithContext(ctx).
-		Model(&models.AgentTurn{}).
+		Model(&AgentTurn{}).
 		Where("id = ? AND status = ?", id, turnStatusRunning).
 		Updates(map[string]any{
 			"status":     terminal.Status,
@@ -161,8 +159,8 @@ func (r *turnRepository) Finish(ctx context.Context, id string, terminal TurnTer
 	return res.RowsAffected > 0, nil
 }
 
-func (r *turnRepository) Get(ctx context.Context, orgID, projectID, turnID string) (*models.AgentTurn, error) {
-	var t models.AgentTurn
+func (r *turnRepository) Get(ctx context.Context, orgID, projectID, turnID string) (*AgentTurn, error) {
+	var t AgentTurn
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ? AND id = ?", orgID, projectID, turnID).
 		First(&t).Error
@@ -175,8 +173,8 @@ func (r *turnRepository) Get(ctx context.Context, orgID, projectID, turnID strin
 	return &t, nil
 }
 
-func (r *turnRepository) GetActive(ctx context.Context, orgID, projectID string) (*models.AgentTurn, error) {
-	var t models.AgentTurn
+func (r *turnRepository) GetActive(ctx context.Context, orgID, projectID string) (*AgentTurn, error) {
+	var t AgentTurn
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ? AND status = ?", orgID, projectID, turnStatusRunning).
 		First(&t).Error
@@ -189,8 +187,8 @@ func (r *turnRepository) GetActive(ctx context.Context, orgID, projectID string)
 	return &t, nil
 }
 
-func (r *turnRepository) LastTerminal(ctx context.Context, orgID, projectID, conversationID string) (*models.AgentTurn, error) {
-	var t models.AgentTurn
+func (r *turnRepository) LastTerminal(ctx context.Context, orgID, projectID, conversationID string) (*AgentTurn, error) {
+	var t AgentTurn
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ? AND conversation_id = ? AND status IN ?",
 			orgID, projectID, conversationID, []string{turnStatusCompleted, turnStatusFailed}).
@@ -205,10 +203,10 @@ func (r *turnRepository) LastTerminal(ctx context.Context, orgID, projectID, con
 	return &t, nil
 }
 
-func (r *turnRepository) SweepStale(ctx context.Context, olderThan time.Time) ([]models.AgentTurn, error) {
+func (r *turnRepository) SweepStale(ctx context.Context, olderThan time.Time) ([]AgentTurn, error) {
 	// One guarded UPDATE ... RETURNING so concurrent sweeps (or a Finish
 	// racing the sweep) each claim a row at most once.
-	var swept []models.AgentTurn
+	var swept []AgentTurn
 	err := r.db.WithContext(ctx).Raw(`
 		UPDATE agent_turns
 		SET status = ?, reason = ?, message = ?, updated_at = now()

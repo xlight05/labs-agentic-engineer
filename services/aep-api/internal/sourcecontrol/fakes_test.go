@@ -31,9 +31,10 @@ package sourcecontrol_test
 
 import (
 	"context"
-	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"sync"
 	"time"
+
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"

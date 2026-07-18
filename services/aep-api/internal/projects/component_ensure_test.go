@@ -112,7 +112,7 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 // TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint is the
 // consumer-level regression for the component-kind vocabulary drift bug: a
 // design.json carrying the canonical "web-application" type (OpenChoreo's own
-// term, models.ComponentTypeWebApplication) must provision an OC Component
+// term, spec.ComponentTypeWebApplication) must provision an OC Component
 // with the deployment/web-application entrypoint, not silently fall back to a
 // plain service (which caused shared-host routing and a missing runtime
 // config for the deployed SPA).

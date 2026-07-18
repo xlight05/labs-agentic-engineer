@@ -41,7 +41,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // fileCriteria reads the criteria from the local path (validation.CriteriaReader).
@@ -59,10 +59,10 @@ func (f fileCriteria) ReadValidationCriteria(context.Context, string, string) ([
 // (validation.DesignReader).
 type flagComponents struct{ names []string }
 
-func (f flagComponents) ReadDesignComponents(context.Context, string, string) ([]models.DesignComponent, error) {
-	comps := make([]models.DesignComponent, len(f.names))
+func (f flagComponents) ReadDesignComponents(context.Context, string, string) ([]spec.DesignComponent, error) {
+	comps := make([]spec.DesignComponent, len(f.names))
 	for i, n := range f.names {
-		comps[i] = models.DesignComponent{Name: n}
+		comps[i] = spec.DesignComponent{Name: n}
 	}
 	return comps, nil
 }

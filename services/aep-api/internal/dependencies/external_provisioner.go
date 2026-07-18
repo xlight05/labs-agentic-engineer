@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // EnvValues are the user-supplied values for one environment, split by the
@@ -362,7 +362,7 @@ func buildExternalResourceBinding(projectName, name, env, latestRelease, secretS
 	}, nil
 }
 
-func toRTConfigKeys(in []models.ConfigKey) []openchoreo.ExternalResourceConfigKey {
+func toRTConfigKeys(in []spec.ConfigKey) []openchoreo.ExternalResourceConfigKey {
 	out := make([]openchoreo.ExternalResourceConfigKey, 0, len(in))
 	for _, k := range in {
 		out = append(out, openchoreo.ExternalResourceConfigKey{Key: k.Key, Secret: k.Secret})

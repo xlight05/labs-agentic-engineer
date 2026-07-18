@@ -20,8 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/models"
 	"gorm.io/gorm"
+
+	"github.com/wso2/aep/aep-api/models"
 )
 
 // RepoRepository manages GitRepository persistence. All lookups/deletes are

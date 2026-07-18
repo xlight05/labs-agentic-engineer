@@ -21,9 +21,10 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/migrate"
-	"gorm.io/gorm"
 )
 
 // Bootstrap runs the imperative first-boot schema steps that must complete

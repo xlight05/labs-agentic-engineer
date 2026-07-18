@@ -21,9 +21,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/wso2/aep/aep-api/internal/config"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/log"
+
+	"github.com/wso2/aep/aep-api/internal/config"
 )
 
 // ErrTemporalUnavailable is returned by Runtime.Client while no connection to

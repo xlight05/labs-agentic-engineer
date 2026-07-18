@@ -20,8 +20,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 func TestNormalizeOpenAPIYAML_KeyOrder(t *testing.T) {
@@ -225,19 +223,19 @@ paths:
 
 func TestNormalizeDesignJSON_Idempotent(t *testing.T) {
 	df := struct {
-		Overview     string                   `json:"overview"`
-		Requirements []string                 `json:"requirements"`
-		Components   []models.DesignComponent `json:"components"`
-		SourceSpec   string                   `json:"sourceSpec,omitempty"`
+		Overview     string            `json:"overview"`
+		Requirements []string          `json:"requirements"`
+		Components   []DesignComponent `json:"components"`
+		SourceSpec   string            `json:"sourceSpec,omitempty"`
 	}{
 		Overview:     "x",
 		Requirements: []string{"r1"},
-		Components: []models.DesignComponent{
+		Components: []DesignComponent{
 			{
 				Name:                       "todo-api",
 				ComponentType:              "service",
 				Language:                   "Go",
-				Dependencies:               []models.Dependency{},
+				Dependencies:               []Dependency{},
 				Entrypoint:                 "deployment/service",
 				Buildpack:                  "docker",
 				AppPath:                    "/todo-api",

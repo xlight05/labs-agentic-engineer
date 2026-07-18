@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package models
+package spec
 
 // ArtifactVersion describes a tagged version of an artifact.
 type ArtifactVersion struct {

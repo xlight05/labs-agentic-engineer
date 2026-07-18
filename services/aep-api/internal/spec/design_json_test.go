@@ -20,8 +20,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fullComponentDesignJSON is a canonical `components/checkout/design.json`
@@ -116,14 +114,14 @@ func TestParseComponentDesignJSON_AllKinds(t *testing.T) {
 		t.Fatalf("want 4 dependencies, got %d: %+v", len(comp.Dependencies), comp.Dependencies)
 	}
 	got := comp.Dependencies
-	if got[0].Kind != models.DependencyKindComponent || got[0].Name != "cart" {
+	if got[0].Kind != DependencyKindComponent || got[0].Name != "cart" {
 		t.Fatalf("dep[0] drifted: %+v", got[0])
 	}
-	if got[1].Kind != models.DependencyKindOrgService || got[1].Name != "user-profile" ||
+	if got[1].Kind != DependencyKindOrgService || got[1].Name != "user-profile" ||
 		got[1].Description != "cross-project profile lookup" {
 		t.Fatalf("dep[1] drifted: %+v", got[1])
 	}
-	if got[2].Kind != models.DependencyKindExternal || got[2].Name != "openweather" ||
+	if got[2].Kind != DependencyKindExternal || got[2].Name != "openweather" ||
 		!got[2].NeedsSpec || got[2].SpecPath != "dependencies/openweather.openapi.yaml" {
 		t.Fatalf("dep[2] drifted: %+v", got[2])
 	}
@@ -139,7 +137,7 @@ func TestParseComponentDesignJSON_AllKinds(t *testing.T) {
 		got[2].Config[1].DefaultValue != "us-east-1" {
 		t.Fatalf("dep[2] config[1] defaultValue drifted: %+v", got[2].Config)
 	}
-	if got[3].Kind != models.DependencyKindPlatformResource || got[3].Name != "orders-db" ||
+	if got[3].Kind != DependencyKindPlatformResource || got[3].Name != "orders-db" ||
 		got[3].ResourceType != "postgres" || got[3].Parameters["size"] != "small" {
 		t.Fatalf("dep[3] drifted: %+v", got[3])
 	}
@@ -225,8 +223,8 @@ func TestComponentDesignJSON_Endpoint(t *testing.T) {
 		if comp.Endpoint != nil {
 			t.Fatalf("endpoint should be nil when omitted, got %+v", comp.Endpoint)
 		}
-		if comp.EndpointName() != models.DefaultEndpointName {
-			t.Fatalf("EndpointName() = %q, want default %q", comp.EndpointName(), models.DefaultEndpointName)
+		if comp.EndpointName() != DefaultEndpointName {
+			t.Fatalf("EndpointName() = %q, want default %q", comp.EndpointName(), DefaultEndpointName)
 		}
 		out, err := marshalComponentDesignJSON("worker", comp)
 		if err != nil {
@@ -244,12 +242,12 @@ func TestComponentDesignJSON_Endpoint(t *testing.T) {
 func TestMarshalComponentDesignJSON_NeverEmitsStatusReason(t *testing.T) {
 	// An external needs-spec dep whose Status/Reason were computed at read time
 	// must never leak into the written file.
-	comp := models.DesignComponent{
+	comp := DesignComponent{
 		Name:          "checkout",
 		ComponentType: "service",
-		Dependencies: []models.Dependency{
+		Dependencies: []Dependency{
 			{
-				Kind:      models.DependencyKindExternal,
+				Kind:      DependencyKindExternal,
 				Name:      "openweather",
 				NeedsSpec: true,
 				Status:    "unresolved", // computed — must be dropped
@@ -388,7 +386,7 @@ func TestParseComponentDesignJSON_ExposureAbsentOrEmptyAccepted(t *testing.T) {
 }
 
 func TestMarshalComponentDesignJSON_NameMustEqualDir(t *testing.T) {
-	comp := models.DesignComponent{Name: "other", ComponentType: "service"}
+	comp := DesignComponent{Name: "other", ComponentType: "service"}
 	if _, err := marshalComponentDesignJSON("checkout", comp); err == nil {
 		t.Fatalf("expected component name %q != dir %q to be rejected", comp.Name, "checkout")
 	}
@@ -422,7 +420,7 @@ func TestParseComponentDesignJSON_NeedsSpecComputesUnresolved(t *testing.T) {
 
 // TestParseComponentDesignJSON_TypePassesThroughVerbatim pins the codec's
 // type handling: NO normalization, NO shims. The vocabulary is OpenChoreo's
-// own terms (models.ComponentTypeService / ComponentTypeWebApplication) used
+// own terms (ComponentTypeService / ComponentTypeWebApplication) used
 // end-to-end, so the codec maps `type` verbatim in both directions. Older
 // spellings ("webapp", "web-app") also pass through untouched — they are
 // simply NOT web applications; stored designs carrying them must be migrated
@@ -461,15 +459,15 @@ func TestSplitAssembleDesign_ComponentRoundTrip(t *testing.T) {
 	// component survives Split → Assemble with the design.json codec.
 	d := &DesignFile{
 		Overview: "the system",
-		Components: []models.DesignComponent{
+		Components: []DesignComponent{
 			{
 				Name:          "checkout",
 				ComponentType: "service",
 				Version:       "0.1.0",
 				Language:      "Go",
 				Description:   "Owns checkout.",
-				Dependencies: []models.Dependency{
-					{Kind: models.DependencyKindComponent, Name: "cart"},
+				Dependencies: []Dependency{
+					{Kind: DependencyKindComponent, Name: "cart"},
 				},
 				OpenAPISpec: "openapi: 3.0.3\n",
 			},

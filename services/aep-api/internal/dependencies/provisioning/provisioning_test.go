@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ---- fakes -----------------------------------------------------------------
@@ -152,9 +152,9 @@ type fakeReeval struct{ calls int }
 
 func (f *fakeReeval) Reevaluate(context.Context) error { f.calls++; return nil }
 
-type fakeDesign struct{ comps []models.DesignComponent }
+type fakeDesign struct{ comps []spec.DesignComponent }
 
-func (f fakeDesign) ReadDesignComponents(context.Context, string, string) ([]models.DesignComponent, error) {
+func (f fakeDesign) ReadDesignComponents(context.Context, string, string) ([]spec.DesignComponent, error) {
 	return f.comps, nil
 }
 
@@ -379,14 +379,14 @@ func readyBinding(outputs ...string) *openchoreo.ResourceReleaseBinding {
 
 // ---- fixtures --------------------------------------------------------------
 
-func designWithDeps() []models.DesignComponent {
-	return []models.DesignComponent{{
+func designWithDeps() []spec.DesignComponent {
+	return []spec.DesignComponent{{
 		Name: "orders",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", Config: []models.ConfigKey{
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", Config: []spec.ConfigKey{
 				{Key: "api_key", Secret: true}, {Key: "region"},
 			}},
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"size": "small"}},
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"size": "small"}},
 		},
 	}}
 }
@@ -468,7 +468,7 @@ func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
 	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
-		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
+		"stripe": {Name: "stripe", ConfigKeys: []spec.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
 	}}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, catalog, ext, &fakePlatProv{}, &fakeBindings{})
 
@@ -649,8 +649,8 @@ func TestDeleteExternalResource_InUse409(t *testing.T) {
 }
 
 func TestRequestAccess_CreatesRequestAndProviderIssue(t *testing.T) {
-	consumer := models.DesignComponent{Name: "web", Dependencies: []models.Dependency{
-		{Kind: models.DependencyKindOrgService, Name: "inventory"},
+	consumer := spec.DesignComponent{Name: "web", Dependencies: []spec.Dependency{
+		{Kind: spec.DependencyKindOrgService, Name: "inventory"},
 	}}
 	issues := newFakeIssues(nil)
 	access := &fakeAccess{}
@@ -660,7 +660,7 @@ func TestRequestAccess_CreatesRequestAndProviderIssue(t *testing.T) {
 	svc := NewService(Deps{
 		Issues:    issues,
 		Execs:     &fakeExecStore{},
-		Design:    fakeDesign{comps: []models.DesignComponent{consumer}},
+		Design:    fakeDesign{comps: []spec.DesignComponent{consumer}},
 		Repos:     fakeRepos{},
 		Access:    access,
 		Providers: providers,

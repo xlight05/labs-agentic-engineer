@@ -25,7 +25,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ErrExternalResourceNotFound is returned when no external resource is
@@ -61,7 +61,7 @@ func NewExternalResourceRepository(db *gorm.DB) *ExternalResourceRepository {
 // effectively immutable, so a new shape needs a new type — and the stored
 // schema is updated. Description-only edits (schema unchanged, or an empty
 // schema passed) don't bump the suffix.
-func (r *ExternalResourceRepository) Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) (*ExternalResource, error) {
+func (r *ExternalResourceRepository) Upsert(ctx context.Context, orgID, name, description string, schema []spec.ConfigKey) (*ExternalResource, error) {
 	if orgID == "" || name == "" {
 		return nil, fmt.Errorf("external_resources: orgID and name are required")
 	}
@@ -137,7 +137,7 @@ func (r *ExternalResourceRepository) Delete(ctx context.Context, orgID, name str
 
 // SchemaEqual reports whether two config key schemas are equivalent (same
 // keys, same secret flags), order-independent.
-func SchemaEqual(a, b []models.ConfigKey) bool {
+func SchemaEqual(a, b []spec.ConfigKey) bool {
 	if len(a) != len(b) {
 		return false
 	}

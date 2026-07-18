@@ -360,7 +360,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		if err := skillSvc.EnsureProvisioned(ctx, orgID); err != nil {
 			return nil, err
 		}
-		return repoService.GetRepo(ctx, orgID, models.SkillsRepoSentinelProjectID)
+		return repoService.GetRepo(ctx, orgID, spec.SkillsRepoSentinelProjectID)
 	}
 	turnRepo := spec.NewTurnRepository(db)
 	turnBroker := spec.NewTurnBroker()
@@ -849,7 +849,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// external-resource catalog on save (best-effort). Consumer-side port —
 	// design never imports repositories concretely.
 	designService.SetExternalResourceRegistry(spec.ExternalResourceRegistrarFunc(
-		func(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) error {
+		func(ctx context.Context, orgID, name, description string, schema []spec.ConfigKey) error {
 			_, err := externalResourceRepo.Upsert(ctx, orgID, name, description, schema)
 			return err
 		}))

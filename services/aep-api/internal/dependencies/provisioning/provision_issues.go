@@ -24,7 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // provisionDep is one distinct provisioning dependency discovered in a design.
@@ -115,7 +115,7 @@ func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, d
 // distinctProvisionDeps collects the project's distinct external +
 // platform-resource dependencies (keyed by lowercased name — the same dependency
 // consumed by several components is one gate issue).
-func distinctProvisionDeps(comps []models.DesignComponent) map[string]provisionDep {
+func distinctProvisionDeps(comps []spec.DesignComponent) map[string]provisionDep {
 	out := map[string]provisionDep{}
 	for i := range comps {
 		for j := range comps[i].Dependencies {
@@ -128,9 +128,9 @@ func distinctProvisionDeps(comps []models.DesignComponent) map[string]provisionD
 				continue
 			}
 			switch d.Kind {
-			case models.DependencyKindExternal:
+			case spec.DependencyKindExternal:
 				out[key] = provisionDep{name: d.Name, gateKind: taskmeta.GateConfigCollection}
-			case models.DependencyKindPlatformResource:
+			case spec.DependencyKindPlatformResource:
 				out[key] = provisionDep{name: d.Name, gateKind: taskmeta.GateResourceProvisioning, resourceType: d.ResourceType}
 			}
 		}

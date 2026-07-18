@@ -19,8 +19,9 @@ package devflow
 import (
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // QueryStatus, the TaskPhase* / Outcome* protocol constants and DevFlowWorkflowName

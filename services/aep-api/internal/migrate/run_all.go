@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/projects"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -58,7 +59,7 @@ func BaseModels() []any {
 		&models.WebhookPayload{},
 		&models.Organization{},
 		&delivery.Execution{},
-		&models.AgentTurn{},
+		&spec.AgentTurn{},
 		&delivery.DevflowRun{},
 	}
 }

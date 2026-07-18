@@ -22,8 +22,9 @@ package projects
 import (
 	"context"
 	"fmt"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"

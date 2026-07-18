@@ -23,7 +23,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // fakeProviderBuild spies the provider-build trigger (the automated visibility
@@ -78,14 +78,14 @@ func newVisibilityService(t *testing.T) (*Service, visibilitySpies) {
 	issues := newFakeIssues(nil)
 	access := &fakeAccess{}
 	build := &fakeProviderBuild{}
-	consumer := models.DesignComponent{Name: "cart", Dependencies: []models.Dependency{
-		{Kind: models.DependencyKindOrgService, Name: "billing"},
+	consumer := spec.DesignComponent{Name: "cart", Dependencies: []spec.Dependency{
+		{Kind: spec.DependencyKindOrgService, Name: "billing"},
 	}}
 	svc := NewService(Deps{
 		Issues: issues,
 		Execs:  &fakeExecStore{},
 		Reeval: &fakeReeval{},
-		Design: fakeDesign{comps: []models.DesignComponent{consumer}},
+		Design: fakeDesign{comps: []spec.DesignComponent{consumer}},
 		Repos:  fakeRepos{},
 		Access: access,
 		Providers: fakeProviders{byName: map[string]openchoreo.WorkloadEndpointInfo{

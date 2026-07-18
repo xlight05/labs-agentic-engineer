@@ -44,7 +44,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ----- minimal port fakes ------------------------------------------------------
@@ -69,9 +69,9 @@ func (f *cCatalog) Delete(_ context.Context, _, name string) error {
 	return nil
 }
 
-type cDesign struct{ comps []models.DesignComponent }
+type cDesign struct{ comps []spec.DesignComponent }
 
-func (f cDesign) ReadDesignComponents(context.Context, string, string) ([]models.DesignComponent, error) {
+func (f cDesign) ReadDesignComponents(context.Context, string, string) ([]spec.DesignComponent, error) {
 	return f.comps, nil
 }
 
@@ -125,11 +125,11 @@ func readyBindingWith(outputs ...string) *openchoreo.ResourceReleaseBinding {
 
 // stripeConsumerDesign declares an external dep "stripe" on project "proj"'s
 // component "orders" — the consumer the catalog list/delete guard scans for.
-func stripeConsumerDesign() []models.DesignComponent {
-	return []models.DesignComponent{{
+func stripeConsumerDesign() []spec.DesignComponent {
+	return []spec.DesignComponent{{
 		Name: "orders",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", Config: []models.ConfigKey{
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", Config: []spec.ConfigKey{
 				{Key: "api_key", Secret: true}, {Key: "region"},
 			}},
 		},
@@ -178,7 +178,7 @@ func TestProvisioningComponent_ListExternalResources(t *testing.T) {
 	t.Parallel()
 	svc := provisioning.NewService(provisioning.Deps{
 		Catalog: &cCatalog{entries: map[string]*dependencies.ExternalResource{
-			"stripe": {Name: "stripe", Description: "payments", ConfigKeys: []models.ConfigKey{
+			"stripe": {Name: "stripe", Description: "payments", ConfigKeys: []spec.ConfigKey{
 				{Key: "api_key", Secret: true}, {Key: "region"},
 			}},
 		}},

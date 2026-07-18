@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ResolveComponentRunnerSecrets returns the per-run external-resource secret
@@ -49,7 +49,7 @@ func (s *Service) ResolveComponentRunnerSecrets(ctx context.Context, orgID, proj
 			continue
 		}
 		for _, d := range comps[i].Dependencies {
-			if d.Kind == models.DependencyKindExternal {
+			if d.Kind == spec.DependencyKindExternal {
 				names = append(names, d.Name)
 			}
 		}

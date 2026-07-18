@@ -21,8 +21,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- deriveEndUserAuth (pure function) ---------------------------------------
@@ -31,8 +29,8 @@ import (
 // "thunder-app". The name is arbitrary sample data — derivation keys on the CRT
 // role MARKER (authRole), never on the name (see
 // TestDeriveEndUserAuth_UnlabeledTypeUntouchedEvenIfNamedThunderApp).
-func thunderDep(name string) models.Dependency {
-	return models.Dependency{Kind: models.DependencyKindPlatformResource, Name: name, ResourceType: "thunder-app"}
+func thunderDep(name string) Dependency {
+	return Dependency{Kind: DependencyKindPlatformResource, Name: name, ResourceType: "thunder-app"}
 }
 
 // authRole returns a marker map flagging resourceType as carrying the
@@ -59,10 +57,10 @@ func (f *fakeMarkerCatalog) MarkersByName(context.Context) (map[string]CRTMarker
 // Auth end-user-required.
 func TestDeriveEndUserAuth_StampsNilExposesAPI(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies:  []models.Dependency{thunderDep("user-auth")},
+		Dependencies:  []Dependency{thunderDep("user-auth")},
 	}}
 
 	if err := deriveEndUserAuth(comps, authRole("thunder-app")); err != nil {
@@ -77,11 +75,11 @@ func TestDeriveEndUserAuth_StampsNilExposesAPI(t *testing.T) {
 // sibling ExposesAPI fields survive untouched).
 func TestDeriveEndUserAuth_ExistingEndUserRequiredUnchanged(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies:  []models.Dependency{thunderDep("user-auth")},
-		ExposesAPI:    &models.ExposesAPI{Auth: authEndUserRequired, Managed: true, UserContext: "X-User-Id"},
+		Dependencies:  []Dependency{thunderDep("user-auth")},
+		ExposesAPI:    &ExposesAPI{Auth: authEndUserRequired, Managed: true, UserContext: "X-User-Id"},
 	}}
 
 	if err := deriveEndUserAuth(comps, authRole("thunder-app")); err != nil {
@@ -97,11 +95,11 @@ func TestDeriveEndUserAuth_ExistingEndUserRequiredUnchanged(t *testing.T) {
 // the conflicting value; nothing is mutated.
 func TestDeriveEndUserAuth_ServiceRequiredConflictErrors(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies:  []models.Dependency{thunderDep("user-auth")},
-		ExposesAPI:    &models.ExposesAPI{Auth: authServiceRequired},
+		Dependencies:  []Dependency{thunderDep("user-auth")},
+		ExposesAPI:    &ExposesAPI{Auth: authServiceRequired},
 	}}
 
 	err := deriveEndUserAuth(comps, authRole("thunder-app"))
@@ -122,10 +120,10 @@ func TestDeriveEndUserAuth_ServiceRequiredConflictErrors(t *testing.T) {
 // (d) web-app + dep → no ExposesAPI mutation (SPAs aren't gateway-exposed APIs).
 func TestDeriveEndUserAuth_WebAppUntouched(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "storefront-web",
 		ComponentType: "web-application",
-		Dependencies:  []models.Dependency{thunderDep("user-auth")},
+		Dependencies:  []Dependency{thunderDep("user-auth")},
 	}}
 
 	if err := deriveEndUserAuth(comps, authRole("thunder-app")); err != nil {
@@ -139,10 +137,10 @@ func TestDeriveEndUserAuth_WebAppUntouched(t *testing.T) {
 // (e) service without the dependency → untouched.
 func TestDeriveEndUserAuth_DepLessServiceUntouched(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies:  []models.Dependency{{Kind: models.DependencyKindComponent, Name: "sibling"}},
+		Dependencies:  []Dependency{{Kind: DependencyKindComponent, Name: "sibling"}},
 	}}
 
 	if err := deriveEndUserAuth(comps, authRole("thunder-app")); err != nil {
@@ -157,11 +155,11 @@ func TestDeriveEndUserAuth_DepLessServiceUntouched(t *testing.T) {
 // postgres-cnpg) must not trigger derivation.
 func TestDeriveEndUserAuth_OtherResourceTypeUntouched(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
 		},
 	}}
 
@@ -179,10 +177,10 @@ func TestDeriveEndUserAuth_OtherResourceTypeUntouched(t *testing.T) {
 // generalization — derivation keys on the CRT marker, never on the name.
 func TestDeriveEndUserAuth_UnlabeledTypeUntouchedEvenIfNamedThunderApp(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies:  []models.Dependency{thunderDep("user-auth")},
+		Dependencies:  []Dependency{thunderDep("user-auth")},
 	}}
 
 	// Empty marker map: "thunder-app" carries no role — nothing to derive.
@@ -198,11 +196,11 @@ func TestDeriveEndUserAuth_UnlabeledTypeUntouchedEvenIfNamedThunderApp(t *testin
 // the marker, not the name, is the signal.
 func TestDeriveEndUserAuth_StampsAnyLabeledType(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{{
+	comps := []DesignComponent{{
 		Name:          "orders-api",
 		ComponentType: "service",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindPlatformResource, Name: "user-auth", ResourceType: "custom-oidc"},
+		Dependencies: []Dependency{
+			{Kind: DependencyKindPlatformResource, Name: "user-auth", ResourceType: "custom-oidc"},
 		},
 	}}
 
@@ -219,10 +217,10 @@ func TestDeriveEndUserAuth_StampsAnyLabeledType(t *testing.T) {
 // left alone in the same pass.
 func TestDeriveEndUserAuth_MixedComponentsOnlyQualifyingServiceStamped(t *testing.T) {
 	t.Parallel()
-	comps := []models.DesignComponent{
-		{Name: "orders-api", ComponentType: "service", Dependencies: []models.Dependency{thunderDep("user-auth")}},
+	comps := []DesignComponent{
+		{Name: "orders-api", ComponentType: "service", Dependencies: []Dependency{thunderDep("user-auth")}},
 		{Name: "billing-api", ComponentType: "service"},
-		{Name: "storefront-web", ComponentType: "web-application", Dependencies: []models.Dependency{thunderDep("user-auth")}},
+		{Name: "storefront-web", ComponentType: "web-application", Dependencies: []Dependency{thunderDep("user-auth")}},
 	}
 
 	if err := deriveEndUserAuth(comps, authRole("thunder-app")); err != nil {

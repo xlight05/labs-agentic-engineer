@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // Input kinds the build drawer emits (issue #164). These are the drawer input
@@ -157,7 +157,7 @@ func (s *Service) settleReadyGates(ctx context.Context, orgID, projectID string,
 	for _, comp := range comps {
 		for _, dep := range comp.Dependencies {
 			// Only external + platform-resource deps mint a provision gate.
-			if dep.Kind != models.DependencyKindExternal && dep.Kind != models.DependencyKindPlatformResource {
+			if dep.Kind != spec.DependencyKindExternal && dep.Kind != spec.DependencyKindPlatformResource {
 				continue
 			}
 			name := strings.ToLower(dep.Name)
@@ -223,7 +223,7 @@ func (s *Service) completeReadyGate(ctx context.Context, orgID, projectID, depNa
 // re-written to SM-API.
 func (s *Service) authorExternalWithRef(ctx context.Context, orgID, ocOrgID, projectID string, in BuildProvisionInput, gateNumber int) error {
 	_ = ocOrgID // the author half needs no SM-API write; kept for symmetry with SaveValues.
-	if _, err := s.findDepInProject(ctx, orgID, projectID, in.Dependency, models.DependencyKindExternal); err != nil {
+	if _, err := s.findDepInProject(ctx, orgID, projectID, in.Dependency, spec.DependencyKindExternal); err != nil {
 		return err
 	}
 	er, err := s.catalog.Get(ctx, orgID, in.Dependency)

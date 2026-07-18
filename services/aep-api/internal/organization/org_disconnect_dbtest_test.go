@@ -27,8 +27,9 @@ package organization
 import (
 	"context"
 	"errors"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"

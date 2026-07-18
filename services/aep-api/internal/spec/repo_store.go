@@ -50,7 +50,7 @@ const (
 	SkillsRepoName = "org-skills"
 	// SkillsRepoProject is the sentinel project_id under which the skills repo
 	// row lives in git_repositories (distinguishes it from project repos). §10.1.
-	SkillsRepoProject = models.SkillsRepoSentinelProjectID
+	SkillsRepoProject = SkillsRepoSentinelProjectID
 
 	skillsRootDir = "skills"
 	skillFileName = "SKILL.md"
@@ -64,10 +64,10 @@ const (
 // flat layout (skills/<name>/) a skill's kind lives in its frontmatter
 // (`metadata.aep.kind`; absent → org).
 var legacyKindDirs = map[string]string{
-	"builtin":  models.SkillKindOrg,
-	"flow":     models.SkillKindPlatform,
-	"custom":   models.SkillKindCustom,
-	"imported": models.SkillKindImported,
+	"builtin":  SkillKindOrg,
+	"flow":     SkillKindPlatform,
+	"custom":   SkillKindCustom,
+	"imported": SkillKindImported,
 }
 
 // SkillService is the repo-backed read/reconcile surface for skills. It also
@@ -174,7 +174,7 @@ func (s *SkillService) ListSummaries(ctx context.Context, orgID string) ([]Skill
 			Kind:        sk.Kind,
 			Description: sk.Description,
 			ContentSHA:  sk.ContentSHA,
-			Editable:    sk.Kind == models.SkillKindCustom || sk.Kind == models.SkillKindImported,
+			Editable:    sk.Kind == SkillKindCustom || sk.Kind == SkillKindImported,
 		})
 	}
 	return out, nil
@@ -480,13 +480,13 @@ func (s *SkillService) deleteSkillDir(ctx context.Context, orgID, name, message 
 // platform-shipped skill (the legacy shadow semantics, "org wins").
 func kindRank(kind string) int {
 	switch kind {
-	case models.SkillKindOrg:
+	case SkillKindOrg:
 		return 0
-	case models.SkillKindPlatform:
+	case SkillKindPlatform:
 		return 1
-	case models.SkillKindCustom:
+	case SkillKindCustom:
 		return 2
-	case models.SkillKindImported:
+	case SkillKindImported:
 		return 3
 	default:
 		return 4

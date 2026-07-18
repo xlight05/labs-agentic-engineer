@@ -24,7 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // criteriaFilePath is the acceptance-oracle path in the project repo, authored
@@ -176,7 +176,7 @@ func (s *Service) findOpenValidationIssue(ctx context.Context, orgID, projectID 
 
 // componentNames returns the design component names (the validation task's
 // dependsOn set), skipping empties.
-func componentNames(comps []models.DesignComponent) []string {
+func componentNames(comps []spec.DesignComponent) []string {
 	out := make([]string, 0, len(comps))
 	for i := range comps {
 		if n := strings.TrimSpace(comps[i].Name); n != "" {

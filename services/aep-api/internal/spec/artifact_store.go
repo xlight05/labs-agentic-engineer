@@ -25,8 +25,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ArtifactStore wraps the GitHub-direct ArtifactService to add value beyond raw
@@ -89,9 +87,9 @@ func (s *ArtifactStore) SetOrgServiceResolver(r OrgServiceResolver) {
 //	                                       # (componentAgentInstructions)
 //	components/<name>/openapi.yaml         # OpenAPI 3.0.3 (service components only)
 type DesignFile struct {
-	Overview   string                   `json:"overview"`
-	Components []models.DesignComponent `json:"components"`
-	SourceSpec string                   `json:"sourceSpec,omitempty"`
+	Overview   string            `json:"overview"`
+	Components []DesignComponent `json:"components"`
+	SourceSpec string            `json:"sourceSpec,omitempty"`
 }
 
 // DesignRootFile is the canonical root design document.
@@ -181,7 +179,7 @@ func (s *ArtifactStore) resolveOrgServices(ctx context.Context, orgID string, d 
 	for i := range d.Components {
 		for j := range d.Components[i].Dependencies {
 			dep := &d.Components[i].Dependencies[j]
-			if dep.Kind != models.DependencyKindOrgService {
+			if dep.Kind != DependencyKindOrgService {
 				continue
 			}
 			visible, err := s.orgServices.IsNamespaceVisible(ctx, orgID, dep.Name)
@@ -191,14 +189,14 @@ func (s *ArtifactStore) resolveOrgServices(ctx context.Context, orgID string, d 
 				continue
 			}
 			if visible {
-				dep.Status = models.DependencyStatusResolved
+				dep.Status = DependencyStatusResolved
 				dep.Reason = ""
 				continue
 			}
 			// Not namespace-visible: refine into `blocked` (project-only —
 			// requestable via access request) vs `unresolved` (absent — not in
 			// the catalog at all).
-			dep.Status = models.DependencyStatusUnresolved
+			dep.Status = DependencyStatusUnresolved
 			dep.Reason = ""
 			exists, err := s.orgServices.ExistsAnyVisibility(ctx, orgID, dep.Name)
 			if err != nil {
@@ -207,10 +205,10 @@ func (s *ArtifactStore) resolveOrgServices(ctx context.Context, orgID string, d 
 				continue
 			}
 			if exists {
-				dep.Status = models.DependencyStatusBlocked
-				dep.Reason = models.DependencyReasonAccessRequired
+				dep.Status = DependencyStatusBlocked
+				dep.Reason = DependencyReasonAccessRequired
 			} else {
-				dep.Reason = models.DependencyReasonNotFound
+				dep.Reason = DependencyReasonNotFound
 			}
 		}
 	}
@@ -278,7 +276,7 @@ func AssembleDesign(files map[string]string) (*DesignFile, error) {
 	}
 
 	componentNames := ComponentNamesIn(files)
-	out.Components = make([]models.DesignComponent, 0, len(componentNames))
+	out.Components = make([]DesignComponent, 0, len(componentNames))
 	for _, name := range componentNames {
 		// design.json is the authored component model — the agent's write gate and
 		// the save-time gate both validate it (design_json.go / @aep/agent-stream).

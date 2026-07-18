@@ -23,7 +23,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // The consumer ports the provisioning services + watcher drive. Each is the
@@ -66,7 +66,7 @@ type Reevaluator interface {
 // approval, so HEAD == the just-tagged content; the gate issue still records its
 // DesignTag for lineage.)
 type DesignReader interface {
-	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]models.DesignComponent, error)
+	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }
 
 // RepoLocator resolves an org+project to its GitHub repo full name ("owner/name").

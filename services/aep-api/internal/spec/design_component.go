@@ -21,8 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ErrComponentRemovedAfterGeneration is returned when a task references a
@@ -37,7 +35,7 @@ var ErrComponentRemovedAfterGeneration = errors.New("component removed after gen
 // the given store and returns the entry whose Name matches componentName. The
 // design at HEAD is read at the moment of use (not a snapshot), so design edits
 // propagate. Lookups are case-insensitive on Name.
-func ResolveDesignComponent(ctx context.Context, store *ArtifactStore, orgID, projectID, componentName string) (*models.DesignComponent, error) {
+func ResolveDesignComponent(ctx context.Context, store *ArtifactStore, orgID, projectID, componentName string) (*DesignComponent, error) {
 	if store == nil {
 		return nil, fmt.Errorf("artifact store not configured")
 	}

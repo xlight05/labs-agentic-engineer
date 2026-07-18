@@ -25,8 +25,6 @@ import (
 	"log/slog"
 	"path"
 	"strings"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // importMaxBytes caps the total decompressed payload we read from a
@@ -100,7 +98,7 @@ func (s *SkillImportService) Import(ctx context.Context, orgID, actor string, r 
 	// Stamp the kind into the stored file — the flat layout has no kind dirs,
 	// so the imported file must self-describe as user-owned (editable, never
 	// reconcile-purged).
-	stamped, err := stampFrontmatterKind(skillMD, models.SkillKindImported)
+	stamped, err := stampFrontmatterKind(skillMD, SkillKindImported)
 	if err != nil {
 		return nil, validationErr("FRONTMATTER_INVALID", err.Error(), "skillMd")
 	}
@@ -113,7 +111,7 @@ func (s *SkillImportService) Import(ctx context.Context, orgID, actor string, r 
 
 	return &ImportResult{
 		Name:          name,
-		Kind:          models.SkillKindImported,
+		Kind:          SkillKindImported,
 		License:       fm.License,
 		Compatibility: fm.Compatibility,
 		Warnings:      warnings,

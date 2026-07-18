@@ -21,18 +21,16 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // sweepRepoStub returns fixed swept rows.
 type sweepRepoStub struct {
 	TurnRepository // panic on anything else
-	swept          []models.AgentTurn
+	swept          []AgentTurn
 	gotOlderThan   time.Time
 }
 
-func (s *sweepRepoStub) SweepStale(_ context.Context, olderThan time.Time) ([]models.AgentTurn, error) {
+func (s *sweepRepoStub) SweepStale(_ context.Context, olderThan time.Time) ([]AgentTurn, error) {
 	s.gotOlderThan = olderThan
 	return s.swept, nil
 }
@@ -49,7 +47,7 @@ func TestTurnSweeper_EmitsBrokerTerminalForLocalBuffers(t *testing.T) {
 	}
 	defer sub.Cancel()
 
-	repo := &sweepRepoStub{swept: []models.AgentTurn{
+	repo := &sweepRepoStub{swept: []AgentTurn{
 		{ID: "turn-local", OrgID: "o", ProjectID: "p", UseCase: "requirements-chat"},
 		{ID: "turn-elsewhere", OrgID: "o", ProjectID: "q", UseCase: "design-generate"},
 	}}

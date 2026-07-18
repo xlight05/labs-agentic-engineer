@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // defaultEnv is the single environment provisioning pins in v1 — the watcher and
@@ -122,7 +122,7 @@ func NewService(d Deps) *Service {
 // name, not by the consuming component). Returns ErrDepNotFound when no
 // dependency of that name exists and ErrDepWrongKind when it exists as another
 // kind.
-func (s *Service) findDepInProject(ctx context.Context, orgID, projectID, depName, kind string) (*models.Dependency, error) {
+func (s *Service) findDepInProject(ctx context.Context, orgID, projectID, depName, kind string) (*spec.Dependency, error) {
 	comps, err := s.design.ReadDesignComponents(ctx, orgID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning: read design: %w", err)

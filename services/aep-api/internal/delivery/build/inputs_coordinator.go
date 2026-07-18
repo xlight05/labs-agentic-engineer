@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // defaultInputEnv is the environment the build drawer's single value set is
@@ -175,7 +175,7 @@ func (c *InputsCoordinator) secretKeysByDep(ctx context.Context, orgID, projectI
 	}
 	for _, comp := range comps {
 		for _, dep := range comp.Dependencies {
-			if dep.Kind != models.DependencyKindExternal {
+			if dep.Kind != spec.DependencyKindExternal {
 				continue
 			}
 			flags := out[dep.Name]

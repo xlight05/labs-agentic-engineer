@@ -141,7 +141,7 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 	}
 
 	// Find the component in design by the k8s-shaped name (matches dispatch).
-	var match *models.DesignComponent
+	var match *spec.DesignComponent
 	for i := range design.Components {
 		if k8sname.ToK8sName(design.Components[i].Name) == componentName {
 			match = &design.Components[i]
@@ -154,7 +154,7 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 		return nil
 	}
 
-	desiredEnabled := models.ResolveAPISecurityEnabled(*match)
+	desiredEnabled := spec.ResolveAPISecurityEnabled(*match)
 
 	// Lazy provisioning of the org's Thunder publisher app: the first
 	// protected reconcile in an org creates `aep-publisher-<orgID>`
@@ -189,7 +189,7 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 	// caller (the watcher retries) — a partial allowlist would silently
 	// block the missing SPA's preflight.
 	var allowedOrigins []string
-	if desiredEnabled && models.ResolveAPISecurityCallerKind(*match) == "end-user" {
+	if desiredEnabled && spec.ResolveAPISecurityCallerKind(*match) == "end-user" {
 		origins, originsErr := s.siblingSPAOrigins(ctx, orgID, projectID, design)
 		if originsErr != nil {
 			return fmt.Errorf("trait_sync: sibling SPA origins: %w", originsErr)
@@ -300,10 +300,10 @@ func (s *TraitSyncService) SyncProjectAPITraits(ctx context.Context, orgID, proj
 		return nil
 	}
 	for _, c := range design.Components {
-		if c.ComponentType != models.ComponentTypeService {
+		if c.ComponentType != spec.ComponentTypeService {
 			continue
 		}
-		if !models.ResolveAPISecurityEnabled(c) {
+		if !spec.ResolveAPISecurityEnabled(c) {
 			continue
 		}
 		k8sName := k8sname.ToK8sName(c.Name)
@@ -339,7 +339,7 @@ func (s *TraitSyncService) siblingSPAOrigins(ctx context.Context, orgID, project
 	origins := make([]string, 0, len(design.Components))
 	seen := make(map[string]struct{}, len(design.Components))
 	for _, c := range design.Components {
-		if c.ComponentType != models.ComponentTypeWebApplication {
+		if c.ComponentType != spec.ComponentTypeWebApplication {
 			continue
 		}
 		k8sName := k8sname.ToK8sName(c.Name)
@@ -408,7 +408,7 @@ func (s *TraitSyncService) lockFor(orgID, projectID, componentName string) *sync
 // RestApi resources (`<instanceName>-api-gw-backend`, `<instanceName>`).
 //
 // `endpointName` is the design.json-declared workload endpoint name; an empty
-// value defaults to models.DefaultEndpointName ("http"), preserving the prior
+// value defaults to spec.DefaultEndpointName ("http"), preserving the prior
 // `<componentName>-http` naming for components that declare no endpoint.
 func APIConfigurationInstanceName(componentName, endpointName string) string {
 	componentName = strings.TrimSpace(componentName)
@@ -417,7 +417,7 @@ func APIConfigurationInstanceName(componentName, endpointName string) string {
 	}
 	endpointName = strings.TrimSpace(endpointName)
 	if endpointName == "" {
-		endpointName = models.DefaultEndpointName
+		endpointName = spec.DefaultEndpointName
 	}
 	return componentName + "-" + endpointName
 }
@@ -451,7 +451,7 @@ func DesiredAPIConfigurationTrait(componentName, endpointName string, enabled bo
 //
 // `endpointName` is the design.json-declared workload endpoint name the trait
 // binds to (it must match a key in the component's workload.yaml
-// `spec.endpoints`). An empty value defaults to models.DefaultEndpointName
+// `spec.endpoints`). An empty value defaults to spec.DefaultEndpointName
 // ("http"). This is the SINGLE point that decides the bound endpoint name — it
 // is no longer hardcoded, so a component whose workload names its endpoint
 // something other than "http" still renders (previously deploy rendering failed
@@ -459,7 +459,7 @@ func DesiredAPIConfigurationTrait(componentName, endpointName string, enabled bo
 func DesiredAPIConfigurationTraitWithIssuers(componentName, endpointName string, enabled bool, issuers []string, allowedOrigins []string) (traits []openchoreo.ComponentTrait, configs map[string]map[string]interface{}) {
 	endpointName = strings.TrimSpace(endpointName)
 	if endpointName == "" {
-		endpointName = models.DefaultEndpointName
+		endpointName = spec.DefaultEndpointName
 	}
 	inst := APIConfigurationInstanceName(componentName, endpointName)
 	if !enabled {

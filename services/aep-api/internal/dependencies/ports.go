@@ -24,7 +24,7 @@ package dependencies
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // externalResourceLookup is the slice of the org-level external-resource
@@ -66,5 +66,5 @@ type SecretWriter interface {
 // a one-line wrapper returning design.Components ((nil, nil) design ⇒ nil
 // components — "no design yet").
 type DesignReader interface {
-	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]models.DesignComponent, error)
+	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }

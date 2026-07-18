@@ -25,7 +25,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // StartOrgServiceVisibility drives the automated cross-project org-service flow
@@ -81,7 +81,7 @@ func (s *Service) componentDeclaringOrgService(ctx context.Context, orgID, proje
 	for i := range comps {
 		for j := range comps[i].Dependencies {
 			d := &comps[i].Dependencies[j]
-			if strings.EqualFold(d.Name, depName) && d.Kind == models.DependencyKindOrgService {
+			if strings.EqualFold(d.Name, depName) && d.Kind == spec.DependencyKindOrgService {
 				return comps[i].Name, nil
 			}
 		}

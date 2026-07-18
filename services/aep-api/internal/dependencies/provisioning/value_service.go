@@ -22,7 +22,7 @@ import (
 	"log/slog"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // SaveValues collects an external dependency's per-env values, splits them into
@@ -36,7 +36,7 @@ import (
 // ctx must carry the user JWT — the SM-API writer reads the ouId claim for the
 // vault path). No secret value is persisted outside SM-API or echoed anywhere.
 func (s *Service) SaveValues(ctx context.Context, orgID, ocOrgID, projectID, depName string, envValues map[string]map[string]string) error {
-	if _, err := s.findDepInProject(ctx, orgID, projectID, depName, models.DependencyKindExternal); err != nil {
+	if _, err := s.findDepInProject(ctx, orgID, projectID, depName, spec.DependencyKindExternal); err != nil {
 		return err
 	}
 	er, err := s.catalog.Get(ctx, orgID, depName)
@@ -101,7 +101,7 @@ func (s *Service) SaveValues(ctx context.Context, orgID, ocOrgID, projectID, dep
 // splitBySchema partitions a flat env value map into plain / secret entries by
 // the registered config schema. A value whose key is not in the schema is
 // treated as plain (forward-tolerant).
-func splitBySchema(keys []models.ConfigKey, vals map[string]string) dependencies.EnvValues {
+func splitBySchema(keys []spec.ConfigKey, vals map[string]string) dependencies.EnvValues {
 	secret := make(map[string]bool, len(keys))
 	for _, k := range keys {
 		if k.Secret {

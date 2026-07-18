@@ -427,7 +427,7 @@ func TestComponentService_CreateComponent_PassthroughAndError(t *testing.T) {
 
 // TestOcEntrypoint_CanonicalWebAppKind guards against the vocabulary drift
 // bug: the canonical kind is "web-application" — OpenChoreo's own term
-// (models.ComponentTypeWebApplication) — and ocEntrypoint merely re-attaches
+// (spec.ComponentTypeWebApplication) — and ocEntrypoint merely re-attaches
 // OC's `deployment/` prefix. Retired spellings ("webapp", "web-app") are NOT
 // understood anywhere; designs carrying them must be migrated. Unknown kinds
 // keep falling back to deployment/service.

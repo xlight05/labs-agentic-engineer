@@ -20,10 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 

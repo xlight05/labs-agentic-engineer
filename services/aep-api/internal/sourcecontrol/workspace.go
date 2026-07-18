@@ -71,7 +71,7 @@ var (
 // (design D6). orgID is passed explicitly (not read off the row) so callers
 // keep addressing exactly the org they authenticated. The slug comes from
 // models.(*GitRepository).WorkspaceSlug — RepoSlug (URL-backfilled), except
-// the per-org skills repo whose leaf is pinned to models.SkillsRepoDirName
+// the per-org skills repo whose leaf is pinned to spec.SkillsRepoDirName
 // (design §4: repos/<orgId>/_skills/org-skills/; the agents service derives
 // the skills snapshot path structurally from that fixed name). The default
 // branch falls back to "main".

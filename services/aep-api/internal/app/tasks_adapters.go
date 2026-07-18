@@ -21,9 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"strings"
 
 	"gorm.io/gorm"
 
@@ -112,7 +113,7 @@ func (d designComponents) ComponentNames(ctx context.Context, orgID, projectID s
 
 // ReadDesignComponents exposes the project's authored design components at HEAD.
 // Satisfies provisioning.DesignReader (and dependencies/resources.DesignReader).
-func (d designComponents) ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]models.DesignComponent, error) {
+func (d designComponents) ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error) {
 	design, err := d.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
 		return nil, err

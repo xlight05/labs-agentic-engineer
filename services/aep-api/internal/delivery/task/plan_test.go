@@ -79,7 +79,7 @@ func newPlanRig(t *testing.T, seed map[string]string, specTag string) *planRig {
 	}, "seed skills"))
 	repoRow := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	skillsRow := &models.GitRepository{OrgID: "org1", ProjectID: models.SkillsRepoSentinelProjectID,
+	skillsRow := &models.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 
 	turn := &capturingTurn{}
@@ -147,7 +147,7 @@ func TestStartPlan_DispatchesWorkspaceShape(t *testing.T) {
 		t.Fatalf("repo snapshot dir: %v", err)
 	}
 	skillsSnap, err := gitfs.SnapshotDir(r.fx.Engine.Root(),
-		gitfs.RepoRef{OrgID: "org1", ProjectID: models.SkillsRepoSentinelProjectID, RepoSlug: "org-skills"}, ws.SkillsRef)
+		gitfs.RepoRef{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID, RepoSlug: "org-skills"}, ws.SkillsRef)
 	if err != nil {
 		t.Fatalf("skills snapshot dir: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestStartPlan_SkillsRepoGone_TypedError(t *testing.T) {
 	})
 	repoRow := &models.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
-	staleSkills := &models.GitRepository{OrgID: "org1", ProjectID: models.SkillsRepoSentinelProjectID,
+	staleSkills := &models.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
 		RepoURL: "file:///nonexistent/skills-repo-gone.git", DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 
 	turn := &capturingTurn{}

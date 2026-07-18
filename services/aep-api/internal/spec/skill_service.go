@@ -30,8 +30,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // newSkillValue assembles the in-memory Skill from validated mutation input so
@@ -58,11 +56,6 @@ func newSkillValue(orgID, kind, name, skillMD string, refs References, fm skillF
 // References is the map of optional reference filenames → body for a skill
 // (e.g. `references/examples.md`).
 type References map[string]string
-
-// Skill re-exports models.Skill — the canonical shared value type lives in
-// models so the task feature can reference resolved skills without importing
-// the skills package.
-type Skill = models.Skill
 
 // SkillSummary is the lightweight projection used in catalogue listings —
 // no body, no references.
@@ -108,10 +101,10 @@ type skillAepMetadata struct {
 // known values ever appear. docs/design/skills-unified-library-migration.md §3.2.
 func frontmatterKind(fm skillFrontmatter) string {
 	switch k := strings.TrimSpace(fm.Metadata.Aep.Kind); k {
-	case models.SkillKindPlatform, models.SkillKindOrg, models.SkillKindCustom, models.SkillKindImported:
+	case SkillKindPlatform, SkillKindOrg, SkillKindCustom, SkillKindImported:
 		return k
 	default:
-		return models.SkillKindOrg
+		return SkillKindOrg
 	}
 }
 

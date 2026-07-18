@@ -22,17 +22,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ----- fakes -----------------------------------------------------------------
 
 type fakeDesign struct {
-	comps []models.DesignComponent
+	comps []spec.DesignComponent
 	err   error
 }
 
-func (f fakeDesign) ReadDesignComponents(context.Context, string, string) ([]models.DesignComponent, error) {
+func (f fakeDesign) ReadDesignComponents(context.Context, string, string) ([]spec.DesignComponent, error) {
 	return f.comps, f.err
 }
 
@@ -61,13 +61,13 @@ func kindsByDep(items []PreflightItem) map[string][]string {
 // ----- tests -------------------------------------------------------------------
 
 func TestPreflight_ItemsPerKind(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", NeedsSpec: true,
-				Config: []models.ConfigKey{{Key: "STRIPE_KEY", Secret: true}, {Key: "STRIPE_ORG", Secret: false}}},
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
-			{Kind: models.DependencyKindOrgService, Name: "billing", Status: models.DependencyStatusUnresolved},
-			{Kind: models.DependencyKindOrgService, Name: "audit", Status: models.DependencyStatusResolved},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", NeedsSpec: true,
+				Config: []spec.ConfigKey{{Key: "STRIPE_KEY", Secret: true}, {Key: "STRIPE_ORG", Secret: false}}},
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
+			{Kind: spec.DependencyKindOrgService, Name: "billing", Status: spec.DependencyStatusUnresolved},
+			{Kind: spec.DependencyKindOrgService, Name: "audit", Status: spec.DependencyStatusResolved},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -86,10 +86,10 @@ func TestPreflight_ItemsPerKind(t *testing.T) {
 // value-free so a future value-bearing field never rides along). The optional
 // per-key description threads through so the drawer can render it as a hint.
 func TestPreflight_ExternalConfigItem_CarriesKeySecretDescriptionViewsOnly(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe",
-				Config: []models.ConfigKey{{Key: "STRIPE_KEY", Secret: true, Description: "Your Stripe secret API key"}, {Key: "STRIPE_ORG", Secret: false, DefaultValue: "acme"}}},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe",
+				Config: []spec.ConfigKey{{Key: "STRIPE_KEY", Secret: true, Description: "Your Stripe secret API key"}, {Key: "STRIPE_ORG", Secret: false, DefaultValue: "acme"}}},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -103,9 +103,9 @@ func TestPreflight_ExternalConfigItem_CarriesKeySecretDescriptionViewsOnly(t *te
 // A platform-resource item carries its ResourceType + Parameters through —
 // the drawer's provision call needs both.
 func TestPreflight_PlatformResourceItem_CarriesResourceTypeAndParameters(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -120,10 +120,10 @@ func TestPreflight_PlatformResourceItem_CarriesResourceTypeAndParameters(t *test
 // A "blocked" or "ambiguous" org-service dependency also needs the drawer —
 // only "resolved" is skipped.
 func TestPreflight_OrgServiceBlockedAndAmbiguous_AlsoEmit(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "payments", Status: models.DependencyStatusBlocked},
-			{Kind: models.DependencyKindOrgService, Name: "shipping", Status: models.DependencyStatusAmbiguous},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindOrgService, Name: "payments", Status: spec.DependencyStatusBlocked},
+			{Kind: spec.DependencyKindOrgService, Name: "shipping", Status: spec.DependencyStatusAmbiguous},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -136,9 +136,9 @@ func TestPreflight_OrgServiceBlockedAndAmbiguous_AlsoEmit(t *testing.T) {
 // A "component" kind dependency (sibling component) is never emitted — it is
 // not provisioned via the drawer.
 func TestPreflight_ComponentKindDependency_NeverEmits(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindComponent, Name: "catalog"},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindComponent, Name: "catalog"},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -152,10 +152,10 @@ func TestPreflight_ComponentKindDependency_NeverEmits(t *testing.T) {
 // ready, but external-spec still fires independently (it gates the spec, not
 // provisioning).
 func TestPreflight_ReadyDependency_SkipsConfigAndResourceItems(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", NeedsSpec: true},
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", NeedsSpec: true},
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: readyStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -169,9 +169,9 @@ func TestPreflight_ReadyDependency_SkipsConfigAndResourceItems(t *testing.T) {
 // external-spec is skipped once the design already carries a SpecPath or
 // SpecUrl — the spec has already been supplied.
 func TestPreflight_ExternalSpecAlreadySupplied_SkipsSpecItem(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "orders", ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", NeedsSpec: true, SpecPath: "dependencies/stripe.openapi.yaml"},
+	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", NeedsSpec: true, SpecPath: "dependencies/stripe.openapi.yaml"},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: readyStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")
@@ -183,9 +183,9 @@ func TestPreflight_ExternalSpecAlreadySupplied_SkipsSpecItem(t *testing.T) {
 // Non-service components (e.g. web-application) carry no provisionable
 // dependencies through the drawer.
 func TestPreflight_NonServiceComponent_Skipped(t *testing.T) {
-	comps := []models.DesignComponent{{Name: "web", ComponentType: models.ComponentTypeWebApplication,
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindExternal, Name: "stripe", NeedsSpec: true},
+	comps := []spec.DesignComponent{{Name: "web", ComponentType: spec.ComponentTypeWebApplication,
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", NeedsSpec: true},
 		}}}
 	svc := NewPreflightService(PreflightDeps{Design: fakeDesign{comps: comps}, Status: fakeStatus{}})
 	pf, err := svc.Preflight(context.Background(), "acme", "shop")

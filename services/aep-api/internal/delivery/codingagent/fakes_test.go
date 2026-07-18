@@ -18,9 +18,10 @@ package codingagent
 
 import (
 	"context"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"sync"
 	"time"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/models"

@@ -23,7 +23,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // DeprovisionProject tears down the OC Resource model a project provisioned:
@@ -48,14 +48,14 @@ func (s *Service) DeprovisionProject(ctx context.Context, orgID, projectID strin
 				continue
 			}
 			switch d.Kind {
-			case models.DependencyKindExternal:
+			case spec.DependencyKindExternal:
 				seen[key] = true
 				if s.extProv != nil {
 					if derr := s.extProv.Deprovision(ctx, orgID, projectID, d.Name, []string{defaultEnv}); derr != nil {
 						errs = append(errs, fmt.Errorf("deprovision external %q: %w", d.Name, derr))
 					}
 				}
-			case models.DependencyKindPlatformResource:
+			case spec.DependencyKindPlatformResource:
 				seen[key] = true
 				if s.platProv != nil {
 					if derr := s.platProv.Deprovision(ctx, orgID, projectID, d.Name, []string{defaultEnv}); derr != nil {

@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // The consumer ports the validation minter drives. Each is the narrow slice of
@@ -43,7 +43,7 @@ type IssueClient interface {
 // needs no artifacts edge; the composition root adapts artifacts.ArtifactStore.
 // (Minting runs right after approval, so HEAD == the just-tagged content.)
 type DesignReader interface {
-	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]models.DesignComponent, error)
+	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }
 
 // CriteriaReader reads the acceptance oracle (specs/validation/validation-criteria.json)

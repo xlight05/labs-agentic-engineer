@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package models
+package spec
 
 // Component type vocabulary. AEP uses OpenChoreo's OWN terms end-to-end —
 // these are OC's ComponentType names minus the `deployment/` prefix (OC:

@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 type fakeEndpoints struct {
@@ -53,13 +53,13 @@ func TestOrgServiceURLEnvAndEnvVarName(t *testing.T) {
 }
 
 func TestWiring_PostsResolvedDependencies(t *testing.T) {
-	comp := models.DesignComponent{
+	comp := spec.DesignComponent{
 		Name: "web",
-		Dependencies: []models.Dependency{
-			{Kind: models.DependencyKindOrgService, Name: "employee-api"},
-			{Kind: models.DependencyKindComponent, Name: "orders"},
-			{Kind: models.DependencyKindExternal, Name: "stripe"},
-			{Kind: models.DependencyKindPlatformResource, Name: "orders-db"},
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindOrgService, Name: "employee-api"},
+			{Kind: spec.DependencyKindComponent, Name: "orders"},
+			{Kind: spec.DependencyKindExternal, Name: "stripe"},
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db"},
 		},
 	}
 	eps := &fakeEndpoints{
@@ -75,7 +75,7 @@ func TestWiring_PostsResolvedDependencies(t *testing.T) {
 		"proj-orders-db-development": readyBinding("host", "port"),
 	}}
 	issues := newFakeIssues(nil)
-	w := NewWiringResolver(fakeDesign{comps: []models.DesignComponent{comp}}, eps, bindings, issues)
+	w := NewWiringResolver(fakeDesign{comps: []spec.DesignComponent{comp}}, eps, bindings, issues)
 
 	if err := w.PostResolvedDeps(context.Background(), "org", "proj", 5, "web"); err != nil {
 		t.Fatalf("PostResolvedDeps: %v", err)
@@ -137,9 +137,9 @@ func TestWiring_PostsResolvedDependencies(t *testing.T) {
 }
 
 func TestWiring_EmptyResolutionPostsNothing(t *testing.T) {
-	comp := models.DesignComponent{Name: "web"} // no deps
+	comp := spec.DesignComponent{Name: "web"} // no deps
 	issues := newFakeIssues(nil)
-	w := NewWiringResolver(fakeDesign{comps: []models.DesignComponent{comp}}, &fakeEndpoints{}, &fakeBindings{}, issues)
+	w := NewWiringResolver(fakeDesign{comps: []spec.DesignComponent{comp}}, &fakeEndpoints{}, &fakeBindings{}, issues)
 	if err := w.PostResolvedDeps(context.Background(), "org", "proj", 5, "web"); err != nil {
 		t.Fatalf("PostResolvedDeps: %v", err)
 	}

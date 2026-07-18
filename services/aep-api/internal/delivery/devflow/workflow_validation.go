@@ -20,8 +20,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // The validating phase runs as its own child workflow tree: the dev workflow

@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Auth-as-platform-resource (learning/thunder-resource/PLAN-generalization.md):
@@ -55,10 +53,10 @@ const (
 // markers map (no platform-resource deps → no catalog fetch) qualifies nothing.
 // On a conflict, nothing in components is mutated — the caller sees the
 // original, unmodified state.
-func deriveEndUserAuth(components []models.DesignComponent, markers map[string]CRTMarkers) error {
+func deriveEndUserAuth(components []DesignComponent, markers map[string]CRTMarkers) error {
 	for i := range components {
 		comp := &components[i]
-		if comp.ComponentType != models.ComponentTypeService {
+		if comp.ComponentType != ComponentTypeService {
 			continue
 		}
 		dep, ok := endUserAuthDependency(comp.Dependencies, markers)
@@ -72,7 +70,7 @@ func deriveEndUserAuth(components []models.DesignComponent, markers map[string]C
 			)
 		}
 		if comp.ExposesAPI == nil {
-			comp.ExposesAPI = &models.ExposesAPI{}
+			comp.ExposesAPI = &ExposesAPI{}
 		}
 		comp.ExposesAPI.Auth = authEndUserRequired
 	}
@@ -82,13 +80,13 @@ func deriveEndUserAuth(components []models.DesignComponent, markers map[string]C
 // endUserAuthDependency returns the first platform-resource dependency in deps
 // whose resourceType carries the end-user-auth role marker, if any. A nil
 // markers map (a Go nil-map read is a safe zero-value lookup) matches nothing.
-func endUserAuthDependency(deps []models.Dependency, markers map[string]CRTMarkers) (models.Dependency, bool) {
+func endUserAuthDependency(deps []Dependency, markers map[string]CRTMarkers) (Dependency, bool) {
 	for _, d := range deps {
-		if d.Kind == models.DependencyKindPlatformResource && markers[d.ResourceType].EndUserAuth {
+		if d.Kind == DependencyKindPlatformResource && markers[d.ResourceType].EndUserAuth {
 			return d, true
 		}
 	}
-	return models.Dependency{}, false
+	return Dependency{}, false
 }
 
 // resourceMarkersForAuthDerivation returns the CRT marker map the auth
@@ -117,10 +115,10 @@ func (s *designService) resourceMarkersForAuthDerivation(ctx context.Context, de
 // hasPlatformResourceDependency reports whether any component declares at least
 // one platform-resource dependency — the gate on whether design-save fetches
 // the CRT marker catalog at all.
-func hasPlatformResourceDependency(components []models.DesignComponent) bool {
+func hasPlatformResourceDependency(components []DesignComponent) bool {
 	for i := range components {
 		for _, d := range components[i].Dependencies {
-			if d.Kind == models.DependencyKindPlatformResource {
+			if d.Kind == DependencyKindPlatformResource {
 				return true
 			}
 		}
@@ -131,7 +129,7 @@ func hasPlatformResourceDependency(components []models.DesignComponent) bool {
 // exposesAPIEqual reports whether two (possibly nil) ExposesAPI pointers
 // describe the same value — used to detect which components deriveEndUserAuth
 // actually changed, so persistEndUserAuthDerivation commits only those.
-func exposesAPIEqual(a, b *models.ExposesAPI) bool {
+func exposesAPIEqual(a, b *ExposesAPI) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -197,7 +195,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 	// mutates its Auth field THROUGH that same pointer — capturing the
 	// pointer itself here would alias the post-mutation value and the
 	// change-detection below would never see a diff.
-	before := make([]*models.ExposesAPI, len(designFile.Components))
+	before := make([]*ExposesAPI, len(designFile.Components))
 	for i, c := range designFile.Components {
 		if c.ExposesAPI != nil {
 			v := *c.ExposesAPI
@@ -217,7 +215,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 			continue
 		}
 		comp := designFile.Components[i]
-		rendered, rerr := SplitDesign(&DesignFile{Components: []models.DesignComponent{comp}})
+		rendered, rerr := SplitDesign(&DesignFile{Components: []DesignComponent{comp}})
 		if rerr != nil {
 			return false, fmt.Errorf("render component %q design.json: %w", comp.Name, rerr)
 		}

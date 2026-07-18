@@ -23,8 +23,6 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Skill mutation sentinels — controllers map these to HTTP status codes.
@@ -156,7 +154,7 @@ func (m *SkillMutationService) Create(ctx context.Context, orgID, actor string, 
 	// Stamp the kind into the stored file — the flat layout has no kind dirs,
 	// so an unstamped SKILL.md would read back as org (read-only) and be
 	// reconcile-purged. Stamping also defeats a spoofed platform/org marker.
-	stamped, err := stampFrontmatterKind(in.SkillMD, models.SkillKindCustom)
+	stamped, err := stampFrontmatterKind(in.SkillMD, SkillKindCustom)
 	if err != nil {
 		return nil, validationErr("FRONTMATTER_INVALID", err.Error(), "skillMd")
 	}
@@ -169,7 +167,7 @@ func (m *SkillMutationService) Create(ctx context.Context, orgID, actor string, 
 	slog.InfoContext(ctx, "skill created", "orgID", orgID, "name", name, "actor", actor)
 	// Return the just-written skill from validated input — no read-back (a
 	// transient post-commit read could nil-panic the handler on a real success).
-	return newSkillValue(orgID, models.SkillKindCustom, name, stamped, refs, fm), nil
+	return newSkillValue(orgID, SkillKindCustom, name, stamped, refs, fm), nil
 }
 
 // Update rewrites an existing kind=custom skill. Returns ErrSkillNotEditable
@@ -188,7 +186,7 @@ func (m *SkillMutationService) Update(ctx context.Context, orgID, actor, name st
 	if !isUserKind(existing.Kind) {
 		return nil, ErrSkillNotEditable // org + platform are reconcile-managed
 	}
-	if existing.Kind != models.SkillKindCustom {
+	if existing.Kind != SkillKindCustom {
 		// imported skills are replaced via re-import, not PUT.
 		return nil, ErrSkillNotFound
 	}
@@ -202,7 +200,7 @@ func (m *SkillMutationService) Update(ctx context.Context, orgID, actor, name st
 			"cannot rename a skill via update; frontmatter name must match the existing name", "name")
 	}
 
-	stamped, err := stampFrontmatterKind(in.SkillMD, models.SkillKindCustom)
+	stamped, err := stampFrontmatterKind(in.SkillMD, SkillKindCustom)
 	if err != nil {
 		return nil, validationErr("FRONTMATTER_INVALID", err.Error(), "skillMd")
 	}
@@ -214,7 +212,7 @@ func (m *SkillMutationService) Update(ctx context.Context, orgID, actor, name st
 		return nil, fmt.Errorf("commit update for %q: %w", name, err)
 	}
 	slog.InfoContext(ctx, "skill updated", "orgID", orgID, "name", name, "actor", actor)
-	return newSkillValue(orgID, models.SkillKindCustom, name, stamped, refs, fm), nil
+	return newSkillValue(orgID, SkillKindCustom, name, stamped, refs, fm), nil
 }
 
 // Delete removes a custom or imported skill (deletes the skill's directory and

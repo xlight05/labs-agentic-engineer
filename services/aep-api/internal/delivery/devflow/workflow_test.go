@@ -24,8 +24,9 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/testsuite"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // The two workflows are tested in isolation with the Temporal Go SDK test

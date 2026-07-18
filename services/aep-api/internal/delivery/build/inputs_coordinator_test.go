@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 var ctx = context.Background()
@@ -51,14 +51,14 @@ func (s *recordingStager) StageExternalSecrets(_ context.Context, _, _, _, depNa
 
 // stripeExternal is a service component with one external dependency whose
 // schema marks STRIPE_KEY secret and STRIPE_ORG non-secret.
-func stripeExternal() []models.DesignComponent {
-	return []models.DesignComponent{{
+func stripeExternal() []spec.DesignComponent {
+	return []spec.DesignComponent{{
 		Name:          "o",
-		ComponentType: models.ComponentTypeService,
-		Dependencies: []models.Dependency{{
-			Kind: models.DependencyKindExternal,
+		ComponentType: spec.ComponentTypeService,
+		Dependencies: []spec.Dependency{{
+			Kind: spec.DependencyKindExternal,
 			Name: "stripe",
-			Config: []models.ConfigKey{
+			Config: []spec.ConfigKey{
 				{Key: "STRIPE_KEY", Secret: true},
 				{Key: "STRIPE_ORG", Secret: false},
 			},

@@ -28,8 +28,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // mkSkillMD builds a minimal valid SKILL.md; kind == "" leaves the metadata
@@ -50,7 +48,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 	t.Run("stamps an unmarked skill", func(t *testing.T) {
 		t.Parallel()
 		in := mkSkillMD("alpha", "", "BODY-α")
-		out, err := stampFrontmatterKind(in, models.SkillKindCustom)
+		out, err := stampFrontmatterKind(in, SkillKindCustom)
 		if err != nil {
 			t.Fatalf("stamp: %v", err)
 		}
@@ -58,7 +56,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 		if err != nil {
 			t.Fatalf("re-parse: %v", err)
 		}
-		if got := frontmatterKind(fm); got != models.SkillKindCustom {
+		if got := frontmatterKind(fm); got != SkillKindCustom {
 			t.Fatalf("kind after stamp = %q, want custom", got)
 		}
 		if fm.Name != "alpha" || fm.Description == "" {
@@ -72,7 +70,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 	t.Run("idempotent for an already-stamped kind", func(t *testing.T) {
 		t.Parallel()
 		in := mkSkillMD("alpha", "custom", "BODY")
-		out, err := stampFrontmatterKind(in, models.SkillKindCustom)
+		out, err := stampFrontmatterKind(in, SkillKindCustom)
 		if err != nil {
 			t.Fatalf("stamp: %v", err)
 		}
@@ -85,7 +83,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 		t.Parallel()
 		// A create/import must not let user content claim platform/org status.
 		in := mkSkillMD("alpha", "org", "BODY")
-		out, err := stampFrontmatterKind(in, models.SkillKindCustom)
+		out, err := stampFrontmatterKind(in, SkillKindCustom)
 		if err != nil {
 			t.Fatalf("stamp: %v", err)
 		}
@@ -93,7 +91,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 		if err != nil {
 			t.Fatalf("re-parse: %v", err)
 		}
-		if got := frontmatterKind(fm); got != models.SkillKindCustom {
+		if got := frontmatterKind(fm); got != SkillKindCustom {
 			t.Fatalf("kind after stamp = %q, want custom (spoof must not survive)", got)
 		}
 	})
@@ -101,7 +99,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 	t.Run("preserves sibling frontmatter and metadata keys", func(t *testing.T) {
 		t.Parallel()
 		in := "---\nname: alpha\ndescription: d.\nlicense: MIT\nmetadata:\n  team: platform-eng\n---\n\nBODY\n"
-		out, err := stampFrontmatterKind(in, models.SkillKindImported)
+		out, err := stampFrontmatterKind(in, SkillKindImported)
 		if err != nil {
 			t.Fatalf("stamp: %v", err)
 		}
@@ -112,7 +110,7 @@ func TestStampFrontmatterKind(t *testing.T) {
 		if err != nil {
 			t.Fatalf("re-parse: %v", err)
 		}
-		if got := frontmatterKind(fm); got != models.SkillKindImported {
+		if got := frontmatterKind(fm); got != SkillKindImported {
 			t.Fatalf("kind = %q, want imported", got)
 		}
 		if fm.License != "MIT" {
@@ -155,12 +153,12 @@ func TestParseBundle_DualLayout(t *testing.T) {
 		kind string
 		body string
 	}{
-		"alpha":   {models.SkillKindCustom, "legacy-custom-alpha"}, // user kind wins the shadow
-		"beta":    {models.SkillKindPlatform, "flat-beta"},
-		"gamma":   {models.SkillKindCustom, "flat-gamma"}, // flat wins the same-kind tie
-		"delta":   {models.SkillKindOrg, "legacy-delta"},
-		"epsilon": {models.SkillKindPlatform, "legacy-epsilon"},
-		"zeta":    {models.SkillKindImported, "legacy-zeta"},
+		"alpha":   {SkillKindCustom, "legacy-custom-alpha"}, // user kind wins the shadow
+		"beta":    {SkillKindPlatform, "flat-beta"},
+		"gamma":   {SkillKindCustom, "flat-gamma"}, // flat wins the same-kind tie
+		"delta":   {SkillKindOrg, "legacy-delta"},
+		"epsilon": {SkillKindPlatform, "legacy-epsilon"},
+		"zeta":    {SkillKindImported, "legacy-zeta"},
 	}
 	if len(got) != len(want) {
 		names := make([]string, 0, len(got))
@@ -304,7 +302,7 @@ func TestReconcile_MigratesLegacyRepo(t *testing.T) {
 	}
 	// Preserved custom skill: flat, stamped, references intact, editable kind.
 	mine := byName["mine"]
-	if mine.Kind != models.SkillKindCustom {
+	if mine.Kind != SkillKindCustom {
 		t.Fatalf("mine kind = %q, want custom", mine.Kind)
 	}
 	if mine.References["references/r.md"] != "my ref" {
@@ -315,7 +313,7 @@ func TestReconcile_MigratesLegacyRepo(t *testing.T) {
 	}
 	// Shadow: the user copy owns the name; the embedded org skill is skipped.
 	rw := byName["react-webapp"]
-	if rw.Kind != models.SkillKindCustom || !strings.Contains(rw.SkillMD, "user shadow") {
+	if rw.Kind != SkillKindCustom || !strings.Contains(rw.SkillMD, "user shadow") {
 		t.Fatalf("shadow must resolve custom-wins, got kind=%q body=%q", rw.Kind, rw.SkillMD)
 	}
 	// Drifted embedded skills were rewritten from the embed.

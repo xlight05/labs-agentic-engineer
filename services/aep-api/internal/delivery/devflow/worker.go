@@ -21,8 +21,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/worker"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // dialRetryInterval paces the worker watcher's connection attempts while the

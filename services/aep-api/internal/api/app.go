@@ -17,9 +17,10 @@
 package api
 
 import (
-	"github.com/wso2/aep/aep-api/internal/projects"
 	"net/http"
 	"strings"
+
+	"github.com/wso2/aep/aep-api/internal/projects"
 
 	"gorm.io/gorm"
 

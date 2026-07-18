@@ -19,10 +19,10 @@ package provisioning
 import (
 	"context"
 	"fmt"
-	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ExternalResourceView is one org external-resource catalog entry with its
@@ -31,7 +31,7 @@ import (
 type ExternalResourceView struct {
 	Name        string
 	Description string
-	Config      []models.ConfigKey
+	Config      []spec.ConfigKey
 	Consumers   []dependencies.ExternalResourceConsumer
 }
 
@@ -104,7 +104,7 @@ func (s *Service) externalConsumersByName(ctx context.Context, orgID string) (ma
 		}
 		for _, c := range comps {
 			for _, d := range c.Dependencies {
-				if d.Kind != models.DependencyKindExternal {
+				if d.Kind != spec.DependencyKindExternal {
 					continue
 				}
 				key := strings.ToLower(d.Name)

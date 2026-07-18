@@ -38,10 +38,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"gorm.io/gorm"
+
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"gorm.io/gorm"
 )
 
 // idpDBPlatform is the cluster-level IDP default a fresh profile is seeded with.

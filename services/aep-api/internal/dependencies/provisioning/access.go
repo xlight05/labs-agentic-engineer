@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // RequestAccess records a consumer's request to consume a cross-project
@@ -41,7 +41,7 @@ func (s *Service) RequestAccess(ctx context.Context, orgID, consumerProjectID, c
 		return nil, ErrOrgServiceNotFound
 	}
 	// (a) the addressed dependency must be an org-service on the consumer design.
-	if _, err := s.findDepInProject(ctx, orgID, consumerProjectID, orgServiceName, models.DependencyKindOrgService); err != nil {
+	if _, err := s.findDepInProject(ctx, orgID, consumerProjectID, orgServiceName, spec.DependencyKindOrgService); err != nil {
 		return nil, err
 	}
 	return s.recordAccessRequest(ctx, orgID, consumerProjectID, consumerComponent, orgServiceName)

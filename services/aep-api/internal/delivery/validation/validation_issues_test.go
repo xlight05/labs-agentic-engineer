@@ -24,6 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ---- fakes ------------------------------------------------------------------
@@ -44,10 +45,10 @@ func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontr
 
 type fakeDesign struct{ names []string }
 
-func (f fakeDesign) ReadDesignComponents(_ context.Context, _, _ string) ([]models.DesignComponent, error) {
-	comps := make([]models.DesignComponent, len(f.names))
+func (f fakeDesign) ReadDesignComponents(_ context.Context, _, _ string) ([]spec.DesignComponent, error) {
+	comps := make([]spec.DesignComponent, len(f.names))
 	for i, n := range f.names {
-		comps[i] = models.DesignComponent{Name: n}
+		comps[i] = spec.DesignComponent{Name: n}
 	}
 	return comps, nil
 }

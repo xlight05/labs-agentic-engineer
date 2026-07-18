@@ -25,7 +25,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // EndpointResolver resolves a dependency's OC published endpoint — the
@@ -251,33 +251,33 @@ func localComponentContractSection(depName string) string {
 	)
 }
 
-func (w *WiringResolver) findComponent(ctx context.Context, orgID, projectID, component string) (models.DesignComponent, bool, error) {
+func (w *WiringResolver) findComponent(ctx context.Context, orgID, projectID, component string) (spec.DesignComponent, bool, error) {
 	comps, err := w.design.ReadDesignComponents(ctx, orgID, projectID)
 	if err != nil {
-		return models.DesignComponent{}, false, fmt.Errorf("read design: %w", err)
+		return spec.DesignComponent{}, false, fmt.Errorf("read design: %w", err)
 	}
 	for i := range comps {
 		if strings.EqualFold(comps[i].Name, component) {
 			return comps[i], true, nil
 		}
 	}
-	return models.DesignComponent{}, false, nil
+	return spec.DesignComponent{}, false, nil
 }
 
-func externalDepNames(c models.DesignComponent) []string {
+func externalDepNames(c spec.DesignComponent) []string {
 	var out []string
 	for _, d := range c.Dependencies {
-		if d.Kind == models.DependencyKindExternal {
+		if d.Kind == spec.DependencyKindExternal {
 			out = append(out, d.Name)
 		}
 	}
 	return out
 }
 
-func platformDepNames(c models.DesignComponent) []string {
+func platformDepNames(c spec.DesignComponent) []string {
 	var out []string
 	for _, d := range c.Dependencies {
-		if d.Kind == models.DependencyKindPlatformResource {
+		if d.Kind == spec.DependencyKindPlatformResource {
 			out = append(out, d.Name)
 		}
 	}

@@ -216,7 +216,7 @@ func (c *Catalog) resolve(ctx context.Context, orgHandle string, e openchoreo.Wo
 // a "<project>-" prefixed component retries once with the prefix stripped.
 // Hand-applied / non-app-factory components (unprefixed to begin with) are
 // unaffected: the raw-name lookup already finds them.
-func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, component string, designCache map[string]*spec.DesignFile) *models.DesignComponent {
+func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, component string, designCache map[string]*spec.DesignFile) *spec.DesignComponent {
 	if c.design == nil {
 		return nil
 	}
@@ -240,7 +240,7 @@ func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, com
 
 // findDesignComponent returns the design bundle component named `name`
 // (case-insensitive), or nil when absent.
-func findDesignComponent(design *spec.DesignFile, name string) *models.DesignComponent {
+func findDesignComponent(design *spec.DesignFile, name string) *spec.DesignComponent {
 	for i := range design.Components {
 		if strings.EqualFold(design.Components[i].Name, name) {
 			return &design.Components[i]
@@ -283,7 +283,7 @@ func (c *Catalog) readDesign(ctx context.Context, orgHandle, project string, des
 // spec, so those coords are not reachable without extending the client. Left
 // best-effort per the Task A2 brief; app-factory providers resolve fully via
 // the git_repositories path above.
-func (c *Catalog) resolveRepoCoords(ctx context.Context, orgHandle, project string, comp *models.DesignComponent, oce *OrgComponentEndpoint) {
+func (c *Catalog) resolveRepoCoords(ctx context.Context, orgHandle, project string, comp *spec.DesignComponent, oce *OrgComponentEndpoint) {
 	if c.repos == nil {
 		return
 	}

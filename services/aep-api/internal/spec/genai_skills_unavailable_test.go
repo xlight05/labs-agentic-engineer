@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -33,7 +34,7 @@ import (
 func TestSkillsRepoGone_Clear503(t *testing.T) {
 	staleRow := &models.GitRepository{
 		OrgID:         testOrg,
-		ProjectID:     models.SkillsRepoSentinelProjectID,
+		ProjectID:     spec.SkillsRepoSentinelProjectID,
 		RepoURL:       "file:///nonexistent/skills-repo-gone.git",
 		DefaultBranch: "main",
 		Status:        "ready",

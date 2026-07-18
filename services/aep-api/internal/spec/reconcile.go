@@ -111,7 +111,7 @@ func (s *SkillService) Reconcile(ctx context.Context, orgID string) (int, error)
 
 // isUserKind reports whether a kind is user-owned (never touched by reconcile).
 func isUserKind(kind string) bool {
-	return kind == models.SkillKindCustom || kind == models.SkillKindImported
+	return kind == SkillKindCustom || kind == SkillKindImported
 }
 
 // reconcileEmbedded drives the whole repo to the desired flat state in ONE
@@ -297,9 +297,9 @@ func loadLibrary(fsys fs.FS) ([]Skill, error) {
 			continue
 		}
 		kind := frontmatterKind(fm)
-		if kind != models.SkillKindPlatform && kind != models.SkillKindOrg {
+		if kind != SkillKindPlatform && kind != SkillKindOrg {
 			slog.Warn("skills: embedded skill carries a user kind — coerced to org", "name", name, "kind", kind)
-			kind = models.SkillKindOrg
+			kind = SkillKindOrg
 		}
 		refs := map[string]string{}
 		refDir := path.Join(root, name, "references")

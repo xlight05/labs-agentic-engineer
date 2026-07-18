@@ -22,8 +22,6 @@ import (
 	"strconv"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // normalizeDesignJSON returns a canonical-form encoding of the design.
@@ -47,9 +45,9 @@ func normalizeDesignJSON(raw []byte) ([]byte, error) {
 	// strings inside components — the in-memory design shape itself is
 	// already stable (struct-tag-deterministic).
 	var df struct {
-		Overview   string                   `json:"overview"`
-		Components []models.DesignComponent `json:"components"`
-		SourceSpec string                   `json:"sourceSpec,omitempty"`
+		Overview   string            `json:"overview"`
+		Components []DesignComponent `json:"components"`
+		SourceSpec string            `json:"sourceSpec,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &df); err != nil {
 		return nil, fmt.Errorf("normalize: parse design json: %w", err)

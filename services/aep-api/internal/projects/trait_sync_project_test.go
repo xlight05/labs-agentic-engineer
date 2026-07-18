@@ -103,7 +103,7 @@ func plainServiceMd(name string) string {
 }
 
 // webAppMd renders a web-application component design.json (canonical type:
-// models.ComponentTypeWebApplication — OpenChoreo's own term).
+// spec.ComponentTypeWebApplication — OpenChoreo's own term).
 func webAppMd(name string) string {
 	return "{\n  \"name\": \"" + name + "\",\n  \"type\": \"web-application\",\n  \"description\": \"SPA.\",\n  \"dependencies\": []\n}\n"
 }

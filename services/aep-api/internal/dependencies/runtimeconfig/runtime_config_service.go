@@ -28,7 +28,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -120,14 +119,14 @@ func (s *RuntimeConfigService) EmitForComponent(ctx context.Context, orgID, proj
 		return nil
 	}
 
-	var match *models.DesignComponent
+	var match *spec.DesignComponent
 	for i := range design.Components {
 		if k8sname.ToK8sName(design.Components[i].Name) == componentName {
 			match = &design.Components[i]
 			break
 		}
 	}
-	if match == nil || match.ComponentType != models.ComponentTypeWebApplication {
+	if match == nil || match.ComponentType != spec.ComponentTypeWebApplication {
 		return nil
 	}
 
@@ -192,7 +191,7 @@ func (s *RuntimeConfigService) EmitForProjectSPAs(ctx context.Context, orgID, pr
 		return nil
 	}
 	for _, c := range design.Components {
-		if c.ComponentType != models.ComponentTypeWebApplication {
+		if c.ComponentType != spec.ComponentTypeWebApplication {
 			continue
 		}
 		k8sName := k8sname.ToK8sName(c.Name)
@@ -225,12 +224,12 @@ func (s *RuntimeConfigService) EmitForProjectSPAs(ctx context.Context, orgID, pr
 // when a required key couldn't be populated yet (transient OC error,
 // SPA URL not yet resolved, etc.). The caller must NOT write a
 // partial env-config.js on `!ready` — see EmitForComponent.
-func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projectID string, webapp *models.DesignComponent, design *spec.DesignFile) (out map[string]interface{}, ready bool) {
+func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projectID string, webapp *spec.DesignComponent, design *spec.DesignFile) (out map[string]interface{}, ready bool) {
 	out = map[string]interface{}{}
 	ready = true
 
 	// Index sibling components by name for type lookup.
-	byName := make(map[string]models.DesignComponent, len(design.Components))
+	byName := make(map[string]spec.DesignComponent, len(design.Components))
 	for _, c := range design.Components {
 		byName[c.Name] = c
 	}
@@ -242,7 +241,7 @@ func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projec
 			continue
 		}
 		// Skip non-service deps (peer webapps aren't called over HTTP).
-		if sibling.ComponentType != models.ComponentTypeService {
+		if sibling.ComponentType != spec.ComponentTypeService {
 			continue
 		}
 		k8sName := k8sname.ToK8sName(dep)
@@ -302,13 +301,13 @@ func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projec
 // web-app with none). Its emptiness is what gates the whole platform-resource
 // layer — including the single CRT-marker catalog fetch — so an auth-free /
 // resource-free SPA never touches the resource client or the catalog.
-func platformResourceDeps(c *models.DesignComponent) []models.Dependency {
-	if c == nil || c.ComponentType != models.ComponentTypeWebApplication {
+func platformResourceDeps(c *spec.DesignComponent) []spec.Dependency {
+	if c == nil || c.ComponentType != spec.ComponentTypeWebApplication {
 		return nil
 	}
-	var out []models.Dependency
+	var out []spec.Dependency
 	for i := range c.Dependencies {
-		if c.Dependencies[i].Kind == models.DependencyKindPlatformResource {
+		if c.Dependencies[i].Kind == spec.DependencyKindPlatformResource {
 			out = append(out, c.Dependencies[i])
 		}
 	}
@@ -334,7 +333,7 @@ func platformResourceDeps(c *models.DesignComponent) []models.Dependency {
 // dependency contributes NO keys of its own (`continue` before its outputs),
 // and sibling deps' keys already in `out` are never shipped because the write
 // is gated. The SPA is thus never handed a partial window._env_.
-func (s *RuntimeConfigService) layerPlatformResources(ctx context.Context, orgID, projectID string, webapp *models.DesignComponent, deps []models.Dependency, out map[string]interface{}) bool {
+func (s *RuntimeConfigService) layerPlatformResources(ctx context.Context, orgID, projectID string, webapp *spec.DesignComponent, deps []spec.Dependency, out map[string]interface{}) bool {
 	if s.resourceClient == nil {
 		slog.WarnContext(ctx, "runtime_config: resourceClient not wired; deferring platform-resource outputs",
 			"projectID", projectID, "component", webapp.Name)

@@ -182,7 +182,7 @@ func TestList_SeedsBuiltinsOnFirstRead(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected org skill %q to be seeded; got %v", want, skillKeysOf(by))
 		}
-		if sk.Kind != models.SkillKindOrg {
+		if sk.Kind != SkillKindOrg {
 			t.Fatalf("skill %q: kind = %q, want org", want, sk.Kind)
 		}
 	}
@@ -247,7 +247,7 @@ func TestFreshOrgProvisioning_SeedsEmbeddedLibrary(t *testing.T) {
 		if !ok {
 			t.Fatalf("platform skill %q missing from the user-facing list", platformName)
 		}
-		if sum.Kind != models.SkillKindPlatform || sum.Editable {
+		if sum.Kind != SkillKindPlatform || sum.Editable {
 			t.Fatalf("platform skill %q must list read-only, got %+v", platformName, sum)
 		}
 	}
@@ -256,7 +256,7 @@ func TestFreshOrgProvisioning_SeedsEmbeddedLibrary(t *testing.T) {
 	all, _ := svc.List(ctx, "org1")
 	by := nameSet(all)
 	hla, ok := by["high-level-architecture"]
-	if !ok || hla.Kind != models.SkillKindPlatform {
+	if !ok || hla.Kind != SkillKindPlatform {
 		t.Fatalf("internal catalog must carry platform skills; got %+v", hla)
 	}
 	oapi := by["openapi-conventions"]
@@ -319,7 +319,7 @@ func TestReconcile_ReseedsMissingFlowSkillAndPrunesStaleRefs(t *testing.T) {
 	}
 	got, _ := svc.List(ctx, "org1")
 	tp, ok := nameSet(got)["task-planning"]
-	if !ok || tp.Kind != models.SkillKindPlatform {
+	if !ok || tp.Kind != SkillKindPlatform {
 		t.Fatalf("task-planning should be restored as platform, got %+v", tp)
 	}
 	if _, lingers := tp.References["references/stale.md"]; lingers {
@@ -428,7 +428,7 @@ func TestPlatformSkillReadOnlyAndNameReserved(t *testing.T) {
 
 	// Platform skills resolve read-only on the by-name user surface…
 	sk, _ := svc.Resolve(ctx, "org1", "task-planning")
-	if sk == nil || sk.Kind != models.SkillKindPlatform {
+	if sk == nil || sk.Kind != SkillKindPlatform {
 		t.Fatalf("Resolve must surface platform skills read-only, got %+v", sk)
 	}
 	// …but never mutate: reconcile owns them.
@@ -473,7 +473,7 @@ func TestRead_SeesExternalOriginCommitImmediately(t *testing.T) {
 		t.Fatalf("List 2: %v", err)
 	}
 	sk, ok := nameSet(got)["external-skill"]
-	if !ok || sk.Kind != models.SkillKindCustom {
+	if !ok || sk.Kind != SkillKindCustom {
 		t.Fatalf("externally committed skill not visible on next read: %v", skillKeysOf(nameSet(got)))
 	}
 }
