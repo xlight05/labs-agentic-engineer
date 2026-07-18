@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // Shared harness for the artifact tests. The gittest tier runs the REAL code
 // paths, not mocked git:

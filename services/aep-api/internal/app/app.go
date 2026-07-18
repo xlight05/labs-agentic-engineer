@@ -44,7 +44,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
@@ -264,7 +264,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	repoService := sourcecontrol.NewRepoService(repoRepo, gitHost, credResolver, cfg.GitHubRepoVisibility,
 		sourcecontrol.WithWorkspaceTrash(trashWorkspaceRepo))
 	gitOpsService := sourcecontrol.NewGitOpsService(credResolver, workspaceEngine)
-	artifactSvcGit := artifacts.NewArtifactService(repoRepo, gitOpsService)
+	artifactSvcGit := spec.NewArtifactService(repoRepo, gitOpsService)
 	issueService := sourcecontrol.NewIssueService(repoRepo, gitHost, credResolver)
 	webhookRegService := sourcecontrol.NewWebhookService(repoRepo, gitHost, repoService, issueService, cfg.WebhookDeliveryURL, cfg.WebhookHMACSecret)
 	credRefreshService := organization.NewCredentialsRefreshService(credResolver)
@@ -310,7 +310,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Artifact store — in-process via artifactSvcGit. Adds the
 	// external-API catalog + the `DesignFile` YAML split/assemble layer
 	// on top of raw file I/O.
-	artifactStore := artifacts.NewArtifactStore(artifactSvcGit)
+	artifactStore := spec.NewArtifactStore(artifactSvcGit)
 
 	// Repo-backed skills store (single source of truth = per-org org-skills
 	// repo). Reads walk the shared-volume mirror at branch tip and writes
@@ -819,7 +819,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// each design's `org-service` dependencies resolved/blocked/unresolved against
 	// the live namespace-visible catalog. Consumer-side wiring — artifacts never
 	// imports the dependencies feature (the *Catalog satisfies
-	// artifacts.OrgServiceResolver structurally).
+	// spec.OrgServiceResolver structurally).
 	artifactStore.SetOrgServiceResolver(orgEndpointCatalog)
 
 	// Register each tagged design's `external` dependencies into the org's

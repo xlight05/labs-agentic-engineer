@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // Reads: the bundle at HEAD (the live draft) and at a `v*` tag (an approved
 // version), plus the version list — all served by walking the repo tree via the

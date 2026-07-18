@@ -25,7 +25,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -54,7 +54,7 @@ func mustStatus(t *testing.T, fx statusFixture) *gen.ProjectStatus {
 func TestStageDerivation_FullPipeline(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
-		snap: artifacts.StatusSnapshot{
+		snap: spec.StatusSnapshot{
 			HasSpec:     true,
 			HasDesign:   true,
 			SpecVersion: "v2",
@@ -237,7 +237,7 @@ func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
 		runs:     []models.DevflowRun{{Tag: "v1", Status: models.WorkflowStatusCompleted}},
-		countErr: fmt.Errorf("wrapped: %w", artifacts.ErrSpecTagNotFound),
+		countErr: fmt.Errorf("wrapped: %w", spec.ErrSpecTagNotFound),
 		bindings: []models.ReleaseBindingSummary{devBinding("api", "True", "Ready")},
 	}
 	st := mustStatus(t, fx)

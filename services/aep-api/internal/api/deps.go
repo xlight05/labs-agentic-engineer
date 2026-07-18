@@ -22,7 +22,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
@@ -57,7 +57,7 @@ type Deps struct {
 	SkillMutationSvc    *skills.SkillMutationService
 	SkillImportSvc      *skills.SkillImportService
 	FilesSvc            files.FilesService
-	ArtifactSvc         artifacts.ArtifactService
+	ArtifactSvc         spec.ArtifactService
 	GenAISvc            *genai.Service
 	BuildSvc            *build.Service
 	PreflightSvc        *build.PreflightService

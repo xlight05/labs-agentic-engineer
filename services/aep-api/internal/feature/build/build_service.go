@@ -32,7 +32,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -379,7 +379,7 @@ func mapPreTagError(err error) error {
 // is a 400 validation failure carrying per-file detail; missing/not-ready
 // repos are 404/409.
 func mapTagError(err error) error {
-	var se *artifacts.SpecValidationError
+	var se *spec.SpecValidationError
 	switch {
 	case errors.As(err, &se):
 		details := make([]gen.ErrorDetail, 0, len(se.Files))

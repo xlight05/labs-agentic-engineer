@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // The Workspace-port write primitive behind Save (annotated tag at the pinned
 // commit). Save creates no commit — the accepted draft is already on `main`.

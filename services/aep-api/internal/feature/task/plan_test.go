@@ -26,7 +26,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
@@ -37,8 +37,8 @@ import (
 
 type planVersions struct{ specTag string }
 
-func (p planVersions) ListRequirementsVersions(context.Context, string, string) ([]artifacts.RequirementsVersionInfo, error) {
-	return []artifacts.RequirementsVersionInfo{{Tag: p.specTag}}, nil
+func (p planVersions) ListRequirementsVersions(context.Context, string, string) ([]spec.RequirementsVersionInfo, error) {
+	return []spec.RequirementsVersionInfo{{Tag: p.specTag}}, nil
 }
 func (p planVersions) LatestSpecTag(context.Context, string, string) string {
 	return p.specTag

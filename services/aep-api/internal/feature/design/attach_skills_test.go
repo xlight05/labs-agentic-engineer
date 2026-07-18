@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -41,7 +41,7 @@ func skillMarker(resourceType, skill string) map[string]resources.TypeMarkers {
 // (a) dep with Skill marker → the owning component's SkillsApplied gains it.
 func TestAttachAnnotatedSkills_AttachesToOwningComponent(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name:         "storefront-web",
 			Dependencies: []models.Dependency{resourceDep("user-auth", "thunder-app")},
@@ -59,7 +59,7 @@ func TestAttachAnnotatedSkills_AttachesToOwningComponent(t *testing.T) {
 // (b) already present on the component → no duplicate, not reported changed.
 func TestAttachAnnotatedSkills_NoDuplicateWhenAlreadyPresent(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name:          "storefront-web",
 			SkillsApplied: []string{"thunder-authentication"},
@@ -78,7 +78,7 @@ func TestAttachAnnotatedSkills_NoDuplicateWhenAlreadyPresent(t *testing.T) {
 // (c) unannotated type → untouched.
 func TestAttachAnnotatedSkills_UnannotatedTypeUntouched(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name:         "orders-api",
 			Dependencies: []models.Dependency{resourceDep("orders-db", "postgres-cnpg")},
@@ -97,7 +97,7 @@ func TestAttachAnnotatedSkills_UnannotatedTypeUntouched(t *testing.T) {
 // (d) multiple deps on the SAME component with the same skill → one entry.
 func TestAttachAnnotatedSkills_MultipleDepsSameSkillOneEntry(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name: "orders-api",
 			Dependencies: []models.Dependency{
@@ -118,7 +118,7 @@ func TestAttachAnnotatedSkills_MultipleDepsSameSkillOneEntry(t *testing.T) {
 // (e) existing per-component entries preserved verbatim, append-only ordering.
 func TestAttachAnnotatedSkills_PreservesExistingEntriesVerbatim(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name:          "storefront-web",
 			SkillsApplied: []string{"z-first-manual-skill", "a-second-manual-skill"},
@@ -139,7 +139,7 @@ func TestAttachAnnotatedSkills_PreservesExistingEntriesVerbatim(t *testing.T) {
 // (meaningless) ResourceType field happens to collide with a marked type.
 func TestAttachAnnotatedSkills_NonPlatformResourceDepIgnored(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name: "orders-api",
 			Dependencies: []models.Dependency{
@@ -160,7 +160,7 @@ func TestAttachAnnotatedSkills_NonPlatformResourceDepIgnored(t *testing.T) {
 // catalog fetch, see resourceMarkersForAuthDerivation) qualifies nothing.
 func TestAttachAnnotatedSkills_NilMarkersNoop(t *testing.T) {
 	t.Parallel()
-	d := &artifacts.DesignFile{
+	d := &spec.DesignFile{
 		Components: []models.DesignComponent{{
 			Name:         "orders-api",
 			Dependencies: []models.Dependency{resourceDep("user-auth", "thunder-app")},
@@ -179,7 +179,7 @@ func TestAttachAnnotatedSkills_NilMarkersNoop(t *testing.T) {
 // owning component (component-kind dependency, not platform-resource).
 func TestAttachAnnotatedSkills_PerComponentIsolation(t *testing.T) {
 	t.Parallel()
-	df := &artifacts.DesignFile{Components: []models.DesignComponent{
+	df := &spec.DesignFile{Components: []models.DesignComponent{
 		{Name: "api", Dependencies: []models.Dependency{
 			{Kind: models.DependencyKindPlatformResource, Name: "db", ResourceType: "postgres-cnpg"},
 		}},

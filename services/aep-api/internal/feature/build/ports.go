@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/models"
@@ -84,10 +84,10 @@ type RepoLookup interface {
 }
 
 // SpecTagger runs the whole-spec hard gate and cuts the next `v<N>` tag
-// (artifacts.SaveSpec). Implementations MUST preserve error identity — the
-// handler unwraps *artifacts.SpecValidationError into the 422 detail.
+// (spec.SaveSpec). Implementations MUST preserve error identity — the
+// handler unwraps *spec.SpecValidationError into the 422 detail.
 type SpecTagger interface {
-	TagSpec(ctx context.Context, orgID, projectID string) (*artifacts.SpecSaveResult, error)
+	TagSpec(ctx context.Context, orgID, projectID string) (*spec.SpecSaveResult, error)
 }
 
 // WorkflowRunner starts and observes dev workflows. The real implementation

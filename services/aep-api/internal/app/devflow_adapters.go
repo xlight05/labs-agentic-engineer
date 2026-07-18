@@ -22,7 +22,7 @@ import (
 	"go.temporal.io/sdk/activity"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -57,7 +57,7 @@ func (l repoFullNameLookup) RepoFullName(ctx context.Context, orgID, projectID s
 // devflowSpecValidator re-runs the whole-spec hard gate at the build tag via
 // the artifacts service — the dev workflow's pre-plan defensive check.
 type devflowSpecValidator struct {
-	art artifacts.ArtifactService
+	art spec.ArtifactService
 }
 
 func (v devflowSpecValidator) ValidateSpecAtTag(ctx context.Context, orgID, projectID, tag string) error {

@@ -67,8 +67,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/models"
@@ -82,7 +82,7 @@ const compProjectPrefix = "/api/v1/projects/web/components"
 type compFakes struct {
 	oc         *ocmocks.ComponentClientMock // component OC client (defaulted when nil)
 	observ     observability.Client         // nil ⇒ build-logs takes the not-configured 503 path
-	store      *artifacts.ArtifactStore     // for the openapi read; nil is fine unless hit
+	store      *spec.ArtifactStore     // for the openapi read; nil is fine unless hit
 	configRepo repositories.ConfigRepository
 }
 
@@ -165,7 +165,7 @@ func nestedElementKeys(t *testing.T, raw []byte, field string) []string {
 // design.md plus one component dir with the given type + optional openapi.yaml.
 func designFilesFor(componentDir, componentType, openapi string) map[string]string {
 	files := map[string]string{
-		artifacts.DesignRootFile: "# Overview\n",
+		spec.DesignRootFile: "# Overview\n",
 		"components/" + componentDir + "/design.json": "{\n  \"name\": \"" + componentDir +
 			"\",\n  \"type\": \"" + componentType + "\",\n  \"description\": \"body\",\n  \"dependencies\": []\n}\n",
 	}
@@ -175,8 +175,8 @@ func designFilesFor(componentDir, componentType, openapi string) map[string]stri
 	return files
 }
 
-func storeReturning(files map[string]string) *artifacts.ArtifactStore {
-	return artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+func storeReturning(files map[string]string) *spec.ArtifactStore {
+	return spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},

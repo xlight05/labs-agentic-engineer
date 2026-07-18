@@ -25,7 +25,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
@@ -92,7 +92,7 @@ func (a executionsByIssueAdapter) ByIssue(ctx context.Context, orgID, projectID 
 
 // designComponents exposes the design's component names at HEAD for the funnel's
 // dispatch-time re-verification. Satisfies execution.DesignReader.
-type designComponents struct{ store *artifacts.ArtifactStore }
+type designComponents struct{ store *spec.ArtifactStore }
 
 func (d designComponents) ComponentNames(ctx context.Context, orgID, projectID string) (map[string]bool, error) {
 	design, err := d.store.ReadDesign(ctx, orgID, projectID)

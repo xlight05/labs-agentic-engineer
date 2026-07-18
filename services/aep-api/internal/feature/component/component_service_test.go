@@ -35,8 +35,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -314,7 +314,7 @@ func TestComponentService_GetBuildLogs_SuccessAndError(t *testing.T) {
 // the given type + optional openapi.yaml.
 func designFiles(componentDir, componentType, openapi string) map[string]string {
 	files := map[string]string{
-		artifacts.DesignRootFile: "# Overview\n",
+		spec.DesignRootFile: "# Overview\n",
 		"components/" + componentDir + "/design.json": "{\n  \"name\": \"" + componentDir +
 			"\",\n  \"type\": \"" + componentType + "\",\n  \"description\": \"body\",\n  \"dependencies\": []\n}\n",
 	}
@@ -333,7 +333,7 @@ func openAPISvc(t *testing.T, files map[string]string, listErr error) ComponentS
 	}
 	// The REAL ArtifactStore decorator wraps the fake, so ReadDesign +
 	// AssembleDesign run for real over the crafted tree.
-	return NewComponentService(&ocmocks.ComponentClientMock{}, nil, artifacts.NewArtifactStore(fake), nil, nil)
+	return NewComponentService(&ocmocks.ComponentClientMock{}, nil, spec.NewArtifactStore(fake), nil, nil)
 }
 
 func TestComponentService_GetComponentOpenAPI_NoArtifactStore(t *testing.T) {

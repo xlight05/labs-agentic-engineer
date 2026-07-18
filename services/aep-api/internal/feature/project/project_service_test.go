@@ -36,8 +36,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -608,7 +608,7 @@ func (f fakeBindingsReader) ListProjectReleaseBindings(context.Context, string, 
 // ready repo row + the three poll sources (git snapshot, dev run rows, dev
 // bindings) as fakes.
 type statusFixture struct {
-	snap          artifacts.StatusSnapshot
+	snap          spec.StatusSnapshot
 	snapErr       error
 	counts        map[string]int // ComponentCountAtTag fixture, keyed by tag
 	countErr      error
@@ -623,7 +623,7 @@ type statusFixture struct {
 
 func (fx statusFixture) service() *Service {
 	fakeArtifacts := &artifactstest.FakeArtifactService{
-		StatusSnapshotFunc: func(context.Context, string, string) (*artifacts.StatusSnapshot, error) {
+		StatusSnapshotFunc: func(context.Context, string, string) (*spec.StatusSnapshot, error) {
 			if fx.snapErr != nil {
 				return nil, fx.snapErr
 			}
@@ -681,7 +681,7 @@ func TestGetProjectStatus_NilOrFailingRepoMeansNoRepo(t *testing.T) {
 // fabricates emptiness (the console keeps last-good data and repolls).
 func TestGetProjectStatus_StrictSourceFailures(t *testing.T) {
 	t.Parallel()
-	base := statusFixture{snap: artifacts.StatusSnapshot{HasSpec: true}}
+	base := statusFixture{snap: spec.StatusSnapshot{HasSpec: true}}
 
 	git := base
 	git.snapErr = errors.New("git wedged")
@@ -742,7 +742,7 @@ func TestGetProjectStatus_PhaseLadder(t *testing.T) {
 		},
 		{
 			name:      "spec files unversioned → draft, phase spec",
-			fx:        statusFixture{snap: artifacts.StatusSnapshot{HasSpec: true}},
+			fx:        statusFixture{snap: spec.StatusSnapshot{HasSpec: true}},
 			wantPhase: "spec",
 			wantSpec:  "draft",
 		},
@@ -750,13 +750,13 @@ func TestGetProjectStatus_PhaseLadder(t *testing.T) {
 			// Design files without any spec: the flat flag stays false (the
 			// old ladder never read the design past "prompt").
 			name:      "design without spec → prompt, flat hasDesign stays false",
-			fx:        statusFixture{snap: artifacts.StatusSnapshot{HasDesign: true}},
+			fx:        statusFixture{snap: spec.StatusSnapshot{HasDesign: true}},
 			wantPhase: "prompt",
 		},
 		{
 			name: "approved spec + design → phase tasks (no task counting, §8)",
 			fx: statusFixture{
-				snap: artifacts.StatusSnapshot{
+				snap: spec.StatusSnapshot{
 					HasSpec:      true,
 					HasDesign:    true,
 					SpecVersion:  "v1",

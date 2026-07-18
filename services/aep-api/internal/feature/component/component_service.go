@@ -25,7 +25,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -80,7 +80,7 @@ type BuildSecretStager interface {
 type componentService struct {
 	client        openchoreo.ComponentClient
 	observClient  observability.Client
-	artifactStore *artifacts.ArtifactStore
+	artifactStore *spec.ArtifactStore
 	// repoSvc + buildCredSvc are used by TriggerBuild to pre-stage the
 	// per-WorkflowRun build Secret. Optional — nil means "no staging"
 	// (tests / unit-only flows).
@@ -91,7 +91,7 @@ type componentService struct {
 // NewComponentService builds the component service. repoSvc + buildCredSvc
 // may be nil in tests / unit-only flows; production wiring passes both so
 // TriggerBuild can pre-stage the per-WorkflowRun build Secret.
-func NewComponentService(client openchoreo.ComponentClient, observClient observability.Client, artifactStore *artifacts.ArtifactStore, repoSvc sourcecontrol.RepoService, buildCredSvc BuildSecretStager) ComponentService {
+func NewComponentService(client openchoreo.ComponentClient, observClient observability.Client, artifactStore *spec.ArtifactStore, repoSvc sourcecontrol.RepoService, buildCredSvc BuildSecretStager) ComponentService {
 	return &componentService{
 		client:        client,
 		observClient:  observClient,
@@ -142,7 +142,7 @@ func (s *componentService) EnsureComponent(ctx context.Context, orgName, project
 	if s.repoSvc == nil {
 		return fmt.Errorf("ensure component: repo service not configured")
 	}
-	comp, err := artifacts.ResolveDesignComponent(ctx, s.artifactStore, orgName, projectName, componentName)
+	comp, err := spec.ResolveDesignComponent(ctx, s.artifactStore, orgName, projectName, componentName)
 	if err != nil {
 		return fmt.Errorf("ensure component: resolve design component %q: %w", componentName, err)
 	}
@@ -241,7 +241,7 @@ func (s *componentService) GetComponentOpenAPI(ctx context.Context, orgName, pro
 	}
 	design, err := s.artifactStore.ReadDesign(ctx, orgName, projectName)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			return nil, ErrComponentNotFound
 		}
 		return nil, fmt.Errorf("read design: %w", err)

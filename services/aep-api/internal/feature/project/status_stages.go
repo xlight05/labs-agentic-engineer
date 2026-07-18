@@ -19,7 +19,7 @@ package project
 // The #184 stage aggregates: one GET /projects/{name}/status cheap enough to
 // poll at 5s serves the whole overview pipeline. Poll-path budget: no GitHub
 // API, no Temporal query, no origin git fetch — the git source is the local
-// mirror snapshot (artifacts.StatusSnapshot), the build source is one
+// mirror snapshot (spec.StatusSnapshot), the build source is one
 // workflow_runs row read, the deploy source is one org-scoped OpenChoreo
 // call. See docs/design/project-status-stage-aggregates.md.
 
@@ -34,7 +34,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -92,7 +92,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	}
 
 	var (
-		snap          *artifacts.StatusSnapshot
+		snap          *spec.StatusSnapshot
 		runs          []models.DevflowRun
 		bindings      []models.ReleaseBindingSummary
 		deployVer     string
@@ -152,7 +152,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 		}
 		total, err := s.artifactSvc.ComponentCountAtTag(gctx, orgName, projectName, deployVer)
 		switch {
-		case errors.Is(err, artifacts.ErrSpecTagNotFound):
+		case errors.Is(err, spec.ErrSpecTagNotFound):
 			// A vanished tag (deleted on GitHub, or a stale run row from a
 			// recreated project) is a DATA state, not a source outage — the
 			// strict join is for outages. Degrade to an unknown denominator
@@ -266,9 +266,9 @@ func validationURL(repoURL string, run *models.DevflowRun, prNumber int) string 
 // "prompt" before reading the design); the phase ladder unchanged. One
 // accepted deviation: a design.md with malformed frontmatter counts as
 // present here, where the old ReadDesign failed the whole status read — see
-// artifacts.StatusSnapshot.HasDesign. HasTasks stays false — tasks are
+// spec.StatusSnapshot.HasDesign. HasTasks stays false — tasks are
 // counted live from GitHub, never here.
-func applyFlatArtifactFields(status *gen.ProjectStatus, snap *artifacts.StatusSnapshot) {
+func applyFlatArtifactFields(status *gen.ProjectStatus, snap *spec.StatusSnapshot) {
 	status.HasSpec = snap.HasSpec
 	switch {
 	case snap.SpecVersion != "":

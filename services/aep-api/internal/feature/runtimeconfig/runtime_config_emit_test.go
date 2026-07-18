@@ -32,7 +32,7 @@
 //     call on this path, and NO resource-type name is hardcoded.
 //   - the CRT marker catalog (resourceMarkerCatalog port) → a hand fake keyed by
 //     resourceType name; the consumer-URL patch keys on its markers.
-//   - artifacts.ArtifactStore → the REAL artifacts.NewArtifactStore decorator
+//   - spec.ArtifactStore → the REAL spec.NewArtifactStore decorator
 //     over artifactstest.FakeArtifactService, fed a valid design working-tree
 //     map. The frontmatter → models.DesignComponent parse (componentType,
 //     dependencies) is therefore the real one, not a stub.
@@ -50,19 +50,19 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- test doubles ------------------------------------------------------------
 
-// storeWith wraps the REAL artifacts.NewArtifactStore decorator over a fake
+// storeWith wraps the REAL spec.NewArtifactStore decorator over a fake
 // artifact service that serves the given design working-tree map. ReadDesign's
 // frontmatter parse (AssembleDesign) therefore runs for real.
-func storeWith(files map[string]string) *artifacts.ArtifactStore {
-	return artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+func storeWith(files map[string]string) *spec.ArtifactStore {
+	return spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
@@ -168,7 +168,7 @@ func authOutputs() map[string]string {
 
 // readDesign parses a design working-tree map through the real store and
 // returns the assembled DesignFile.
-func readDesign(t *testing.T, files map[string]string) *artifacts.DesignFile {
+func readDesign(t *testing.T, files map[string]string) *spec.DesignFile {
 	t.Helper()
 	d, err := storeWith(files).ReadDesign(context.Background(), "acme", "proj")
 	if err != nil {
@@ -180,7 +180,7 @@ func readDesign(t *testing.T, files map[string]string) *artifacts.DesignFile {
 	return d
 }
 
-func componentNamed(t *testing.T, d *artifacts.DesignFile, name string) *models.DesignComponent {
+func componentNamed(t *testing.T, d *spec.DesignFile, name string) *models.DesignComponent {
 	t.Helper()
 	for i := range d.Components {
 		if d.Components[i].Name == name {
@@ -193,7 +193,7 @@ func componentNamed(t *testing.T, d *artifacts.DesignFile, name string) *models.
 
 // svcWithCatalog builds a service and wires the catalog port (nil catalog left
 // unwired to exercise the defer-when-unwired path).
-func svcWithCatalog(oc openchoreo.ComponentClient, rc openchoreo.ResourceClient, store *artifacts.ArtifactStore, cat resourceMarkerCatalog) *RuntimeConfigService {
+func svcWithCatalog(oc openchoreo.ComponentClient, rc openchoreo.ResourceClient, store *spec.ArtifactStore, cat resourceMarkerCatalog) *RuntimeConfigService {
 	s := NewRuntimeConfigService(oc, rc, store)
 	if cat != nil {
 		s.SetResourceCatalog(cat)
@@ -334,7 +334,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("single auth dep: exact USER_AUTH_* key set, no THUNDER_*, patch once", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}),
 		}
 		design := readDesign(t, files)
@@ -386,7 +386,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("two PR deps: both output prefixes emitted; patch only the annotated dep", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}, {"orders-db", "postgres-cnpg"}}),
 		}
 		design := readDesign(t, files)
@@ -434,7 +434,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("custom consumer-url-path patches origin+path", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}),
 		}
 		design := readDesign(t, files)
@@ -463,7 +463,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("absent annotation: outputs emitted, NO patch call", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"orders-db", "postgres-cnpg"}}),
 		}
 		design := readDesign(t, files)
@@ -489,7 +489,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("web-app with only component deps: no catalog read, no resource client touch", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -524,7 +524,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	ctx := context.Background()
 
 	authWebFiles := map[string]string{
-		artifacts.DesignRootFile:     rootDesignMd(),
+		spec.DesignRootFile:     rootDesignMd(),
 		"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}, "api"),
 		"components/api/design.json": serviceComponentMd(),
 	}
@@ -532,7 +532,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("unresolved service dep gates emission (ready=false)", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -552,7 +552,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("ListDeployments error on a service dep gates emission", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -573,7 +573,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("non-service component dep is skipped, not gated", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:      rootDesignMd(),
+			spec.DesignRootFile:      rootDesignMd(),
 			"components/web/design.json":  webappMd("web", "peer"),
 			"components/peer/design.json": webappMd("peer"),
 		}
@@ -788,7 +788,7 @@ func Test_EmitForComponent(t *testing.T) {
 			pr = []prDep{{"user-auth", resourceType}}
 		}
 		return map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", pr, "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -852,7 +852,7 @@ func Test_EmitForComponent(t *testing.T) {
 		t.Parallel()
 		for _, retired := range []string{"webapp", "web-app"} {
 			files := map[string]string{
-				artifacts.DesignRootFile:     rootDesignMd(),
+				spec.DesignRootFile:     rootDesignMd(),
 				"components/web/design.json": buildComponentJSON("web", retired, []string{"api"}, nil),
 				"components/api/design.json": serviceComponentMd(),
 			}
@@ -943,9 +943,9 @@ func Test_EmitForComponent(t *testing.T) {
 
 	t.Run("design read not-found is swallowed", func(t *testing.T) {
 		t.Parallel()
-		store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+		store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 			ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
-				return nil, artifacts.ErrArtifactNotFound
+				return nil, spec.ErrArtifactNotFound
 			},
 		})
 		oc := &ocmocks.ComponentClientMock{}
@@ -1001,7 +1001,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	ctx := context.Background()
 
 	twoSPAsOneService := map[string]string{
-		artifacts.DesignRootFile:      rootDesignMd(),
+		spec.DesignRootFile:      rootDesignMd(),
 		"components/web1/design.json": webappMd("web1", "api"),
 		"components/web2/design.json": webappMd("web2", "api"),
 		"components/api/design.json":  serviceComponentMd(),
@@ -1037,7 +1037,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	t.Run("no web-apps is a no-op", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:     rootDesignMd(),
 			"components/api/design.json": serviceComponentMd(),
 		}
 		oc := &ocmocks.ComponentClientMock{} // must never be touched

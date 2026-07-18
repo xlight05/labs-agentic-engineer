@@ -17,7 +17,7 @@
 package design
 
 import (
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -52,7 +52,7 @@ import (
 // names of components that gained at least one skill. A nil/empty markers map
 // (no platform-resource dependency in the design, or none of its types carry
 // the annotation) changes nothing.
-func attachAnnotatedSkills(designFile *artifacts.DesignFile, markers map[string]resources.TypeMarkers) []string {
+func attachAnnotatedSkills(designFile *spec.DesignFile, markers map[string]resources.TypeMarkers) []string {
 	var changed []string
 	for i := range designFile.Components {
 		comp := &designFile.Components[i]

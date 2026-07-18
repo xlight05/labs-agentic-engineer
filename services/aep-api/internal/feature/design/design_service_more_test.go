@@ -16,7 +16,7 @@
 
 // UNIT tier: the REAL designService with every
 // out-of-process seam faked — the artifact service (wrapped by the REAL
-// artifacts.NewArtifactStore decorator, so the store's split/assemble logic runs
+// spec.NewArtifactStore decorator, so the store's split/assemble logic runs
 // for real). No HTTP, no DB — design has no SQL-shaped behavior (persistence
 // delegates to artifacts/git), so there is no dbtest tier for this feature.
 //
@@ -29,8 +29,8 @@
 package design
 
 import (
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 )
 
 // --- fixtures ----------------------------------------------------------------
@@ -40,7 +40,7 @@ import (
 // component with a design.json + openapi.yaml. Mirrors the harvested golden shape.
 func validDesignFiles() map[string]string {
 	return map[string]string{
-		artifacts.DesignRootFile: "---\nsourceSpec: v1\n---\n\nOverview prose here.\n",
+		spec.DesignRootFile: "---\nsourceSpec: v1\n---\n\nOverview prose here.\n",
 		"components/hello-api/design.json": "{\n" +
 			"  \"name\": \"hello-api\",\n" +
 			"  \"type\": \"service\",\n" +
@@ -56,7 +56,7 @@ func validDesignFiles() map[string]string {
 // wrapping it in the REAL ArtifactStore decorator.
 func newService(fake *artifactstest.FakeArtifactService) *designService {
 	return &designService{
-		store:       artifacts.NewArtifactStore(fake),
+		store:       spec.NewArtifactStore(fake),
 		artifactSvc: fake,
 	}
 }

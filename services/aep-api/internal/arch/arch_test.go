@@ -53,23 +53,23 @@ const mod = "github.com/wso2/aep/aep-api"
 // decision: extend this list in the same PR and say why, or (usually better)
 // cut the edge with a consumer-side port per the house pattern.
 var featureEdgeAllowlist = map[string][]string{
-	"artifacts": {},
 	// build is the public single-tag build surface (build-project /
 	// get-project-build). It deliberately composes the machinery it fronts:
-	// artifacts (SpecSaveResult + SpecValidationError — the 422 detail must
-	// survive errors.As across the port boundary), devflow (workflow name/id/
+	// the spec domain (SpecSaveResult + SpecValidationError — the 422 detail
+	// must survive errors.As across the port boundary; a feature→domain edge
+	// since P4, no longer allowlisted here), devflow (workflow name/id/
 	// status vocabulary + the Temporal runtime the runner wraps), task
 	// (TaskView for the status title join). Heavy collaborators (SaveSpec,
 	// workflow_runs, repo lookup) stay behind consumer-side ports wired at the
 	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
-	"build": {"artifacts", "devflow", "task"},
+	"build": {"devflow", "task"},
 	// codingagent is the funnel's one registered executor: it implements the
 	// execution.Executor port (hence the execution edge) and reaches every other
 	// service — identities, anthropic, repos, OC — through consumer ports wired
 	// at the composition root. It also holds the devflow signaler (nil-safe) so
 	// the coding/build/deploy watchers can signal a waiting TaskFlow workflow.
 	"codingagent": {"execution", "devflow"},
-	"component":   {"artifacts"},
+	"component":   {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
 	// endpoints subpackages (external/platform provisioner cores; the org
@@ -86,8 +86,9 @@ var featureEdgeAllowlist = map[string][]string{
 	// end-user-auth derivation on the PE-authored role marker instead of a
 	// hardcoded resourceType name (thunder-app generalization). This mirrors the
 	// runtimeconfig edge below — both features read the same single source of
-	// truth for CRT markers rather than re-deriving the vocabulary.
-	"design": {"artifacts", "dependencies/resources"},
+	// truth for CRT markers rather than re-deriving the vocabulary. (Its
+	// artifacts edge became a feature→spec-domain edge in P4.)
+	"design": {"dependencies/resources"},
 	// devflow hosts the Temporal dev/task workflows + activities. Its activity
 	// ports are all devflow-local (the funnel/genai/plan/issue adapters live at
 	// the composition root), so it holds NO cross-feature edge — other features
@@ -102,7 +103,7 @@ var featureEdgeAllowlist = map[string][]string{
 	"execution": {"devflow"},
 	"files":     {},
 	"genai":     {},
-	"project":   {"artifacts"},
+	"project":   {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
 	// issues now come from the sourcecontrol domain (P2). Every other collaborator —
@@ -121,11 +122,13 @@ var featureEdgeAllowlist = map[string][]string{
 	// config) and patches its redirect URIs declaratively; it reuses the
 	// resources package's single source of truth for the per-env binding name
 	// (ExternalResourceBindingName) rather than re-deriving the convention.
-	"runtimeconfig": {"artifacts", "dependencies/resources"},
-	"skills":        {"artifacts"},
+	// (Its artifacts edge became a feature→spec-domain edge in P4.)
+	"runtimeconfig": {"dependencies/resources"},
+	"skills":        {},
 	// task is the GitHub-facing half: it never imports feature/execution (the §1
 	// split) — the funnel is reached through the task.Dispatcher consumer port.
-	"task": {"artifacts"},
+	// (Its artifacts edge became a feature→spec-domain edge in P4.)
+	"task": {},
 	// validation mints the project's aep:validation Task issue on design approval
 	// (validation-phase). It holds NO feature edge: the issue wire types come from
 	// the sourcecontrol domain (P2), and the design-component and criteria-file

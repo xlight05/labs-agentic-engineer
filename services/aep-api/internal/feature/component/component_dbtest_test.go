@@ -32,7 +32,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -135,7 +135,7 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 // dir per supplied k8s name, so SyncComponentTraits finds a match for every
 // tuple the sweep enumerates (regardless of which project it reads).
 func multiComponentDesign(names ...string) map[string]string {
-	files := map[string]string{artifacts.DesignRootFile: "# Overview\n"}
+	files := map[string]string{spec.DesignRootFile: "# Overview\n"}
 	for _, n := range names {
 		files["components/"+n+"/design.json"] = "{\n  \"name\": \"" + n +
 			"\",\n  \"type\": \"service\",\n  \"description\": \"body\",\n  \"dependencies\": []\n}\n"

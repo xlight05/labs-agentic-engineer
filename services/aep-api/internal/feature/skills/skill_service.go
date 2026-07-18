@@ -31,7 +31,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -119,7 +119,7 @@ func frontmatterKind(fm skillFrontmatter) string {
 // parseSkillMD splits frontmatter from body and decodes it. Returns the
 // decoded frontmatter, the body, and any parse error.
 func parseSkillMD(content string) (skillFrontmatter, string, error) {
-	fm, body, err := artifacts.SplitFrontmatter(content)
+	fm, body, err := spec.SplitFrontmatter(content)
 	if err != nil {
 		return skillFrontmatter{}, "", fmt.Errorf("split frontmatter: %w", err)
 	}
@@ -155,7 +155,7 @@ func stampFrontmatterKind(skillMD, kind string) (string, error) {
 	if strings.TrimSpace(fm.Metadata.Aep.Kind) == kind {
 		return skillMD, nil
 	}
-	raw, body, err := artifacts.SplitFrontmatter(skillMD)
+	raw, body, err := spec.SplitFrontmatter(skillMD)
 	if err != nil {
 		return "", fmt.Errorf("stamp kind: %w", err)
 	}

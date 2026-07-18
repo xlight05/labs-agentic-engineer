@@ -27,7 +27,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/async"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -51,7 +51,7 @@ type Service struct {
 	client         openchoreo.ProjectClient
 	repoSvc        sourcecontrol.RepoService
 	webhookSvc     sourcecontrol.WebhookService
-	artifactSvc    artifacts.ArtifactService
+	artifactSvc    spec.ArtifactService
 	execs          repositories.ExecutionRepository
 	skillsProv     skillsProvisioner
 	deprovisioner  resourceDeprovisioner // dependency provisioning teardown; may be nil
@@ -81,7 +81,7 @@ func NewProjectService(
 	client openchoreo.ProjectClient,
 	repoSvc sourcecontrol.RepoService,
 	webhookSvc sourcecontrol.WebhookService,
-	artifactSvc artifacts.ArtifactService,
+	artifactSvc spec.ArtifactService,
 	execs repositories.ExecutionRepository,
 ) *Service {
 	return &Service{

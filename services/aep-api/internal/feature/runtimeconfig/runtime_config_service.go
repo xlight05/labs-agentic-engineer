@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/models"
@@ -66,7 +66,7 @@ type RuntimeConfigService struct {
 	// env-config.js write just retries on the next deploy event and never blocks
 	// a user action).
 	catalog resourceMarkerCatalog
-	store   *artifacts.ArtifactStore
+	store   *spec.ArtifactStore
 }
 
 // resourceMarkerCatalog is runtimeconfig's narrow consumer port over the
@@ -79,7 +79,7 @@ type resourceMarkerCatalog interface {
 	MarkersByName(ctx context.Context) (map[string]resources.TypeMarkers, error)
 }
 
-func NewRuntimeConfigService(componentClient openchoreo.ComponentClient, resourceClient openchoreo.ResourceClient, store *artifacts.ArtifactStore) *RuntimeConfigService {
+func NewRuntimeConfigService(componentClient openchoreo.ComponentClient, resourceClient openchoreo.ResourceClient, store *spec.ArtifactStore) *RuntimeConfigService {
 	return &RuntimeConfigService{
 		componentClient: componentClient,
 		resourceClient:  resourceClient,
@@ -111,7 +111,7 @@ func (s *RuntimeConfigService) EmitForComponent(ctx context.Context, orgID, proj
 
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("runtime_config: read design: %w", err)
@@ -183,7 +183,7 @@ func (s *RuntimeConfigService) EmitForProjectSPAs(ctx context.Context, orgID, pr
 	}
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("runtime_config: read design: %w", err)
@@ -225,7 +225,7 @@ func (s *RuntimeConfigService) EmitForProjectSPAs(ctx context.Context, orgID, pr
 // when a required key couldn't be populated yet (transient OC error,
 // SPA URL not yet resolved, etc.). The caller must NOT write a
 // partial env-config.js on `!ready` — see EmitForComponent.
-func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projectID string, webapp *models.DesignComponent, design *artifacts.DesignFile) (out map[string]interface{}, ready bool) {
+func (s *RuntimeConfigService) buildEnvValues(ctx context.Context, orgID, projectID string, webapp *models.DesignComponent, design *spec.DesignFile) (out map[string]interface{}, ready bool) {
 	out = map[string]interface{}{}
 	ready = true
 

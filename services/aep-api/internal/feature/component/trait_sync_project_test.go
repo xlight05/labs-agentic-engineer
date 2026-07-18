@@ -25,8 +25,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -35,16 +35,16 @@ import (
 // (dispatch_cascade_hook.go). The two seams are doubled at the process
 // boundary: the openchoreo.ComponentClient (generated moq — ListDeployments
 // to read a web-app's external URL, UpdateComponentTraits* to emit) and the
-// artifacts store (the REAL artifacts.NewArtifactStore decorator over a fake
+// artifacts store (the REAL spec.NewArtifactStore decorator over a fake
 // service serving a design working-tree, so the frontmatter → DesignComponent
 // parse is the real one, not a stub). No idp is wired (SetIDPService not
 // called) so the publisher-provisioning branch is skipped.
 
-// traitStoreWith wraps the REAL artifacts.NewArtifactStore over a fake
+// traitStoreWith wraps the REAL spec.NewArtifactStore over a fake
 // artifact service serving the given design working-tree map. ReadDesign's
 // frontmatter parse therefore runs for real.
-func traitStoreWith(files map[string]string) *artifacts.ArtifactStore {
-	return artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+func traitStoreWith(files map[string]string) *spec.ArtifactStore {
+	return spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
@@ -52,7 +52,7 @@ func traitStoreWith(files map[string]string) *artifacts.ArtifactStore {
 }
 
 // traitReadDesign parses a design working-tree map through the real store.
-func traitReadDesign(t *testing.T, files map[string]string) *artifacts.DesignFile {
+func traitReadDesign(t *testing.T, files map[string]string) *spec.DesignFile {
 	t.Helper()
 	d, err := traitStoreWith(files).ReadDesign(context.Background(), "acme", "proj")
 	if err != nil {
@@ -130,7 +130,7 @@ func TestSyncProjectAPITraits_ReEmitsEnabledServicesOnly(t *testing.T) {
 	// worker: unprotected service (skipped — ResolveAPISecurityEnabled=false).
 	// web: web-app (skipped — not ComponentType "service").
 	files := map[string]string{
-		artifacts.DesignRootFile:        traitRootMd(),
+		spec.DesignRootFile:        traitRootMd(),
 		"components/api/design.json":    endUserServiceMd("api"),
 		"components/s2s/design.json":    serviceToServiceMd("s2s"),
 		"components/worker/design.json": plainServiceMd("worker"),
@@ -217,7 +217,7 @@ func TestSyncProjectAPITraits_PerComponentErrorDoesNotAbort(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	files := map[string]string{
-		artifacts.DesignRootFile:       traitRootMd(),
+		spec.DesignRootFile:       traitRootMd(),
 		"components/api-a/design.json": serviceToServiceMd("api-a"),
 		"components/api-b/design.json": serviceToServiceMd("api-b"),
 	}
@@ -258,9 +258,9 @@ func TestSyncProjectAPITraits_NoDesignIsNoOp(t *testing.T) {
 
 	t.Run("design read not-found is swallowed", func(t *testing.T) {
 		t.Parallel()
-		store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+		store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 			ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
-				return nil, artifacts.ErrArtifactNotFound
+				return nil, spec.ErrArtifactNotFound
 			},
 		})
 		svc := NewTraitSyncService(&mocks.ComponentClientMock{}, store)
@@ -298,7 +298,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("collects each web-app origin, trims path, dedups", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:      traitRootMd(),
+			spec.DesignRootFile:      traitRootMd(),
 			"components/web1/design.json": webAppMd("web1"),
 			"components/web2/design.json": webAppMd("web2"),
 			"components/api/design.json":  endUserServiceMd("api"),
@@ -334,7 +334,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("web-app with no deployment yet contributes nothing", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:     traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -352,7 +352,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("duplicate deployment URLs dedup to one origin", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:     traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -377,7 +377,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("transient ListDeployments error surfaces (no partial allowlist)", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:     traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -395,7 +395,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("no web-apps yields empty slice, nil error", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			artifacts.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:     traitRootMd(),
 			"components/api/design.json": endUserServiceMd("api"),
 		}
 		design := traitReadDesign(t, files)

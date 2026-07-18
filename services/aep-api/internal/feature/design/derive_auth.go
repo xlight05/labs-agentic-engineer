@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -102,7 +102,7 @@ func endUserAuthDependency(deps []models.Dependency, markers map[string]resource
 // (a silent skip could leave an API that must sit behind end-user login
 // exposed). Returns (nil, nil) when there is no platform-resource dependency:
 // deriveEndUserAuth over a nil map qualifies nothing, which is exactly right.
-func (s *designService) resourceMarkersForAuthDerivation(ctx context.Context, designFile *artifacts.DesignFile) (map[string]resources.TypeMarkers, error) {
+func (s *designService) resourceMarkersForAuthDerivation(ctx context.Context, designFile *spec.DesignFile) (map[string]resources.TypeMarkers, error) {
 	if !hasPlatformResourceDependency(designFile.Components) {
 		return nil, nil
 	}
@@ -154,7 +154,7 @@ func exposesAPIEqual(a, b *models.ExposesAPI) bool {
 func (s *designService) DeriveEndUserAuthAtHead(ctx context.Context, orgID, projectID string) error {
 	designFile, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("read design: %w", err)
@@ -193,7 +193,7 @@ func (s *designService) DeriveEndUserAuthAtHead(ctx context.Context, orgID, proj
 // no-op after a successful derivation: designFile.Components is still mutated
 // in place so THIS response reflects the derived value, but nothing is
 // persisted, so it will not survive to the next independent design read.
-func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID, projectID string, designFile *artifacts.DesignFile, markers map[string]resources.TypeMarkers) (bool, error) {
+func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID, projectID string, designFile *spec.DesignFile, markers map[string]resources.TypeMarkers) (bool, error) {
 	// Snapshot a COPY of each ExposesAPI value (not the pointer): when a
 	// component already carries a non-nil ExposesAPI, deriveEndUserAuth
 	// mutates its Auth field THROUGH that same pointer — capturing the
@@ -219,7 +219,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 			continue
 		}
 		comp := designFile.Components[i]
-		rendered, rerr := artifacts.SplitDesign(&artifacts.DesignFile{Components: []models.DesignComponent{comp}})
+		rendered, rerr := spec.SplitDesign(&spec.DesignFile{Components: []models.DesignComponent{comp}})
 		if rerr != nil {
 			return false, fmt.Errorf("render component %q design.json: %w", comp.Name, rerr)
 		}
@@ -228,7 +228,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 		if !ok {
 			return false, fmt.Errorf("render component %q design.json: %q missing from split", comp.Name, designSub)
 		}
-		designFull := artifacts.DesignDir + "/" + designSub
+		designFull := spec.DesignDir + "/" + designSub
 		_, sha, exists, rerr := s.fileCommitter.ReadFile(ctx, orgID, projectID, designFull)
 		if rerr != nil {
 			return false, fmt.Errorf("read %q for CAS: %w", designFull, rerr)

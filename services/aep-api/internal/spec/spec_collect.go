@@ -25,7 +25,7 @@
 //     (SaveDesign only reads + tags; all writes land via the Files API), so the
 //     commit is deferred — see the spec-commit TODO in StoreConsumedSpec.
 
-package artifacts
+package spec
 
 import (
 	"context"

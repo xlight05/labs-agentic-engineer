@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -87,10 +87,10 @@ type RepoLocator interface {
 
 // DesignReader reads a provider project's committed design bundle (assembled
 // per-component design.json + sibling openapi.yaml). Satisfied structurally by
-// *artifacts.ArtifactStore. Keyed by the same (org, project-id) tuple as
+// *spec.ArtifactStore. Keyed by the same (org, project-id) tuple as
 // RepoLocator (see its note).
 type DesignReader interface {
-	ReadDesign(ctx context.Context, orgID, projectID string) (*artifacts.DesignFile, error)
+	ReadDesign(ctx context.Context, orgID, projectID string) (*spec.DesignFile, error)
 }
 
 // CatalogOption configures the optional resolver collaborators on a Catalog.
@@ -130,7 +130,7 @@ func (c *Catalog) ListResolved(ctx context.Context, orgHandle string) ([]OrgComp
 	if err != nil {
 		return nil, err
 	}
-	designCache := make(map[string]*artifacts.DesignFile)
+	designCache := make(map[string]*spec.DesignFile)
 	out := make([]OrgComponentEndpoint, 0, len(infos))
 	for i := range infos {
 		out = append(out, c.resolve(ctx, orgHandle, infos[i], designCache))
@@ -163,7 +163,7 @@ func (c *Catalog) Resolve(ctx context.Context, orgHandle string, e openchoreo.Wo
 // designCache, when non-nil, memoizes the provider project's design-bundle
 // read for the duration of one ListResolved pass; nil (the public Resolve's
 // case) means "always read".
-func (c *Catalog) resolve(ctx context.Context, orgHandle string, e openchoreo.WorkloadEndpointInfo, designCache map[string]*artifacts.DesignFile) OrgComponentEndpoint {
+func (c *Catalog) resolve(ctx context.Context, orgHandle string, e openchoreo.WorkloadEndpointInfo, designCache map[string]*spec.DesignFile) OrgComponentEndpoint {
 	oce := OrgComponentEndpoint{
 		Project:          e.Project,
 		Component:        e.Component,
@@ -204,7 +204,7 @@ func (c *Catalog) resolve(ctx context.Context, orgHandle string, e openchoreo.Wo
 
 // providerComponent reads the provider project's design bundle and returns the
 // component named `component` (case-insensitive, mirroring
-// artifacts.ResolveDesignComponent), or nil when the reader is unwired, the
+// spec.ResolveDesignComponent), or nil when the reader is unwired, the
 // project has no design bundle, or the component is absent. Fail-open: a read
 // error is logged and returns nil. designCache is forwarded to readDesign
 // (see its doc) — nil for the public single-endpoint Resolve.
@@ -216,7 +216,7 @@ func (c *Catalog) resolve(ctx context.Context, orgHandle string, e openchoreo.Wo
 // a "<project>-" prefixed component retries once with the prefix stripped.
 // Hand-applied / non-app-factory components (unprefixed to begin with) are
 // unaffected: the raw-name lookup already finds them.
-func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, component string, designCache map[string]*artifacts.DesignFile) *models.DesignComponent {
+func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, component string, designCache map[string]*spec.DesignFile) *models.DesignComponent {
 	if c.design == nil {
 		return nil
 	}
@@ -240,7 +240,7 @@ func (c *Catalog) providerComponent(ctx context.Context, orgHandle, project, com
 
 // findDesignComponent returns the design bundle component named `name`
 // (case-insensitive), or nil when absent.
-func findDesignComponent(design *artifacts.DesignFile, name string) *models.DesignComponent {
+func findDesignComponent(design *spec.DesignFile, name string) *models.DesignComponent {
 	for i := range design.Components {
 		if strings.EqualFold(design.Components[i].Name, name) {
 			return &design.Components[i]
@@ -256,7 +256,7 @@ func findDesignComponent(design *artifacts.DesignFile, name string) *models.Desi
 // bundle, i.e. a nil *DesignFile) are cached; a read error is neither cached
 // nor swallowed here — it is returned for the caller (providerComponent) to
 // log and fail open on, so a transient error doesn't poison the pass.
-func (c *Catalog) readDesign(ctx context.Context, orgHandle, project string, designCache map[string]*artifacts.DesignFile) (*artifacts.DesignFile, error) {
+func (c *Catalog) readDesign(ctx context.Context, orgHandle, project string, designCache map[string]*spec.DesignFile) (*spec.DesignFile, error) {
 	if designCache != nil {
 		if design, ok := designCache[project]; ok {
 			return design, nil

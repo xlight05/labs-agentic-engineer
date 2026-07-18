@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -65,7 +65,7 @@ type OrgPublisher interface {
 // RBs without autoDeploy are not supported by OC.
 type TraitSyncService struct {
 	componentClient openchoreo.ComponentClient
-	store           *artifacts.ArtifactStore
+	store           *spec.ArtifactStore
 	// idp, when non-nil, is invoked on every protected reconcile to
 	// lazily ensure the org's Thunder publisher app exists. Failures
 	// are logged but don't block the trait emit — the API stays
@@ -87,7 +87,7 @@ func (s *TraitSyncService) SetIDPService(idp OrgPublisher) {
 	s.idp = idp
 }
 
-func NewTraitSyncService(componentClient openchoreo.ComponentClient, store *artifacts.ArtifactStore) *TraitSyncService {
+func NewTraitSyncService(componentClient openchoreo.ComponentClient, store *spec.ArtifactStore) *TraitSyncService {
 	return &TraitSyncService{
 		componentClient: componentClient,
 		store:           store,
@@ -129,7 +129,7 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 	// mid-PATCH with a stale read.
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			// No design at all yet — nothing to reconcile. Reached from a
 			// design PUT race where the controller hands us a stale path.
 			return nil
@@ -291,7 +291,7 @@ func (s *TraitSyncService) SyncProjectAPITraits(ctx context.Context, orgID, proj
 	}
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if artifacts.IsNotFound(err) {
+		if spec.IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("trait_sync: read design: %w", err)
@@ -332,7 +332,7 @@ func (s *TraitSyncService) SyncProjectAPITraits(ctx context.Context, orgID, proj
 // returned slice is empty when no SPA exists yet in the project — the
 // caller treats that as wildcard-CORS-fallback to keep dev curl
 // working.
-func (s *TraitSyncService) siblingSPAOrigins(ctx context.Context, orgID, projectID string, design *artifacts.DesignFile) ([]string, error) {
+func (s *TraitSyncService) siblingSPAOrigins(ctx context.Context, orgID, projectID string, design *spec.DesignFile) ([]string, error) {
 	if s.componentClient == nil || design == nil {
 		return nil, nil
 	}

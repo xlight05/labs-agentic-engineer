@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/feature/design"
@@ -30,15 +30,15 @@ import (
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// buildSpecTagger adapts artifacts.SaveSpec onto the build feature's
+// buildSpecTagger adapts spec.SaveSpec onto the build feature's
 // SpecTagger port. Errors pass through unwrapped — the build handler unpacks
-// *artifacts.SpecValidationError into the 422 detail.
+// *spec.SpecValidationError into the 422 detail.
 type buildSpecTagger struct {
-	art artifacts.ArtifactService
+	art spec.ArtifactService
 }
 
-func (t buildSpecTagger) TagSpec(ctx context.Context, orgID, projectID string) (*artifacts.SpecSaveResult, error) {
-	return t.art.SaveSpec(ctx, orgID, projectID, artifacts.SaveRequest{Message: "Build"})
+func (t buildSpecTagger) TagSpec(ctx context.Context, orgID, projectID string) (*spec.SpecSaveResult, error) {
+	return t.art.SaveSpec(ctx, orgID, projectID, spec.SaveRequest{Message: "Build"})
 }
 
 // designAuthDeriver / designExternalRegistrar are the composition root's narrow

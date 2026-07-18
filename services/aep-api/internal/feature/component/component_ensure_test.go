@@ -23,8 +23,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -61,7 +61,7 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 	}
 	// A design with one service component named "order-service".
 	files := map[string]string{
-		artifacts.DesignRootFile: "# Overview\n",
+		spec.DesignRootFile: "# Overview\n",
 		"components/order-service/design.json": "{\n" +
 			"  \"name\": \"order-service\",\n" +
 			"  \"type\": \"service\",\n" +
@@ -69,7 +69,7 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 			"  \"dependencies\": []\n" +
 			"}\n",
 	}
-	store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+	store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
@@ -124,7 +124,7 @@ func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 		},
 	}
 	files := map[string]string{
-		artifacts.DesignRootFile: "# Overview\n",
+		spec.DesignRootFile: "# Overview\n",
 		"components/web-ui/design.json": "{\n" +
 			"  \"name\": \"web-ui\",\n" +
 			"  \"type\": \"web-application\",\n" +
@@ -132,7 +132,7 @@ func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 			"  \"dependencies\": []\n" +
 			"}\n",
 	}
-	store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+	store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
@@ -158,8 +158,8 @@ func TestEnsureComponent_DesignMissingComponent_Errors(t *testing.T) {
 			return nil, nil
 		},
 	}
-	files := map[string]string{artifacts.DesignRootFile: "# Overview\n"} // no component dirs
-	store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+	files := map[string]string{spec.DesignRootFile: "# Overview\n"} // no component dirs
+	store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
@@ -179,9 +179,9 @@ func TestEnsureComponent_NoStoreOrRepo_Errors(t *testing.T) {
 		t.Error("nil artifact store must error")
 	}
 	// No repo service.
-	store := artifacts.NewArtifactStore(&artifactstest.FakeArtifactService{
+	store := spec.NewArtifactStore(&artifactstest.FakeArtifactService{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
-			return map[string]string{artifacts.DesignRootFile: "# O\n"}, nil
+			return map[string]string{spec.DesignRootFile: "# O\n"}, nil
 		},
 	})
 	if err := NewComponentService(oc, nil, store, nil, nil).

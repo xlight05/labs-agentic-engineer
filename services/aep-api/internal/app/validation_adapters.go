@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 	"github.com/wso2/aep/aep-api/internal/gen"
@@ -83,7 +83,7 @@ type componentDeployLister interface {
 // component with no resolved URL yet is skipped; a ListDeployments ERROR is
 // propagated (it is an infra failure, not "undeployed" — see ResolveEndpoints).
 type validationEndpointResolver struct {
-	store *artifacts.ArtifactStore
+	store *spec.ArtifactStore
 	comp  componentDeployLister
 }
 
@@ -137,7 +137,7 @@ func firstDeploymentURL(list *gen.DeploymentList) string {
 // validating phase, implemented — an independent OpenChoreo verification of
 // what the task outcomes already imply.
 type devflowValidator struct {
-	store *artifacts.ArtifactStore
+	store *spec.ArtifactStore
 	comp  componentDeployLister
 }
 
@@ -196,7 +196,7 @@ func (mockValidationCredentials) RequestCredentials(_ context.Context, _, _ stri
 // validation features.
 type devflowValidationResolver struct {
 	svc *validation.Service
-	art artifacts.ArtifactService
+	art spec.ArtifactService
 }
 
 func (r devflowValidationResolver) ResolveValidationTask(ctx context.Context, orgID, projectID string) (int, error) {

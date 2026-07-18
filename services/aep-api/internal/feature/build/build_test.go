@@ -36,7 +36,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
@@ -111,12 +111,12 @@ func (f fakeRepos) RepoFullName(context.Context, string, string) (string, error)
 }
 
 type fakeTagger struct {
-	res    *artifacts.SpecSaveResult
+	res    *spec.SpecSaveResult
 	err    error
 	called int
 }
 
-func (f *fakeTagger) TagSpec(context.Context, string, string) (*artifacts.SpecSaveResult, error) {
+func (f *fakeTagger) TagSpec(context.Context, string, string) (*spec.SpecSaveResult, error) {
 	f.called++
 	return f.res, f.err
 }
@@ -186,7 +186,7 @@ func decodeBody[T any](t *testing.T, body string) T {
 func TestBuild_TagsAndStartsWorkflow(t *testing.T) {
 	runner := &fakeRunner{}
 	store := &fakeStore{}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 
 	code, body := postBuild(t, svc, "shop")
@@ -225,7 +225,7 @@ func TestBuild_TagsAndStartsWorkflow(t *testing.T) {
 
 func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillStarts(t *testing.T) {
 	runner := &fakeRunner{}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Status: "unchanged", Tag: "v2", Version: 2}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "unchanged", Tag: "v2", Version: 2}}
 	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{})
 
 	code, body := postBuild(t, svc, "shop")
@@ -245,7 +245,7 @@ func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillStarts(t *testing.T) {
 // code:message (the error-model break).
 func TestBuild_SpecValidationFails_400_NoWorkflow(t *testing.T) {
 	runner := &fakeRunner{}
-	tagger := &fakeTagger{err: &artifacts.SpecValidationError{Files: []artifacts.FileValidationError{
+	tagger := &fakeTagger{err: &spec.SpecValidationError{Files: []spec.FileValidationError{
 		{Path: "specs/requirements/requirements.md", Code: "MISSING_REQUIREMENTS", Message: "missing"},
 		{Path: "specs/design/design.md", Code: "MISSING_DESIGN", Message: "missing"},
 	}}}
@@ -271,7 +271,7 @@ func TestBuild_SpecValidationFails_400_NoWorkflow(t *testing.T) {
 
 func TestBuild_AlreadyRunning_409_TaggerUntouched(t *testing.T) {
 	runner := &fakeRunner{}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
 	store := &fakeStore{running: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 
@@ -290,7 +290,7 @@ func TestBuild_AlreadyRunning_409_TaggerUntouched(t *testing.T) {
 
 func TestBuild_NoRepo_404(t *testing.T) {
 	svc := newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{err: sourcecontrol.ErrRepoNotFound},
-		&fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
+		&fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
 	code, body := postBuild(t, svc, "shop")
 	if code != 404 {
 		t.Fatalf("status = %d, want 404 (body=%s)", code, body)
@@ -303,7 +303,7 @@ func TestBuild_NoRepo_404(t *testing.T) {
 
 func TestBuild_TemporalDown_503_NoTag(t *testing.T) {
 	runner := &fakeRunner{readyErr: build.ErrTemporalUnavailable}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
 	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{})
 
 	code, body := postBuild(t, svc, "shop")
@@ -332,7 +332,7 @@ func TestBuild_RepoNotReady_409(t *testing.T) {
 // gate's ENFORCE 401 — the service is never reached.
 func TestBuild_NoClaims401(t *testing.T) {
 	runner := &fakeRunner{}
-	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, &fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
+	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
 	resp := newHarness(t, svc).NoAuth().Post("/api/v1/projects/shop/build", `{}`)
 	if resp.Code != 401 {
 		t.Fatalf("no-claims build: want 401, got %d body=%s", resp.Code, resp.Body.String())
@@ -347,7 +347,7 @@ func TestBuild_NoClaims401(t *testing.T) {
 func TestStartProjectBuild_HappyPath_StartsWorkflow(t *testing.T) {
 	runner := &fakeRunner{}
 	store := &fakeStore{}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 
 	if err := svc.StartProjectBuild(context.Background(), "acme", "shop"); err != nil {
@@ -366,7 +366,7 @@ func TestStartProjectBuild_HappyPath_StartsWorkflow(t *testing.T) {
 
 func TestStartProjectBuild_AlreadyRunning_Nil(t *testing.T) {
 	runner := &fakeRunner{}
-	tagger := &fakeTagger{res: &artifacts.SpecSaveResult{Tag: "v1"}}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
 	store := &fakeStore{running: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 

@@ -21,7 +21,7 @@ import (
 	"io"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -66,7 +66,7 @@ type ComponentEnsurer interface {
 // VersionReader lists approved (tagged) spec/design versions and reads a bundle
 // at a tag — the lineage stamps and the incremental-plan baseline diff (§6).
 type VersionReader interface {
-	ListRequirementsVersions(ctx context.Context, orgID, projectID string) ([]artifacts.RequirementsVersionInfo, error)
+	ListRequirementsVersions(ctx context.Context, orgID, projectID string) ([]spec.RequirementsVersionInfo, error)
 	// LatestSpecTag is the newest spec tag name (`v<N>`) read WITHOUT a
 	// network fetch — the best-effort input to the stale-spec attention flag.
 	// The list read path (ListRequirementsVersions) still fetches; this one

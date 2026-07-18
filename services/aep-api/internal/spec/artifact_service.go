@@ -23,7 +23,7 @@
 // Mutate back to the last tag, pushed under origin's push-CAS. The feature
 // holds no REST Git-Data dependency. Drafts live on the frontend; committed
 // truth is the origin.
-package artifacts
+package spec
 
 import (
 	"context"

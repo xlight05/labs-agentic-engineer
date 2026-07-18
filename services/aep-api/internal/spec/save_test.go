@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // Save = hard semantic gate → annotated tag at HEAD (no commit). These run
 // over the real gitfs Workspace engine, so the tag lands as a genuine

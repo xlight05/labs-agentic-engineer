@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // SaveSpec is the build endpoint's tagging primitive: ONE `v<N>` sequence
 // versioning the whole specs/ tree (requirements + design together — the

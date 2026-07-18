@@ -29,8 +29,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts/artifactstest"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -113,7 +113,7 @@ func TestTraitSyncWatcher_ReconcileOne_SkipsPausedTuple(t *testing.T) {
 			return designFiles("svc", "service", ""), nil
 		},
 	}
-	ts := NewTraitSyncService(oc, artifacts.NewArtifactStore(fakeArtifacts))
+	ts := NewTraitSyncService(oc, spec.NewArtifactStore(fakeArtifacts))
 	w := newBudgetWatcher(3, time.Hour)
 	w.traitSync = ts
 	ctx := context.Background()

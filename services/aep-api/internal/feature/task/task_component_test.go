@@ -40,7 +40,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
@@ -139,10 +139,10 @@ func (f fakeExecs) ListByIssueScoped(_ context.Context, _, _ string, n int) ([]m
 
 // fakeVersions drives the plan versioned-spec gate.
 type fakeVersions struct {
-	spec []artifacts.RequirementsVersionInfo
+	spec []spec.RequirementsVersionInfo
 }
 
-func (f fakeVersions) ListRequirementsVersions(context.Context, string, string) ([]artifacts.RequirementsVersionInfo, error) {
+func (f fakeVersions) ListRequirementsVersions(context.Context, string, string) ([]spec.RequirementsVersionInfo, error) {
 	return f.spec, nil
 }
 func (f fakeVersions) LatestSpecTag(context.Context, string, string) string {
@@ -264,7 +264,7 @@ func TestPlan_InProgress_409(t *testing.T) {
 		RepoURL: skillsOrigin.URL(), DefaultBranch: "main", RepoSlug: "org-skills", Status: "ready"}
 	git := sourcecontrol.NewGitOpsService(nilCredResolver{}, fx.Engine)
 	plan := task.NewPlanService(fixedRepos{repo: repoRow},
-		fakeVersions{spec: []artifacts.RequirementsVersionInfo{{Tag: "v1"}}}, git,
+		fakeVersions{spec: []spec.RequirementsVersionInfo{{Tag: "v1"}}}, git,
 		func(context.Context, string) (string, error) { return "sk-key", nil }, bt, iss, fx.Engine,
 		func(context.Context, string) (*models.GitRepository, error) { return skillsRow, nil })
 

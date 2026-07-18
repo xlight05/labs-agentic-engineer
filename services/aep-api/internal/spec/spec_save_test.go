@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package artifacts
+package spec
 
 // SaveSpec = whole-spec hard gate (requirements + design) → single `v<N>`
 // annotated tag covering the specs/ tree. These run over the real gitfs

@@ -23,15 +23,15 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/artifacts"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // Structural compile-time check (dependency-management Phase 5): *Catalog is the
 // concrete provider the composition root wires as the read-time org-service
-// resolver (artifacts.SetOrgServiceResolver), so it must satisfy the artifacts
+// resolver (spec.SetOrgServiceResolver), so it must satisfy the artifacts
 // consumer-side port.
-var _ artifacts.OrgServiceResolver = (*Catalog)(nil)
+var _ spec.OrgServiceResolver = (*Catalog)(nil)
 
 func sampleEndpoints() []openchoreo.WorkloadEndpointInfo {
 	return []openchoreo.WorkloadEndpointInfo{
@@ -222,15 +222,15 @@ func (f fakeRepoLocator) GetByOrgAndProjectID(_ context.Context, _, projectID st
 
 // fakeDesignReader returns a provider project's assembled design bundle.
 type fakeDesignReader struct {
-	byProject map[string]*artifacts.DesignFile
+	byProject map[string]*spec.DesignFile
 }
 
-func (f fakeDesignReader) ReadDesign(_ context.Context, _, projectID string) (*artifacts.DesignFile, error) {
+func (f fakeDesignReader) ReadDesign(_ context.Context, _, projectID string) (*spec.DesignFile, error) {
 	return f.byProject[projectID], nil
 }
 
-func designWith(comp models.DesignComponent) *artifacts.DesignFile {
-	return &artifacts.DesignFile{Components: []models.DesignComponent{comp}}
+func designWith(comp models.DesignComponent) *spec.DesignFile {
+	return &spec.DesignFile{Components: []models.DesignComponent{comp}}
 }
 
 // (a) An endpoint whose deployed Workload CR already carries an inline schema
@@ -273,10 +273,10 @@ func TestResolve_InlineFromDesignBundle(t *testing.T) {
 		Project: "hr", Component: "employee-api", Name: "http", Type: "HTTP", Port: 8080,
 		Visibility: []string{"namespace"},
 	}
-	spec := "openapi: 3.0.3\ninfo:\n  title: Employee API\n"
+	openapiSpec := "openapi: 3.0.3\ninfo:\n  title: Employee API\n"
 	cat := NewCatalog(fakeRC([]openchoreo.WorkloadEndpointInfo{e}),
-		WithDesignReader(fakeDesignReader{byProject: map[string]*artifacts.DesignFile{
-			"hr": designWith(models.DesignComponent{Name: "employee-api", AppPath: "svc", OpenAPISpec: spec}),
+		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
+			"hr": designWith(models.DesignComponent{Name: "employee-api", AppPath: "svc", OpenAPISpec: openapiSpec}),
 		}}),
 		WithRepoLocator(fakeRepoLocator{byProject: map[string]*models.GitRepository{
 			"hr": {RepoURL: "https://github.com/acme/hr.git", DefaultBranch: "main"},
@@ -287,8 +287,8 @@ func TestResolve_InlineFromDesignBundle(t *testing.T) {
 	if got.Spec.Availability != "inline" {
 		t.Fatalf("availability: want inline, got %q", got.Spec.Availability)
 	}
-	if got.Spec.InlineContent != spec {
-		t.Fatalf("inline content: want design-bundle spec, got %q", got.Spec.InlineContent)
+	if got.Spec.InlineContent != openapiSpec {
+		t.Fatalf("inline content: want design-bundle openapiSpec, got %q", got.Spec.InlineContent)
 	}
 	if got.Spec.Path != "specs/design/components/employee-api/openapi.yaml" {
 		t.Fatalf("provenance path: got %q", got.Spec.Path)
@@ -309,11 +309,11 @@ func TestResolve_InlineFromDesignBundle_ProvenancePathUsesMatchedComponentCasing
 		Project: "hr", Component: "Employee-API", Name: "http", Type: "HTTP", Port: 8080,
 		Visibility: []string{"namespace"},
 	}
-	spec := "openapi: 3.0.3\ninfo:\n  title: Employee API\n"
+	openapiSpec := "openapi: 3.0.3\ninfo:\n  title: Employee API\n"
 	cat := NewCatalog(fakeRC([]openchoreo.WorkloadEndpointInfo{e}),
-		WithDesignReader(fakeDesignReader{byProject: map[string]*artifacts.DesignFile{
+		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
 			// Committed folder casing differs from the endpoint's Component field.
-			"hr": designWith(models.DesignComponent{Name: "employee-api", AppPath: "svc", OpenAPISpec: spec}),
+			"hr": designWith(models.DesignComponent{Name: "employee-api", AppPath: "svc", OpenAPISpec: openapiSpec}),
 		}}),
 	)
 
@@ -337,11 +337,11 @@ func TestResolve_InlineFromDesignBundle_ProjectPrefixedComponentName(t *testing.
 		Project: "myproj", Component: "myproj-svc", Name: "http", Type: "HTTP", Port: 8080,
 		Visibility: []string{"namespace"},
 	}
-	spec := "openapi: 3.0.3\ninfo:\n  title: Svc\n"
+	openapiSpec := "openapi: 3.0.3\ninfo:\n  title: Svc\n"
 	cat := NewCatalog(fakeRC([]openchoreo.WorkloadEndpointInfo{e}),
-		WithDesignReader(fakeDesignReader{byProject: map[string]*artifacts.DesignFile{
+		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
 			// Design bundle stores the component under its UNPREFIXED authored name.
-			"myproj": designWith(models.DesignComponent{Name: "svc", OpenAPISpec: spec}),
+			"myproj": designWith(models.DesignComponent{Name: "svc", OpenAPISpec: openapiSpec}),
 		}}),
 	)
 
@@ -349,8 +349,8 @@ func TestResolve_InlineFromDesignBundle_ProjectPrefixedComponentName(t *testing.
 	if got.Spec.Availability != "inline" {
 		t.Fatalf("availability: want inline, got %q", got.Spec.Availability)
 	}
-	if got.Spec.InlineContent != spec {
-		t.Fatalf("inline content: want design-bundle spec, got %q", got.Spec.InlineContent)
+	if got.Spec.InlineContent != openapiSpec {
+		t.Fatalf("inline content: want design-bundle openapiSpec, got %q", got.Spec.InlineContent)
 	}
 	if got.Spec.Path != "specs/design/components/svc/openapi.yaml" {
 		t.Fatalf("provenance path: want unprefixed design component name (svc), got %q", got.Spec.Path)
@@ -367,7 +367,7 @@ func TestResolve_RepoCoords(t *testing.T) {
 	}
 	cat := NewCatalog(fakeRC([]openchoreo.WorkloadEndpointInfo{e}),
 		// design bundle present but component has NO openapi.yaml → not inline.
-		WithDesignReader(fakeDesignReader{byProject: map[string]*artifacts.DesignFile{
+		WithDesignReader(fakeDesignReader{byProject: map[string]*spec.DesignFile{
 			"hr": designWith(models.DesignComponent{Name: "employee-api", AppPath: "services/employee"}),
 		}}),
 		WithRepoLocator(fakeRepoLocator{byProject: map[string]*models.GitRepository{
@@ -451,11 +451,11 @@ func TestListResolved_NilSafety(t *testing.T) {
 // (a project publishing several endpoints must trigger at most one remote
 // read per project for the whole pass).
 type countingDesignReader struct {
-	byProject map[string]*artifacts.DesignFile
+	byProject map[string]*spec.DesignFile
 	calls     map[string]int
 }
 
-func (f *countingDesignReader) ReadDesign(_ context.Context, _, projectID string) (*artifacts.DesignFile, error) {
+func (f *countingDesignReader) ReadDesign(_ context.Context, _, projectID string) (*spec.DesignFile, error) {
 	if f.calls == nil {
 		f.calls = map[string]int{}
 	}
@@ -472,7 +472,7 @@ func TestListResolved_MemoizesDesignReadPerProject(t *testing.T) {
 		{Project: "hr", Component: "payroll-api", Name: "http", Type: "HTTP", Port: 8081, Visibility: []string{"namespace"}},
 		{Project: "hr", Component: "benefits-api", Name: "http", Type: "HTTP", Port: 8082, Visibility: []string{"namespace"}},
 	}
-	reader := &countingDesignReader{byProject: map[string]*artifacts.DesignFile{
+	reader := &countingDesignReader{byProject: map[string]*spec.DesignFile{
 		"hr": designWith(models.DesignComponent{Name: "employee-api", OpenAPISpec: "openapi: 3.0.3\n"}),
 	}}
 	cat := NewCatalog(fakeRC(eps), WithDesignReader(reader))
