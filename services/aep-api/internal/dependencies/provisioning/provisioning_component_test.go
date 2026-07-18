@@ -39,6 +39,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
@@ -49,15 +50,15 @@ import (
 // ----- minimal port fakes ------------------------------------------------------
 
 type cCatalog struct {
-	entries map[string]*models.ExternalResource
+	entries map[string]*dependencies.ExternalResource
 	deleted []string
 }
 
-func (f *cCatalog) Get(_ context.Context, _, name string) (*models.ExternalResource, error) {
+func (f *cCatalog) Get(_ context.Context, _, name string) (*dependencies.ExternalResource, error) {
 	return f.entries[name], nil
 }
-func (f *cCatalog) List(_ context.Context, _ string) ([]models.ExternalResource, error) {
-	out := make([]models.ExternalResource, 0, len(f.entries))
+func (f *cCatalog) List(_ context.Context, _ string) ([]dependencies.ExternalResource, error) {
+	out := make([]dependencies.ExternalResource, 0, len(f.entries))
 	for _, e := range f.entries {
 		out = append(out, *e)
 	}
@@ -176,7 +177,7 @@ func TestProvisioningComponent_NoClaims401(t *testing.T) {
 func TestProvisioningComponent_ListExternalResources(t *testing.T) {
 	t.Parallel()
 	svc := provisioning.NewService(provisioning.Deps{
-		Catalog: &cCatalog{entries: map[string]*models.ExternalResource{
+		Catalog: &cCatalog{entries: map[string]*dependencies.ExternalResource{
 			"stripe": {Name: "stripe", Description: "payments", ConfigKeys: []models.ConfigKey{
 				{Key: "api_key", Secret: true}, {Key: "region"},
 			}},

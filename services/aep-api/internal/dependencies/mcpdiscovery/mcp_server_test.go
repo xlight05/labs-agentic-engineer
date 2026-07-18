@@ -28,13 +28,12 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- fake ports -------------------------------------------------------------
 
 type fakeResourceReader struct {
-	items   []models.ExternalResource
+	items   []dependencies.ExternalResource
 	listErr error
 	getErr  error
 	// lastOrg records the org the handler passed down, proving it flows from
@@ -42,12 +41,12 @@ type fakeResourceReader struct {
 	lastOrg string
 }
 
-func (f *fakeResourceReader) List(_ context.Context, orgID string) ([]models.ExternalResource, error) {
+func (f *fakeResourceReader) List(_ context.Context, orgID string) ([]dependencies.ExternalResource, error) {
 	f.lastOrg = orgID
 	return f.items, f.listErr
 }
 
-func (f *fakeResourceReader) Get(_ context.Context, orgID, name string) (*models.ExternalResource, error) {
+func (f *fakeResourceReader) Get(_ context.Context, orgID, name string) (*dependencies.ExternalResource, error) {
 	f.lastOrg = orgID
 	if f.getErr != nil {
 		return nil, f.getErr
@@ -163,10 +162,10 @@ func callBody(tool, args string) string {
 }
 
 func sampleHandler() (http.Handler, *fakeResourceReader, *fakeEndpointLister) {
-	er := &fakeResourceReader{items: []models.ExternalResource{{
+	er := &fakeResourceReader{items: []dependencies.ExternalResource{{
 		Name:        "salesforce",
 		Description: "CRM",
-		ConfigKeys: models.ConfigKeySlice{
+		ConfigKeys: dependencies.ConfigKeySlice{
 			{Key: "SALESFORCE_URL", Secret: false},
 			{Key: "SALESFORCE_TOKEN", Secret: true},
 		},

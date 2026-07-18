@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/config"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Component test for the mounted MCP discovery surface: the real outer mux
@@ -41,16 +41,16 @@ import (
 // mcpTestReader is a fake dependencies.ExternalResourceReader recording the
 // org each call was scoped to.
 type mcpTestReader struct {
-	items   []models.ExternalResource
+	items   []dependencies.ExternalResource
 	lastOrg string
 }
 
-func (f *mcpTestReader) List(_ context.Context, orgID string) ([]models.ExternalResource, error) {
+func (f *mcpTestReader) List(_ context.Context, orgID string) ([]dependencies.ExternalResource, error) {
 	f.lastOrg = orgID
 	return f.items, nil
 }
 
-func (f *mcpTestReader) Get(_ context.Context, orgID, name string) (*models.ExternalResource, error) {
+func (f *mcpTestReader) Get(_ context.Context, orgID, name string) (*dependencies.ExternalResource, error) {
 	f.lastOrg = orgID
 	for i := range f.items {
 		if f.items[i].Name == name {
@@ -75,10 +75,10 @@ func newMCPTestServer(t *testing.T) (*httptest.Server, *auth.TaskTokenManager, *
 	if err != nil {
 		t.Fatalf("NewTaskTokenManager: %v", err)
 	}
-	reader := &mcpTestReader{items: []models.ExternalResource{{
+	reader := &mcpTestReader{items: []dependencies.ExternalResource{{
 		Name:        "salesforce",
 		Description: "CRM",
-		ConfigKeys:  models.ConfigKeySlice{{Key: "SALESFORCE_TOKEN", Secret: true}},
+		ConfigKeys:  dependencies.ConfigKeySlice{{Key: "SALESFORCE_TOKEN", Secret: true}},
 	}}}
 	handler := NewHandler(AppParams{
 		Config:               config.Config{},

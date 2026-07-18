@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package spec
+package spec_test
 
 // DB tier for the agent_turns store: the D18 partial-unique guard
 // (ux_agent_turns_active), the guarded Finish, and the stale-heartbeat sweep —
@@ -22,12 +22,23 @@ package spec
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
+
+// decodePaths mirrors the repository's internal Paths decode (nil for
+// empty/invalid) so this black-box test can assert on the persisted JSON array
+// without exporting the production helper.
+func decodePaths(raw string) []string {
+	var p []string
+	_ = json.Unmarshal([]byte(raw), &p)
+	return p
+}
 
 func newTurn(org, project, conv, useCase string) *models.AgentTurn {
 	return &models.AgentTurn{
@@ -42,22 +53,22 @@ func newTurn(org, project, conv, useCase string) *models.AgentTurn {
 
 func TestTurnRepo_GuardAndLifecycle(t *testing.T) {
 	t.Parallel()
-	repo := NewTurnRepository(dbtest.New(t))
+	repo := spec.NewTurnRepository(dbtest.New(t))
 	ctx := context.Background()
 
 	first, err := repo.TryStart(ctx, newTurn("o1", "p1", "c1", "requirements-chat"))
 	if err != nil {
 		t.Fatalf("first TryStart: %v", err)
 	}
-	if first.ID == "" || first.Status != turnStatusRunning {
+	if first.ID == "" || first.Status != "running" {
 		t.Fatalf("first row = %+v", first)
 	}
 
 	// D18: a second start on the same project (any use case / conversation)
 	// hits the partial unique index and returns the active row.
 	active, err := repo.TryStart(ctx, newTurn("o1", "p1", "c2", "design-generate"))
-	if err != ErrTurnActive {
-		t.Fatalf("second TryStart err = %v, want ErrTurnActive", err)
+	if err != spec.ErrTurnActive {
+		t.Fatalf("second TryStart err = %v, want spec.ErrTurnActive", err)
 	}
 	if active == nil || active.ID != first.ID {
 		t.Fatalf("active = %+v, want the first row", active)
@@ -88,18 +99,18 @@ func TestTurnRepo_GuardAndLifecycle(t *testing.T) {
 	}
 
 	// Finish is guarded on running and releases the guard.
-	ok, err := repo.Finish(ctx, first.ID, TurnTerminal{
-		Status: turnStatusFailed, Reason: turnReasonBaseMoved,
+	ok, err := repo.Finish(ctx, first.ID, spec.TurnTerminal{
+		Status: "failed", Reason: "base-moved",
 		Paths: []string{"specs/requirements/requirements.md"}, Message: "conflict",
 	})
 	if err != nil || !ok {
 		t.Fatalf("Finish = (%v, %v)", ok, err)
 	}
-	if again, err := repo.Finish(ctx, first.ID, TurnTerminal{Status: turnStatusCompleted}); err != nil || again {
+	if again, err := repo.Finish(ctx, first.ID, spec.TurnTerminal{Status: "completed"}); err != nil || again {
 		t.Fatalf("double Finish = (%v, %v), want (false, nil)", again, err)
 	}
 	done, _ := repo.Get(ctx, "o1", "p1", first.ID)
-	if done.Status != turnStatusFailed || done.Reason != turnReasonBaseMoved ||
+	if done.Status != "failed" || done.Reason != "base-moved" ||
 		len(decodePaths(done.Paths)) != 1 {
 		t.Fatalf("terminal row = %+v", done)
 	}
@@ -125,7 +136,7 @@ func TestTurnRepo_GuardAndLifecycle(t *testing.T) {
 func TestTurnRepo_SweepStale(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := NewTurnRepository(db)
+	repo := spec.NewTurnRepository(db)
 	ctx := context.Background()
 
 	stale, err := repo.TryStart(ctx, newTurn("o1", "p1", "c1", "requirements-chat"))
@@ -147,11 +158,11 @@ func TestTurnRepo_SweepStale(t *testing.T) {
 		t.Fatalf("SweepStale: %v", err)
 	}
 	if len(swept) != 1 || swept[0].ID != stale.ID ||
-		swept[0].Status != turnStatusFailed || swept[0].Reason != turnReasonStreamDied {
+		swept[0].Status != "failed" || swept[0].Reason != "stream-died" {
 		t.Fatalf("swept = %+v", swept)
 	}
 	// The fresh row is untouched; the stale project's guard is released.
-	if row, _ := repo.Get(ctx, "o1", "p2", fresh.ID); row.Status != turnStatusRunning {
+	if row, _ := repo.Get(ctx, "o1", "p2", fresh.ID); row.Status != "running" {
 		t.Fatalf("fresh row = %+v", row)
 	}
 	if _, err := repo.TryStart(ctx, newTurn("o1", "p1", "c1", "requirements-chat")); err != nil {

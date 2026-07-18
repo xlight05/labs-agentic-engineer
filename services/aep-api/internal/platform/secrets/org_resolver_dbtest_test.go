@@ -14,19 +14,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package secrets
+package secrets_test
 
 // DBTEST tier (skips under -short, runs on `make test-db`): the REAL
-// orgResolver (NewOrgResolver) against a pristine per-test Postgres
+// orgResolver (secrets.NewOrgResolver) against a pristine per-test Postgres
 // (dbtest.New). This is where the SQL-shaped dispatch behavior lives —
 // kind switch, status gating, and the distinct not-found/not-active/
 // unknown-kind error shapes. store and minter are test doubles: a fake
-// OpenBaoStore (Get/Put/Delete are not SQL-backed, so a fake is honest
+// secrets.OpenBaoStore (Get/Put/Delete are not SQL-backed, so a fake is honest
 // here) and a minter built with a throwaway RSA key (mint/network paths
 // are exercised in app_token_minter_test.go, not here).
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"sync"
@@ -37,10 +41,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// fakeOpenBaoStore is a minimal in-memory OpenBaoStore double. Get can be
+// fakeOpenBaoStore is a minimal in-memory secrets.OpenBaoStore double. Get can be
 // gated (via the gate channel) to force concurrent callers to overlap, and
 // counts calls so singleflight coalescing can be asserted.
 type fakeOpenBaoStore struct {
@@ -69,13 +74,13 @@ func (f *fakeOpenBaoStore) Delete(ctx context.Context, ocOrgID, key string) erro
 	return errors.New("fakeOpenBaoStore: Delete not implemented")
 }
 
-// newTestMinter builds an AppTokenMinter with a throwaway RSA key so
+// newTestMinter builds a secrets.AppTokenMinter with a throwaway RSA key so
 // app-installation dispatch can be exercised without hitting GitHub. The
 // mint/network path itself is covered by app_token_minter_test.go.
-func newTestMinter(t *testing.T) *AppTokenMinter {
+func newTestMinter(t *testing.T) *secrets.AppTokenMinter {
 	t.Helper()
 	_, pemBytes := generateTestKey(t)
-	m, err := NewAppTokenMinter(&AppKeyMaterial{AppID: 1, PrivateKeyPEM: pemBytes})
+	m, err := secrets.NewAppTokenMinter(&secrets.AppKeyMaterial{AppID: 1, PrivateKeyPEM: pemBytes})
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
@@ -131,7 +136,7 @@ func TestOrgResolver_Resolve_UserPAT_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	store := &fakeOpenBaoStore{value: []byte("ghp_secret")}
-	resolver := NewOrgResolver(db, store, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
 	insertOrgCredRow(t, db, models.OrgCredential{
 		OcOrgID:       "acme",
@@ -146,20 +151,16 @@ func TestOrgResolver_Resolve_UserPAT_DB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	pat, ok := cred.(*userPATCred)
-	if !ok {
-		t.Fatalf("Resolve returned %T; want *userPATCred", cred)
-	}
-	if pat.ocOrgID != "acme" {
-		t.Fatalf("ocOrgID = %q; want acme", pat.ocOrgID)
-	}
+	// user-PAT mode is verified behaviourally via the exported Credential
+	// surface (secrets.WebhookPerRepo strategy + the acme-scoped identity/owner below)
+	// rather than a concrete-type assertion — this is a black-box test.
 	if got := cred.Identity(); got.Name != "Ada Lovelace" || got.Email != "ada@example.com" || got.Login != "ada" {
 		t.Fatalf("Identity() = %+v", got)
 	}
 	if got := cred.RepoOwner(); got != "acme-org" {
 		t.Fatalf("RepoOwner() = %q; want acme-org", got)
 	}
-	if got := cred.WebhookStrategy(); got != WebhookPerRepo {
+	if got := cred.WebhookStrategy(); got != secrets.WebhookPerRepo {
 		t.Fatalf("WebhookStrategy() = %v; want WebhookPerRepo", got)
 	}
 }
@@ -168,7 +169,7 @@ func TestOrgResolver_Resolve_AppInstallation_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	store := &fakeOpenBaoStore{}
-	resolver := NewOrgResolver(db, store, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
 	installID := int64(4242)
 	insertOrgCredRow(t, db, models.OrgCredential{
@@ -185,41 +186,37 @@ func TestOrgResolver_Resolve_AppInstallation_DB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	app, ok := cred.(*appInstallationCred)
-	if !ok {
-		t.Fatalf("Resolve returned %T; want *appInstallationCred", cred)
-	}
-	if app.installationID != installID {
-		t.Fatalf("installationID = %d; want %d", app.installationID, installID)
-	}
+	// app-installation mode is verified behaviourally (secrets.WebhookPlatform strategy
+	// + acme-org owner below); the concrete type + installation-id are internal
+	// details this black-box test does not reach into.
 	if got := cred.RepoOwner(); got != "acme-org" {
 		t.Fatalf("RepoOwner() = %q; want acme-org", got)
 	}
-	if got := cred.WebhookStrategy(); got != WebhookPlatform {
-		t.Fatalf("WebhookStrategy() = %v; want WebhookPlatform", got)
+	if got := cred.WebhookStrategy(); got != secrets.WebhookPlatform {
+		t.Fatalf("WebhookStrategy() = %v; want secrets.WebhookPlatform", got)
 	}
 }
 
 func TestOrgResolver_Resolve_EmptyOcOrgID_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	resolver := NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
 	_, err := resolver.Resolve(context.Background(), "")
-	if !errors.Is(err, ErrEmptyOcOrgID) {
-		t.Fatalf("Resolve(\"\") = %v; want ErrEmptyOcOrgID", err)
+	if !errors.Is(err, secrets.ErrEmptyOcOrgID) {
+		t.Fatalf("Resolve(\"\") = %v; want secrets.ErrEmptyOcOrgID", err)
 	}
 }
 
 func TestOrgResolver_Resolve_NoRow_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	resolver := NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
 	_, err := resolver.Resolve(context.Background(), "ghost")
-	var nfe *OrgNotFoundError
+	var nfe *secrets.OrgNotFoundError
 	if !errors.As(err, &nfe) {
-		t.Fatalf("Resolve(ghost) = %#v; want *OrgNotFoundError", err)
+		t.Fatalf("Resolve(ghost) = %#v; want *secrets.OrgNotFoundError", err)
 	}
 	if nfe.OcOrgID != "ghost" {
 		t.Fatalf("OrgNotFoundError.OcOrgID = %q; want ghost", nfe.OcOrgID)
@@ -229,7 +226,7 @@ func TestOrgResolver_Resolve_NoRow_DB(t *testing.T) {
 func TestOrgResolver_Resolve_NotActive_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	resolver := NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
 	insertOrgCredRow(t, db, models.OrgCredential{
 		OcOrgID:       "acme",
@@ -242,9 +239,9 @@ func TestOrgResolver_Resolve_NotActive_DB(t *testing.T) {
 	})
 
 	_, err := resolver.Resolve(context.Background(), "acme")
-	var nae *OrgNotActiveError
+	var nae *secrets.OrgNotActiveError
 	if !errors.As(err, &nae) {
-		t.Fatalf("Resolve(acme) = %#v; want *OrgNotActiveError", err)
+		t.Fatalf("Resolve(acme) = %#v; want *secrets.OrgNotActiveError", err)
 	}
 	if nae.OcOrgID != "acme" {
 		t.Fatalf("OrgNotActiveError.OcOrgID = %q; want acme", nae.OcOrgID)
@@ -257,7 +254,7 @@ func TestOrgResolver_Resolve_NotActive_DB(t *testing.T) {
 func TestOrgResolver_Resolve_UnknownKind_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	resolver := NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
 	// A bogus kind can't occur via normal writes — the "kind" CHECK
 	// constraint enum-gates INSERT/UPDATE. Drop the table's CHECK
@@ -278,17 +275,17 @@ func TestOrgResolver_Resolve_UnknownKind_DB(t *testing.T) {
 	if err == nil {
 		t.Fatal("Resolve with unknown kind = nil error; want error")
 	}
-	var nfe *OrgNotFoundError
-	var nae *OrgNotActiveError
+	var nfe *secrets.OrgNotFoundError
+	var nae *secrets.OrgNotActiveError
 	if errors.As(err, &nfe) || errors.As(err, &nae) {
-		t.Fatalf("unknown-kind error must not be OrgNotFoundError/OrgNotActiveError, got %#v", err)
+		t.Fatalf("unknown-kind error must not be secrets.OrgNotFoundError/secrets.OrgNotActiveError, got %#v", err)
 	}
 }
 
 func TestOrgResolver_Resolve_AppInstallation_NilInstallationID_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	resolver := NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
 	// The app_fields CHECK constraint normally requires installation_id
 	// NOT NULL for kind='app-installation'; drop it on this throwaway DB
@@ -320,7 +317,7 @@ func TestOrgResolver_UserPATToken_Singleflight_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	store := &fakeOpenBaoStore{value: []byte("ghp_secret"), gate: make(chan struct{})}
-	resolver := NewOrgResolver(db, store, newTestMinter(t))
+	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
 	insertOrgCredRow(t, db, models.OrgCredential{
 		OcOrgID:       "acme",
@@ -337,7 +334,7 @@ func TestOrgResolver_UserPATToken_Singleflight_DB(t *testing.T) {
 	// hits the DB, so it must run BEFORE the raced section: leaving a DB read
 	// inside the goroutines lets them reach flight.Do at staggered times (past
 	// the gate) and never overlap, which is the coalescing window we're testing.
-	creds := make([]Credential, n)
+	creds := make([]secrets.Credential, n)
 	for i := 0; i < n; i++ {
 		c, err := resolver.Resolve(context.Background(), "acme")
 		if err != nil {
@@ -380,4 +377,19 @@ func TestOrgResolver_UserPATToken_Singleflight_DB(t *testing.T) {
 	if got := atomic.LoadInt32(&store.calls); got != 1 {
 		t.Errorf("store.Get calls = %d; want 1 (singleflight collapses %d fetches)", got, n)
 	}
+}
+
+// generateTestKey is a local copy of the app_token_minter_test helper so this
+// black-box test needs no exported production surface for its RSA fixture.
+func generateTestKey(t *testing.T) (*rsa.PrivateKey, []byte) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("gen key: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	return key, pemBytes
 }

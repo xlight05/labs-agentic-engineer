@@ -61,15 +61,15 @@ func NewExternalResourceRepository(db *gorm.DB) *ExternalResourceRepository {
 // effectively immutable, so a new shape needs a new type — and the stored
 // schema is updated. Description-only edits (schema unchanged, or an empty
 // schema passed) don't bump the suffix.
-func (r *ExternalResourceRepository) Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) (*models.ExternalResource, error) {
+func (r *ExternalResourceRepository) Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) (*ExternalResource, error) {
 	if orgID == "" || name == "" {
 		return nil, fmt.Errorf("external_resources: orgID and name are required")
 	}
-	var existing models.ExternalResource
+	var existing ExternalResource
 	err := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).First(&existing).Error
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		res := &models.ExternalResource{
+		res := &ExternalResource{
 			OrgID:            orgID,
 			Name:             name,
 			Description:      description,
@@ -96,8 +96,8 @@ func (r *ExternalResourceRepository) Upsert(ctx context.Context, orgID, name, de
 }
 
 // Get returns an external resource by (org, name), or (nil, nil) when absent.
-func (r *ExternalResourceRepository) Get(ctx context.Context, orgID, name string) (*models.ExternalResource, error) {
-	var res models.ExternalResource
+func (r *ExternalResourceRepository) Get(ctx context.Context, orgID, name string) (*ExternalResource, error) {
+	var res ExternalResource
 	err := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).First(&res).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -109,8 +109,8 @@ func (r *ExternalResourceRepository) Get(ctx context.Context, orgID, name string
 }
 
 // List returns all external resources registered for an org, ordered by name.
-func (r *ExternalResourceRepository) List(ctx context.Context, orgID string) ([]models.ExternalResource, error) {
-	var out []models.ExternalResource
+func (r *ExternalResourceRepository) List(ctx context.Context, orgID string) ([]ExternalResource, error) {
+	var out []ExternalResource
 	if err := r.db.WithContext(ctx).Where("org_id = ?", orgID).Order("name").Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("external_resources: list org %q: %w", orgID, err)
 	}
@@ -125,7 +125,7 @@ func (r *ExternalResourceRepository) Delete(ctx context.Context, orgID, name str
 	if orgID == "" || name == "" {
 		return fmt.Errorf("external_resources: orgID and name required")
 	}
-	res := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).Delete(&models.ExternalResource{})
+	res := r.db.WithContext(ctx).Where("org_id = ? AND name = ?", orgID, name).Delete(&ExternalResource{})
 	if res.Error != nil {
 		return fmt.Errorf("external_resources: delete %q: %w", name, res.Error)
 	}

@@ -848,7 +848,11 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Register each tagged design's `external` dependencies into the org's
 	// external-resource catalog on save (best-effort). Consumer-side port —
 	// design never imports repositories concretely.
-	designService.SetExternalResourceRegistry(externalResourceRepo)
+	designService.SetExternalResourceRegistry(spec.ExternalResourceRegistrarFunc(
+		func(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) error {
+			_, err := externalResourceRepo.Upsert(ctx, orgID, name, description, schema)
+			return err
+		}))
 
 	// Dependency provisioning (dependency-management Phase 6): the value/param
 	// collection surface + the aep:provision gate funnel. The provisioner cores

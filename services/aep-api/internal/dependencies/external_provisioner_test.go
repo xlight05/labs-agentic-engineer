@@ -71,9 +71,9 @@ func (s *fakeSecretWriter) WriteExternalResourceSecret(_ context.Context, _, _, 
 }
 
 // fakeLookup serves one registered external resource by name.
-type fakeLookup struct{ er *models.ExternalResource }
+type fakeLookup struct{ er *ExternalResource }
 
-func (f *fakeLookup) Get(_ context.Context, _, name string) (*models.ExternalResource, error) {
+func (f *fakeLookup) Get(_ context.Context, _, name string) (*ExternalResource, error) {
 	if f.er != nil && f.er.Name == name {
 		return f.er, nil
 	}
@@ -94,7 +94,7 @@ func TestProvision_OrchestratesResourceModel(t *testing.T) {
 	sw := &fakeSecretWriter{}
 	p := newTestProvisioner(nil, rc, sw)
 
-	er := &models.ExternalResource{
+	er := &ExternalResource{
 		Name:             "openweather",
 		ResourceTypeName: "openweather",
 		ConfigKeys: []models.ConfigKey{
@@ -176,7 +176,7 @@ func TestProvision_AllPlain_NoSecretWrite(t *testing.T) {
 	rc := newFakeRC("rel-1")
 	sw := &fakeSecretWriter{}
 	p := newTestProvisioner(nil, rc, sw)
-	er := &models.ExternalResource{
+	er := &ExternalResource{
 		Name: "plainsvc", ResourceTypeName: "plainsvc",
 		ConfigKeys: []models.ConfigKey{{Key: "BASE_URL"}},
 	}
@@ -194,7 +194,7 @@ func TestProvision_SecretValuesWithoutSMAPI_Fails(t *testing.T) {
 
 	rc := newFakeRC("rel-1")
 	p := newTestProvisioner(nil, rc, &fakeSecretWriter{disabled: true})
-	er := &models.ExternalResource{
+	er := &ExternalResource{
 		Name: "openweather", ResourceTypeName: "openweather",
 		ConfigKeys: []models.ConfigKey{{Key: "OPENWEATHER_API_KEY", Secret: true}},
 	}
@@ -214,7 +214,7 @@ func TestAuthorWithSecretRef_UsesStagedRefNoSMWrite(t *testing.T) {
 	sw := &fakeSecretWriter{}
 	p := newTestProvisioner(nil, rc, sw)
 
-	er := &models.ExternalResource{
+	er := &ExternalResource{
 		Name: "openweather", ResourceTypeName: "openweather",
 		ConfigKeys: []models.ConfigKey{
 			{Key: "OPENWEATHER_BASE_URL", Secret: false},
@@ -270,7 +270,7 @@ func TestProvision_Validation(t *testing.T) {
 	if _, err := p.Provision(context.Background(), "default", "oc-org-1", "proj", nil, nil); err == nil {
 		t.Error("want error on nil external resource")
 	}
-	er := &models.ExternalResource{Name: "x", ResourceTypeName: "x", ConfigKeys: []models.ConfigKey{{Key: "K"}}}
+	er := &ExternalResource{Name: "x", ResourceTypeName: "x", ConfigKeys: []models.ConfigKey{{Key: "K"}}}
 	if _, err := p.Provision(context.Background(), "", "oc-org-1", "proj", er, nil); err == nil {
 		t.Error("want error on empty orgHandle")
 	}
@@ -287,7 +287,7 @@ func TestStageSecrets_WritesPerEnvReturnsRefs(t *testing.T) {
 	t.Parallel()
 	sw := &fakeSecretWriter{}
 	p := newTestProvisioner(nil, newFakeRC("rel-1"), sw)
-	er := &models.ExternalResource{
+	er := &ExternalResource{
 		Name: "stripe", ResourceTypeName: "stripe",
 		ConfigKeys: []models.ConfigKey{{Key: "STRIPE_KEY", Secret: true}},
 	}
@@ -313,7 +313,7 @@ func TestStageSecrets_WritesPerEnvReturnsRefs(t *testing.T) {
 func TestStageSecrets_SecretsWithoutSMAPIFails(t *testing.T) {
 	t.Parallel()
 	p := newTestProvisioner(nil, newFakeRC("rel-1"), &fakeSecretWriter{disabled: true})
-	er := &models.ExternalResource{Name: "stripe"}
+	er := &ExternalResource{Name: "stripe"}
 	if _, err := p.StageSecrets(context.Background(), "oc-org-1", "shop", er,
 		map[string]map[string]string{"development": {"STRIPE_KEY": "k"}}); err == nil {
 		t.Fatal("want error when SM-API disabled but secrets present")
@@ -390,7 +390,7 @@ func TestResolveRunnerSecrets_ReadsBindingStorePath(t *testing.T) {
 			Spec: openchoreo.ResourceReleaseBindingSpec{ResourceTypeEnvironmentConfigs: cfg},
 		}, nil
 	}
-	lookup := &fakeLookup{er: &models.ExternalResource{
+	lookup := &fakeLookup{er: &ExternalResource{
 		Name: "openweather", ResourceTypeName: "openweather",
 		ConfigKeys: []models.ConfigKey{
 			{Key: "OPENWEATHER_BASE_URL"},
@@ -422,7 +422,7 @@ func TestResolveRunnerSecrets_SkipsAllPlainAndUnprovisioned(t *testing.T) {
 	rc.GetBindingFunc = func(_ context.Context, _, _ string) (*openchoreo.ResourceReleaseBinding, error) {
 		return nil, nil // not yet provisioned
 	}
-	lookup := &fakeLookup{er: &models.ExternalResource{
+	lookup := &fakeLookup{er: &ExternalResource{
 		Name:       "plainsvc",
 		ConfigKeys: []models.ConfigKey{{Key: "BASE_URL"}},
 	}}

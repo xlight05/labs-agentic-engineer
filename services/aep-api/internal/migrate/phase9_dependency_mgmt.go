@@ -29,7 +29,7 @@ import (
 // external / platform-resource):
 //
 //  1. CREATE TABLE external_resources — the org-level catalog of registered
-//     external dependencies (models.ExternalResource): name + description +
+//     external dependencies (dependencies.ExternalResource): name + description +
 //     config key schema + the OC ResourceType the wiring maps to. One row per
 //     (org_id, name).
 //  2. CREATE TABLE access_requests — the cross-project access-request
@@ -59,7 +59,7 @@ func RunPhase9DependencyMgmt(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
-// runPhase9ExternalResourcesTable creates external_resources (models.ExternalResource).
+// runPhase9ExternalResourcesTable creates external_resources (dependencies.ExternalResource).
 func runPhase9ExternalResourcesTable(ctx context.Context, db *gorm.DB) error {
 	if hasTable(db, "external_resources") {
 		return nil

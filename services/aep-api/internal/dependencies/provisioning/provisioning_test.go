@@ -166,15 +166,15 @@ func (fakeRepos) ByFullName(context.Context, string) (string, string, error) {
 }
 
 type fakeCatalog struct {
-	entries map[string]*models.ExternalResource
+	entries map[string]*dependencies.ExternalResource
 	deleted []string
 }
 
-func (f *fakeCatalog) Get(_ context.Context, _, name string) (*models.ExternalResource, error) {
+func (f *fakeCatalog) Get(_ context.Context, _, name string) (*dependencies.ExternalResource, error) {
 	return f.entries[name], nil
 }
-func (f *fakeCatalog) List(_ context.Context, _ string) ([]models.ExternalResource, error) {
-	out := make([]models.ExternalResource, 0, len(f.entries))
+func (f *fakeCatalog) List(_ context.Context, _ string) ([]dependencies.ExternalResource, error) {
+	out := make([]dependencies.ExternalResource, 0, len(f.entries))
 	for _, e := range f.entries {
 		out = append(out, *e)
 	}
@@ -199,7 +199,7 @@ type fakeExtProv struct {
 	authorErr      error
 }
 
-func (f *fakeExtProv) Provision(_ context.Context, _, _, _ string, _ *models.ExternalResource, byEnv map[string]dependencies.EnvValues) (*dependencies.ProvisionResult, error) {
+func (f *fakeExtProv) Provision(_ context.Context, _, _, _ string, _ *dependencies.ExternalResource, byEnv map[string]dependencies.EnvValues) (*dependencies.ProvisionResult, error) {
 	f.calls++
 	f.byEnv = byEnv
 	if f.err != nil {
@@ -210,7 +210,7 @@ func (f *fakeExtProv) Provision(_ context.Context, _, _, _ string, _ *models.Ext
 	}
 	return &dependencies.ProvisionResult{ResourceName: "o-ext", BindingByEnv: map[string]string{"development": "o-ext-development"}}, nil
 }
-func (f *fakeExtProv) AuthorWithSecretRef(_ context.Context, _, _ string, _ *models.ExternalResource, byEnv map[string]dependencies.PreparedEnvValues) (*dependencies.ProvisionResult, error) {
+func (f *fakeExtProv) AuthorWithSecretRef(_ context.Context, _, _ string, _ *dependencies.ExternalResource, byEnv map[string]dependencies.PreparedEnvValues) (*dependencies.ProvisionResult, error) {
 	f.authorRefCalls++
 	f.authorByEnv = byEnv
 	if f.authorErr != nil {
@@ -467,7 +467,7 @@ func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
 	}}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, catalog, ext, &fakePlatProv{}, &fakeBindings{})

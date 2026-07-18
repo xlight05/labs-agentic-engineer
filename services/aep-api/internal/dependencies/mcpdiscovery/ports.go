@@ -32,15 +32,14 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ExternalResourceReader is the read slice of the org external-resource catalog
 // the MCP surface exposes (list every registered external resource, get one by
 // name). Get returns (nil, nil) when the name is not registered.
 type ExternalResourceReader interface {
-	List(ctx context.Context, orgID string) ([]models.ExternalResource, error)
-	Get(ctx context.Context, orgID, name string) (*models.ExternalResource, error)
+	List(ctx context.Context, orgID string) ([]dependencies.ExternalResource, error)
+	Get(ctx context.Context, orgID, name string) (*dependencies.ExternalResource, error)
 }
 
 // OrgEndpointLister is the read slice of the org endpoint catalog — the

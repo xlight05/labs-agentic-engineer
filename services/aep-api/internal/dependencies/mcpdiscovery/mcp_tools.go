@@ -23,7 +23,6 @@ import (
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // mcpTool is the MCP tools/list descriptor.
@@ -337,7 +336,7 @@ func handleToolCall(w http.ResponseWriter, r *http.Request, h *mcpHandler, orgHa
 
 // toExternalResourceView projects a stored ExternalResource to the agent-facing
 // shape (name, description, and its config keys with the secret flag).
-func toExternalResourceView(er *models.ExternalResource) externalResourceView {
+func toExternalResourceView(er *dependencies.ExternalResource) externalResourceView {
 	keys := make([]configKeyDTO, 0, len(er.ConfigKeys))
 	for _, k := range er.ConfigKeys {
 		keys = append(keys, configKeyDTO{Key: k.Key, Secret: k.Secret})

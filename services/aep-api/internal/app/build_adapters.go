@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // buildSpecTagger adapts spec.SaveSpec onto the build feature's
@@ -87,7 +86,7 @@ type buildSecretStager struct {
 }
 
 func (s buildSecretStager) StageExternalSecrets(ctx context.Context, _, ocOrgID, projectID, depName string, secretsByEnv map[string]map[string]string) (map[string]string, error) {
-	return s.prov.StageSecrets(ctx, ocOrgID, projectID, &models.ExternalResource{Name: depName}, secretsByEnv)
+	return s.prov.StageSecrets(ctx, ocOrgID, projectID, &dependencies.ExternalResource{Name: depName}, secretsByEnv)
 }
 
 // buildProvisionStatus adapts provisioning.Service.Status onto the build

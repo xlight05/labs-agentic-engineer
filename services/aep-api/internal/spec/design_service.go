@@ -149,7 +149,18 @@ type resourceMarkerCatalog interface {
 // repositories package concretely. Wired via SetExternalResourceRegistry at the
 // composition root.
 type externalResourceRegistrar interface {
-	Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) (*models.ExternalResource, error)
+	Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) error
+}
+
+// ExternalResourceRegistrarFunc adapts a plain func to externalResourceRegistrar.
+// The concrete catalog repository's Upsert also returns the persisted row, which
+// design ignores (registration is best-effort) — so the composition root wraps it
+// in this adapter, keeping design's consumer port free of a dependencies import
+// (which would cycle: dependencies already reads the design bundle).
+type ExternalResourceRegistrarFunc func(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) error
+
+func (f ExternalResourceRegistrarFunc) Upsert(ctx context.Context, orgID, name, description string, schema []models.ConfigKey) error {
+	return f(ctx, orgID, name, description, schema)
 }
 
 func NewDesignService(
@@ -203,7 +214,7 @@ func (s *designService) registerExternalResources(ctx context.Context, orgID str
 				continue
 			}
 			seen[dep.Name] = struct{}{}
-			if _, err := s.externalResourceReg.Upsert(ctx, orgID, dep.Name, dep.Description, dep.Config); err != nil {
+			if err := s.externalResourceReg.Upsert(ctx, orgID, dep.Name, dep.Description, dep.Config); err != nil {
 				slog.WarnContext(ctx, "failed to register external resource",
 					"org", orgID, "resource", dep.Name, "error", err)
 			}

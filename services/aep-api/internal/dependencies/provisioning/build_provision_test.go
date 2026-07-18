@@ -40,7 +40,7 @@ func TestProvisionForBuild_ByKind(t *testing.T) {
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
 	plat := &fakePlatProv{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
 	}}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, catalog, ext, plat, &fakeBindings{})
@@ -110,7 +110,7 @@ func TestProvisionForBuild_UsesMintedGateDespiteListRace(t *testing.T) {
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
 	plat := &fakePlatProv{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
 	}}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, catalog, ext, plat, &fakeBindings{})
@@ -147,7 +147,7 @@ func TestProvisionForBuild_ExternalAuthorFailureContinues(t *testing.T) {
 	execs := &fakeExecStore{}
 	ext := &fakeExtProv{authorErr: fmt.Errorf("author boom")}
 	plat := &fakePlatProv{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}}},
 	}}
 	svc := newTestService(issues, execs, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, catalog, ext, plat, &fakeBindings{})
@@ -264,7 +264,7 @@ func TestProvisionForBuild_SettlesReadyGateNotInInputs(t *testing.T) {
 	reeval := &fakeReeval{}
 	ext := &fakeExtProv{}
 	plat := &fakePlatProv{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}, {Key: "region"}}},
 	}}
 	// orders-db (platform-resource) is already Ready in OC but NOT in the drawer inputs.
@@ -310,7 +310,7 @@ func TestProvisionForBuild_SettlesReadyGateNotInInputs(t *testing.T) {
 func TestProvisionForBuild_SkipsNotReadyGateNotInInputs(t *testing.T) {
 	issues := newFakeIssues(nil)
 	execs := &fakeExecStore{}
-	catalog := &fakeCatalog{entries: map[string]*models.ExternalResource{
+	catalog := &fakeCatalog{entries: map[string]*dependencies.ExternalResource{
 		"stripe": {Name: "stripe", ConfigKeys: []models.ConfigKey{{Key: "api_key", Secret: true}}},
 	}}
 	// orders-db has NO binding (never provisioned) → Status reports not-ready.

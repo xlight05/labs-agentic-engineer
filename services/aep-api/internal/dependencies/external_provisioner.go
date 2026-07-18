@@ -78,7 +78,7 @@ type ProvisionResult struct {
 func (p *ExternalResourceProvisioner) Provision(
 	ctx context.Context,
 	orgHandle, ocOrgID, projectName string,
-	er *models.ExternalResource,
+	er *ExternalResource,
 	byEnv map[string]EnvValues,
 ) (*ProvisionResult, error) {
 	if er == nil {
@@ -163,7 +163,7 @@ type PreparedEnvValues struct {
 func (p *ExternalResourceProvisioner) AuthorWithSecretRef(
 	ctx context.Context,
 	orgHandle, projectName string,
-	er *models.ExternalResource,
+	er *ExternalResource,
 	byEnv map[string]PreparedEnvValues,
 ) (*ProvisionResult, error) {
 	if er == nil {
@@ -223,7 +223,7 @@ func (p *ExternalResourceProvisioner) AuthorWithSecretRef(
 func (p *ExternalResourceProvisioner) StageSecrets(
 	ctx context.Context,
 	ocOrgID, projectName string,
-	er *models.ExternalResource,
+	er *ExternalResource,
 	secretsByEnv map[string]map[string]string,
 ) (map[string]string, error) {
 	if er == nil {
@@ -328,7 +328,7 @@ func externalResourceSecretEntity(name, env string) string { return "extres-" + 
 // buildExternalResource references the version-pinned cluster RT name (rtName),
 // not the logical er.ResourceTypeName, so the Resource binds to the freshly
 // authored RT rather than a stale same-named one.
-func buildExternalResource(projectName string, er *models.ExternalResource, rtName string) *openchoreo.Resource {
+func buildExternalResource(projectName string, er *ExternalResource, rtName string) *openchoreo.Resource {
 	return &openchoreo.Resource{
 		Metadata: openchoreo.OCObjectMeta{Name: ExternalResourceName(projectName, er.Name)},
 		Spec: openchoreo.ResourceSpec{

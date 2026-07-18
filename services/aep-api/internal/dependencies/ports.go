@@ -31,7 +31,7 @@ import (
 // catalog this package reads. *repositories.ExternalResourceRepository
 // satisfies it. Returns (nil, nil) when the name is not registered.
 type externalResourceLookup interface {
-	Get(ctx context.Context, orgID, name string) (*models.ExternalResource, error)
+	Get(ctx context.Context, orgID, name string) (*ExternalResource, error)
 }
 
 // SecretWriter is the slice of the SM-API writer the provisioner needs.
