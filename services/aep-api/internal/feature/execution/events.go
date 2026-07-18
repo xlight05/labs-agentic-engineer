@@ -24,7 +24,7 @@ import (
 	"strconv"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/models"
 )
 

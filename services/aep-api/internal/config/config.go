@@ -349,7 +349,7 @@ type PlatformAPIConfig struct {
 }
 
 // TemporalConfig holds connection settings for the Temporal server that
-// drives the devflow workflows (internal/feature/devflow). HostPort empty ⇒
+// drives the devflow workflows (internal/delivery/devflow). HostPort empty ⇒
 // the feature is disabled: no worker starts and the devflow endpoints
 // return 503 temporal_unavailable.
 type TemporalConfig struct {

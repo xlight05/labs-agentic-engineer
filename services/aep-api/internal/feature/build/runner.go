@@ -23,7 +23,7 @@ import (
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 
-	"github.com/wso2/aep/aep-api/internal/feature/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 )
 
 // TemporalRunner is the production WorkflowRunner over the devflow Temporal

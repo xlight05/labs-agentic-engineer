@@ -62,13 +62,13 @@ var featureEdgeAllowlist = map[string][]string{
 	// (TaskView for the status title join). Heavy collaborators (SaveSpec,
 	// workflow_runs, repo lookup) stay behind consumer-side ports wired at the
 	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
-	"build": {"devflow", "task"},
+	"build": {"task"},
 	// codingagent is the funnel's one registered executor: it implements the
 	// execution.Executor port (hence the execution edge) and reaches every other
 	// service — identities, anthropic, repos, OC — through consumer ports wired
 	// at the composition root. It also holds the devflow signaler (nil-safe) so
 	// the coding/build/deploy watchers can signal a waiting TaskFlow workflow.
-	"codingagent": {"execution", "devflow"},
+	"codingagent": {"execution"},
 	"component":   {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
@@ -81,18 +81,13 @@ var featureEdgeAllowlist = map[string][]string{
 	// external-resource repo, secret writer, design reader) is a consumer-side
 	// port wired at the composition root, keeping the feature edge surface minimal.
 	"dependencies": {"dependencies/resources", "dependencies/endpoints"},
-	// devflow hosts the Temporal dev/task workflows + activities. Its activity
-	// ports are all devflow-local (the funnel/genai/plan/issue adapters live at
-	// the composition root), so it holds NO cross-feature edge — other features
-	// depend on IT (the signaler), never the reverse.
-	"devflow": {},
 	// execution is the platform-owned half of the Task/Execution split: it reads
 	// GitHub Task facts (via the sourcecontrol domain since P2) and, on PR events,
 	// signals a waiting devflow
 	// TaskFlow workflow (devflow, nil-safe). Design at HEAD is read through a
 	// consumer-side port, not a direct artifacts import. It NEVER imports
 	// feature/task — the §1 split is a package boundary.
-	"execution": {"devflow"},
+	"execution": {},
 	"project":   {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate

@@ -25,7 +25,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"

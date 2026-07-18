@@ -50,7 +50,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/endpoints"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"

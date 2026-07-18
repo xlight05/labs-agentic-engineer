@@ -27,7 +27,7 @@ import (
 )
 
 // WorkflowRunRepository is the lookup index for Temporal devflow workflows
-// (internal/feature/devflow). Temporal is the source of truth for workflow
+// (internal/delivery/devflow). Temporal is the source of truth for workflow
 // state; these rows exist so webhook handlers and watchers can resolve
 // "which running workflow wants this event?" and so the list endpoint can
 // enumerate a project's runs. Lookups miss with (nil, nil) — never
