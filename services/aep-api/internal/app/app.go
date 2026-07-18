@@ -57,7 +57,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/dependencies/runtimeconfig"
-	"github.com/wso2/aep/aep-api/internal/feature/webhook"
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/organization"
@@ -72,6 +71,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol/webhook"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 )
@@ -534,7 +534,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	webhookVerifier := webhook.NewVerifier(secretProvider).
 		WithRefetchLimiter(webhook.NewRefetchLimiter(1, 5))
 	routingCache := webhook.NewRoutingCache(60 * time.Second)
-	deliveryStore := webhook.NewDeliveryStore(db)
+	deliveryStore := sourcecontrol.NewDeliveryStore(db)
 	webhookRouter := webhook.NewRouter()
 
 	// The reactive engine (tasks-github-native §5): the executions repository +
@@ -614,7 +614,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		WithWorkflowSignaler(devflowSignaler).
 		WithTaskNotifier(taskStreamHub)
 	execEvents.RegisterHandlers(registerWebhook)
-	webhook.RegisterInstallationHandlers(webhookRouter, db, credService, issueService, trashWorkspaceOrg)
+	webhook.RegisterInstallationHandlers(webhookRouter, credService, issueService, trashWorkspaceOrg)
 	webhookCtrl := webhook.NewWebhookController(webhookVerifier, deliveryStore, webhookRouter, routingLookup, routingCache)
 
 	// Reconciliation sweep (missed webhooks / requeue gating / PR-state healing /

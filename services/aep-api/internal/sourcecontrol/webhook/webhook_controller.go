@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/organization"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // isLookupNotFound reports whether err is a 404 surfaced by the routing
@@ -61,7 +62,7 @@ type WebhookController interface {
 
 type webhookController struct {
 	verifier   *Verifier
-	deliveries *DeliveryStore
+	deliveries *sourcecontrol.DeliveryStore
 	router     *Router
 	lookup     OcOrgIDLookup // served by CredentialService
 	cache      *RoutingCache // 60s in-process cache
@@ -69,7 +70,7 @@ type webhookController struct {
 
 // NewWebhookController wires the receiver. lookup + cache are required;
 // passing nil disables the receiver.
-func NewWebhookController(verifier *Verifier, deliveries *DeliveryStore, router *Router, lookup OcOrgIDLookup, cache *RoutingCache) WebhookController {
+func NewWebhookController(verifier *Verifier, deliveries *sourcecontrol.DeliveryStore, router *Router, lookup OcOrgIDLookup, cache *RoutingCache) WebhookController {
 	return &webhookController{
 		verifier:   verifier,
 		deliveries: deliveries,

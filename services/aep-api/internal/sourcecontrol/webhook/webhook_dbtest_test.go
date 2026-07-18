@@ -19,7 +19,7 @@ package webhook
 // DBTEST tier (skips under -short; the DB lane runs it): the SQL-shaped webhook
 // behavior against a pristine per-test Postgres (dbtest.New). Two centerpieces:
 //
-//   - DeliveryStore dedup — the PK-on-delivery_id "at-most-once" guarantee that
+//   - sourcecontrol.DeliveryStore dedup — the PK-on-delivery_id "at-most-once" guarantee that
 //     is inherently SQL-shaped (a unique-violation on the second INSERT is what
 //     distinguishes a fresh delivery from a replay). Cannot be faked.
 //   - The App-installation lifecycle handlers over a REAL organization.CredentialService
@@ -55,14 +55,14 @@ import (
 )
 
 // ============================================================================
-// DeliveryStore — PK-on-delivery_id dedup
+// sourcecontrol.DeliveryStore — PK-on-delivery_id dedup
 // ============================================================================
 
 func TestDeliveryStore_Persist_FirstDeliveryIsCreated(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	res, err := store.Persist(ctx, "delivery-1", "org-acme", "push", "", []byte(`{"ref":"refs/heads/main"}`))
 	if err != nil {
@@ -102,7 +102,7 @@ func TestDeliveryStore_Persist_DuplicateBeforeProcessingReRuns(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	if _, err := store.Persist(ctx, "dup-1", "org-acme", "push", "", []byte(`{}`)); err != nil {
 		t.Fatalf("first Persist: %v", err)
@@ -123,7 +123,7 @@ func TestDeliveryStore_Persist_DuplicateAfterProcessingIsDeduped(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	if _, err := store.Persist(ctx, "done-1", "org-acme", "pull_request", "closed", []byte(`{}`)); err != nil {
 		t.Fatalf("first Persist: %v", err)
@@ -147,7 +147,7 @@ func TestDeliveryStore_MarkProcessed_ClearsErrorAndStampsTime(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	if _, err := store.Persist(ctx, "mp-1", "org-acme", "push", "", []byte(`{}`)); err != nil {
 		t.Fatalf("Persist: %v", err)
@@ -175,7 +175,7 @@ func TestDeliveryStore_MarkFailed_RecordsErrorLeavesUnprocessed(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	if _, err := store.Persist(ctx, "mf-1", "org-acme", "push", "", []byte(`{}`)); err != nil {
 		t.Fatalf("Persist: %v", err)
@@ -202,7 +202,7 @@ func TestDeliveryStore_Persist_EmptyDeliveryIDRejected(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	store := NewDeliveryStore(db)
+	store := sourcecontrol.NewDeliveryStore(db)
 
 	if _, err := store.Persist(ctx, "", "org-acme", "push", "", []byte(`{}`)); err == nil {
 		t.Fatal("an empty delivery id must be rejected (it is the dedup PK)")
@@ -317,7 +317,7 @@ func loadCred(t *testing.T, db *gorm.DB, ocOrgID string) organization.OrgCredent
 func dispatchInstall(t *testing.T, db *gorm.DB, credSvc *organization.CredentialService, issues sourcecontrol.IssueService, event, payload string) error {
 	t.Helper()
 	router := NewRouter()
-	RegisterInstallationHandlers(router, db, credSvc, issues, nil)
+	RegisterInstallationHandlers(router, credSvc, issues, nil)
 	return router.Dispatch(context.Background(), event, []byte(payload))
 }
 

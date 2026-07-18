@@ -22,8 +22,6 @@ import (
 	"errors"
 	"log/slog"
 
-	"gorm.io/gorm"
-
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
@@ -49,13 +47,11 @@ import (
 // nil-safe (nil = no disk hook).
 func RegisterInstallationHandlers(
 	router *Router,
-	db *gorm.DB,
 	credSvc *organization.CredentialService,
 	issueSvc sourcecontrol.IssueService,
 	workspaceTrash func(ctx context.Context, ocOrgID string),
 ) {
 	h := &installationHandler{
-		db:         db,
 		credSvc:    credSvc,
 		issueSvc:   issueSvc,
 		disconnect: organization.NewOrgDisconnectService(credSvc, issueSvc).WithWorkspaceTrash(workspaceTrash),
@@ -69,7 +65,6 @@ func RegisterInstallationHandlers(
 }
 
 type installationHandler struct {
-	db         *gorm.DB
 	credSvc    *organization.CredentialService
 	issueSvc   sourcecontrol.IssueService
 	disconnect *organization.OrgDisconnectService

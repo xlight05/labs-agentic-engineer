@@ -22,7 +22,7 @@ package webhook
 // mark-processed → ack. "HMAC valid→200, bad/missing signature→401, duplicate
 // X-GitHub-Delivery→deduped — all computable in-process, no token."
 //
-// Real pieces: Verifier (HMAC-SHA256 over the raw body), DeliveryStore over a
+// Real pieces: Verifier (HMAC-SHA256 over the raw body), sourcecontrol.DeliveryStore over a
 // per-test Postgres (dbtest.New — dedup is the genuine PK unique-violation, so
 // this file rides the DB lane and skips under -short), Router. Faked seams:
 // SecretProvider (known per-org secret; reuses staticProvider from
@@ -99,7 +99,7 @@ func newReceiverHarness(t *testing.T) *receiverHarness {
 	lookup := &fakeOrgLookup{repos: map[string]string{"acme/web": "org-acme"}}
 	ctrl := NewWebhookController(
 		NewVerifier(newStaticProvider(receiverSecret)),
-		NewDeliveryStore(db),
+		sourcecontrol.NewDeliveryStore(db),
 		router,
 		lookup,
 		NewRoutingCache(0),

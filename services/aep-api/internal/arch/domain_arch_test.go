@@ -70,8 +70,7 @@ var nonDomainPkgs = map[string]bool{
 	"contracts": true,
 	"seed":      true,
 	// ── legacy, deleted in P9 ──
-	"api":     true, // the exiled handler layer -> edge/ + domain slices
-	"feature": true, // the 24 feature packages -> the 7 domains
+	"api": true, // the exiled handler layer -> edge/ + domain slices
 }
 
 // plannedPkgs are classified names that do not exist YET. They are listed
