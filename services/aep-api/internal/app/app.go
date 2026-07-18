@@ -363,7 +363,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		}
 		return repoService.GetRepo(ctx, orgID, models.SkillsRepoSentinelProjectID)
 	}
-	turnRepo := genai.NewTurnRepository(db)
+	turnRepo := repositories.NewTurnRepository(db)
 	turnBroker := genai.NewTurnBroker()
 	genaiDeps := genai.ServiceDeps{
 		Repos:      repoService,

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai
+package repositories
 
 import (
 	"context"
@@ -27,6 +27,13 @@ import (
 
 	"github.com/wso2/aep/aep-api/models"
 )
+
+// The agent_turns store was extracted out of internal/feature/genai during the
+// spec-domain fold (P4): the ORM stays fenced to repositories/ while the turn
+// VOCABULARY (the TurnTerminal shape, ErrTurnActive, the status/reason strings)
+// re-exports back into the domain via type aliases, so the turn engine reads as
+// one package. The gorm-into-<domain>/repository.go move defers to P9, as with
+// organization's stores (docs/design/domain-oriented-architecture.md §19.5.1).
 
 // Turn statuses (models.AgentTurn.Status).
 const (

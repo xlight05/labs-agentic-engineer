@@ -407,7 +407,6 @@ var gormImporters = map[string]bool{
 	// Features with raw gorm still to migrate into repositories/ (step 11).
 	"internal/feature/codingagent":   true,
 	"internal/feature/component":     true,
-	"internal/feature/genai":         true,
 	"internal/feature/runtimeconfig": true,
 	"internal/feature/webhook":       true,
 }

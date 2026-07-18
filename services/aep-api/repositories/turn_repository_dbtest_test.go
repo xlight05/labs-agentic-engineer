@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai
+package repositories
 
 // DB tier for the agent_turns store: the D18 partial-unique guard
 // (ux_agent_turns_active), the guarded Finish, and the stale-heartbeat sweep —
