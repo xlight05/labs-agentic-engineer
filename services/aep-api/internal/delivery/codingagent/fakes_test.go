@@ -23,6 +23,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // fakeRepos returns a fixed project repo (its RepoSlug drives build-secret
@@ -252,3 +253,7 @@ func (f *fakeExecRepo) ListByIssueScoped(context.Context, string, string, int) (
 	return nil, nil
 }
 func (f *fakeExecRepo) DeleteByProject(context.Context, string, string) error { return nil }
+
+func (f *fakeExecRepo) DistinctDeployedProjects(context.Context) ([]repositories.DeployedProjectRef, error) {
+	return nil, nil
+}

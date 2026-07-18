@@ -28,6 +28,14 @@ import (
 	"github.com/wso2/aep/aep-api/models"
 )
 
+// DeployedProjectRef is one (org, project) pair that has at least one Execution
+// row — i.e. a project with something dispatched/deployed. It is the
+// runtime-config convergence sweep's input unit.
+type DeployedProjectRef struct {
+	OrgID     string
+	ProjectID string
+}
+
 // ExecutionRepository is the platform-owned half of the Task/Execution split
 // (docs/design/tasks-github-native.md §7): the executions rows. Lookups miss
 // with (nil, nil) — never gorm.ErrRecordNotFound — matching the house
@@ -100,6 +108,12 @@ type ExecutionRepository interface {
 	// the project; the Task issues are deleted with the repo). Org-scoped so a
 	// per-org project slug reused across orgs cannot cross-delete.
 	DeleteByProject(ctx context.Context, orgID, projectID string) error
+
+	// DistinctDeployedProjects returns the distinct (org_id, project_id) pairs
+	// across every Execution row with both set — every project with something
+	// deployed to configure. Intentionally NOT org-scoped: the runtime-config
+	// convergence sweep spans all orgs, like ListActive.
+	DistinctDeployedProjects(ctx context.Context) ([]DeployedProjectRef, error)
 }
 
 type executionRepository struct {
@@ -305,6 +319,18 @@ func (r *executionRepository) DeleteByProject(ctx context.Context, orgID, projec
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
 		Delete(&models.Execution{}).Error
+}
+
+func (r *executionRepository) DistinctDeployedProjects(ctx context.Context) ([]DeployedProjectRef, error) {
+	var refs []DeployedProjectRef
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT DISTINCT org_id, project_id
+		FROM executions
+		WHERE org_id <> '' AND project_id <> ''
+	`).Scan(&refs).Error; err != nil {
+		return nil, err
+	}
+	return refs, nil
 }
 
 // ExecutionFacts projects latest-per-kind Execution rows into the minimal

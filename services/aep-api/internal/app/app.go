@@ -1017,7 +1017,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		// gate defers the write), and — since a web-app is dispatched last — no
 		// later build-success re-fires it. This idempotent sweep lands env-config.js
 		// once the URL converges (replaces the dropped periodic reconcile backstop).
-		runtimeconfig.NewWatcher(db, runtimeConfigSvc, asServiceIdentity, 0),
+		runtimeconfig.NewWatcher(executionRepo, runtimeConfigSvc, asServiceIdentity, 0),
 		// Periodic credential validator — walks every active org_credentials row
 		// once per cfg.CredentialValidatorInterval (default 24h), probes GitHub,
 		// flags identity drift on confirmed unauthorised secrets.

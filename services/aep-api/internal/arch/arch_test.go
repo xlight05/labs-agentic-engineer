@@ -373,8 +373,12 @@ var gormImporters = map[string]bool{
 	"internal/platform/dbtest":        true,
 	"internal/platform/componenttest": true,
 	// Features with raw gorm still to migrate into repositories/ (step 11).
-	"internal/feature/runtimeconfig": true,
-	"internal/feature/webhook":       true,
+	// (runtimeconfig MIGRATED in P8.0 — its convergence watcher's raw
+	// `SELECT DISTINCT … FROM executions` became
+	// repositories.ExecutionRepository.DistinctDeployedProjects, and the watcher
+	// now takes a narrow DeployedProjectLister port instead of *gorm.DB. Only
+	// webhook remains — it lands with P2d.)
+	"internal/feature/webhook": true,
 }
 
 // TestGormImportAllowlist asserts the set of packages that DIRECTLY import

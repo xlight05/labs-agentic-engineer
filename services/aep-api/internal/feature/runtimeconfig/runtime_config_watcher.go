@@ -21,8 +21,16 @@ import (
 	"log/slog"
 	"time"
 
-	"gorm.io/gorm"
+	"github.com/wso2/aep/aep-api/repositories"
 )
+
+// DeployedProjectLister enumerates every project with something dispatched —
+// the sweep's input. *repositories.ExecutionRepository satisfies it via
+// DistinctDeployedProjects; the watcher needs only that one method, so it takes
+// this narrow port rather than the ORM.
+type DeployedProjectLister interface {
+	DistinctDeployedProjects(ctx context.Context) ([]repositories.DeployedProjectRef, error)
+}
 
 // Watcher is the convergence backstop for SPA env-config.js emission — the
 // mirror of TraitSyncWatcher for runtime config.
@@ -46,7 +54,7 @@ import (
 // was dropped when the trait_sync drift watcher moved to the ExecWatcher deploy
 // path (see the note in internal/app/app.go).
 type Watcher struct {
-	db                *gorm.DB
+	projects          DeployedProjectLister
 	svc               *RuntimeConfigService
 	asServiceIdentity func(ctx context.Context) context.Context
 	tick              time.Duration
@@ -58,7 +66,7 @@ type Watcher struct {
 // non-positive tick defaults to 30s (env-config convergence is not latency
 // critical — the SPA URL resolves within seconds of the pod going Ready).
 func NewWatcher(
-	db *gorm.DB,
+	projects DeployedProjectLister,
 	svc *RuntimeConfigService,
 	asServiceIdentity func(ctx context.Context) context.Context,
 	tick time.Duration,
@@ -66,13 +74,13 @@ func NewWatcher(
 	if tick <= 0 {
 		tick = 30 * time.Second
 	}
-	return &Watcher{db: db, svc: svc, asServiceIdentity: asServiceIdentity, tick: tick}
+	return &Watcher{projects: projects, svc: svc, asServiceIdentity: asServiceIdentity, tick: tick}
 }
 
 // Run blocks until ctx is cancelled. Spawned as a goroutine from main.
 func (w *Watcher) Run(ctx context.Context) {
-	if w.svc == nil || w.db == nil {
-		slog.InfoContext(ctx, "runtimeconfig watcher: svc/db nil; not starting")
+	if w.svc == nil || w.projects == nil {
+		slog.InfoContext(ctx, "runtimeconfig watcher: svc/projects nil; not starting")
 		return
 	}
 	ticker := time.NewTicker(w.tick)
@@ -95,16 +103,8 @@ func (w *Watcher) sweep(ctx context.Context) {
 	// Every dispatched component leaves execution rows carrying its org+project,
 	// so this catches every project with something deployed to configure. A
 	// project with a design but no dispatch yet has no SPA to emit for.
-	type tuple struct {
-		OrgID     string
-		ProjectID string
-	}
-	var tuples []tuple
-	if err := w.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT org_id, project_id
-		FROM executions
-		WHERE org_id <> '' AND project_id <> ''
-	`).Scan(&tuples).Error; err != nil {
+	tuples, err := w.projects.DistinctDeployedProjects(ctx)
+	if err != nil {
 		slog.WarnContext(ctx, "runtimeconfig watcher: enumerate projects failed", "error", err)
 		return
 	}

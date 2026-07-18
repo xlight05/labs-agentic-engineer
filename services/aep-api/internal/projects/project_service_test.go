@@ -107,6 +107,10 @@ type fakeExecs struct {
 	deleteCalls             int
 }
 
+func (f *fakeExecs) DistinctDeployedProjects(context.Context) ([]repositories.DeployedProjectRef, error) {
+	return nil, nil
+}
+
 func (f *fakeExecs) DeleteByProject(ctx context.Context, orgID, projectID string) error {
 	f.deleteCalls++
 	f.deleteArgs = [2]string{orgID, projectID}
