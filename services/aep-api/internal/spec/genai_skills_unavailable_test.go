@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai_test
+package spec_test
 
 import (
 	"context"

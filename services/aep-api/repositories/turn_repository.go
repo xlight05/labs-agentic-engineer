@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// The agent_turns store was extracted out of internal/feature/genai during the
+// The agent_turns store was extracted out of the genai turn engine (now internal/spec) during the
 // spec-domain fold (P4): the ORM stays fenced to repositories/ while the turn
 // VOCABULARY (the TurnTerminal shape, ErrTurnActive, the status/reason strings)
 // re-exports back into the domain via type aliases, so the turn engine reads as

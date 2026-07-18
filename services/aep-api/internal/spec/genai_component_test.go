@@ -21,7 +21,7 @@
 // over real file:// origins (workspacetest), and a scripted fake agents SSE
 // server (incl. the D14 manifest frames) recording the exact TurnRequest the
 // BFF dispatches.
-package genai_test
+package spec_test
 
 import (
 	"bufio"
@@ -43,7 +43,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/feature/genai"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
@@ -256,7 +256,7 @@ func (m *memTurnRepo) TryStart(_ context.Context, t *models.AgentTurn) (*models.
 	for _, r := range m.rows {
 		if r.OrgID == t.OrgID && r.ProjectID == t.ProjectID && r.Status == "running" {
 			cp := *r
-			return &cp, genai.ErrTurnActive
+			return &cp, spec.ErrTurnActive
 		}
 	}
 	t.ID = uuid.NewString()
@@ -279,7 +279,7 @@ func (m *memTurnRepo) Heartbeat(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *memTurnRepo) Finish(_ context.Context, id string, term genai.TurnTerminal) (bool, error) {
+func (m *memTurnRepo) Finish(_ context.Context, id string, term spec.TurnTerminal) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.rows {
@@ -405,7 +405,7 @@ type genaiRig struct {
 	skillsOrigin *gittest.Remote
 	fake         *fakeAgents
 	turns        *memTurnRepo
-	broker       *genai.TurnBroker
+	broker       *spec.TurnBroker
 	// knobs read at request time
 	key string
 }
@@ -415,8 +415,8 @@ type rigOption func(*rigConfig)
 
 type rigConfig struct {
 	client     agentsvc.Client // overrides the default real-over-fake-HTTP client
-	skillsRepo genai.SkillsRepoResolver
-	mcpTokens  genai.MCPTokenMinter
+	skillsRepo spec.SkillsRepoResolver
+	mcpTokens  spec.MCPTokenMinter
 	mcpBaseURL string
 }
 
@@ -428,7 +428,7 @@ func withAgentsClient(c agentsvc.Client) rigOption {
 
 // withSkillsRepo overrides the skills-repo resolver (e.g. to hand back a row
 // whose backing repo is gone, exercising the skills-unavailable 503 path).
-func withSkillsRepo(fn genai.SkillsRepoResolver) rigOption {
+func withSkillsRepo(fn spec.SkillsRepoResolver) rigOption {
 	return func(rc *rigConfig) { rc.skillsRepo = fn }
 }
 
@@ -487,20 +487,20 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 
 	fake := newFakeAgents(t)
 	turns := &memTurnRepo{}
-	broker := genai.NewTurnBroker()
+	broker := spec.NewTurnBroker()
 	rig := &genaiRig{fx: fx, skillsOrigin: skillsOrigin, fake: fake, turns: turns, broker: broker, key: "sk-ant-test"}
 
 	var client agentsvc.Client = agentsvc.New(agentsvc.Config{BaseURL: fake.URL})
 	if cfg.client != nil {
 		client = cfg.client
 	}
-	skillsRepo := genai.SkillsRepoResolver(func(context.Context, string) (*models.GitRepository, error) {
+	skillsRepo := spec.SkillsRepoResolver(func(context.Context, string) (*models.GitRepository, error) {
 		return skillsRow, nil
 	})
 	if cfg.skillsRepo != nil {
 		skillsRepo = cfg.skillsRepo
 	}
-	svc := genai.NewService(genai.ServiceDeps{
+	svc := spec.NewService(spec.ServiceDeps{
 		Repos:      stubRepoResolver{rec: rec},
 		Git:        sourcecontrol.NewGitOpsService(stubResolver{}, fx.Engine),
 		Keys:       func(context.Context, string) (string, error) { return rig.key, nil },
@@ -545,7 +545,7 @@ func (r *genaiRig) startTurn(t *testing.T, uuid, useCase, instruction string) st
 }
 
 // waitTerminal polls the status GET until the turn leaves running.
-func (r *genaiRig) waitTerminal(t *testing.T, turnID string) genai.TurnStatus {
+func (r *genaiRig) waitTerminal(t *testing.T, turnID string) spec.TurnStatus {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -553,7 +553,7 @@ func (r *genaiRig) waitTerminal(t *testing.T, turnID string) genai.TurnStatus {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("GET turn: code %d (%s)", rec.Code, rec.Body.String())
 		}
-		var st genai.TurnStatus
+		var st spec.TurnStatus
 		if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
 			t.Fatalf("status body: %v (%s)", err, rec.Body.String())
 		}
@@ -563,7 +563,7 @@ func (r *genaiRig) waitTerminal(t *testing.T, turnID string) genai.TurnStatus {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("turn never reached a terminal state")
-	return genai.TurnStatus{}
+	return spec.TurnStatus{}
 }
 
 // originGit runs a git command against the origin repo.
@@ -881,7 +881,7 @@ func TestManifestGate_MismatchSeveredEmpty(t *testing.T) {
 	})
 }
 
-func (r *genaiRig) waitTerminalOf(t *testing.T, turnID string) genai.TurnStatus {
+func (r *genaiRig) waitTerminalOf(t *testing.T, turnID string) spec.TurnStatus {
 	t.Helper()
 	return r.waitTerminal(t, turnID)
 }
@@ -1117,7 +1117,7 @@ func TestD18_OneActiveTurnPerProject(t *testing.T) {
 	if active.Code != http.StatusOK {
 		t.Fatalf("active: code %d (%s)", active.Code, active.Body.String())
 	}
-	var activeSt genai.TurnStatus
+	var activeSt spec.TurnStatus
 	_ = json.Unmarshal(active.Body.Bytes(), &activeSt)
 	if activeSt.TurnID != turnID || activeSt.Status != "running" {
 		t.Errorf("active = %+v", activeSt)

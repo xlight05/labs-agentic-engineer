@@ -102,7 +102,6 @@ var featureEdgeAllowlist = map[string][]string{
 	// feature/task — the §1 split is a package boundary.
 	"execution": {"devflow"},
 	"files":     {},
-	"genai":     {},
 	"project":   {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate

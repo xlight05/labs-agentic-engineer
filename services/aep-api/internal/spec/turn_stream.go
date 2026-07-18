@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai
+package spec
 
 // turn_stream.go — the in-memory per-turn part broker behind the resumable
 // turn stream (design D16/D17): the runner appends every raw StreamPart data

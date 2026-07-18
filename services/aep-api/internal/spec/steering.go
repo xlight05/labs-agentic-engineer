@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai
+package spec
 
 // steeringByUseCase is the explicit action-steer appended to the instruction
 // so the model loads the right skill(s) from the catalog and produces the

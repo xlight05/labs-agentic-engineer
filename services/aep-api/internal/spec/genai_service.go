@@ -23,7 +23,7 @@
 // (internal/platform/agentfold), gates the fold on the agents-side manifest,
 // and commits the result straight to main. The durable agent_turns row is the
 // one-active-turn-per-project guard and the crash-safety anchor.
-package genai
+package spec
 
 import (
 	"context"

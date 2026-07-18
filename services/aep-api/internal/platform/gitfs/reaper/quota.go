@@ -34,7 +34,7 @@ import (
 // eviction may trash it. An in-flight turn reads its base/_skills snapshot
 // lazily for the whole run, so anything younger than the turn runner's
 // detached timeout could still be feeding a live turn. It is set to that
-// timeout (turnRunTimeout in internal/feature/genai/turn_runner.go, 30m), or
+// timeout (turnRunTimeout in internal/spec/turn_runner.go, 30m), or
 // 30m, whichever is larger. The mirror's current-HEAD snapshot is protected
 // unconditionally (isHead) regardless of age; mirrors themselves stay
 // evictable.

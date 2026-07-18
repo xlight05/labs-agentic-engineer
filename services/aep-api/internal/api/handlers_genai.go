@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/genai"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -67,7 +67,7 @@ func (s *legacyHandlers) CreateTurn(ctx context.Context, request gen.CreateTurnR
 	if request.Body == nil {
 		return nil, errBadRequest("request body is required")
 	}
-	turnID, err := s.deps.GenAISvc.StartTurn(ctx, org, request.ProjectName, genai.TurnInput{
+	turnID, err := s.deps.GenAISvc.StartTurn(ctx, org, request.ProjectName, spec.TurnInput{
 		// An omitted useCase decodes to "" (the generated type is a plain
 		// string); the service normalizes "" → the generic turn. An explicit
 		// "" is enum-invalid and already rejected by the contract validator.
@@ -151,13 +151,13 @@ func (s *legacyHandlers) GetConversation(ctx context.Context, request gen.GetCon
 // / {"code":"requirements_missing"} — declared in the contract, generated
 // type); every other error stays on the envelope path (mapGenAITurnError).
 func turnConflictOf(err error) (gen.CreateTurnResponseObject, bool) {
-	var inProgress *genai.TurnInProgressError
+	var inProgress *spec.TurnInProgressError
 	if errors.As(err, &inProgress) {
 		return gen.CreateTurn409JSONResponse(gen.TurnConflict{
 			Code: gen.TurnInProgress, ActiveTurnID: inProgress.ActiveTurnID,
 		}), true
 	}
-	if errors.Is(err, genai.ErrRequirementsMissing) {
+	if errors.Is(err, spec.ErrRequirementsMissing) {
 		return gen.CreateTurn409JSONResponse(gen.TurnConflict{Code: gen.RequirementsMissing}), true
 	}
 	return nil, false
@@ -190,7 +190,7 @@ func (r conversationJSONResponse) VisitGetConversationResponse(w http.ResponseWr
 
 // turnStatusModel converts the feature's read view into the contract schema
 // type (field-for-field; the JSON tags are identical).
-func turnStatusModel(st *genai.TurnStatus) gen.TurnStatus {
+func turnStatusModel(st *spec.TurnStatus) gen.TurnStatus {
 	return gen.TurnStatus{
 		TurnID:         st.TurnID,
 		ConversationID: st.ConversationID,
@@ -213,8 +213,8 @@ func turnStatusModel(st *genai.TurnStatus) gen.TurnStatus {
 // event has been written — the trailing `data: [DONE]`. A subscriber dropped
 // for falling behind (or an expired buffer) ends WITHOUT [DONE]; the client
 // resumes with ?from. Keep-alive comments pace idle waits.
-func streamTurnSubscription(ctx context.Context, w io.Writer, flush func(), sub *genai.TurnSubscription) {
-	writeEvent := func(ev genai.BrokerEvent) bool {
+func streamTurnSubscription(ctx context.Context, w io.Writer, flush func(), sub *spec.TurnSubscription) {
+	writeEvent := func(ev spec.BrokerEvent) bool {
 		if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", ev.Index, ev.Data); err != nil {
 			return false
 		}
@@ -274,23 +274,23 @@ func mapGenAITurnError(ctx context.Context, err error) error {
 		return mapped
 	}
 	switch {
-	case errors.Is(err, genai.ErrProjectRepoNotFound):
+	case errors.Is(err, spec.ErrProjectRepoNotFound):
 		return errNotFound("project repository not found")
-	case errors.Is(err, genai.ErrTurnNotFound):
+	case errors.Is(err, spec.ErrTurnNotFound):
 		return errNotFound("turn not found")
-	case errors.Is(err, genai.ErrInvalidUseCase):
+	case errors.Is(err, spec.ErrInvalidUseCase):
 		return errBadRequest("invalid use case")
-	case errors.Is(err, genai.ErrInvalidConversationID):
+	case errors.Is(err, spec.ErrInvalidConversationID):
 		return errBadRequest("invalid conversation id")
-	case errors.Is(err, genai.ErrEmptyInstruction):
-		return errBadRequest(genai.ErrEmptyInstruction.Error())
-	case errors.Is(err, genai.ErrCollabNoToken):
-		return errBadRequest(genai.ErrCollabNoToken.Error())
-	case errors.Is(err, genai.ErrNoAnthropicKey):
-		return errBadRequest(genai.ErrNoAnthropicKey.Error())
-	case errors.Is(err, genai.ErrTurnBufferTruncated):
-		return errConflict(genai.ErrTurnBufferTruncated.Error())
-	case errors.Is(err, genai.ErrSkillsRepoUnavailable):
+	case errors.Is(err, spec.ErrEmptyInstruction):
+		return errBadRequest(spec.ErrEmptyInstruction.Error())
+	case errors.Is(err, spec.ErrCollabNoToken):
+		return errBadRequest(spec.ErrCollabNoToken.Error())
+	case errors.Is(err, spec.ErrNoAnthropicKey):
+		return errBadRequest(spec.ErrNoAnthropicKey.Error())
+	case errors.Is(err, spec.ErrTurnBufferTruncated):
+		return errConflict(spec.ErrTurnBufferTruncated.Error())
+	case errors.Is(err, spec.ErrSkillsRepoUnavailable):
 		// The org's _skills repo is unusable (row missing/unprovisionable or
 		// backing repo gone — e.g. deleted externally under a lingering row).
 		// A platform-side failure, not a client error: 503 with a clear
@@ -309,11 +309,11 @@ func mapGenAIRehydrateError(err error) error {
 	// the internal-error log carries the cause, which is what matters here.
 	ctx := context.Background()
 	switch {
-	case errors.Is(err, genai.ErrConversationNotFound):
+	case errors.Is(err, spec.ErrConversationNotFound):
 		return errNotFound("conversation not found")
-	case errors.Is(err, genai.ErrProjectRepoNotFound):
+	case errors.Is(err, spec.ErrProjectRepoNotFound):
 		return errNotFound("project repository not found")
-	case errors.Is(err, genai.ErrInvalidConversationID):
+	case errors.Is(err, spec.ErrInvalidConversationID):
 		return errBadRequest("invalid conversation id")
 	default:
 		if mapped, ok := mapAgentsUpstreamError(err, nil); ok {

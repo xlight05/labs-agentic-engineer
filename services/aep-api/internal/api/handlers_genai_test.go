@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/genai"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // Port of the genai_huma mapper pins onto the strict-server mappers
@@ -46,15 +46,15 @@ func TestMapGenAITurnError_Table(t *testing.T) {
 		err  error
 		want int
 	}{
-		{"project repo not found", genai.ErrProjectRepoNotFound, 404},
-		{"turn not found", genai.ErrTurnNotFound, 404},
-		{"invalid use case", genai.ErrInvalidUseCase, 400},
-		{"invalid conversation id", genai.ErrInvalidConversationID, 400},
-		{"empty instruction", genai.ErrEmptyInstruction, 400},
-		{"no anthropic key", genai.ErrNoAnthropicKey, 400},
-		{"buffer truncated", genai.ErrTurnBufferTruncated, 409},
-		{"skills repo unavailable", fmt.Errorf("%w: resolve head: boom", genai.ErrSkillsRepoUnavailable), 503},
-		{"wrapped skills unavailable", fmt.Errorf("start turn: %w", genai.ErrSkillsRepoUnavailable), 503},
+		{"project repo not found", spec.ErrProjectRepoNotFound, 404},
+		{"turn not found", spec.ErrTurnNotFound, 404},
+		{"invalid use case", spec.ErrInvalidUseCase, 400},
+		{"invalid conversation id", spec.ErrInvalidConversationID, 400},
+		{"empty instruction", spec.ErrEmptyInstruction, 400},
+		{"no anthropic key", spec.ErrNoAnthropicKey, 400},
+		{"buffer truncated", spec.ErrTurnBufferTruncated, 409},
+		{"skills repo unavailable", fmt.Errorf("%w: resolve head: boom", spec.ErrSkillsRepoUnavailable), 503},
+		{"wrapped skills unavailable", fmt.Errorf("start turn: %w", spec.ErrSkillsRepoUnavailable), 503},
 		{"unmapped default", errors.New("some unexpected failure"), 500},
 	}
 	for _, tc := range cases {
@@ -72,7 +72,7 @@ func TestMapGenAITurnError_Table(t *testing.T) {
 // declared in the contract as TurnConflict and served via the generated
 // type). Field set + values are the contract; JSON key order is not.
 func TestTurnConflictOf_PinnedBodies(t *testing.T) {
-	resp, ok := turnConflictOf(fmt.Errorf("start turn: %w", &genai.TurnInProgressError{ActiveTurnID: "t1"}))
+	resp, ok := turnConflictOf(fmt.Errorf("start turn: %w", &spec.TurnInProgressError{ActiveTurnID: "t1"}))
 	if !ok {
 		t.Fatal("turn-in-progress not recognized")
 	}
@@ -91,7 +91,7 @@ func TestTurnConflictOf_PinnedBodies(t *testing.T) {
 		t.Errorf("turn-in-progress body = %s", rec.Body.String())
 	}
 
-	resp, ok = turnConflictOf(genai.ErrRequirementsMissing)
+	resp, ok = turnConflictOf(spec.ErrRequirementsMissing)
 	if !ok {
 		t.Fatal("requirements-missing not recognized")
 	}
@@ -110,7 +110,7 @@ func TestTurnConflictOf_PinnedBodies(t *testing.T) {
 		t.Errorf("requirements-missing body = %s", rec.Body.String())
 	}
 
-	if _, ok := turnConflictOf(genai.ErrTurnNotFound); ok {
+	if _, ok := turnConflictOf(spec.ErrTurnNotFound); ok {
 		t.Error("non-conflict error must stay on the envelope path")
 	}
 }
@@ -158,7 +158,7 @@ func TestGenAIInternalError_LogsCause(t *testing.T) {
 // no log.
 func TestGenAISkillsUnavailable_LogsCause(t *testing.T) {
 	buf := captureGenAILogs(t)
-	err := fmt.Errorf("%w: resolve head: git ref not found", genai.ErrSkillsRepoUnavailable)
+	err := fmt.Errorf("%w: resolve head: git ref not found", spec.ErrSkillsRepoUnavailable)
 	if got := statusOf(t, mapGenAITurnError(context.Background(), err)); got != 503 {
 		t.Fatalf("skills-unavailable status = %d, want 503", got)
 	}

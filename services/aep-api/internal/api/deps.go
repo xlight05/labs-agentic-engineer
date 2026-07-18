@@ -28,7 +28,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
-	"github.com/wso2/aep/aep-api/internal/feature/genai"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
@@ -58,7 +57,7 @@ type Deps struct {
 	SkillImportSvc      *skills.SkillImportService
 	FilesSvc            files.FilesService
 	ArtifactSvc         spec.ArtifactService
-	GenAISvc            *genai.Service
+	GenAISvc            *spec.Service
 	BuildSvc            *build.Service
 	PreflightSvc        *build.PreflightService
 

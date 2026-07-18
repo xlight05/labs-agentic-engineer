@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package genai
+package spec
 
 // turn_runner.go — the detached committed-truth turn execution (design §6,
 // D13–D15, D20): dispatch the agents service with the WorkspaceRef, tap every

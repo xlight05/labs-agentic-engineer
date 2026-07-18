@@ -55,7 +55,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/files"
-	"github.com/wso2/aep/aep-api/internal/feature/genai"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
@@ -364,8 +363,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		return repoService.GetRepo(ctx, orgID, models.SkillsRepoSentinelProjectID)
 	}
 	turnRepo := repositories.NewTurnRepository(db)
-	turnBroker := genai.NewTurnBroker()
-	genaiDeps := genai.ServiceDeps{
+	turnBroker := spec.NewTurnBroker()
+	genaiDeps := spec.ServiceDeps{
 		Repos:      repoService,
 		Git:        gitOpsService,
 		Keys:       anthropicKeyForGenAI,
@@ -385,7 +384,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		genaiDeps.MCPTokens = taskTokens
 		genaiDeps.MCPBaseURL = cfg.AEPInternalBaseURL
 	}
-	genaiSvc := genai.NewService(genaiDeps)
+	genaiSvc := spec.NewService(genaiDeps)
 
 	// Services. componentService is constructed before configService so
 	// configService can call back into it to mirror env-var edits onto
@@ -991,7 +990,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		// agent_turns crash-safety sweep (design D17): a stale-heartbeat
 		// running turn is failed and the D18 one-active guard released;
 		// locally-buffered streams get the terminal event.
-		genai.NewTurnSweeper(turnRepo, turnBroker, 0, 0),
+		spec.NewTurnSweeper(turnRepo, turnBroker, 0, 0),
 	}
 	// JobWatcher polls the `ca-…` coding-agent Jobs and Finishes the coding
 	// execution FAILED on Job failure (success rides the PR webhook), capturing
