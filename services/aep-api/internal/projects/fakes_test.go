@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- observability.Client ----------------------------------------------------
@@ -134,14 +133,14 @@ func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string,
 	panic("stubComponentSvc: GetBuildLogs not expected")
 }
 
-// --- repositories.ConfigRepository (hand fake for the config unit tier) -------
+// --- ConfigRepository (hand fake for the config unit tier) -------
 
 type stubConfigRepo struct {
 	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
 	UpsertFunc         func(ctx context.Context, config *models.ComponentConfig) error
 }
 
-var _ repositories.ConfigRepository = (*stubConfigRepo)(nil)
+var _ ConfigRepository = (*stubConfigRepo)(nil)
 
 func (s *stubConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
 	if s.GetByComponentFunc == nil {

@@ -73,7 +73,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 const compProjectPrefix = "/api/v1/projects/web/components"
@@ -84,7 +83,7 @@ type compFakes struct {
 	oc         *ocmocks.ComponentClientMock // component OC client (defaulted when nil)
 	observ     observability.Client         // nil ⇒ build-logs takes the not-configured 503 path
 	store      *spec.ArtifactStore          // for the openapi read; nil is fine unless hit
-	configRepo repositories.ConfigRepository
+	configRepo projects.ConfigRepository
 }
 
 // newHarness assembles the real chain around the REAL component + config

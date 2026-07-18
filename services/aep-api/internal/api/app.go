@@ -17,6 +17,7 @@
 package api
 
 import (
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"net/http"
 	"strings"
 
@@ -29,7 +30,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/obs"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // internalV1 is the path root for the BFF's internal / server-to-server
@@ -62,7 +62,7 @@ type AppParams struct {
 	// from packages/contracts/api/internal/v1 behind runnerAuthGate.
 	InternalDeps InternalDeps
 
-	ConfigRepo repositories.ConfigRepository
+	ConfigRepo projects.ConfigRepository
 
 	// OrganizationService backs the JIT org-provisioning middleware. nil
 	// disables the middleware (tests, dev configurations without a DB).

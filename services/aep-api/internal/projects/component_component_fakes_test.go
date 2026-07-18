@@ -23,12 +23,12 @@ package projects_test
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/projects"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- observability.Client -----------------------------------------------------
@@ -46,14 +46,14 @@ func (s *extObservClient) GetBuildLogs(ctx context.Context, orgName, projectName
 	return s.GetBuildLogsFunc(ctx, orgName, projectName, componentName, buildName)
 }
 
-// --- repositories.ConfigRepository --------------------------------------------
+// --- projects.ConfigRepository --------------------------------------------
 
 type extConfigRepo struct {
 	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
 	UpsertFunc         func(ctx context.Context, config *models.ComponentConfig) error
 }
 
-var _ repositories.ConfigRepository = (*extConfigRepo)(nil)
+var _ projects.ConfigRepository = (*extConfigRepo)(nil)
 
 func (s *extConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
 	if s.GetByComponentFunc == nil {

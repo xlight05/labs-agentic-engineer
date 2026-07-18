@@ -118,7 +118,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 
 	// Repositories
 	executionRepo := repositories.NewExecutionRepository(db)
-	configRepo := repositories.NewConfigRepository(db)
+	configRepo := projects.NewConfigRepository(db)
 	repoRepo := repositories.NewRepoRepository(db)
 	workflowRunRepo := repositories.NewWorkflowRunRepository(db)
 	orgRepo := repositories.NewOrganizationRepository(db)
@@ -363,7 +363,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		}
 		return repoService.GetRepo(ctx, orgID, models.SkillsRepoSentinelProjectID)
 	}
-	turnRepo := repositories.NewTurnRepository(db)
+	turnRepo := spec.NewTurnRepository(db)
 	turnBroker := spec.NewTurnBroker()
 	genaiDeps := spec.ServiceDeps{
 		Repos:      repoService,

@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 type ConfigService interface {
@@ -33,7 +32,7 @@ type ConfigService interface {
 }
 
 type configService struct {
-	repo         repositories.ConfigRepository
+	repo         ConfigRepository
 	componentSvc ComponentService
 }
 
@@ -41,7 +40,7 @@ type configService struct {
 // for mirroring env-var updates onto the OC Component's workflow params so
 // the next build picks them up. Pass nil for componentSvc to disable that
 // mirror (the env vars still land in the DB; they just won't reach OC).
-func NewConfigService(repo repositories.ConfigRepository, componentSvc ComponentService) ConfigService {
+func NewConfigService(repo ConfigRepository, componentSvc ComponentService) ConfigService {
 	return &configService{repo: repo, componentSvc: componentSvc}
 }
 

@@ -20,7 +20,7 @@ package projects
 // behaviors of the component feature driven against a pristine per-test Postgres
 // (dbtest.New).
 //
-//  1. The REAL repositories.ConfigRepository — get/update round-trip + the
+//  1. The REAL ConfigRepository — get/update round-trip + the
 //     (org_id, project_name, component_name) scoping, with MANY decoy rows so a
 //     broken WHERE clause returns the wrong row rather than flaky-passing under
 //     random UUID ordering.
@@ -31,12 +31,11 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- ConfigRepository round-trip + scoping ------------------------------------
 
-func seedConfig(t *testing.T, repo repositories.ConfigRepository, org, proj, comp, k, v string) {
+func seedConfig(t *testing.T, repo ConfigRepository, org, proj, comp, k, v string) {
 	t.Helper()
 	if err := repo.Upsert(context.Background(), &models.ComponentConfig{
 		OrgID: org, ProjectName: proj, ComponentName: comp,
@@ -50,7 +49,7 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	repo := repositories.NewConfigRepository(db)
+	repo := NewConfigRepository(db)
 
 	// The target row, surrounded by MANY decoys that differ in exactly one of the
 	// three scope columns (plus a same-project/other-component and an other-org
