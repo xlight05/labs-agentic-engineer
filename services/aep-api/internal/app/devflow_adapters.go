@@ -22,6 +22,7 @@ import (
 	"go.temporal.io/sdk/activity"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -92,7 +93,7 @@ func (p devflowPlanner) RunPlan(ctx context.Context, orgID, projectID string) ([
 // implementation task: it runs in the validating phase (after every component
 // deploys), so keeping it out of the graph stops it blocking/hanging the
 // executing fan-out.
-func implementationTasks(views []task.TaskView) []devflow.PlannedTask {
+func implementationTasks(views []delivery.TaskView) []devflow.PlannedTask {
 	out := make([]devflow.PlannedTask, 0, len(views))
 	for _, v := range views {
 		if v.ExecutorClass == string(taskmeta.ClassValidation) {

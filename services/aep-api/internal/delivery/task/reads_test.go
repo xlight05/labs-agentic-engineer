@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -58,9 +59,9 @@ func newReadsWithDesign(issues *fakeIssues, execs *fakeExecReader, design fakeDe
 	return NewReads(issues, fakeRepos{repo: defaultRepo()}, execs, nil, design)
 }
 
-func viewsByNumber(t *testing.T, views []TaskView) map[int]TaskView {
+func viewsByNumber(t *testing.T, views []delivery.TaskView) map[int]delivery.TaskView {
 	t.Helper()
-	m := map[int]TaskView{}
+	m := map[int]delivery.TaskView{}
 	for _, v := range views {
 		m[v.IssueNumber] = v
 	}

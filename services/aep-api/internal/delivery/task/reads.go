@@ -21,62 +21,18 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
 
-// Lineage is the spec+design versions a Task was planned from (§2 lineage).
-type Lineage struct {
-	SpecTag   string `json:"specTag,omitempty"`
-	DesignTag string `json:"designTag,omitempty"`
-}
-
-// ExecutionView is one Execution row projected for the API.
-type ExecutionView struct {
-	ID        string     `json:"id"`
-	Kind      string     `json:"kind"`
-	Status    string     `json:"status"`
-	RunName   string     `json:"runName,omitempty"`
-	Reason    string     `json:"reason,omitempty"`
-	CreatedAt time.Time  `json:"createdAt"`
-	StartedAt *time.Time `json:"startedAt,omitempty"`
-	EndedAt   *time.Time `json:"endedAt,omitempty"`
-}
-
-// TaskView is the list-item shape (§9.1): live GitHub facts fused with the
-// latest Execution per kind into a derived status.
-type TaskView struct {
-	IssueNumber   int                      `json:"issueNumber"`
-	Title         string                   `json:"title"`
-	IssueURL      string                   `json:"issueUrl"`
-	ExecutorClass string                   `json:"executorClass,omitempty"`
-	Origin        string                   `json:"origin,omitempty"`
-	Component     string                   `json:"component,omitempty"`
-	Operation     string                   `json:"operation,omitempty"`
-	DependsOn     []string                 `json:"dependsOn"`
-	Rationale     string                   `json:"rationale,omitempty"`
-	Body          string                   `json:"body,omitempty"`
-	Lineage       Lineage                  `json:"lineage"`
-	DerivedStatus string                   `json:"derivedStatus"`
-	Hold          bool                     `json:"hold"`
-	Attention     []string                 `json:"attention"`
-	Executions    map[string]ExecutionView `json:"executions"`
-	// BlockedBy lists the dependency display names a not-yet-started coding Task
-	// is waiting on when its DerivedStatus was reconciled to on_hold (issue #164
-	// follow-up). Empty/omitted when the Task is not dependency-gated — the board
-	// reads it to render "On hold — Waiting for X".
-	BlockedBy []string `json:"blockedBy,omitempty"`
-}
-
-// TaskDetail is the Get shape: a TaskView plus the full Execution history.
-type TaskDetail struct {
-	TaskView
-	ExecutionHistory []ExecutionView `json:"executionHistory"`
-}
+// The task read DTOs (Lineage, ExecutionView, TaskView, TaskDetail) live in the
+// delivery ROOT (delivery.read_views.go) so the build sub-package can name
+// TaskView through its TaskReader port without importing taskflow. This service
+// produces them; both it and build import only the root (§10.3.1).
 
 // Reads is the live read path (§8): no cache, no read model.
 type Reads struct {
@@ -97,7 +53,7 @@ func NewReads(issues IssueClient, repos RepoResolver, execs ExecutionReader, ver
 
 // List returns the project's Tasks filtered by state ("open" | "closed" |
 // "all"; default "open"). FE groups by derivedStatus client-side (§8).
-func (r *Reads) List(ctx context.Context, orgID, projectID, state string) ([]TaskView, error) {
+func (r *Reads) List(ctx context.Context, orgID, projectID, state string) ([]delivery.TaskView, error) {
 	return r.ListByTag(ctx, orgID, projectID, state, "")
 }
 
@@ -109,7 +65,7 @@ func (r *Reads) List(ctx context.Context, orgID, projectID, state string) ([]Tas
 // Same single marker-scoped fetch either way. An empty tag returns every Task
 // (== List). This is the read behind GET /tasks?tag=v3 and the build's
 // per-version task list.
-func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]TaskView, error) {
+func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]delivery.TaskView, error) {
 	repoFullName, err := resolveRepoFullName(ctx, r.repos, orgID, projectID)
 	if err != nil {
 		return nil, err
@@ -128,7 +84,7 @@ func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag stri
 		execsByIssue = map[int]map[string]*models.Execution{}
 	}
 
-	out := make([]TaskView, 0, len(issues))
+	out := make([]delivery.TaskView, 0, len(issues))
 	for _, issue := range issues {
 		if !matchesState(issue.State, state) {
 			continue
@@ -167,13 +123,13 @@ func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag stri
 // consumer-side aep:provision gate exists for the dep — so a resolved/ready dep
 // with no gate never becomes a phantom forever-hold (the same conditional rule
 // the funnel applies to org-service deps).
-func (r *Reads) reconcileBlocked(ctx context.Context, orgID, projectID string, views []TaskView) {
+func (r *Reads) reconcileBlocked(ctx context.Context, orgID, projectID string, views []delivery.TaskView) {
 	// Resolution maps over the derived views (mirror the funnel's projectView):
 	// coding/ops Tasks index by component; aep:provision gates index by dependency
 	// name (a provision gate's Component field IS the dep name). Highest issue
 	// number wins, matching the funnel's latest-per-component rule.
-	latestByComponent := map[string]TaskView{}
-	provisionByDep := map[string]TaskView{}
+	latestByComponent := map[string]delivery.TaskView{}
+	provisionByDep := map[string]delivery.TaskView{}
 	for _, v := range views {
 		key := strings.ToLower(v.Component)
 		if key == "" {
@@ -285,7 +241,7 @@ func nonTerminalForHold(status string) bool {
 // queues behind the funnel's gate). A running coding execution means the Task was
 // dispatched — genuinely in_progress — and must not be overridden to on_hold. The
 // view's Executions map carries the latest status per kind.
-func codingNotStarted(v *TaskView) bool {
+func codingNotStarted(v *delivery.TaskView) bool {
 	e, ok := v.Executions[string(taskmeta.KindCoding)]
 	if !ok {
 		return true
@@ -300,7 +256,7 @@ func codingNotStarted(v *TaskView) bool {
 // in_progress) on its detail page while the list correctly shows on_hold (issue
 // #164 follow-up). The gating overlay needs every sibling's derived status and
 // the project's provision gates, so the whole set is built before picking one.
-func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber int) (*TaskDetail, error) {
+func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber int) (*delivery.TaskDetail, error) {
 	repoFullName, err := resolveRepoFullName(ctx, r.repos, orgID, projectID)
 	if err != nil {
 		return nil, err
@@ -322,7 +278,7 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 		execsByIssue = map[int]map[string]*models.Execution{}
 	}
 
-	views := make([]TaskView, 0, len(issues))
+	views := make([]delivery.TaskView, 0, len(issues))
 	for _, issue := range issues {
 		if view, ok := buildView(issue, latestSpecTag, execsByIssue[issue.Number]); ok {
 			views = append(views, view)
@@ -332,7 +288,7 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 	// disagree with the list on a gated Task's status.
 	r.reconcileBlocked(ctx, orgID, projectID, views)
 
-	var view *TaskView
+	var view *delivery.TaskView
 	for i := range views {
 		if views[i].IssueNumber == issueNumber {
 			view = &views[i]
@@ -347,11 +303,11 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 	if err != nil {
 		return nil, err
 	}
-	hv := make([]ExecutionView, 0, len(history))
+	hv := make([]delivery.ExecutionView, 0, len(history))
 	for i := range history {
 		hv = append(hv, executionView(&history[i]))
 	}
-	return &TaskDetail{TaskView: *view, ExecutionHistory: hv}, nil
+	return &delivery.TaskDetail{TaskView: *view, ExecutionHistory: hv}, nil
 }
 
 // containsIssue reports whether the task-marker issue set includes issueNumber.
@@ -367,10 +323,10 @@ func containsIssue(issues []sourcecontrol.IssueInfo, issueNumber int) bool {
 // buildView fuses one live issue with its latest-per-kind executions into a
 // TaskView. ok is false when the issue is not a Task (no marker) — the caller
 // skips it.
-func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[string]*models.Execution) (TaskView, bool) {
+func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[string]*models.Execution) (delivery.TaskView, bool) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask {
-		return TaskView{}, false
+		return delivery.TaskView{}, false
 	}
 	block, human, blockErr := taskmeta.ParseBody(issue.Body)
 
@@ -395,7 +351,7 @@ func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[st
 		}
 	}
 
-	view := TaskView{
+	view := delivery.TaskView{
 		IssueNumber:   issue.Number,
 		Title:         issue.Title,
 		IssueURL:      issue.URL,
@@ -406,7 +362,7 @@ func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[st
 		DependsOn:     nonNil(block.DependsOn),
 		Rationale:     human.Rationale,
 		Body:          human.Body,
-		Lineage:       Lineage{SpecTag: block.SpecTag, DesignTag: block.DesignTag},
+		Lineage:       delivery.Lineage{SpecTag: block.SpecTag, DesignTag: block.DesignTag},
 		DerivedStatus: string(derived),
 		Hold:          labels.Hold,
 		Attention:     computeAttention(labels, block, blockErr, latestSpecTag),
@@ -439,8 +395,8 @@ func computeAttention(labels taskmeta.ParsedLabels, block taskmeta.Block, blockE
 	return flags
 }
 
-func latestViews(execs map[string]*models.Execution) map[string]ExecutionView {
-	out := make(map[string]ExecutionView, len(execs))
+func latestViews(execs map[string]*models.Execution) map[string]delivery.ExecutionView {
+	out := make(map[string]delivery.ExecutionView, len(execs))
 	for kind, e := range execs {
 		if e == nil {
 			continue
@@ -450,8 +406,8 @@ func latestViews(execs map[string]*models.Execution) map[string]ExecutionView {
 	return out
 }
 
-func executionView(e *models.Execution) ExecutionView {
-	return ExecutionView{
+func executionView(e *models.Execution) delivery.ExecutionView {
+	return delivery.ExecutionView{
 		ID:        e.ID,
 		Kind:      e.Kind,
 		Status:    e.Status,

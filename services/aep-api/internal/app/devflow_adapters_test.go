@@ -20,13 +20,13 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/delivery/task"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // The validation task must never enter the dev workflow's executing fan-out —
 // it runs in the validating phase. implementationTasks filters it out.
 func TestImplementationTasks_ExcludesValidation(t *testing.T) {
-	views := []task.TaskView{
+	views := []delivery.TaskView{
 		{IssueNumber: 1, ExecutorClass: string(taskmeta.ClassCoding), Component: "hello-web"},
 		{IssueNumber: 2, ExecutorClass: string(taskmeta.ClassCoding), Component: "hello-api", DependsOn: []string{"hello-web"}},
 		{IssueNumber: 9, ExecutorClass: string(taskmeta.ClassValidation), Operation: "validate", DependsOn: []string{"hello-web", "hello-api"}},

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -83,7 +84,7 @@ func TestReads_List_DerivesStatusFromExecutions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	byNum := map[int]TaskView{}
+	byNum := map[int]delivery.TaskView{}
 	for _, v := range views {
 		byNum[v.IssueNumber] = v
 	}

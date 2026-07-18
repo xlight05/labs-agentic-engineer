@@ -36,9 +36,9 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
-	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -122,11 +122,11 @@ func (f *fakeTagger) TagSpec(context.Context, string, string) (*spec.SpecSaveRes
 }
 
 type fakeTasks struct {
-	views []task.TaskView
+	views []delivery.TaskView
 	err   error
 }
 
-func (f fakeTasks) ListByTag(_ context.Context, _, _, _, tag string) ([]task.TaskView, error) {
+func (f fakeTasks) ListByTag(_ context.Context, _, _, _, tag string) ([]delivery.TaskView, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -135,7 +135,7 @@ func (f fakeTasks) ListByTag(_ context.Context, _, _, _, tag string) ([]task.Tas
 	}
 	// Mirror the real read: the aep:spec/<tag> label scopes to one version, so
 	// every returned row carries that specTag.
-	out := make([]task.TaskView, 0, len(f.views))
+	out := make([]delivery.TaskView, 0, len(f.views))
 	for _, v := range f.views {
 		if v.Lineage.SpecTag == tag {
 			out = append(out, v)
@@ -407,10 +407,10 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 		store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusRunning}}
 		// The DURABLE source is the lineage-tag read: issues 7 & 8 are stamped
 		// v1 (this build); issue 99 belongs to an older tag and must be excluded.
-		tasks := fakeTasks{views: []task.TaskView{
-			{IssueNumber: 8, Title: "Build widget", Lineage: task.Lineage{SpecTag: "v1"}, DerivedStatus: "deployed"},
-			{IssueNumber: 7, Title: "Implement api", Lineage: task.Lineage{SpecTag: "v1"}, DerivedStatus: "in_progress"},
-			{IssueNumber: 99, Title: "Old version task", Lineage: task.Lineage{SpecTag: "v0"}, DerivedStatus: "deployed"},
+		tasks := fakeTasks{views: []delivery.TaskView{
+			{IssueNumber: 8, Title: "Build widget", Lineage: delivery.Lineage{SpecTag: "v1"}, DerivedStatus: "deployed"},
+			{IssueNumber: 7, Title: "Implement api", Lineage: delivery.Lineage{SpecTag: "v1"}, DerivedStatus: "in_progress"},
+			{IssueNumber: 99, Title: "Old version task", Lineage: delivery.Lineage{SpecTag: "v0"}, DerivedStatus: "deployed"},
 		}}
 		svc := newSvc(runner, store, fakeRepos{}, &fakeTagger{}, tasks)
 
@@ -445,9 +445,9 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 func TestGetBuild_QueryFails_StillListsDurableTasks(t *testing.T) {
 	runner := &fakeRunner{statusErr: errors.New("run archived — no live query")}
 	store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusCompleted}}
-	tasks := fakeTasks{views: []task.TaskView{
-		{IssueNumber: 5, Title: "Ship it", Lineage: task.Lineage{SpecTag: "v1"}, DerivedStatus: "deployed"},
-		{IssueNumber: 6, Title: "Other build", Lineage: task.Lineage{SpecTag: "v2"}, DerivedStatus: "deployed"},
+	tasks := fakeTasks{views: []delivery.TaskView{
+		{IssueNumber: 5, Title: "Ship it", Lineage: delivery.Lineage{SpecTag: "v1"}, DerivedStatus: "deployed"},
+		{IssueNumber: 6, Title: "Other build", Lineage: delivery.Lineage{SpecTag: "v2"}, DerivedStatus: "deployed"},
 	}}
 	svc := newSvc(runner, store, fakeRepos{}, &fakeTagger{}, tasks)
 

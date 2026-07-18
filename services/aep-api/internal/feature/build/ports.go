@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
-	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -107,7 +107,8 @@ type WorkflowRunner interface {
 // GitHub ⋈ executions read (the same one behind GET /tasks), scoped by the build
 // to its own lineage tag via the aep:spec/<tag> label. It survives an archived
 // Temporal run — the workflow query only refines in-flight status on top of it.
-// Satisfied by *task.Reads.
+// Satisfied by *task.Reads (the taskflow sub-package), wired at the composition
+// root; build names only the root DTO delivery.TaskView, never the sibling.
 type TaskReader interface {
-	ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]task.TaskView, error)
+	ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]delivery.TaskView, error)
 }

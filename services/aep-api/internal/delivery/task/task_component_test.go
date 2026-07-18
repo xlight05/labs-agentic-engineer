@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
@@ -200,9 +201,9 @@ func TestList_DerivesStatusShapes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: code %d (%s)", rec.Code, rec.Body.String())
 	}
-	var views []task.TaskView
+	var views []delivery.TaskView
 	_ = json.Unmarshal(rec.Body.Bytes(), &views)
-	byNum := map[int]task.TaskView{}
+	byNum := map[int]delivery.TaskView{}
 	for _, v := range views {
 		byNum[v.IssueNumber] = v
 	}
@@ -229,7 +230,7 @@ func TestGet_IncludesHistory(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("get: code %d (%s)", rec.Code, rec.Body.String())
 	}
-	var d task.TaskDetail
+	var d delivery.TaskDetail
 	_ = json.Unmarshal(rec.Body.Bytes(), &d)
 	if len(d.ExecutionHistory) != 2 || d.DerivedStatus != string(taskmeta.StatusReadyForReview) {
 		t.Fatalf("get shape wrong: status=%q history=%d", d.DerivedStatus, len(d.ExecutionHistory))

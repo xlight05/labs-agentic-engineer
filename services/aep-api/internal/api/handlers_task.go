@@ -21,6 +21,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
@@ -66,8 +67,8 @@ func (s *legacyHandlers) GetTask(ctx context.Context, request gen.GetTaskRequest
 	return getTaskJSONResponse(*detail), nil
 }
 
-// The 200 bodies are served from the feature's own view types (task.TaskView /
-// task.TaskDetail) instead of the generated ListTasks200JSONResponse /
+// The 200 bodies are served from the delivery read DTOs (delivery.TaskView /
+// delivery.TaskDetail) instead of the generated ListTasks200JSONResponse /
 // GetTask200JSONResponse: the models generator's prefer-skip-optional-pointer
 // renders the contract's OPTIONAL startedAt/endedAt (ExecutionView) as value
 // time.Time fields whose `omitempty` never fires, so converting would stamp
@@ -76,16 +77,16 @@ func (s *legacyHandlers) GetTask(ctx context.Context, request gen.GetTaskRequest
 // wire identical to the retired Huma edge (generated-type defect noted in the
 // migration report).
 
-type listTasksJSONResponse []task.TaskView
+type listTasksJSONResponse []delivery.TaskView
 
 func (r listTasksJSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
 	return writeJSONBody(w, http.StatusOK, r)
 }
 
-type getTaskJSONResponse task.TaskDetail
+type getTaskJSONResponse delivery.TaskDetail
 
 func (r getTaskJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
-	return writeJSONBody(w, http.StatusOK, task.TaskDetail(r))
+	return writeJSONBody(w, http.StatusOK, delivery.TaskDetail(r))
 }
 
 // errTasksNotConfigured is the nil-service guard the Huma registration carried
