@@ -56,7 +56,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
-	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
@@ -314,9 +313,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// commit to main through the Workspace port (shared-volume-clone
 	// architecture, Phase 1). Built-ins + flow skills seed/reconcile from the
 	// embedded files on demand. docs/design/skills-repo-storage.md.
-	skillSvc := skills.NewSkillService(gitOpsService, repoService, os.DirFS(cfg.SkillsDir))
-	skillMutationSvc := skills.NewSkillMutationService(skillSvc)
-	skillImportSvc := skills.NewSkillImportService(skillSvc)
+	skillSvc := spec.NewSkillService(gitOpsService, repoService, os.DirFS(cfg.SkillsDir))
+	skillMutationSvc := spec.NewSkillMutationService(skillSvc)
+	skillImportSvc := spec.NewSkillImportService(skillSvc)
 
 	// File-mutation agents service (services/agents) — the requirements/design/
 	// chat generation and task-planning flows. Plain HS256 M2M bearer; the

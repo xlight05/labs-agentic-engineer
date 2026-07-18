@@ -21,7 +21,7 @@
 // via the componenttest harness. The
 // SkillService/SkillMutationService/SkillImportService run for real over the
 // gitfs Workspace engine + one REAL bare file:// origin per org
-// (skills.NewComponentStore, the export_test.go handle around
+// (spec.NewComponentStore, the export_test.go handle around
 // repo_store_test.go's engine-backed host); NOTHING is faked below the git
 // plumbing — every request fetches, reads, and commits genuine git objects.
 //
@@ -33,7 +33,7 @@
 //
 // External test package: the harness imports api, which imports skills — an
 // in-package test file would be an import cycle (mirrors project/design/orgcreds).
-package skills_test
+package spec_test
 
 import (
 	"archive/tar"
@@ -50,26 +50,26 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/api"
-	"github.com/wso2/aep/aep-api/internal/feature/skills"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 )
 
 const (
 	base      = "/api/v1/skills"
-	goldenDir = "../../../testdata/harvest/golden"
+	goldenDir = "../../testdata/harvest/golden"
 )
 
 // newHarness assembles the real chain around the REAL skills services (all
 // three) over one engine-backed store, and returns the store so a test can
 // drive repo state (e.g. DriftBuiltin for the updates badge).
-func newHarness(t *testing.T) (*componenttest.Harness, *skills.ComponentStore) {
+func newHarness(t *testing.T) (*componenttest.Harness, *spec.ComponentStore) {
 	t.Helper()
-	store := skills.NewComponentStore(t)
+	store := spec.NewComponentStore(t)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		SkillSvc:         store.Svc,
-		SkillMutationSvc: skills.NewSkillMutationService(store.Svc),
-		SkillImportSvc:   skills.NewSkillImportService(store.Svc),
+		SkillMutationSvc: spec.NewSkillMutationService(store.Svc),
+		SkillImportSvc:   spec.NewSkillImportService(store.Svc),
 	}})
 	return h, store
 }
@@ -540,7 +540,7 @@ func TestSkillsComponent_Import_InvalidTarball_400(t *testing.T) {
 func TestSkillsComponent_Create_MutationUnconfigured_503(t *testing.T) {
 	t.Parallel()
 	// SkillSvc wired for reads, but no mutation service → create is 503.
-	store := skills.NewComponentStore(t)
+	store := spec.NewComponentStore(t)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{SkillSvc: store.Svc}})
 
 	body := `{"name":"cool-skill","skillMd":` + jsonString(skillMD("cool-skill", "")) + `,"references":{}}`

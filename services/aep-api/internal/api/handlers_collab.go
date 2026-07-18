@@ -20,7 +20,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/requirements"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
@@ -40,7 +40,7 @@ func (s *legacyHandlers) GetSpecCollabSession(ctx context.Context, request gen.G
 	if repo, err := s.deps.CollabRepo.GetRepo(ctx, org, request.ProjectName); err != nil || repo == nil {
 		return nil, errNotFound("project not found")
 	}
-	name, email := requirements.ParseDisplayIdentity(request.Params.Authorization)
+	name, email := spec.ParseDisplayIdentity(request.Params.Authorization)
 	return gen.GetSpecCollabSession200JSONResponse(gen.CollabSessionOutputBody{
 		RoomID:   "spec-" + org + "-" + request.ProjectName,
 		WsURL:    "/collab",
@@ -81,7 +81,7 @@ func (s *legacyHandlers) ValidateCollabAccess(ctx context.Context, request gen.V
 		return nil, errForbidden("forbidden")
 	}
 
-	name, email := requirements.ParseDisplayIdentity(request.Params.Authorization)
+	name, email := spec.ParseDisplayIdentity(request.Params.Authorization)
 	return gen.ValidateCollabAccess200JSONResponse(gen.CollabValidateOutputBody{
 		Name:        name,
 		Email:       email,

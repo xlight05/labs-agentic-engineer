@@ -21,7 +21,7 @@
 // the fake), the tarball-name↔frontmatter-name mismatch, collision with an
 // existing (built-in) name, warnings surfacing into the result, and the
 // not-configured guard. Reuses makeTarGz/validSkillMD from the sibling test file.
-package skills
+package spec
 
 import (
 	"bytes"

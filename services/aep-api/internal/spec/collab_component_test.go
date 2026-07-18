@@ -35,7 +35,7 @@
 //
 // External test package: the harness imports api, which imports requirements — an
 // in-package test file would be an import cycle.
-package requirements_test
+package spec_test
 
 import (
 	"context"
@@ -96,7 +96,7 @@ func newReqHarness(t *testing.T, repos sourcecontrol.RepoService) *componenttest
 
 // goldenPath resolves a harvested golden by name.
 func goldenPath(name string) string {
-	return filepath.Join("..", "..", "..", "testdata", "harvest", "golden", name)
+	return filepath.Join("..", "..", "testdata", "harvest", "golden", name)
 }
 
 // sansSchema drops the Huma `$schema` link key so a harvested golden's field set

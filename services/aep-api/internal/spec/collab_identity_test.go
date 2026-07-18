@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package requirements
+package spec
 
 // UNIT tier (pure): parseDisplayIdentity is best-effort projection of a Bearer
 // token's display fields for collab presence. Signature is verified upstream, so

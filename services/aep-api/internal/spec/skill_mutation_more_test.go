@@ -22,7 +22,7 @@
 // lives in Workspace.Mutate and is pinned at the gitfs tier (plus the
 // end-to-end concurrent-commit test in repo_store_test.go), so the old
 // fault-injecting git-host fakes are gone with the REST path.
-package skills
+package spec
 
 import (
 	"bytes"

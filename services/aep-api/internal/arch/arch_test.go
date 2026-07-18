@@ -103,18 +103,12 @@ var featureEdgeAllowlist = map[string][]string{
 	// (rcaagent MIGRATED to internal/ops in P1 — the first feature to become a
 	// domain. Its row is gone because the feature is gone; the allowlist may only
 	// shrink from here as each phase lands.)
-	//
-	// requirements now holds only the collab-session/collab-validate surface
-	// (the requirements read/version/save-discard HTTP surface was removed —
-	// superseded by the Files API); it holds no cross-feature edges.
-	"requirements": {},
 	// runtimeconfig reads the thunder-app dependency's binding outputs (OIDC
 	// config) and patches its redirect URIs declaratively; it reuses the
 	// resources package's single source of truth for the per-env binding name
 	// (ExternalResourceBindingName) rather than re-deriving the convention.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)
 	"runtimeconfig": {"dependencies/resources"},
-	"skills":        {},
 	// task is the GitHub-facing half: it never imports feature/execution (the §1
 	// split) — the funnel is reached through the task.Dispatcher consumer port.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)

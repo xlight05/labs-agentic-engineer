@@ -22,7 +22,7 @@ import (
 	"io"
 	"mime/multipart"
 
-	"github.com/wso2/aep/aep-api/internal/feature/skills"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
@@ -73,7 +73,7 @@ func (s *legacyHandlers) CreateSkill(ctx context.Context, request gen.CreateSkil
 	if s.deps.SkillMutationSvc == nil {
 		return nil, errServiceUnavailable("skill mutation not configured")
 	}
-	in := skills.CreateSkillInput{
+	in := spec.CreateSkillInput{
 		Name:       request.Body.Name,
 		SkillMD:    request.Body.SkillMd,
 		References: request.Body.References,
@@ -163,7 +163,7 @@ func (s *legacyHandlers) UpdateSkill(ctx context.Context, request gen.UpdateSkil
 	if err := requireSlug("name", request.Name); err != nil {
 		return nil, err
 	}
-	in := skills.UpdateSkillInput{
+	in := spec.UpdateSkillInput{
 		SkillMD:    request.Body.SkillMd,
 		References: request.Body.References,
 	}
@@ -193,7 +193,7 @@ func (s *legacyHandlers) DeleteSkill(ctx context.Context, request gen.DeleteSkil
 
 // skillDetailBody projects a resolved Skill + the derived editable flag onto
 // the contract's SkillDetailBody (the full single-skill response).
-func skillDetailBody(sk *skills.Skill, editable bool) gen.SkillDetailBody {
+func skillDetailBody(sk *spec.Skill, editable bool) gen.SkillDetailBody {
 	return gen.SkillDetailBody{
 		OrgID:         sk.OrgID,
 		Name:          sk.Name,
@@ -240,15 +240,15 @@ func multipartFormFilePart(body *multipart.Reader, field string) (io.Reader, err
 // errors onto the flat envelope, mirroring the retired Huma handler's status
 // classification.
 func mapSkillError(err error) error {
-	var verr *skills.SkillValidationError
+	var verr *spec.SkillValidationError
 	switch {
 	case errors.As(err, &verr):
 		return errBadRequest(verr.Error())
-	case errors.Is(err, skills.ErrSkillNameCollision):
+	case errors.Is(err, spec.ErrSkillNameCollision):
 		return errConflict(err.Error())
-	case errors.Is(err, skills.ErrSkillNotEditable):
+	case errors.Is(err, spec.ErrSkillNotEditable):
 		return errForbidden("built-in skills are read-only")
-	case errors.Is(err, skills.ErrSkillNotFound):
+	case errors.Is(err, spec.ErrSkillNotFound):
 		return errNotFound("skill not found")
 	}
 	return errInternal("internal error")

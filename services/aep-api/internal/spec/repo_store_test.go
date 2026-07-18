@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 import (
 	"context"
@@ -180,7 +180,7 @@ func TestList_SeedsBuiltinsOnFirstRead(t *testing.T) {
 	for _, want := range []string{"go", "api-management", "react-webapp", "thunder-authentication"} {
 		sk, ok := by[want]
 		if !ok {
-			t.Fatalf("expected org skill %q to be seeded; got %v", want, keysOf(by))
+			t.Fatalf("expected org skill %q to be seeded; got %v", want, skillKeysOf(by))
 		}
 		if sk.Kind != models.SkillKindOrg {
 			t.Fatalf("skill %q: kind = %q, want org", want, sk.Kind)
@@ -474,7 +474,7 @@ func TestRead_SeesExternalOriginCommitImmediately(t *testing.T) {
 	}
 	sk, ok := nameSet(got)["external-skill"]
 	if !ok || sk.Kind != models.SkillKindCustom {
-		t.Fatalf("externally committed skill not visible on next read: %v", keysOf(nameSet(got)))
+		t.Fatalf("externally committed skill not visible on next read: %v", skillKeysOf(nameSet(got)))
 	}
 }
 
@@ -499,7 +499,7 @@ func TestConcurrentReads_ProvisionOnceConsistently(t *testing.T) {
 			t.Fatalf("goroutine %d: List error %v", i, errs[i])
 		}
 		if _, ok := nameSet(results[i])["go"]; !ok {
-			t.Fatalf("goroutine %d: expected built-ins present, got %v", i, keysOf(nameSet(results[i])))
+			t.Fatalf("goroutine %d: expected built-ins present, got %v", i, skillKeysOf(nameSet(results[i])))
 		}
 	}
 }
@@ -569,7 +569,7 @@ func TestCommitFiles_ConcurrentCommitsSerialize(t *testing.T) {
 	gitDirOut(t, mirror, "fsck", "--strict")
 }
 
-func keysOf(m map[string]Skill) []string {
+func skillKeysOf(m map[string]Skill) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
-	"github.com/wso2/aep/aep-api/internal/feature/skills"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
@@ -51,9 +50,9 @@ type Deps struct {
 	TaskCommands        *task.Commands
 	TaskStream          *execution.TaskStreamService
 	TaskTokens          *auth.TaskTokenManager
-	SkillSvc            *skills.SkillService
-	SkillMutationSvc    *skills.SkillMutationService
-	SkillImportSvc      *skills.SkillImportService
+	SkillSvc            *spec.SkillService
+	SkillMutationSvc    *spec.SkillMutationService
+	SkillImportSvc      *spec.SkillImportService
 	FilesSvc            spec.FilesService
 	ArtifactSvc         spec.ArtifactService
 	GenAISvc            *spec.Service

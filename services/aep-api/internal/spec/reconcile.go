@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 // Provisioning + platform-skill reconciliation. The platform skill library
 // ships in the BFF container as on-disk files (config.SkillsDir, read at

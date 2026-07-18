@@ -20,7 +20,7 @@
 // content SHA ≠ the repo copy's), the purge of a retired built-in the embed no
 // longer ships, the UpdatesAvailable rows (stale + absent), the embedded
 // loaders for both kinds, and the EnsureProvisioned guards.
-package skills
+package spec
 
 import (
 	"context"
@@ -57,7 +57,7 @@ func contentSHAOf(t *testing.T, skills []Skill, name string) string {
 			return sk.ContentSHA
 		}
 	}
-	t.Fatalf("skill %q not present in %v", name, keysOf(nameSet(skills)))
+	t.Fatalf("skill %q not present in %v", name, skillKeysOf(nameSet(skills)))
 	return ""
 }
 
@@ -107,7 +107,7 @@ func TestReconcile_PurgesRetiredBuiltin(t *testing.T) {
 	}
 	got, _ := svc.List(ctx, "org1")
 	if _, present := nameSet(got)["retired-legacy"]; present {
-		t.Fatalf("retired built-in should be purged, still present: %v", keysOf(nameSet(got)))
+		t.Fatalf("retired built-in should be purged, still present: %v", skillKeysOf(nameSet(got)))
 	}
 	// The real built-ins survive the purge.
 	if _, ok := nameSet(got)["go"]; !ok {
@@ -208,7 +208,7 @@ func TestEnsureProvisioned_Guards(t *testing.T) {
 	}
 	got, _ := svc.List(ctx, "org1")
 	if _, ok := nameSet(got)["go"]; !ok {
-		t.Fatalf("provision did not seed built-ins: %v", keysOf(nameSet(got)))
+		t.Fatalf("provision did not seed built-ins: %v", skillKeysOf(nameSet(got)))
 	}
 }
 
@@ -224,7 +224,7 @@ func TestLoadEmbeddedLibrary(t *testing.T) {
 	}
 	by := nameSet(got)
 	if len(got) != 11 {
-		t.Fatalf("library size = %d, want 11: %v", len(got), keysOf(by))
+		t.Fatalf("library size = %d, want 11: %v", len(got), skillKeysOf(by))
 	}
 	wantKinds := map[string]string{
 		"api-management": "org", "go": "org", "react-webapp": "org", "thunder-authentication": "org",
@@ -235,7 +235,7 @@ func TestLoadEmbeddedLibrary(t *testing.T) {
 	for name, kind := range wantKinds {
 		sk, ok := by[name]
 		if !ok {
-			t.Fatalf("embedded skill %q missing; got %v", name, keysOf(by))
+			t.Fatalf("embedded skill %q missing; got %v", name, skillKeysOf(by))
 		}
 		if sk.Kind != kind {
 			t.Fatalf("%q kind = %q, want %q", name, sk.Kind, kind)

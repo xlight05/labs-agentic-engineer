@@ -21,7 +21,7 @@
 // reachable subset). Complements skill_mutation_service_test.go, which covers
 // parseAndValidateSkillMD (the validating wrapper); this file pins parseSkillMD
 // (the raw splitter) and contentSHA directly.
-package skills
+package spec
 
 import (
 	"strings"

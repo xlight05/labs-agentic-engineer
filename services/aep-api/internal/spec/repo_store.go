@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 // Repo-backed skills store. The per-org `org-skills` GitHub repo is the
 // single source of truth (docs/design/skills-repo-storage.md); the store

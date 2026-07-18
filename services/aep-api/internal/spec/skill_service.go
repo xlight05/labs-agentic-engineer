@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 // Shared value types + pure SKILL.md parsing helpers. The read/write surface
 // itself is repo-backed and lives in repo_store.go + reconcile.go (the per-org
@@ -31,7 +31,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -119,7 +118,7 @@ func frontmatterKind(fm skillFrontmatter) string {
 // parseSkillMD splits frontmatter from body and decodes it. Returns the
 // decoded frontmatter, the body, and any parse error.
 func parseSkillMD(content string) (skillFrontmatter, string, error) {
-	fm, body, err := spec.SplitFrontmatter(content)
+	fm, body, err := SplitFrontmatter(content)
 	if err != nil {
 		return skillFrontmatter{}, "", fmt.Errorf("split frontmatter: %w", err)
 	}
@@ -155,7 +154,7 @@ func stampFrontmatterKind(skillMD, kind string) (string, error) {
 	if strings.TrimSpace(fm.Metadata.Aep.Kind) == kind {
 		return skillMD, nil
 	}
-	raw, body, err := spec.SplitFrontmatter(skillMD)
+	raw, body, err := SplitFrontmatter(skillMD)
 	if err != nil {
 		return "", fmt.Errorf("stamp kind: %w", err)
 	}

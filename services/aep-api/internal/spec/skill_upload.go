@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 // importMaxUploadBytes caps the multipart upload the BFF buffers before
 // streaming a skill tarball import — bounds memory on the import path.

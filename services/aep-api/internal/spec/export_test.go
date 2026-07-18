@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package skills
+package spec
 
 // The Go export_test.go pattern: exported test-only helpers that let the
 // EXTERNAL component-test package (skills_test, which must live outside package
@@ -40,7 +40,7 @@ import (
 // testLibraryFS is the platform skill source for tests: the repo-root skills/
 // directory (the single authored library), located relative to this file so it
 // is independent of the working directory — five levels up from
-// internal/feature/skills/ to the repo root, then skills/. Mirrors what
+// the skills library dir to the repo root, then skills/. Mirrors what
 // production injects via os.DirFS(config.SkillsDir).
 func testLibraryFS(t *testing.T) fs.FS {
 	t.Helper()
@@ -48,7 +48,7 @@ func testLibraryFS(t *testing.T) fs.FS {
 	if !ok {
 		t.Fatal("skills: runtime.Caller failed")
 	}
-	root := filepath.Join(filepath.Dir(self), "..", "..", "..", "..", "..", "skills")
+	root := filepath.Join(filepath.Dir(self), "..", "..", "..", "..", "skills")
 	return os.DirFS(root)
 }
 

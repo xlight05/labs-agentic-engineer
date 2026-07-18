@@ -19,7 +19,7 @@
 // with `metadata.aep.kind` naming the kind (absent → org), the legacy
 // skills/<kindDir>/<name>/ layout parsed for not-yet-migrated repos, the
 // service-side kind stamping, and the reconcile-driven one-commit migration.
-package skills
+package spec
 
 import (
 	"context"
@@ -297,7 +297,7 @@ func TestReconcile_MigratesLegacyRepo(t *testing.T) {
 	// The full embedded library is back (11) plus the preserved custom skill,
 	// minus nothing — react-webapp is user-owned now. retired is purged.
 	if len(skills) != 12 {
-		t.Fatalf("catalog size after migration = %d, want 12: %+v", len(skills), keysOf(byName))
+		t.Fatalf("catalog size after migration = %d, want 12: %+v", len(skills), skillKeysOf(byName))
 	}
 	if _, ok := byName["retired"]; ok {
 		t.Fatalf("retired legacy builtin must be purged")
