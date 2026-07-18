@@ -41,6 +41,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -95,11 +96,11 @@ type TaskStreamService struct {
 	tasks    TaskSnapshotReader
 	execs    ExecutionHistory
 	repos    TaskStreamRepoLookup
-	hub      *TaskStreamHub
+	hub      *delivery.TaskStreamHub
 }
 
 // NewTaskStreamService wires the stream service.
-func NewTaskStreamService(progress *ProgressService, tasks TaskSnapshotReader, execs ExecutionHistory, repos TaskStreamRepoLookup, hub *TaskStreamHub) *TaskStreamService {
+func NewTaskStreamService(progress *ProgressService, tasks TaskSnapshotReader, execs ExecutionHistory, repos TaskStreamRepoLookup, hub *delivery.TaskStreamHub) *TaskStreamService {
 	return &TaskStreamService{progress: progress, tasks: tasks, execs: execs, repos: repos, hub: hub}
 }
 

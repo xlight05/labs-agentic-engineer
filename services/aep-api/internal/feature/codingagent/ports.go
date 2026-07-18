@@ -18,7 +18,7 @@
 // the coding class. It dispatches a coding-agent run for a coding Task and a
 // build for its merged PR, writing execution rows through the execution
 // repository (one discipline — no raw-gorm state writes) and letting the funnel
-// end/spawn the rest. It implements the execution.Executor port; the ops
+// end/spawn the rest. It implements the delivery.Executor port; the ops
 // executor is a later sibling package + registry entry.
 //
 // Scope note (docs/design/tasks-github-native.md, cutover): this pass ports the

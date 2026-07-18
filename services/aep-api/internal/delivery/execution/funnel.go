@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -179,7 +180,7 @@ func (f *Funnel) Reevaluate(ctx context.Context) error {
 // retryBuild admits a new build Execution for a failed-build Task and dispatches
 // it at the stored merge SHA (§7 retry = new row). A build is not blocked by the
 // dependency gate (a merged PR proceeds), but the hold command still applies.
-func (f *Funnel) retryBuild(ctx context.Context, facts TaskFacts, mergeSHA string) error {
+func (f *Funnel) retryBuild(ctx context.Context, facts delivery.TaskFacts, mergeSHA string) error {
 	row := &models.Execution{
 		OrgID:       facts.OrgID,
 		ProjectID:   facts.ProjectID,
@@ -208,7 +209,7 @@ func (f *Funnel) retryBuild(ctx context.Context, facts TaskFacts, mergeSHA strin
 // executor → cancel + attention; a run error → fail + attention (prefixed with
 // attentionPrefix). Builds carry their pinned merge SHA in the row (coding rows
 // carry none). Shared by retryBuild, Reevaluate, and the gate's dispatch tail.
-func (f *Funnel) dispatch(ctx context.Context, facts TaskFacts, row *models.Execution, attentionPrefix string) error {
+func (f *Funnel) dispatch(ctx context.Context, facts delivery.TaskFacts, row *models.Execution, attentionPrefix string) error {
 	if facts.HoldActive {
 		return nil // queued behind the hold (§4/§5)
 	}
@@ -218,7 +219,7 @@ func (f *Funnel) dispatch(ctx context.Context, facts TaskFacts, row *models.Exec
 		_, _ = f.store.Finish(ctx, row.ID, string(taskmeta.ExecCanceled), reasonNoExecutor+" "+string(facts.Class))
 		return nil
 	}
-	if err := executor.Run(ctx, DispatchRequest{Execution: row, Task: facts, MergeSHA: row.CommitSHA}); err != nil {
+	if err := executor.Run(ctx, delivery.DispatchRequest{Execution: row, Task: facts, MergeSHA: row.CommitSHA}); err != nil {
 		f.flagAttention(ctx, facts, attentionPrefix+err.Error())
 		_, _ = f.store.Finish(ctx, row.ID, string(taskmeta.ExecFailed), err.Error())
 		return nil
@@ -250,7 +251,7 @@ func failedMergedBuild(execs map[string]*models.Execution) *models.Execution {
 // either dispatches it, leaves it queued (hold / unsatisfied deps / cycle), or
 // cancels it (invalid class/component/no executor). The authoritative mutex is
 // TryAdmit; gate never double-dispatches because Start is queued-guarded.
-func (f *Funnel) gate(ctx context.Context, facts TaskFacts, row *models.Execution, view *projectView) error {
+func (f *Funnel) gate(ctx context.Context, facts delivery.TaskFacts, row *models.Execution, view *projectView) error {
 	// Class must be exactly one known class.
 	if facts.Class == "" || !facts.Class.Valid() {
 		f.flagAttention(ctx, facts, "This Task has no valid executor-class label (expected exactly one of aep:coding / aep:ops).")
@@ -302,7 +303,7 @@ func (f *Funnel) gate(ctx context.Context, facts TaskFacts, row *models.Executio
 // Derive). org-service deps are absent here — they are gated at proceed. An
 // unknown or missing dep (no Task/issue yet) counts as unmet, so a consumer
 // holds until its provision issue is minted AND deploys.
-func (f *Funnel) depsGate(ctx context.Context, facts TaskFacts, view *projectView) (unmet []string, cycle []string) {
+func (f *Funnel) depsGate(ctx context.Context, facts delivery.TaskFacts, view *projectView) (unmet []string, cycle []string) {
 	// A component task gets component-graph cycle detection and its design's
 	// provisioning deps in addition to its block dependsOn. An operation task
 	// (ops / validation) has no component node: an ops Task with no deps is
@@ -379,7 +380,7 @@ const provisionExecuteNotice = "ℹ️ **`aep:execute` doesn't apply to a provis
 // stamps aep:provision-noted so it is never re-posted on a repeated Execute
 // stamp. Best-effort: if the comment fails the marker is NOT stamped, so a later
 // stamp retries the notice rather than silently swallowing it again.
-func (f *Funnel) noteProvisionExecute(ctx context.Context, facts TaskFacts, view *projectView) {
+func (f *Funnel) noteProvisionExecute(ctx context.Context, facts delivery.TaskFacts, view *projectView) {
 	if view.provisionNoted[facts.IssueNumber] {
 		return // already informed once — don't spam
 	}
@@ -412,7 +413,7 @@ func (f *Funnel) consumeExecute(ctx context.Context, orgID, projectID string, nu
 // flagAttention stamps aep:attention and posts a human-facing comment
 // (best-effort). It is the funnel's escalation channel for states no automation
 // can resolve (§4 attention).
-func (f *Funnel) flagAttention(ctx context.Context, facts TaskFacts, msg string) {
+func (f *Funnel) flagAttention(ctx context.Context, facts delivery.TaskFacts, msg string) {
 	if err := f.issues.AddLabels(ctx, facts.OrgID, facts.ProjectID, facts.IssueNumber, []string{taskmeta.LabelAttention}); err != nil {
 		slog.WarnContext(ctx, "funnel: add aep:attention failed", "issue", facts.IssueNumber, "error", err)
 	}
@@ -430,9 +431,9 @@ func (f *Funnel) flagAttention(ctx context.Context, facts TaskFacts, msg string)
 // read from the design — together they drive the dependency-kind-aware gate
 // (dependency-management §3.6).
 type projectView struct {
-	byNumber                 map[int]TaskFacts
-	latestByComponent        map[string]TaskFacts
-	provisionByDep           map[string]TaskFacts
+	byNumber                 map[int]delivery.TaskFacts
+	latestByComponent        map[string]delivery.TaskFacts
+	provisionByDep           map[string]delivery.TaskFacts
 	provisionDepsByComponent map[string][]string
 	// orgServiceDepsByComponent maps each component to its cross-project
 	// org-service dependency names (issue #164, Task 4). Unlike provisionDeps,
@@ -449,14 +450,14 @@ type projectView struct {
 // (org/project resolved from the repo). ok is false when the issue is not a
 // listable Task. The pull_request handlers use it to spawn builds with the
 // merged Task's component + lineage.
-func (f *Funnel) TaskFactsFor(ctx context.Context, repoFullName string, issueNumber int) (TaskFacts, bool, error) {
+func (f *Funnel) TaskFactsFor(ctx context.Context, repoFullName string, issueNumber int) (delivery.TaskFacts, bool, error) {
 	orgID, projectID, err := f.repos.ByFullName(ctx, repoFullName)
 	if err != nil {
-		return TaskFacts{}, false, fmt.Errorf("resolve repo %q: %w", repoFullName, err)
+		return delivery.TaskFacts{}, false, fmt.Errorf("resolve repo %q: %w", repoFullName, err)
 	}
 	view, err := f.loadProject(ctx, orgID, projectID, repoFullName)
 	if err != nil {
-		return TaskFacts{}, false, err
+		return delivery.TaskFacts{}, false, err
 	}
 	facts, ok := view.byNumber[issueNumber]
 	return facts, ok, nil
@@ -469,9 +470,9 @@ func (f *Funnel) loadProject(ctx context.Context, orgID, projectID, repoFullName
 		return nil, fmt.Errorf("list task issues: %w", err)
 	}
 	v := &projectView{
-		byNumber:          map[int]TaskFacts{},
-		latestByComponent: map[string]TaskFacts{},
-		provisionByDep:    map[string]TaskFacts{},
+		byNumber:          map[int]delivery.TaskFacts{},
+		latestByComponent: map[string]delivery.TaskFacts{},
+		provisionByDep:    map[string]delivery.TaskFacts{},
 		provisionNoted:    map[int]bool{},
 	}
 	for _, issue := range issues {
@@ -522,7 +523,7 @@ func (f *Funnel) loadProject(ctx context.Context, orgID, projectID, repoFullName
 // detectCycle reports the cycle path (component names) if the dependency graph
 // among the latest-per-component Tasks contains a cycle reachable from start
 // (self-dependency counts). Edges run component → each of its dependsOn.
-func detectCycle(start string, latest map[string]TaskFacts) []string {
+func detectCycle(start string, latest map[string]delivery.TaskFacts) []string {
 	start = strings.ToLower(start)
 	visiting := map[string]bool{}
 	var path []string

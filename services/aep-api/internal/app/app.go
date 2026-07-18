@@ -44,19 +44,20 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/endpoints"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
-	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
@@ -131,8 +132,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// appended to the watcher slice below only when Temporal is configured.
 	// The signaler is nil-safe and no-ops while the runtime is not connected,
 	// so webhook handlers/watchers hold it unconditionally.
-	devflowRuntime := devflow.NewRuntime(cfg.Temporal)
-	devflowSignaler := devflow.NewSignaler(devflowRuntime, workflowRunRepo)
+	devflowRuntime := delivery.NewRuntime(cfg.Temporal)
+	devflowSignaler := delivery.NewSignaler(devflowRuntime, workflowRunRepo)
 
 	// Token provider for service-to-service auth. OC authorizes requests by
 	// the service client subject (aep-api-client), so every OC API call
@@ -435,7 +436,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// attempts). The hub is the in-proc change bus the PR webhook + job/exec
 	// watchers ping so an attached stream re-derives instantly; a slow re-derive
 	// tick on each connection is the safety net (no durable event table).
-	taskStreamHub := execution.NewTaskStreamHub()
+	taskStreamHub := delivery.NewTaskStreamHub()
 	taskStreamSvc := execution.NewTaskStreamService(
 		execProgressSvc,
 		taskSnapshotAdapter{reads: taskReads},

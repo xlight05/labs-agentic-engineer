@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package devflow
+package delivery
 
 // Signal names. The existing webhook handlers and watchers translate their
 // events into these signals (via Signaler); the workflows block on them

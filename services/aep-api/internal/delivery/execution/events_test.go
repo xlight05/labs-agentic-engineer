@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -48,11 +49,11 @@ func prPayload(action string, number int, merged bool, mergeSHA, body, sender st
 	}`, action, number, merged, body, mergeSHA, sender))
 }
 
-func newEvents(store *fakeStore, issues *fakeIssues, exec Executor) *Events {
+func newEvents(store *fakeStore, issues *fakeIssues, exec delivery.Executor) *Events {
 	return newEventsWithPR(store, issues, exec, nil)
 }
 
-func newEventsWithPR(store *fakeStore, issues *fakeIssues, exec Executor, prs PRReader) *Events {
+func newEventsWithPR(store *fakeStore, issues *fakeIssues, exec delivery.Executor, prs PRReader) *Events {
 	reg := NewRegistry()
 	if exec != nil {
 		reg.Register(taskmeta.ClassCoding, exec)

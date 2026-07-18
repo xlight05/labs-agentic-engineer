@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -47,7 +48,7 @@ func validationTaskIssue(number int, deps []string, extraLabels []string, state 
 	}
 }
 
-func newValidationFunnel(store *fakeStore, issues *fakeIssues, design map[string]bool, exec Executor) *Funnel {
+func newValidationFunnel(store *fakeStore, issues *fakeIssues, design map[string]bool, exec delivery.Executor) *Funnel {
 	reg := NewRegistry()
 	reg.Register(taskmeta.ClassValidation, exec)
 	return NewFunnel(store, issues, fakeRepos{orgID: "org1", projectID: "proj1"}, fakeDesign{names: design}, reg)

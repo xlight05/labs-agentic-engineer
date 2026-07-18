@@ -25,7 +25,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -55,10 +55,10 @@ func codingRow(id string) *models.Execution {
 	}
 }
 
-func codingDispatch(row *models.Execution) execution.DispatchRequest {
-	return execution.DispatchRequest{
+func codingDispatch(row *models.Execution) delivery.DispatchRequest {
+	return delivery.DispatchRequest{
 		Execution: row,
-		Task: execution.TaskFacts{
+		Task: delivery.TaskFacts{
 			OrgID: "acme", ProjectID: "widgets", Component: "order-service",
 			IssueNumber: 7, IssueURL: "https://github.com/acme/widgets/issues/7",
 		},

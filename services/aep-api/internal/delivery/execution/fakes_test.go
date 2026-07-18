@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -250,11 +251,11 @@ func (f fakeDesign) OrgServiceDepNames(context.Context, string, string) (map[str
 type fakeExecutor struct {
 	store   *fakeStore
 	fail    error
-	got     []DispatchRequest
+	got     []delivery.DispatchRequest
 	startOK bool
 }
 
-func (e *fakeExecutor) Run(_ context.Context, req DispatchRequest) error {
+func (e *fakeExecutor) Run(_ context.Context, req delivery.DispatchRequest) error {
 	e.got = append(e.got, req)
 	if e.fail != nil {
 		return e.fail

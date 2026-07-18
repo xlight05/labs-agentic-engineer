@@ -19,6 +19,7 @@ package devflow
 import (
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -80,14 +81,14 @@ func newGateKeeper(cfg GateConfig, setPending func(string)) *gateKeeper {
 // publishes the pending gate, then waits for a SigGateDecision naming this
 // gate (decisions for other gates are dropped), or the configured approval
 // timeout (treated as a rejection).
-func (g *gateKeeper) await(ctx workflow.Context, gate string) (approved bool, decision GateDecisionSignal) {
+func (g *gateKeeper) await(ctx workflow.Context, gate string) (approved bool, decision delivery.GateDecisionSignal) {
 	if g.cfg.IsAuto(gate) {
-		return true, GateDecisionSignal{Gate: gate, Approve: true}
+		return true, delivery.GateDecisionSignal{Gate: gate, Approve: true}
 	}
 	g.setPending(gate)
 	defer g.setPending("")
 
-	ch := workflow.GetSignalChannel(ctx, SigGateDecision)
+	ch := workflow.GetSignalChannel(ctx, delivery.SigGateDecision)
 	var timerCtx workflow.Context
 	var cancelTimer workflow.CancelFunc
 	var timer workflow.Future
@@ -98,7 +99,7 @@ func (g *gateKeeper) await(ctx workflow.Context, gate string) (approved bool, de
 	}
 
 	for {
-		var got GateDecisionSignal
+		var got delivery.GateDecisionSignal
 		timedOut := false
 		sel := workflow.NewSelector(ctx)
 		sel.AddReceive(ch, func(c workflow.ReceiveChannel, _ bool) {
@@ -109,7 +110,7 @@ func (g *gateKeeper) await(ctx workflow.Context, gate string) (approved bool, de
 		}
 		sel.Select(ctx)
 		if timedOut {
-			return false, GateDecisionSignal{Gate: gate, Approve: false, Note: "approval timeout"}
+			return false, delivery.GateDecisionSignal{Gate: gate, Approve: false, Note: "approval timeout"}
 		}
 		if got.Gate != gate {
 			continue // decision for another gate — drop and keep waiting

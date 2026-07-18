@@ -28,7 +28,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -246,11 +246,11 @@ func (e *CodingExecutor) AuthRetryBudget() int {
 }
 
 // Compile-time proof the executor satisfies the funnel's port.
-var _ execution.Executor = (*CodingExecutor)(nil)
+var _ delivery.Executor = (*CodingExecutor)(nil)
 
 // Run dispatches one Execution attempt. On a launch failure it returns the error
 // (the funnel Finishes the row failed + flags attention).
-func (e *CodingExecutor) Run(ctx context.Context, req execution.DispatchRequest) error {
+func (e *CodingExecutor) Run(ctx context.Context, req delivery.DispatchRequest) error {
 	switch req.Execution.Kind {
 	case string(taskmeta.KindCoding):
 		return e.runCoding(ctx, req)
@@ -261,7 +261,7 @@ func (e *CodingExecutor) Run(ctx context.Context, req execution.DispatchRequest)
 	}
 }
 
-func (e *CodingExecutor) runCoding(ctx context.Context, req execution.DispatchRequest) error {
+func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchRequest) error {
 	t := req.Task
 	isValidation := t.Class == taskmeta.ClassValidation
 
@@ -400,7 +400,7 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req execution.DispatchRe
 // configured for the proxy path (fall back). The runner env AEP_TASK_ID carries
 // the EXECUTION id (JobInputs.TaskID) and the bearer's task claim is the
 // execution id — the re-keyed runner contract (§9.2).
-func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req execution.DispatchRequest, repo *models.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
+func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.DispatchRequest, repo *models.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
 	t := req.Task
 	if e.proxy == nil || disp.image == "" || e.clusterSecretStore == "" {
 		return false, "", nil
@@ -508,7 +508,7 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req execution.Dis
 	return true, rn, nil
 }
 
-func (e *CodingExecutor) runBuild(ctx context.Context, req execution.DispatchRequest) error {
+func (e *CodingExecutor) runBuild(ctx context.Context, req delivery.DispatchRequest) error {
 	t := req.Task
 	if req.MergeSHA == "" {
 		return fmt.Errorf("build execution has no merge SHA")
@@ -524,7 +524,7 @@ func (e *CodingExecutor) runBuild(ctx context.Context, req execution.DispatchReq
 			// The Component CR is missing — the coding-dispatch pre-flight
 			// (ensureComponent) never provisioned it. The build path does NOT
 			// upsert (the legacy build path didn't either); surface a clear,
-			// actionable error so a human re-runs the coding execution.
+			// actionable error so a human re-runs the coding delivery.
 			return fmt.Errorf("trigger build: OpenChoreo Component for %q (%s/%s) not found — its coding execution must run first to provision the Component (re-execute the Task); %w",
 				t.Component, t.OrgID, t.ProjectID, err)
 		}

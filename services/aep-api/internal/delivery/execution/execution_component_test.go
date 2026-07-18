@@ -34,7 +34,8 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -106,7 +107,7 @@ func newStreamHarness(t *testing.T, snap *execution.TaskSnapshot, rows []models.
 		fakeStreamTask{org: "acme", snap: snap},
 		fakeStreamExecs{rows: rows},
 		fakeStreamRepo{},
-		execution.NewTaskStreamHub(),
+		delivery.NewTaskStreamHub(),
 	)
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{TaskStream: svc}})
 }

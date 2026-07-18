@@ -14,17 +14,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package execution_test
+package delivery_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 func TestTaskStreamHub_NotifyWakesMatchingSubscriber(t *testing.T) {
-	h := execution.NewTaskStreamHub()
+	h := delivery.NewTaskStreamHub()
 	ch, cancel := h.Subscribe("acme/widgets", 7)
 	defer cancel()
 
@@ -37,7 +37,7 @@ func TestTaskStreamHub_NotifyWakesMatchingSubscriber(t *testing.T) {
 }
 
 func TestTaskStreamHub_NotifyIgnoresOtherKeys(t *testing.T) {
-	h := execution.NewTaskStreamHub()
+	h := delivery.NewTaskStreamHub()
 	ch, cancel := h.Subscribe("acme/widgets", 7)
 	defer cancel()
 
@@ -51,7 +51,7 @@ func TestTaskStreamHub_NotifyIgnoresOtherKeys(t *testing.T) {
 }
 
 func TestTaskStreamHub_CoalescesRepeatedNotify(t *testing.T) {
-	h := execution.NewTaskStreamHub()
+	h := delivery.NewTaskStreamHub()
 	ch, cancel := h.Subscribe("acme/widgets", 7)
 	defer cancel()
 
@@ -68,7 +68,7 @@ func TestTaskStreamHub_CoalescesRepeatedNotify(t *testing.T) {
 }
 
 func TestTaskStreamHub_CancelDeregisters(t *testing.T) {
-	h := execution.NewTaskStreamHub()
+	h := delivery.NewTaskStreamHub()
 	ch, cancel := h.Subscribe("acme/widgets", 7)
 	cancel()
 	cancel() // idempotent — must not panic
@@ -82,6 +82,6 @@ func TestTaskStreamHub_CancelDeregisters(t *testing.T) {
 }
 
 func TestTaskStreamHub_NilIsNoop(t *testing.T) {
-	var h *execution.TaskStreamHub
+	var h *delivery.TaskStreamHub
 	h.Notify("acme/widgets", 7) // nil-safe: the writers hold it unconditionally
 }

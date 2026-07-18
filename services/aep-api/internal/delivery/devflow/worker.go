@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -34,12 +35,12 @@ const dialRetryInterval = 15 * time.Second
 // watcher just keeps retrying and the devflow endpoints answer 503 until the
 // first successful dial.
 type WorkerWatcher struct {
-	rt   *Runtime
+	rt   *delivery.Runtime
 	acts *Activities
 }
 
 // NewWorkerWatcher builds the watcher; nothing connects until Run.
-func NewWorkerWatcher(rt *Runtime, acts *Activities) *WorkerWatcher {
+func NewWorkerWatcher(rt *delivery.Runtime, acts *Activities) *WorkerWatcher {
 	return &WorkerWatcher{rt: rt, acts: acts}
 }
 
@@ -47,9 +48,9 @@ func NewWorkerWatcher(rt *Runtime, acts *Activities) *WorkerWatcher {
 // A worker fatal error tears the client down and re-enters the dial loop.
 func (w *WorkerWatcher) Run(ctx context.Context) {
 	for {
-		if err := w.rt.dial(); err != nil {
+		if err := w.rt.Dial(); err != nil {
 			slog.Warn("devflow: temporal dial failed, retrying",
-				"hostPort", w.rt.cfg.HostPort, "interval", dialRetryInterval, "error", err)
+				"hostPort", w.rt.HostPort(), "interval", dialRetryInterval, "error", err)
 			select {
 			case <-ctx.Done():
 				return
@@ -78,21 +79,21 @@ func (w *WorkerWatcher) Run(ctx context.Context) {
 
 		if err := wk.Start(); err != nil {
 			slog.Error("devflow: worker start failed, re-dialing", "error", err)
-			w.rt.close()
+			w.rt.Close()
 			continue
 		}
 		slog.Info("devflow: temporal worker started",
-			"hostPort", w.rt.cfg.HostPort, "namespace", w.rt.cfg.Namespace, "taskQueue", w.rt.TaskQueue())
+			"hostPort", w.rt.HostPort(), "namespace", w.rt.Namespace(), "taskQueue", w.rt.TaskQueue())
 
 		select {
 		case <-ctx.Done():
 			wk.Stop()
-			w.rt.close()
+			w.rt.Close()
 			return
 		case err := <-fatalCh:
 			slog.Error("devflow: temporal worker fatal error, re-dialing", "error", err)
 			wk.Stop()
-			w.rt.close()
+			w.rt.Close()
 			// loop re-enters the dial retry
 		}
 	}

@@ -23,6 +23,7 @@ import (
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 )
 
@@ -30,11 +31,11 @@ import (
 // runtime. ExecuteWorkflow is start-and-return, so a build POST answers as
 // soon as the workflow is accepted — never when it completes.
 type TemporalRunner struct {
-	rt *devflow.Runtime
+	rt *delivery.Runtime
 }
 
 // NewTemporalRunner wraps the devflow runtime.
-func NewTemporalRunner(rt *devflow.Runtime) *TemporalRunner {
+func NewTemporalRunner(rt *delivery.Runtime) *TemporalRunner {
 	return &TemporalRunner{rt: rt}
 }
 

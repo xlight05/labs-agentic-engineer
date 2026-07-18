@@ -14,18 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package devflow hosts the Temporal-backed development workflows: the
-// per-version DevFlowWorkflow (tag → design → plan → task fan-out →
-// validate), the per-task TaskFlowWorkflow (dispatch coding agent → PR →
-// merge → build → deploy), and the validating phase's tree — the per-version
-// ValidationFlowWorkflow orchestrator fanning out ValidationTaskWorkflow lane
-// children (dispatch lanes → single PR → merge, no build/deploy).
-// Activities are thin adapters over the existing
-// feature services; existing webhook handlers and watchers feed the
-// workflows via signals (see signaler.go). The whole feature is additive:
-// with Temporal unconfigured, nothing here runs and the rest of aep-api is
-// untouched.
-package devflow
+package delivery
 
 import (
 	"errors"
@@ -60,6 +49,13 @@ func NewRuntime(cfg config.TemporalConfig) *Runtime {
 // TaskQueue returns the configured task queue name.
 func (r *Runtime) TaskQueue() string { return r.cfg.TaskQueue }
 
+// HostPort returns the configured Temporal host:port (for the worker watcher's
+// dial logging).
+func (r *Runtime) HostPort() string { return r.cfg.HostPort }
+
+// Namespace returns the configured Temporal namespace.
+func (r *Runtime) Namespace() string { return r.cfg.Namespace }
+
 // Available reports whether a Temporal client connection is established.
 func (r *Runtime) Available() bool {
 	r.mu.RLock()
@@ -78,9 +74,9 @@ func (r *Runtime) Client() (client.Client, error) {
 	return r.c, nil
 }
 
-// dial establishes the client connection. Called by the worker watcher's
+// Dial establishes the client connection. Called by the worker watcher's
 // retry loop; safe to call repeatedly.
-func (r *Runtime) dial() error {
+func (r *Runtime) Dial() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.c != nil {
@@ -98,8 +94,8 @@ func (r *Runtime) dial() error {
 	return nil
 }
 
-// close tears down the client connection (shutdown path).
-func (r *Runtime) close() {
+// Close tears down the client connection (shutdown path).
+func (r *Runtime) Close() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.c != nil {

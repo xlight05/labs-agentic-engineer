@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -48,7 +49,7 @@ func provisionIssue(number int, depName, gateKind, state string) sourcecontrol.I
 
 // newTestFunnelP is newTestFunnel with per-component provisioning deps supplied
 // (the design-augmented half of the dependency-kind-aware gate).
-func newTestFunnelP(store *fakeStore, issues *fakeIssues, names map[string]bool, provisionDep map[string][]string, exec Executor) *Funnel {
+func newTestFunnelP(store *fakeStore, issues *fakeIssues, names map[string]bool, provisionDep map[string][]string, exec delivery.Executor) *Funnel {
 	reg := NewRegistry()
 	if exec != nil {
 		reg.Register(taskmeta.ClassCoding, exec)
@@ -185,7 +186,7 @@ func TestFunnel_ProvisionDep_ReleasedOnReevaluate(t *testing.T) {
 
 // newTestFunnelOrg wires a funnel with per-component org-service deps (the
 // conditional org-service gate, issue #164 Task 4).
-func newTestFunnelOrg(store *fakeStore, issues *fakeIssues, names map[string]bool, orgServiceDep map[string][]string, exec Executor) *Funnel {
+func newTestFunnelOrg(store *fakeStore, issues *fakeIssues, names map[string]bool, orgServiceDep map[string][]string, exec delivery.Executor) *Funnel {
 	reg := NewRegistry()
 	if exec != nil {
 		reg.Register(taskmeta.ClassCoding, exec)

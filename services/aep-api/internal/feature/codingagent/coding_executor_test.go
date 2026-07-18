@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -62,10 +62,10 @@ func buildRow(id string) *models.Execution {
 	}
 }
 
-func buildDispatch(row *models.Execution) execution.DispatchRequest {
-	return execution.DispatchRequest{
+func buildDispatch(row *models.Execution) delivery.DispatchRequest {
+	return delivery.DispatchRequest{
 		Execution: row,
-		Task:      execution.TaskFacts{OrgID: "acme", ProjectID: "widgets", Component: "order-service"},
+		Task:      delivery.TaskFacts{OrgID: "acme", ProjectID: "widgets", Component: "order-service"},
 		MergeSHA:  "deadbeef",
 	}
 }

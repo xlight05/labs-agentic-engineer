@@ -23,10 +23,10 @@ import (
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 
+	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
-	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/task"

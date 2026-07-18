@@ -19,6 +19,7 @@ package devflow
 import (
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 	"go.temporal.io/sdk/workflow"
 )
@@ -137,19 +138,19 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 
 	// Wait for the build (spawned by the merge webhook, driven by the funnel).
 	status.Phase = TaskPhaseBuilding
-	buildStatus := workflow.GetSignalChannel(ctx, SigBuildStatus)
+	buildStatus := workflow.GetSignalChannel(ctx, delivery.SigBuildStatus)
 	if s, ok := awaitRunStatus(ctx, buildStatus, buildWaitTimeout); !ok {
 		return fail("timed out waiting for the build")
-	} else if s.Phase == PhaseFailed {
+	} else if s.Phase == delivery.PhaseFailed {
 		return fail("build failed: " + s.Message)
 	}
 
 	// Wait for the deploy signal.
 	status.Phase = TaskPhaseDeploying
-	deployStatus := workflow.GetSignalChannel(ctx, SigDeployStatus)
+	deployStatus := workflow.GetSignalChannel(ctx, delivery.SigDeployStatus)
 	if s, ok := awaitRunStatus(ctx, deployStatus, deployWaitTimeout); !ok {
 		return fail("timed out waiting for the deploy")
-	} else if s.Phase == PhaseFailed {
+	} else if s.Phase == delivery.PhaseFailed {
 		return fail("deploy failed: " + s.Message)
 	}
 

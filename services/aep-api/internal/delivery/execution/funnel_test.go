@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -46,7 +47,7 @@ func taskIssue(number int, comp string, deps []string, extraLabels []string, sta
 	}
 }
 
-func newTestFunnel(store *fakeStore, issues *fakeIssues, design map[string]bool, exec Executor) *Funnel {
+func newTestFunnel(store *fakeStore, issues *fakeIssues, design map[string]bool, exec delivery.Executor) *Funnel {
 	reg := NewRegistry()
 	if exec != nil {
 		reg.Register(taskmeta.ClassCoding, exec)

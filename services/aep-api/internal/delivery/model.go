@@ -14,20 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package execution is the platform-owned half of the Task/Execution split
-// (docs/design/tasks-github-native.md §1, §10.1). A Task is a GitHub issue,
-// owned by GitHub (feature/task); an Execution is one platform attempt at one
-// kind of work for that Task, owned by Postgres. This package holds THE single
-// dispatch path (the funnel), the executor registry, the reconciliation sweep,
-// the pull_request webhook handlers that end coding attempts and spawn builds,
-// the unified progress endpoint, and the runner-scoped skills read.
-//
-// The §1 split is a package boundary: this package never imports feature/task
-// and vice-versa (arch-locked). The two halves speak the pure taskmeta encoding
-// and the executions rows (a shared kernel: models/ + repositories/), nothing
-// else. There is exactly one door into dispatch — the funnel — so gates cannot
-// be bypassed (§5).
-package execution
+package delivery
 
 import (
 	"context"

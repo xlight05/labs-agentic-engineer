@@ -64,11 +64,14 @@ var featureEdgeAllowlist = map[string][]string{
 	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
 	"build": {"task"},
 	// codingagent is the funnel's one registered executor: it implements the
-	// execution.Executor port (hence the execution edge) and reaches every other
-	// service — identities, anthropic, repos, OC — through consumer ports wired
-	// at the composition root. It also holds the devflow signaler (nil-safe) so
-	// the coding/build/deploy watchers can signal a waiting TaskFlow workflow.
-	"codingagent": {"execution"},
+	// delivery.Executor kernel port and reaches every other service —
+	// identities, anthropic, repos, OC — through consumer ports wired at the
+	// composition root. It also holds the delivery Signaler (nil-safe) so the
+	// coding/build/deploy watchers can signal a waiting TaskFlow workflow. Both
+	// the Executor port and the Signaler now live in the delivery domain ROOT
+	// (§10.3.1), reached as slice/feature→root, so codingagent has no
+	// feature→feature edge.
+	"codingagent": {},
 	"component":   {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
@@ -81,14 +84,11 @@ var featureEdgeAllowlist = map[string][]string{
 	// external-resource repo, secret writer, design reader) is a consumer-side
 	// port wired at the composition root, keeping the feature edge surface minimal.
 	"dependencies": {"dependencies/resources", "dependencies/endpoints"},
-	// execution is the platform-owned half of the Task/Execution split: it reads
-	// GitHub Task facts (via the sourcecontrol domain since P2) and, on PR events,
-	// signals a waiting devflow
-	// TaskFlow workflow (devflow, nil-safe). Design at HEAD is read through a
-	// consumer-side port, not a direct artifacts import. It NEVER imports
-	// feature/task — the §1 split is a package boundary.
-	"execution": {},
-	"project":   {},
+	// (execution MIGRATED to internal/delivery/execution — the platform-owned
+	// half of the Task/Execution split is now a delivery-domain sub-package, not
+	// a feature. Its row is gone because the feature is gone; the §1 boundary is
+	// re-asserted below as feature/task ⊥ delivery/execution.)
+	"project": {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
 	// issues now come from the sourcecontrol domain (P2). Every other collaborator —
@@ -104,11 +104,11 @@ var featureEdgeAllowlist = map[string][]string{
 	// (ExternalResourceBindingName) rather than re-deriving the convention.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)
 	"runtimeconfig": {"dependencies/resources"},
-	// task is the GitHub-facing half: it never imports feature/execution (the §1
+	// task is the GitHub-facing half: it never imports delivery/execution (the §1
 	// split) — the funnel is reached through the task.Dispatcher consumer port.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)
-	"task": {},
-	"webhook":    {},
+	"task":    {},
+	"webhook": {},
 }
 
 // depCache memoizes each package's transitive import set so the boundary
@@ -262,20 +262,20 @@ func TestFeatureEdgeAllowlist(t *testing.T) {
 
 // TestTaskExecutionSplit asserts the §1 Task/Execution split is a package
 // boundary (docs/design/tasks-github-native.md §10): feature/task (the
-// GitHub-facing half) and feature/execution (the platform-owned half) never
-// import each other — they communicate only through the pure taskmeta encoding
-// and the executions rows (the shared kernel). task reaches the funnel through
-// the task.Dispatcher consumer port; execution never needs task at all. This
-// is subsumed by TestFeatureEdgeAllowlist but stated explicitly because the
-// split is the design's load-bearing invariant.
+// GitHub-facing half) and delivery/execution (the platform-owned half, now a
+// delivery-domain sub-package) never import each other — they communicate only
+// through the pure taskmeta encoding and the executions rows (the shared
+// kernel). task reaches the funnel through the task.Dispatcher consumer port;
+// execution never needs task at all. This is subsumed by TestFeatureEdgeAllowlist
+// but stated explicitly because the split is the design's load-bearing invariant.
 func TestTaskExecutionSplit(t *testing.T) {
 	const task = mod + "/internal/feature/task"
-	const execution = mod + "/internal/feature/execution"
+	const execution = mod + "/internal/delivery/execution"
 	if imports(t, task, execution) {
-		t.Error("feature/task imports feature/execution — the Task/Execution split is a package boundary; reach the funnel through the task.Dispatcher port")
+		t.Error("feature/task imports delivery/execution — the Task/Execution split is a package boundary; reach the funnel through the task.Dispatcher port")
 	}
 	if imports(t, execution, task) {
-		t.Error("feature/execution imports feature/task — the Task/Execution split is a package boundary")
+		t.Error("delivery/execution imports feature/task — the Task/Execution split is a package boundary")
 	}
 }
 

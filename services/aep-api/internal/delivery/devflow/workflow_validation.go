@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 	"go.temporal.io/sdk/workflow"
 )
@@ -242,7 +243,7 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 		if r == nil || r.done {
 			return
 		}
-		_ = r.future.SignalChildWorkflow(ctx, SigLaneStatus, LaneStatusSignal{
+		_ = r.future.SignalChildWorkflow(ctx, delivery.SigLaneStatus, delivery.LaneStatusSignal{
 			Lane: r.lane.Kind, Phase: phase, Message: message,
 		}).Get(ctx, nil)
 	}
@@ -262,22 +263,22 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 		}
 		return nil
 	}
-	jobStatus := workflow.GetSignalChannel(ctx, SigJobStatus)
-	prOpened := workflow.GetSignalChannel(ctx, SigPROpened)
+	jobStatus := workflow.GetSignalChannel(ctx, delivery.SigJobStatus)
+	prOpened := workflow.GetSignalChannel(ctx, delivery.SigPROpened)
 	timer := workflow.NewTimer(ctx, codingWaitTimeout)
 	remaining, timedOut := len(runs), false
 	for remaining > 0 && !timedOut {
 		sel := workflow.NewSelector(ctx)
 		sel.AddReceive(jobStatus, func(c workflow.ReceiveChannel, _ bool) {
-			var s RunStatusSignal
+			var s delivery.RunStatusSignal
 			c.Receive(ctx, &s)
 			forward(byExec(s.ExecutionID), s.Phase, s.Message)
 		})
 		sel.AddReceive(prOpened, func(c workflow.ReceiveChannel, _ bool) {
-			var pr PRSignal
+			var pr delivery.PRSignal
 			c.Receive(ctx, &pr)
 			status.PRNumber = pr.PRNumber
-			forward(byKind(LaneE2E), PhaseSucceeded, "")
+			forward(byKind(LaneE2E), delivery.PhaseSucceeded, "")
 		})
 		for i := range runs {
 			if runs[i].done {
@@ -347,8 +348,8 @@ func ValidationTaskWorkflow(ctx workflow.Context, in ValidationTaskInput) (Valid
 		timeout = codingWaitTimeout
 	}
 
-	laneCh := workflow.GetSignalChannel(ctx, SigLaneStatus)
-	var got LaneStatusSignal
+	laneCh := workflow.GetSignalChannel(ctx, delivery.SigLaneStatus)
+	var got delivery.LaneStatusSignal
 	received := false
 	timer := workflow.NewTimer(ctx, timeout)
 	sel := workflow.NewSelector(ctx)
@@ -363,7 +364,7 @@ func ValidationTaskWorkflow(ctx workflow.Context, in ValidationTaskInput) (Valid
 	switch {
 	case !received:
 		res.Outcome, res.Error = OutcomeFailed, "timed out waiting for lane completion"
-	case got.Phase == PhaseSucceeded:
+	case got.Phase == delivery.PhaseSucceeded:
 		res.Outcome = OutcomeSucceeded
 	default:
 		res.Outcome, res.Error = OutcomeFailed, got.Message

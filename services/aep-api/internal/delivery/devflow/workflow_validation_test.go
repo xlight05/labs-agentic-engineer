@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 	"go.temporal.io/sdk/testsuite"
 )
@@ -34,7 +35,7 @@ func TestValidationTaskWorkflow_CompletesOnForwardedSuccess(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigLaneStatus, LaneStatusSignal{Lane: LaneE2E, Phase: PhaseSucceeded})
+		env.SignalWorkflow(delivery.SigLaneStatus, delivery.LaneStatusSignal{Lane: LaneE2E, Phase: delivery.PhaseSucceeded})
 	}, time.Second)
 
 	env.ExecuteWorkflow(ValidationTaskWorkflow, ValidationTaskInput{
@@ -55,8 +56,8 @@ func TestValidationTaskWorkflow_FailsOnForwardedFailure(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigLaneStatus, LaneStatusSignal{
-			Lane: LaneE2E, Phase: PhaseFailed, Message: "coding job failed: boom",
+		env.SignalWorkflow(delivery.SigLaneStatus, delivery.LaneStatusSignal{
+			Lane: LaneE2E, Phase: delivery.PhaseFailed, Message: "coding job failed: boom",
 		})
 	}, time.Second)
 
@@ -145,10 +146,10 @@ func TestValidationFlowWorkflow_HappyPath(t *testing.T) {
 	recorded := registerValidationFlowActivities(env, 99)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPRMerged, PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55, MergeSHA: "abc"})
+		env.SignalWorkflow(delivery.SigPRMerged, delivery.PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55, MergeSHA: "abc"})
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(ValidationFlowWorkflow, ValidationFlowInput{
@@ -180,8 +181,8 @@ func TestValidationFlowWorkflow_LaneFailsOnJobFailure(t *testing.T) {
 	registerValidationFlowActivities(env, 99)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigJobStatus, RunStatusSignal{
-			ExecutionID: "exec-e2e", Phase: PhaseFailed, Message: "chromium crashed",
+		env.SignalWorkflow(delivery.SigJobStatus, delivery.RunStatusSignal{
+			ExecutionID: "exec-e2e", Phase: delivery.PhaseFailed, Message: "chromium crashed",
 		})
 	}, time.Second)
 
@@ -208,10 +209,10 @@ func TestValidationFlowWorkflow_PRRejectedFailsMerge(t *testing.T) {
 	registerValidationFlowActivities(env, 99)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPRRejected, PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
+		env.SignalWorkflow(delivery.SigPRRejected, delivery.PRSignal{Repo: "org1/proj1", Issue: 99, PRNumber: 55})
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(ValidationFlowWorkflow, ValidationFlowInput{

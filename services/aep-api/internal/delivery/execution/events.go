@@ -24,7 +24,7 @@ import (
 	"strconv"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -54,11 +54,11 @@ type Events struct {
 	// signaler feeds PR events to a waiting devflow TaskFlow workflow. Nil-safe:
 	// a nil signaler (old-console flow, or Temporal disabled) is a no-op, so the
 	// webhook handlers behave exactly as before when no workflow is driving.
-	signaler *devflow.Signaler
+	signaler *delivery.Signaler
 	// notifier wakes any attached task-log SSE stream so the console sees a PR
 	// transition (coding done / merged / rejected) instantly instead of on the
 	// stream's slow re-derive tick. Nil-safe.
-	notifier *TaskStreamHub
+	notifier *delivery.TaskStreamHub
 }
 
 // NewEvents wires the pull_request handlers. prs may be nil (then the sweep
@@ -69,14 +69,14 @@ func NewEvents(store ExecutionStore, funnel *Funnel, registry *Registry, prs PRR
 
 // WithWorkflowSignaler wires the devflow signaler so PR events reach a waiting
 // TaskFlow workflow. Optional — unset leaves the old behavior unchanged.
-func (e *Events) WithWorkflowSignaler(s *devflow.Signaler) *Events {
+func (e *Events) WithWorkflowSignaler(s *delivery.Signaler) *Events {
 	e.signaler = s
 	return e
 }
 
 // WithTaskNotifier wires the task-log stream hub so PR transitions wake attached
 // console streams instantly. Optional — nil-safe.
-func (e *Events) WithTaskNotifier(h *TaskStreamHub) *Events {
+func (e *Events) WithTaskNotifier(h *delivery.TaskStreamHub) *Events {
 	e.notifier = h
 	return e
 }
@@ -156,7 +156,7 @@ func (e *Events) PullRequestOpened(ctx context.Context, _, _ string, payload []b
 		return err
 	}
 	// The coding attempt is done (PR made) — tell any waiting TaskFlow workflow.
-	e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, devflow.SigPROpened, devflow.PRSignal{
+	e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, delivery.SigPROpened, delivery.PRSignal{
 		Repo:     p.Repository.FullName,
 		Issue:    issueNumber,
 		PRNumber: p.PullRequest.Number,
@@ -183,7 +183,7 @@ func (e *Events) PullRequestClosed(ctx context.Context, _, _ string, payload []b
 		// PR closed without merging → record the coding attempt as rejected by
 		// appending a terminal coding row (never mutate a terminal row). The
 		// derived status flips to rejected via prState (§4).
-		e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, devflow.SigPRRejected, devflow.PRSignal{
+		e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, delivery.SigPRRejected, delivery.PRSignal{
 			Repo:     p.Repository.FullName,
 			Issue:    issueNumber,
 			PRNumber: p.PullRequest.Number,
@@ -195,7 +195,7 @@ func (e *Events) PullRequestClosed(ctx context.Context, _, _ string, payload []b
 	// Merged → spawn a build Execution and dispatch it through the registered
 	// executor (§7). Builds do not pass the deps gate — a merged PR proceeds.
 	// Tell any waiting TaskFlow workflow the PR merged (it then awaits the build).
-	e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, devflow.SigPRMerged, devflow.PRSignal{
+	e.signaler.SignalTask(ctx, p.Repository.FullName, issueNumber, delivery.SigPRMerged, delivery.PRSignal{
 		Repo:     p.Repository.FullName,
 		Issue:    issueNumber,
 		PRNumber: p.PullRequest.Number,
@@ -265,7 +265,7 @@ func (e *Events) spawnBuild(ctx context.Context, repoFullName string, issueNumbe
 		_, _ = e.store.Finish(ctx, adRow.ID, string(taskmeta.ExecCanceled), reasonNoExecutor+" "+string(facts.Class))
 		return nil
 	}
-	if err := executor.Run(ctx, DispatchRequest{Execution: adRow, Task: facts, MergeSHA: mergeSHA}); err != nil {
+	if err := executor.Run(ctx, delivery.DispatchRequest{Execution: adRow, Task: facts, MergeSHA: mergeSHA}); err != nil {
 		_, _ = e.store.Finish(ctx, adRow.ID, string(taskmeta.ExecFailed), err.Error())
 		return err
 	}

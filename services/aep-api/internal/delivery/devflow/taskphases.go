@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -33,22 +34,22 @@ import (
 // until the PR opens, the coding job fails, or codingWaitTimeout elapses.
 // Mutates status (Phase→coding, ExecutionID, PRNumber). The coding agent's
 // success IS the PR opening (§7).
-func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue int, status *TaskFlowStatus) (PRSignal, error) {
+func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue int, status *TaskFlowStatus) (delivery.PRSignal, error) {
 	status.Phase = TaskPhaseCoding
 	var executionID string
 	if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).DispatchCoding, DispatchCodingInput{
 		OrgID: orgID, ProjectID: projectID, Repo: repo, Issue: issue,
 	}).Get(ctx, &executionID); err != nil {
-		return PRSignal{}, errors.New("dispatch coding: " + err.Error())
+		return delivery.PRSignal{}, errors.New("dispatch coding: " + err.Error())
 	}
 	status.ExecutionID = executionID
 
 	// Wait for the coding attempt to end: pr-opened (success) or job-status
 	// failed.
-	prOpened := workflow.GetSignalChannel(ctx, SigPROpened)
-	jobStatus := workflow.GetSignalChannel(ctx, SigJobStatus)
-	var pr PRSignal
-	var jobFailed *RunStatusSignal
+	prOpened := workflow.GetSignalChannel(ctx, delivery.SigPROpened)
+	jobStatus := workflow.GetSignalChannel(ctx, delivery.SigJobStatus)
+	var pr delivery.PRSignal
+	var jobFailed *delivery.RunStatusSignal
 	timer := workflow.NewTimer(ctx, codingWaitTimeout)
 	done := false
 	for !done {
@@ -58,9 +59,9 @@ func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue i
 			done = true
 		})
 		sel.AddReceive(jobStatus, func(c workflow.ReceiveChannel, _ bool) {
-			var s RunStatusSignal
+			var s delivery.RunStatusSignal
 			c.Receive(ctx, &s)
-			if s.Phase == PhaseFailed {
+			if s.Phase == delivery.PhaseFailed {
 				jobFailed = &s
 				done = true
 			}
@@ -69,10 +70,10 @@ func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue i
 		sel.Select(ctx)
 	}
 	if jobFailed != nil {
-		return PRSignal{}, errors.New("coding job failed: " + jobFailed.Message)
+		return delivery.PRSignal{}, errors.New("coding job failed: " + jobFailed.Message)
 	}
 	if pr.PRNumber == 0 {
-		return PRSignal{}, errors.New("timed out waiting for the pull request")
+		return delivery.PRSignal{}, errors.New("timed out waiting for the pull request")
 	}
 	status.PRNumber = pr.PRNumber
 	return pr, nil
@@ -86,8 +87,8 @@ func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue i
 // Mutates status (Phase→merging, PendingGate, Error). nil == merged.
 func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, gates GateConfig, status *TaskFlowStatus) error {
 	status.Phase = TaskPhaseMerging
-	prMerged := workflow.GetSignalChannel(ctx, SigPRMerged)
-	prRejected := workflow.GetSignalChannel(ctx, SigPRRejected)
+	prMerged := workflow.GetSignalChannel(ctx, delivery.SigPRMerged)
+	prRejected := workflow.GetSignalChannel(ctx, delivery.SigPRRejected)
 	merged := false
 	if gates.IsAuto(GateMergePR) {
 		if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).MergePR, MergePRInput{
@@ -97,13 +98,13 @@ func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, 
 		}
 	} else {
 		status.PendingGate = GateMergePR
-		gateCh := workflow.GetSignalChannel(ctx, SigGateDecision)
+		gateCh := workflow.GetSignalChannel(ctx, delivery.SigGateDecision)
 		timer := workflow.NewTimer(ctx, mergeWaitTimeout)
 		decided := false
 		for !decided {
 			sel := workflow.NewSelector(ctx)
 			sel.AddReceive(gateCh, func(c workflow.ReceiveChannel, _ bool) {
-				var d GateDecisionSignal
+				var d delivery.GateDecisionSignal
 				c.Receive(ctx, &d)
 				if d.Gate != GateMergePR {
 					return
@@ -120,12 +121,12 @@ func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, 
 				}
 			})
 			sel.AddReceive(prMerged, func(c workflow.ReceiveChannel, _ bool) {
-				var m PRSignal
+				var m delivery.PRSignal
 				c.Receive(ctx, &m)
 				merged, decided = true, true // human merged on GitHub
 			})
 			sel.AddReceive(prRejected, func(c workflow.ReceiveChannel, _ bool) {
-				var r PRSignal
+				var r delivery.PRSignal
 				c.Receive(ctx, &r)
 				decided = true
 				status.Error = "pull request closed without merging"
@@ -150,12 +151,12 @@ func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, 
 		for !done {
 			sel := workflow.NewSelector(ctx)
 			sel.AddReceive(prMerged, func(c workflow.ReceiveChannel, _ bool) {
-				var m PRSignal
+				var m delivery.PRSignal
 				c.Receive(ctx, &m)
 				merged, done = true, true
 			})
 			sel.AddReceive(prRejected, func(c workflow.ReceiveChannel, _ bool) {
-				var r PRSignal
+				var r delivery.PRSignal
 				c.Receive(ctx, &r)
 				done = true
 			})
@@ -171,8 +172,8 @@ func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, 
 
 // awaitRunStatus blocks for one RunStatusSignal or the timeout. ok=false on
 // timeout.
-func awaitRunStatus(ctx workflow.Context, ch workflow.ReceiveChannel, timeout time.Duration) (RunStatusSignal, bool) {
-	var got RunStatusSignal
+func awaitRunStatus(ctx workflow.Context, ch workflow.ReceiveChannel, timeout time.Duration) (delivery.RunStatusSignal, bool) {
+	var got delivery.RunStatusSignal
 	received := false
 	timer := workflow.NewTimer(ctx, timeout)
 	sel := workflow.NewSelector(ctx)

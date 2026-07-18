@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -41,7 +42,7 @@ func TestDevFlowWorkflow_ManualPlanGate_Reject(t *testing.T) {
 	registerDevActivities(env, []PlannedTask{{Issue: 1, Key: "api"}})
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigGateDecision, GateDecisionSignal{Gate: GatePlan, Approve: false, Note: "not yet"})
+		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GatePlan, Approve: false, Note: "not yet"})
 	}, time.Second)
 
 	env.ExecuteWorkflow(DevFlowWorkflow, DevFlowInput{
@@ -93,7 +94,7 @@ func TestDevFlowWorkflow_PendingGate_VisibleInQuery(t *testing.T) {
 		require.NoError(t, res.Get(&st))
 		require.Equal(t, GatePlan, st.PendingGate)
 		// Release the gate so the workflow completes.
-		env.SignalWorkflow(SigGateDecision, GateDecisionSignal{Gate: GatePlan, Approve: true})
+		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GatePlan, Approve: true})
 	}, time.Second)
 
 	env.ExecuteWorkflow(DevFlowWorkflow, DevFlowInput{
@@ -115,10 +116,10 @@ func TestTaskFlowWorkflow_ManualMergeGate_Reject(t *testing.T) {
 	registerTaskActivities(env)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigGateDecision, GateDecisionSignal{Gate: GateMergePR, Approve: false, Note: "hold off"})
+		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GateMergePR, Approve: false, Note: "hold off"})
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{

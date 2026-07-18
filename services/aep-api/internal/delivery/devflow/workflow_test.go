@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -52,16 +53,16 @@ func TestTaskFlowWorkflow_HappyPath_AutoGates(t *testing.T) {
 
 	// Drive the signal sequence a real webhook/watcher run would produce.
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
 	}, time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPRMerged, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42, MergeSHA: "abc"})
+		env.SignalWorkflow(delivery.SigPRMerged, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42, MergeSHA: "abc"})
 	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigBuildStatus, RunStatusSignal{Phase: PhaseSucceeded})
+		env.SignalWorkflow(delivery.SigBuildStatus, delivery.RunStatusSignal{Phase: delivery.PhaseSucceeded})
 	}, 3*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigDeployStatus, RunStatusSignal{Phase: PhaseSucceeded})
+		env.SignalWorkflow(delivery.SigDeployStatus, delivery.RunStatusSignal{Phase: delivery.PhaseSucceeded})
 	}, 4*time.Second)
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{
@@ -81,7 +82,7 @@ func TestTaskFlowWorkflow_CodingFails(t *testing.T) {
 	registerTaskActivities(env)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigJobStatus, RunStatusSignal{Phase: PhaseFailed, Message: "boom"})
+		env.SignalWorkflow(delivery.SigJobStatus, delivery.RunStatusSignal{Phase: delivery.PhaseFailed, Message: "boom"})
 	}, time.Second)
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{
@@ -102,12 +103,12 @@ func TestTaskFlowWorkflow_PRRejected(t *testing.T) {
 	registerTaskActivities(env)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
 	}, time.Second)
 	// Auto-merge activity runs, but the merge webhook reports the PR was closed
 	// without merging.
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPRRejected, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
+		env.SignalWorkflow(delivery.SigPRRejected, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
 	}, 2*time.Second)
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{
@@ -127,20 +128,20 @@ func TestTaskFlowWorkflow_ManualMergeGate_Approve(t *testing.T) {
 	registerTaskActivities(env)
 
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPROpened, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
+		env.SignalWorkflow(delivery.SigPROpened, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42})
 	}, time.Second)
 	// Human approves the merge gate; platform then merges + the webhook confirms.
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigGateDecision, GateDecisionSignal{Gate: GateMergePR, Approve: true, Actor: "alice"})
+		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GateMergePR, Approve: true, Actor: "alice"})
 	}, 2*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigPRMerged, PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42, MergeSHA: "abc"})
+		env.SignalWorkflow(delivery.SigPRMerged, delivery.PRSignal{Repo: "org1/proj1", Issue: 7, PRNumber: 42, MergeSHA: "abc"})
 	}, 3*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigBuildStatus, RunStatusSignal{Phase: PhaseSucceeded})
+		env.SignalWorkflow(delivery.SigBuildStatus, delivery.RunStatusSignal{Phase: delivery.PhaseSucceeded})
 	}, 4*time.Second)
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(SigDeployStatus, RunStatusSignal{Phase: PhaseSucceeded})
+		env.SignalWorkflow(delivery.SigDeployStatus, delivery.RunStatusSignal{Phase: delivery.PhaseSucceeded})
 	}, 5*time.Second)
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{

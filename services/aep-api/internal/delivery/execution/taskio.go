@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -56,16 +57,16 @@ func openPRNumber(row *models.Execution) int {
 // ok is false when the issue is not a Task (no aep:task marker) or its block is
 // absent/mangled — the funnel/sweep skip those (unlabeled issues are inert;
 // mangled blocks are the events handler's aep:attention responsibility).
-func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullName string) (TaskFacts, taskmeta.Block, bool) {
+func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullName string) (delivery.TaskFacts, taskmeta.Block, bool) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask {
-		return TaskFacts{}, taskmeta.Block{}, false
+		return delivery.TaskFacts{}, taskmeta.Block{}, false
 	}
 	block, err := taskmeta.ParseBlock(issue.Body)
 	if err != nil {
-		return TaskFacts{}, taskmeta.Block{}, false
+		return delivery.TaskFacts{}, taskmeta.Block{}, false
 	}
-	f := TaskFacts{
+	f := delivery.TaskFacts{
 		OrgID:       orgID,
 		ProjectID:   projectID,
 		Repo:        repoFullName,
@@ -88,7 +89,7 @@ func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullNam
 // deriveStatus fuses a Task's live GitHub facts with its executions into the
 // computed, never-stored status (§4). execs is latest-per-kind; the PR state is
 // reconstructed from the rows (taskmeta.PRStateFromFacts).
-func deriveStatus(f TaskFacts, execs map[string]*models.Execution) taskmeta.DerivedStatus {
+func deriveStatus(f delivery.TaskFacts, execs map[string]*models.Execution) taskmeta.DerivedStatus {
 	facts := repositories.ExecutionFacts(execs)
 	gh := taskmeta.GitHubFacts{
 		IssueOpen:   f.IssueOpen,
