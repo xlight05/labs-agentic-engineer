@@ -39,6 +39,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -136,7 +137,11 @@ func stripeConsumerDesign() []models.DesignComponent {
 
 func newProvHarness(t *testing.T, svc *provisioning.Service) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{ProvisioningSvc: svc}})
+	deps, err := dephttpapi.New(dephttpapi.Deps{ProvisioningSvc: svc})
+	if err != nil {
+		t.Fatalf("assemble dependencies domain: %v", err)
+	}
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{Dependencies: deps}})
 }
 
 // ----- tests --------------------------------------------------------------------

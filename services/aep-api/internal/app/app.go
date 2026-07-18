@@ -53,6 +53,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
+	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/dependencies/runtimeconfig"
@@ -823,7 +824,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	params.MCPOrgEndpoints = orgEndpointCatalog
 	resourceTypeCatalog := dependencies.NewResourceTypeCatalog(resourceClient)
 	params.MCPResourceTypes = resourceTypeCatalog
-	params.Deps.ResourceTypeCatalog = resourceTypeCatalog
+	// params.Deps.Dependencies (the strict ListPlatformResourceTypes + provisioning
+	// ops) is assembled below, after provisioningSvc exists.
 	// Endpoint spec discovery: the read-only remote-git reader an agent uses to
 	// read a provider's OpenAPI file from its own repo (Contents + Code Search,
 	// no clone). It resolves the org's credential (token + owner) from
@@ -888,7 +890,17 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		Access:    repositories.NewAccessRequestRepository(db),
 		Providers: orgEndpointCatalog,
 	})
-	params.Deps.ProvisioningSvc = provisioningSvc
+	// Assemble the dependencies domain (P8): the provisioning slice (7 ops over
+	// provisioningSvc) + the resource-type-discovery slice (ListPlatformResourceTypes
+	// over the catalog). Both slices are nil-tolerant; the edge 503s when unwired.
+	dependenciesHandlers, err := dephttpapi.New(dephttpapi.Deps{
+		ProvisioningSvc: provisioningSvc,
+		ResourceTypes:   resourceTypeCatalog,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("assemble dependencies domain: %w", err)
+	}
+	params.Deps.Dependencies = dependenciesHandlers
 	// The build dependency-drawer preflight (issue #164): walks the design at HEAD
 	// and emits a drawer item per dependency that still needs input, filtering out
 	// anything already provisioned OR in-flight (buildProvisionStatus collapses the

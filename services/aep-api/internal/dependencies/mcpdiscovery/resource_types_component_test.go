@@ -34,6 +34,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
+	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 )
 
@@ -49,7 +50,11 @@ func (s stubResourceTypeLister) List(context.Context) ([]dependencies.PlatformRe
 
 func newLister(t *testing.T, lister stubResourceTypeLister) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{ResourceTypeCatalog: lister}})
+	deps, err := dephttpapi.New(dephttpapi.Deps{ResourceTypes: lister})
+	if err != nil {
+		t.Fatalf("assemble dependencies domain: %v", err)
+	}
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{Dependencies: deps}})
 }
 
 // TestPlatformResourceTypes_MapsDomainToDTOs verifies the domain→DTO

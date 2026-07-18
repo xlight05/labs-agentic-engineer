@@ -19,6 +19,7 @@ package api
 import (
 	"net/http"
 
+	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
@@ -80,6 +81,7 @@ type apiServer struct {
 	*specHandlers          // P4 — spec (Spec Authoring & Versioning)
 	*deliveryHandlers      // P6 — delivery (Build, Tasks & Task-log stream)
 	*projectsHandlers      // P7 — projects (Projects, Components, Builds & Config)
+	*dependenciesHandlers  // P8 — dependencies (Provisioning, Resources & Access)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
@@ -93,6 +95,7 @@ type (
 	specHandlers          = spechttpapi.Handlers
 	deliveryHandlers      = deliveryhttpapi.Handlers
 	projectsHandlers      = projectshttpapi.Handlers
+	dependenciesHandlers  = dephttpapi.Handlers
 )
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
@@ -123,6 +126,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 			specHandlers:          deps.Spec,
 			deliveryHandlers:      deps.Delivery,
 			projectsHandlers:      deps.Projects,
+			dependenciesHandlers:  dependenciesOrEmpty(deps.Dependencies),
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{
@@ -167,6 +171,23 @@ func sourceControlOrEmpty(h *sourcecontrolHandlers) *sourcecontrolHandlers {
 	if err != nil {
 		// Unreachable: zero Deps is a supported configuration for this domain.
 		panic("api: assembling an empty sourcecontrol domain: " + err.Error())
+	}
+	return empty
+}
+
+// dependenciesOrEmpty is the same harness-contract guard for the dependencies
+// domain: its pre-migration provisioning/resource-type handlers 503'd on a nil
+// service, so a component test that leaves the domain unwired must keep getting
+// 503 rather than a nil-embed panic. Both slices are nil-tolerant, so zero Deps
+// degrades every op to 503 exactly as before.
+func dependenciesOrEmpty(h *dependenciesHandlers) *dependenciesHandlers {
+	if h != nil {
+		return h
+	}
+	empty, err := dephttpapi.New(dephttpapi.Deps{})
+	if err != nil {
+		// Unreachable: zero Deps is a supported configuration for this domain.
+		panic("api: assembling an empty dependencies domain: " + err.Error())
 	}
 	return empty
 }

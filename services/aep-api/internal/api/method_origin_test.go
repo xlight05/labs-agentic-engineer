@@ -62,6 +62,7 @@ const (
 	embedSpec          = "specHandlers"          // P4
 	embedDelivery      = "deliveryHandlers"      // P6
 	embedProjects      = "projectsHandlers"      // P7
+	embedDependencies  = "dependenciesHandlers"  // P8
 )
 
 // opOwner maps every operation of the committed contract to the apiServer
@@ -69,13 +70,13 @@ const (
 var opOwner = map[string]string{
 	"ApplyFiles":                    embedSpec,
 	"BuildProject":                  embedDelivery,
-	"CollectExternalResourceValues": embedLegacy,
+	"CollectExternalResourceValues": embedDependencies,
 	"CreateIssue":                   embedSourceControl,
 	"CreateProject":                 embedProjects,
 	"CreateRcaAgentReport":          embedOps,
 	"CreateSkill":                   embedSpec,
 	"CreateTurn":                    embedSpec,
-	"DeleteExternalResource":        embedLegacy,
+	"DeleteExternalResource":        embedDependencies,
 	"DeleteProject":                 embedProjects,
 	"DeleteSkill":                   embedSpec,
 	"DisconnectGitProvider":         embedOrganization,
@@ -88,7 +89,7 @@ var opOwner = map[string]string{
 	"GetComponentOpenapi":           embedProjects,
 	"GetConfig":                     embedOrganization,
 	"GetConversation":               embedSpec,
-	"GetDependencyStatus":           embedLegacy,
+	"GetDependencyStatus":           embedDependencies,
 	"GetProject":                    embedProjects,
 	"GetProjectBuild":               embedDelivery,
 	"GetProjectStatus":              embedProjects,
@@ -98,15 +99,15 @@ var opOwner = map[string]string{
 	"GetTask":                       embedDelivery,
 	"GetTurn":                       embedSpec,
 	"ImportSkill":                   embedSpec,
-	"ListAccessRequests":            embedLegacy,
+	"ListAccessRequests":            embedDependencies,
 	"ListBuilds":                    embedProjects,
 	"ListComponents":                embedProjects,
 	"ListDeployments":               embedProjects,
-	"ListExternalResources":         embedLegacy,
+	"ListExternalResources":         embedDependencies,
 	"ListFiles":                     embedSpec,
 	"ListIssues":                    embedSourceControl,
 	"ListOrganizations":             embedOrganization,
-	"ListPlatformResourceTypes":     embedLegacy,
+	"ListPlatformResourceTypes":     embedDependencies,
 	"ListProjectBuilds":             embedDelivery,
 	"ListProjectTags":               embedSpec,
 	"ListProjects":                  embedProjects,
@@ -115,9 +116,9 @@ var opOwner = map[string]string{
 	"ListSkills":                    embedSpec,
 	"ListTasks":                     embedDelivery,
 	"PromoteTaskFromIssue":          embedDelivery,
-	"ProvisionPlatformResource":     embedLegacy,
+	"ProvisionPlatformResource":     embedDependencies,
 	"ReadFile":                      embedSpec,
-	"RequestOrgServiceAccess":       embedLegacy,
+	"RequestOrgServiceAccess":       embedDependencies,
 	"RotateIdpClientSecret":         embedOrganization,
 	"StartGitProviderConnect":       embedOrganization,
 	"StreamTaskLog":                 embedDelivery,
@@ -297,10 +298,7 @@ func TestEmbedsAreConcrete(t *testing.T) {
 // migration is expected to make and assert the gate reports them.
 
 // plantedSlice stands in for a migrated slice handler. It declares a REAL
-// contract op, so the shape below is byte-for-byte the shape P1+ produces. The
-// op it declares must be one legacy STILL serves, so the planted double-coverage
-// below is a genuine two-provider tie (ListPlatformResourceTypes has not migrated
-// off legacyShim — it is embedLegacy in the ledger above).
+// contract op, so the shape below is byte-for-byte the shape P1+ produces.
 type plantedSlice struct{}
 
 func (plantedSlice) ListPlatformResourceTypes(ctx context.Context, request gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
@@ -311,12 +309,26 @@ func (plantedSlice) ListPlatformResourceTypes(ctx context.Context, request gen.L
 // declares nothing and only embeds slice handlers.
 type plantedAggregator struct{ plantedSlice }
 
+// plantedLegacy mimics the PRE-CUT legacy shim: a depth-equalising wrapper that
+// still declares the op. P8 was the last phase, so the REAL legacyShim now serves
+// ZERO ops — there is no live op to anchor a genuine double-cover on. This fixture
+// reproduces the exact shape (a promoted method reaching the composite at depth-2)
+// the real shim had before its last op was cut, so the fires-proof stays honest at
+// the terminal state instead of silently passing on a one-provider tie.
+type plantedLegacy struct{ *plantedLegacyHandlers }
+
+type plantedLegacyHandlers struct{}
+
+func (*plantedLegacyHandlers) ListPlatformResourceTypes(ctx context.Context, request gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
+	return nil, nil
+}
+
 // plantedDoubleCover is the migration slip: ListPlatformResourceTypes was added
 // to the domain but NOT cut from legacy. Both candidates sit at depth-2, which is
 // why the real apiServer would refuse to compile — so the fixture is a separate
 // type, and the detector is aimed at it directly.
 type plantedDoubleCover struct {
-	legacyShim
+	plantedLegacy
 	plantedAggregator
 }
 
@@ -329,11 +341,11 @@ func TestMethodOriginGateFires(t *testing.T) {
 	got := embedsProvidingIn(reflect.TypeOf(plantedDoubleCover{}), "ListPlatformResourceTypes")
 	if len(got) != 2 {
 		t.Fatalf("planted double coverage went UNDETECTED: embedsProvidingIn = %v, want both "+
-			"[legacyShim plantedAggregator] — the migration's headline net is not working", got)
+			"[plantedAggregator plantedLegacy] — the migration's headline net is not working", got)
 	}
-	// And it must name the culprits, not merely count them.
-	if got[0] != "legacyShim" || got[1] != "plantedAggregator" {
-		t.Fatalf("detector named %v, want [legacyShim plantedAggregator]", got)
+	// And it must name the culprits, not merely count them (sorted).
+	if got[0] != "plantedAggregator" || got[1] != "plantedLegacy" {
+		t.Fatalf("detector named %v, want [plantedAggregator plantedLegacy]", got)
 	}
 }
 

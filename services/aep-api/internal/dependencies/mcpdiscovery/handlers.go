@@ -14,32 +14,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package mcpdiscovery
 
 import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 )
 
-// Dependencies feature on the strict interface: the platform-resource-type
-// discovery endpoint (the HTTP transport of the same data the
-// list_platform_resource_types MCP tool serves). The catalog is cluster-global
-// — there is nothing org-scoped to filter by — but the operation still sits
-// behind the deny-by-default tenant gate like every other one (the auth
-// fence). A nil catalog answers 503, mirroring the retired
+// Handler is the resource-type-discovery slice of the strict interface: the
+// platform-resource-type catalog read (the HTTP transport of the same data the
+// list_platform_resource_types MCP tool serves, over the same ResourceTypeLister
+// this package owns). The catalog is cluster-global — there is nothing org-scoped
+// to filter by — but the operation still sits behind the deny-by-default tenant
+// gate like every other one. A nil lister answers 503, mirroring the pre-migration
 // RegisterResourceTypes nil guard.
+type Handler struct {
+	catalog ResourceTypeLister
+}
 
-func (s *legacyHandlers) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
-	if s.deps.ResourceTypeCatalog == nil {
-		return nil, errServiceUnavailable("resource-type catalog is not configured")
+// NewHandler wires the slice over the resource-type catalog. A nil catalog is a
+// supported configuration: the op degrades to 503.
+func NewHandler(catalog ResourceTypeLister) *Handler {
+	return &Handler{catalog: catalog}
+}
+
+func (h *Handler) ListPlatformResourceTypes(ctx context.Context, _ gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
+	if h.catalog == nil {
+		return nil, apierr.ServiceUnavailable("resource-type catalog is not configured")
 	}
-	types, err := s.deps.ResourceTypeCatalog.List(ctx)
+	types, err := h.catalog.List(ctx)
 	if err != nil {
 		// The catalog reads cluster ClusterResourceTypes over OpenChoreo; a
 		// failure is an upstream (data-plane) fault, not the caller's.
-		return nil, errBadGateway("failed to list platform resource types")
+		return nil, apierr.BadGateway("failed to list platform resource types")
 	}
 	return gen.ListPlatformResourceTypes200JSONResponse(toPlatformResourceTypeDTOs(types)), nil
 }
