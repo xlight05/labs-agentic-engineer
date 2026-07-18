@@ -154,8 +154,11 @@ components:
       - Email
       - Login
     ValidationContextResponse:
-      description: Deployed endpoints + criteria path for a validation run. Served
-        as the validation service's own struct (no mapping layer).
+      description: Deployed endpoints + criteria path for a validation run.
+        Generated as igen.ValidationContextResponse (no x-go-type) — igen must
+        stay a leaf, so the edge's internal handler projects the delivery
+        domain's own struct onto this wire shape (domain-oriented-architecture
+        §7; the same decoupling as RefreshResponse).
       type: object
       additionalProperties: false
       properties:
@@ -168,9 +171,6 @@ components:
       required:
       - endpoints
       - criteriaPath
-      x-go-type: validation.ValidationContextResponse
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/internal/feature/validation
     ComponentEndpoint:
       type: object
       additionalProperties: false
@@ -182,12 +182,10 @@ components:
       required:
       - component
       - url
-      x-go-type: validation.ComponentEndpoint
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/internal/feature/validation
     TestCredential:
-      description: Test login credentials for a validation run. Served as the
-        validation service's own struct (no mapping layer).
+      description: Test login credentials for a validation run. Generated as
+        igen.TestCredential (no x-go-type); the edge's internal handler projects
+        the delivery domain's own struct onto this wire shape.
       type: object
       additionalProperties: false
       properties:
@@ -203,9 +201,6 @@ components:
       - username
       - password
       - mock
-      x-go-type: validation.TestCredential
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/internal/feature/validation
     TestCredentialRequest:
       description: Optional hints for a runner test-credential request.
       type: object

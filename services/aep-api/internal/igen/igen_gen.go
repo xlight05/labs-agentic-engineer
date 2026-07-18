@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
-	"github.com/wso2/aep/aep-api/internal/feature/validation"
 )
 
 const (
@@ -25,7 +24,10 @@ const (
 )
 
 // ComponentEndpoint defines model for ComponentEndpoint.
-type ComponentEndpoint = validation.ComponentEndpoint
+type ComponentEndpoint struct {
+	Component string `json:"component"`
+	URL       string `json:"url"`
+}
 
 // Error Flat error envelope returned by every non-2xx response.
 type Error struct {
@@ -62,8 +64,13 @@ type RefreshResponse struct {
 	Token    string   `json:"token"`
 }
 
-// TestCredential Test login credentials for a validation run. Served as the validation service's own struct (no mapping layer).
-type TestCredential = validation.TestCredential
+// TestCredential Test login credentials for a validation run. Generated as igen.TestCredential (no x-go-type); the edge's internal handler projects the delivery domain's own struct onto this wire shape.
+type TestCredential struct {
+	Mock     bool   `json:"mock"`
+	Note     string `json:"note,omitempty"`
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
 
 // TestCredentialRequest Optional hints for a runner test-credential request.
 type TestCredentialRequest struct {
@@ -72,8 +79,11 @@ type TestCredentialRequest struct {
 	Username string `json:"username,omitempty"`
 }
 
-// ValidationContextResponse Deployed endpoints + criteria path for a validation run. Served as the validation service's own struct (no mapping layer).
-type ValidationContextResponse = validation.ValidationContextResponse
+// ValidationContextResponse Deployed endpoints + criteria path for a validation run. Generated as igen.ValidationContextResponse (no x-go-type) — igen must stay a leaf, so the edge's internal handler projects the delivery domain's own struct onto this wire shape (domain-oriented-architecture §7; the same decoupling as RefreshResponse).
+type ValidationContextResponse struct {
+	CriteriaPath string              `json:"criteriaPath"`
+	Endpoints    []ComponentEndpoint `json:"endpoints"`
+}
 
 // publisherCCContextKey is the context key for publisherCC security scheme
 type publisherCCContextKey string

@@ -173,7 +173,33 @@ func (s *internalServer) RunnerValidationContext(ctx context.Context, request ig
 		}
 		return nil, errInternal("failed to resolve validation context")
 	}
-	return igen.RunnerValidationContext200JSONResponse(*resp), nil
+	return igen.RunnerValidationContext200JSONResponse(toIgenValidationContext(*resp)), nil
+}
+
+// toIgenValidationContext + toIgenTestCredential project the validation
+// service's own structs onto the S2S wire shapes. igen must stay a leaf, so it
+// cannot import the feature/domain that owns these value types (§7) — hence a
+// mapping here rather than the former x-go-type aliases. The wire keys are
+// byte-identical; a nil endpoints slice stays nil (marshals `null`) exactly as
+// the alias did, never silently becoming `[]`.
+func toIgenValidationContext(r validation.ValidationContextResponse) igen.ValidationContextResponse {
+	var eps []igen.ComponentEndpoint
+	if r.Endpoints != nil {
+		eps = make([]igen.ComponentEndpoint, len(r.Endpoints))
+		for i, e := range r.Endpoints {
+			eps[i] = igen.ComponentEndpoint{Component: e.Component, URL: e.URL}
+		}
+	}
+	return igen.ValidationContextResponse{Endpoints: eps, CriteriaPath: r.CriteriaPath}
+}
+
+func toIgenTestCredential(c validation.TestCredential) igen.TestCredential {
+	return igen.TestCredential{
+		Username: c.Username,
+		Password: c.Password,
+		Mock:     c.Mock,
+		Note:     c.Note,
+	}
 }
 
 func (s *internalServer) RunnerValidationCredentials(ctx context.Context, request igen.RunnerValidationCredentialsRequestObject) (igen.RunnerValidationCredentialsResponseObject, error) {
@@ -196,5 +222,5 @@ func (s *internalServer) RunnerValidationCredentials(ctx context.Context, reques
 		}
 		return nil, errInternal("failed to request test credentials")
 	}
-	return igen.RunnerValidationCredentials200JSONResponse(*resp), nil
+	return igen.RunnerValidationCredentials200JSONResponse(toIgenTestCredential(*resp)), nil
 }
