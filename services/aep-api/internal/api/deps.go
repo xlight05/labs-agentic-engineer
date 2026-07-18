@@ -29,7 +29,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
-	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/delivery/task"
 )
 
 // Deps carries every feature service the strict handlers (handlers_*.go)

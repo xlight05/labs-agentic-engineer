@@ -29,7 +29,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
-	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )

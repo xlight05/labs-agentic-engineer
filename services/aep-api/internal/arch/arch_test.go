@@ -53,17 +53,13 @@ const mod = "github.com/wso2/aep/aep-api"
 // decision: extend this list in the same PR and say why, or (usually better)
 // cut the edge with a consumer-side port per the house pattern.
 var featureEdgeAllowlist = map[string][]string{
-	// build is the public single-tag build surface (build-project /
-	// get-project-build). It deliberately composes the machinery it fronts:
-	// the spec domain (SpecSaveResult + SpecValidationError — the 422 detail
-	// must survive errors.As across the port boundary; a feature→domain edge
-	// since P4, no longer allowlisted here), devflow (workflow name/id/
-	// status vocabulary + the Temporal runtime the runner wraps), task
-	// (TaskView for the status title join). Heavy collaborators (SaveSpec,
-	// workflow_runs, repo lookup) stay behind consumer-side ports wired at the
-	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
-	"build": {"task"},
-	"component":   {},
+	// build is the public single-tag build surface. It composes the spec domain
+	// (SpecSaveResult/SpecValidationError, P4), the delivery domain (the devflow
+	// Runtime + workflow vocab + task's TaskView, P6) and sourcecontrol (P2) —
+	// all feature→domain edges now, none feature→feature, so its allowlist row is
+	// empty. Heavy collaborators stay behind consumer-side ports wired at the root.
+	"build":     {},
+	"component": {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
 	// endpoints subpackages (external/platform provisioner cores; the org
@@ -95,10 +91,10 @@ var featureEdgeAllowlist = map[string][]string{
 	// (ExternalResourceBindingName) rather than re-deriving the convention.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)
 	"runtimeconfig": {"dependencies/resources"},
-	// task is the GitHub-facing half: it never imports delivery/execution (the §1
-	// split) — the funnel is reached through the task.Dispatcher consumer port.
-	// (Its artifacts edge became a feature→spec-domain edge in P4.)
-	"task":    {},
+	// (task MIGRATED to internal/delivery/task in P6 — the GitHub-facing half of
+	// the Task/Execution split is now a delivery-domain sub-package. Its row is
+	// gone; the §1 boundary is re-asserted by TestTaskExecutionSplit as
+	// delivery/task ⊥ delivery/execution.)
 	"webhook": {},
 }
 
@@ -252,21 +248,22 @@ func TestFeatureEdgeAllowlist(t *testing.T) {
 }
 
 // TestTaskExecutionSplit asserts the §1 Task/Execution split is a package
-// boundary (docs/design/tasks-github-native.md §10): feature/task (the
-// GitHub-facing half) and delivery/execution (the platform-owned half, now a
-// delivery-domain sub-package) never import each other — they communicate only
-// through the pure taskmeta encoding and the executions rows (the shared
-// kernel). task reaches the funnel through the task.Dispatcher consumer port;
-// execution never needs task at all. This is subsumed by TestFeatureEdgeAllowlist
-// but stated explicitly because the split is the design's load-bearing invariant.
+// boundary (docs/design/tasks-github-native.md §10): delivery/task (the
+// GitHub-facing half) and delivery/execution (the platform-owned half) never
+// import each other — they communicate only through the pure taskmeta encoding
+// and the executions rows (the shared kernel). task reaches the funnel through
+// the task.Dispatcher consumer port; execution never needs task at all. Now that
+// both are delivery-domain sub-packages this is also enforced by slice⊥sibling,
+// but it is stated explicitly because the split is the design's load-bearing
+// invariant (§10.3.1).
 func TestTaskExecutionSplit(t *testing.T) {
-	const task = mod + "/internal/feature/task"
+	const task = mod + "/internal/delivery/task"
 	const execution = mod + "/internal/delivery/execution"
 	if imports(t, task, execution) {
-		t.Error("feature/task imports delivery/execution — the Task/Execution split is a package boundary; reach the funnel through the task.Dispatcher port")
+		t.Error("delivery/task imports delivery/execution — the Task/Execution split is a package boundary; reach the funnel through the task.Dispatcher port")
 	}
 	if imports(t, execution, task) {
-		t.Error("delivery/execution imports feature/task — the Task/Execution split is a package boundary")
+		t.Error("delivery/execution imports delivery/task — the Task/Execution split is a package boundary")
 	}
 }
 

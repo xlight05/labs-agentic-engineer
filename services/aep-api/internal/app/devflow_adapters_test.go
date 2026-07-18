@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/task"
+	"github.com/wso2/aep/aep-api/internal/delivery/task"
 )
 
 // The validation task must never enter the dev workflow's executing fan-out —
