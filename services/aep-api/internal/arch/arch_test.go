@@ -53,12 +53,12 @@ const mod = "github.com/wso2/aep/aep-api"
 // decision: extend this list in the same PR and say why, or (usually better)
 // cut the edge with a consumer-side port per the house pattern.
 var featureEdgeAllowlist = map[string][]string{
-	// build is the public single-tag build surface. It composes the spec domain
-	// (SpecSaveResult/SpecValidationError, P4), the delivery domain (the devflow
-	// Runtime + workflow vocab + task's TaskView, P6) and sourcecontrol (P2) —
-	// all feature→domain edges now, none feature→feature, so its allowlist row is
-	// empty. Heavy collaborators stay behind consumer-side ports wired at the root.
-	"build":     {},
+	// (build MIGRATED to internal/delivery/build in P6 — the public single-tag
+	// build surface is now a delivery-domain sub-package (buildpipe). It composes
+	// the delivery root (the devflow Runtime + the workflow I/O vocab + task's
+	// TaskView), the spec domain (SpecSaveResult/SpecValidationError) and
+	// sourcecontrol — all slice→root or domain→domain edges. Its row is gone
+	// because the feature is gone.)
 	"component": {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and

@@ -20,10 +20,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 func TestDevWorkflowID_Format(t *testing.T) {
-	require.Equal(t, "devflow-acme-shop-v3", DevWorkflowID("acme", "shop", "v3"))
+	require.Equal(t, "devflow-acme-shop-v3", delivery.DevWorkflowID("acme", "shop", "v3"))
 }
 
 func TestTaskWorkflowID_Format(t *testing.T) {

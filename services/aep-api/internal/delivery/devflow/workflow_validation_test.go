@@ -48,7 +48,7 @@ func TestValidationTaskWorkflow_CompletesOnForwardedSuccess(t *testing.T) {
 	require.NoError(t, env.GetWorkflowResult(&res))
 	require.Equal(t, LaneE2E, res.Kind)
 	require.Equal(t, 9, res.Issue)
-	require.Equal(t, OutcomeSucceeded, res.Outcome)
+	require.Equal(t, delivery.OutcomeSucceeded, res.Outcome)
 }
 
 func TestValidationTaskWorkflow_FailsOnForwardedFailure(t *testing.T) {
@@ -69,7 +69,7 @@ func TestValidationTaskWorkflow_FailsOnForwardedFailure(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	var res ValidationLaneResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Equal(t, delivery.OutcomeFailed, res.Outcome)
 	require.Contains(t, res.Error, "boom")
 }
 
@@ -87,7 +87,7 @@ func TestValidationTaskWorkflow_TimesOut(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	var res ValidationLaneResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Equal(t, delivery.OutcomeFailed, res.Outcome)
 	require.Contains(t, res.Error, "timed out")
 }
 
@@ -161,12 +161,12 @@ func TestValidationFlowWorkflow_HappyPath(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	var res ValidationFlowResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeSucceeded, res.Outcome)
+	require.Equal(t, delivery.OutcomeSucceeded, res.Outcome)
 	require.Equal(t, 55, res.PRNumber)
 	require.Len(t, res.Lanes, 1)
 	require.Equal(t, LaneE2E, res.Lanes[0].Kind)
 	require.Equal(t, 99, res.Lanes[0].Issue)
-	require.Equal(t, OutcomeSucceeded, res.Lanes[0].Outcome)
+	require.Equal(t, delivery.OutcomeSucceeded, res.Lanes[0].Outcome)
 	// The phase row: kind=validation, the issue, parented to the DEV run.
 	require.Equal(t, models.WorkflowKindValidation, recorded.Kind)
 	require.Equal(t, 99, recorded.IssueNumber)
@@ -195,7 +195,7 @@ func TestValidationFlowWorkflow_LaneFailsOnJobFailure(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	var res ValidationFlowResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Equal(t, delivery.OutcomeFailed, res.Outcome)
 	require.Contains(t, res.Reason, "lane e2e (#99)")
 	require.Contains(t, res.Reason, "chromium crashed")
 	env.AssertNotCalled(t, "MergePR", mock.Anything, mock.Anything)
@@ -224,6 +224,6 @@ func TestValidationFlowWorkflow_PRRejectedFailsMerge(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	var res ValidationFlowResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Equal(t, delivery.OutcomeFailed, res.Outcome)
 	require.Contains(t, res.Reason, "pull request was not merged")
 }

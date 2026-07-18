@@ -18,7 +18,7 @@ package build
 
 import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -34,11 +34,11 @@ const (
 // statusFromPhase maps a live DevFlowStatus phase onto the contract enum.
 func statusFromPhase(phase string) string {
 	switch phase {
-	case devflow.DevPhaseValidatingSpec:
+	case delivery.DevPhaseValidatingSpec:
 		return statusStarted
-	case devflow.DevPhaseDone:
+	case delivery.DevPhaseDone:
 		return statusCompleted
-	case devflow.DevPhaseFailed:
+	case delivery.DevPhaseFailed:
 		return statusFailed
 	default: // planning / executing / validating
 		return statusInProgress
@@ -77,19 +77,19 @@ func statusFromDerived(derived string) string {
 }
 
 // taskStatus maps a DevTaskRef (phase + outcome) onto the contract enum.
-func taskStatus(ref devflow.DevTaskRef) string {
-	if ref.Outcome == devflow.OutcomeFailed || ref.Outcome == devflow.OutcomeSkippedDepFai {
+func taskStatus(ref delivery.DevTaskRef) string {
+	if ref.Outcome == delivery.OutcomeFailed || ref.Outcome == delivery.OutcomeSkippedDepFai {
 		return statusFailed
 	}
-	if ref.Outcome == devflow.OutcomeSucceeded {
+	if ref.Outcome == delivery.OutcomeSucceeded {
 		return statusCompleted
 	}
 	switch ref.Phase {
-	case "pending", devflow.TaskPhaseStarting:
+	case "pending", delivery.TaskPhaseStarting:
 		return statusStarted
-	case devflow.TaskPhaseDone:
+	case delivery.TaskPhaseDone:
 		return statusCompleted
-	case devflow.TaskPhaseFailed:
+	case delivery.TaskPhaseFailed:
 		return statusFailed
 	default: // coding / merging / building / deploying
 		return statusInProgress

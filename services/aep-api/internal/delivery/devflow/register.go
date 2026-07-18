@@ -19,12 +19,16 @@ package devflow
 import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // Registered workflow type names. Kept as constants because clients start
-// workflows by name and tests assert on them.
+// workflows by name and tests assert on them. DevFlowWorkflowName lives in the
+// delivery ROOT (the build endpoint starts the dev workflow by it, so it is
+// part of the build↔workflow contract); the rest stay here since nothing
+// outside this sub-package starts them by name.
 const (
-	DevFlowWorkflowName        = "DevFlowWorkflow"
 	TaskFlowWorkflowName       = "TaskFlowWorkflow"
 	ValidationFlowWorkflowName = "ValidationFlowWorkflow"
 	ValidationTaskWorkflowName = "ValidationTaskWorkflow"
@@ -34,7 +38,7 @@ const (
 // The single registration point keeps the worker, the test environments and
 // the docs in agreement about what runs on the aep-devflow task queue.
 func registerAll(wk worker.Worker, acts *Activities) {
-	wk.RegisterWorkflowWithOptions(DevFlowWorkflow, workflow.RegisterOptions{Name: DevFlowWorkflowName})
+	wk.RegisterWorkflowWithOptions(DevFlowWorkflow, workflow.RegisterOptions{Name: delivery.DevFlowWorkflowName})
 	wk.RegisterWorkflowWithOptions(TaskFlowWorkflow, workflow.RegisterOptions{Name: TaskFlowWorkflowName})
 	wk.RegisterWorkflowWithOptions(ValidationFlowWorkflow, workflow.RegisterOptions{Name: ValidationFlowWorkflowName})
 	wk.RegisterWorkflowWithOptions(ValidationTaskWorkflow, workflow.RegisterOptions{Name: ValidationTaskWorkflowName})

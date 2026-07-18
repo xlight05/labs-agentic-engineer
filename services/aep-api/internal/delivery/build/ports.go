@@ -21,7 +21,6 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -99,8 +98,8 @@ type WorkflowRunner interface {
 	Ready() error
 	// StartBuild starts the dev workflow (start-and-return) and reports the
 	// accepted execution's run id.
-	StartBuild(ctx context.Context, workflowID string, in devflow.DevFlowInput) (runID string, err error)
-	BuildStatus(ctx context.Context, workflowID string) (devflow.DevFlowStatus, error)
+	StartBuild(ctx context.Context, workflowID string, in delivery.DevFlowInput) (runID string, err error)
+	BuildStatus(ctx context.Context, workflowID string) (delivery.DevFlowStatus, error)
 }
 
 // TaskReader is the DURABLE task source behind a build's task list: the live

@@ -30,9 +30,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
@@ -237,7 +237,7 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 	// them), then stage external-config secrets to SM-API and assemble the
 	// provision payload. A fail-fast pre-tag failure returns {failures} and cuts
 	// NO tag.
-	var provInputs []devflow.ProvisionInput
+	var provInputs []delivery.ProvisionInput
 	if s.coord != nil {
 		fails, aerr := s.coord.ApplyPreTag(ctx, orgID, projectID, inputs)
 		if aerr != nil {
@@ -264,13 +264,13 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 		return "", nil, mapTagError(err)
 	}
 
-	workflowID := devflow.DevWorkflowID(orgID, projectID, res.Tag)
-	runID, err := s.runner.StartBuild(ctx, workflowID, devflow.DevFlowInput{
+	workflowID := delivery.DevWorkflowID(orgID, projectID, res.Tag)
+	runID, err := s.runner.StartBuild(ctx, workflowID, delivery.DevFlowInput{
 		OrgID:     orgID,
 		ProjectID: projectID,
 		Repo:      repo,
 		Tag:       res.Tag,
-		Gates:     devflow.GateConfig{}, // all gates auto
+		Gates:     delivery.GateConfig{}, // all gates auto
 		Provision: provInputs,
 	})
 	if err != nil {
@@ -309,7 +309,7 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 // status of tasks still in flight. A durable-read hiccup degrades to whatever
 // the workflow refs carry (numbered placeholders) — build status must never
 // 500 because a GitHub read stumbled.
-func (s *Service) taskStatuses(ctx context.Context, orgID, projectID, tag string, refs []devflow.DevTaskRef) []BuildStatusTask {
+func (s *Service) taskStatuses(ctx context.Context, orgID, projectID, tag string, refs []delivery.DevTaskRef) []BuildStatusTask {
 	byIssue := map[int]*BuildStatusTask{}
 	order := make([]int, 0)
 

@@ -5,8 +5,9 @@ node_modules/
 dist/
 build/
 # …but never Go source packages named "build" (the unanchored pattern above
-# would silently swallow them from every commit).
-!services/aep-api/internal/feature/build/
+# would silently swallow them from every commit). The build package moved from
+# a feature to the delivery domain's buildpipe sub-package in P6.
+!services/aep-api/internal/delivery/build/
 *.tsbuildinfo
 
 # Turborepo

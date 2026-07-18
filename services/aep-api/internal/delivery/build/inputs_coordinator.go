@@ -19,7 +19,7 @@ package build
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -95,14 +95,14 @@ func (c *InputsCoordinator) ApplyPreTag(ctx context.Context, orgID, projectID st
 // in SecretRefByEnv — a raw secret value never enters a ProvisionInput. For
 // platform-resource / org-service it passes Parameters + Approved through.
 // external-spec inputs carry no provision payload (handled in ApplyPreTag).
-func (c *InputsCoordinator) BuildProvisionInputs(ctx context.Context, orgID, ocOrgID, projectID string, inputs []BuildInputItem) ([]devflow.ProvisionInput, []InputFailure, error) {
+func (c *InputsCoordinator) BuildProvisionInputs(ctx context.Context, orgID, ocOrgID, projectID string, inputs []BuildInputItem) ([]delivery.ProvisionInput, []InputFailure, error) {
 	secretKeys, err := c.secretKeysByDep(ctx, orgID, projectID)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var (
-		out      []devflow.ProvisionInput
+		out      []delivery.ProvisionInput
 		failures []InputFailure
 	)
 	for _, in := range inputs {
@@ -114,7 +114,7 @@ func (c *InputsCoordinator) BuildProvisionInputs(ctx context.Context, orgID, ocO
 			}
 			out = append(out, pin)
 		case "platform-resource", "org-service":
-			out = append(out, devflow.ProvisionInput{
+			out = append(out, delivery.ProvisionInput{
 				Component:  in.Component,
 				Dependency: in.Dependency,
 				Kind:       in.Kind,
@@ -131,7 +131,7 @@ func (c *InputsCoordinator) BuildProvisionInputs(ctx context.Context, orgID, ocO
 // externalConfigInput splits one external-config input into non-secret config +
 // staged secret references, consulting isSecret (key → secret flag from the
 // design) to route each value.
-func (c *InputsCoordinator) externalConfigInput(ctx context.Context, orgID, ocOrgID, projectID string, in BuildInputItem, isSecret map[string]bool) (devflow.ProvisionInput, error) {
+func (c *InputsCoordinator) externalConfigInput(ctx context.Context, orgID, ocOrgID, projectID string, in BuildInputItem, isSecret map[string]bool) (delivery.ProvisionInput, error) {
 	config := map[string]string{}
 	secret := map[string]string{}
 	for _, v := range in.Values {
@@ -142,7 +142,7 @@ func (c *InputsCoordinator) externalConfigInput(ctx context.Context, orgID, ocOr
 		config[v.Key] = v.Value
 	}
 
-	pin := devflow.ProvisionInput{
+	pin := delivery.ProvisionInput{
 		Component:  in.Component,
 		Dependency: in.Dependency,
 		Kind:       in.Kind,
@@ -152,7 +152,7 @@ func (c *InputsCoordinator) externalConfigInput(ctx context.Context, orgID, ocOr
 		refByEnv, err := c.stager.StageExternalSecrets(ctx, orgID, ocOrgID, projectID, in.Dependency,
 			map[string]map[string]string{defaultInputEnv: secret})
 		if err != nil {
-			return devflow.ProvisionInput{}, err
+			return delivery.ProvisionInput{}, err
 		}
 		pin.SecretRefByEnv = refByEnv
 	}

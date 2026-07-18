@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -233,10 +234,10 @@ func (a *Activities) ResolveValidationTask(ctx context.Context, in ProjectRef) (
 // ProvisionDepsInput carries the project + tag + resolved provisioning payload
 // the dev workflow authors the dependencies from (issue #164).
 type ProvisionDepsInput struct {
-	OrgID     string           `json:"orgId"`
-	ProjectID string           `json:"projectId"`
-	Tag       string           `json:"tag"`
-	Inputs    []ProvisionInput `json:"inputs,omitempty"`
+	OrgID     string                    `json:"orgId"`
+	ProjectID string                    `json:"projectId"`
+	Tag       string                    `json:"tag"`
+	Inputs    []delivery.ProvisionInput `json:"inputs,omitempty"`
 }
 
 // ProvisionDependencies authors the project's dependencies by kind from the

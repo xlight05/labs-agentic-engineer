@@ -35,7 +35,7 @@ import (
 // Mutates status (Phase→coding, ExecutionID, PRNumber). The coding agent's
 // success IS the PR opening (§7).
 func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue int, status *TaskFlowStatus) (delivery.PRSignal, error) {
-	status.Phase = TaskPhaseCoding
+	status.Phase = delivery.TaskPhaseCoding
 	var executionID string
 	if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).DispatchCoding, DispatchCodingInput{
 		OrgID: orgID, ProjectID: projectID, Repo: repo, Issue: issue,
@@ -85,8 +85,8 @@ func runCodingPhase(ctx workflow.Context, orgID, projectID, repo string, issue i
 // phase. Unless a human merge already arrived, it then awaits the merge
 // webhook confirmation (pr-rejected there means the merge did not stick).
 // Mutates status (Phase→merging, PendingGate, Error). nil == merged.
-func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, gates GateConfig, status *TaskFlowStatus) error {
-	status.Phase = TaskPhaseMerging
+func runMergePhase(ctx workflow.Context, orgID, projectID string, prNumber int, gates delivery.GateConfig, status *TaskFlowStatus) error {
+	status.Phase = delivery.TaskPhaseMerging
 	prMerged := workflow.GetSignalChannel(ctx, delivery.SigPRMerged)
 	prRejected := workflow.GetSignalChannel(ctx, delivery.SigPRRejected)
 	merged := false

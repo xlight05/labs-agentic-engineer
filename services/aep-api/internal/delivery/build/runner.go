@@ -24,7 +24,6 @@ import (
 	"go.temporal.io/sdk/client"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 )
 
 // TemporalRunner is the production WorkflowRunner over the devflow Temporal
@@ -46,7 +45,7 @@ func (r *TemporalRunner) Ready() error {
 	return nil
 }
 
-func (r *TemporalRunner) StartBuild(ctx context.Context, workflowID string, in devflow.DevFlowInput) (string, error) {
+func (r *TemporalRunner) StartBuild(ctx context.Context, workflowID string, in delivery.DevFlowInput) (string, error) {
 	c, err := r.rt.Client()
 	if err != nil {
 		return "", ErrTemporalUnavailable
@@ -58,20 +57,20 @@ func (r *TemporalRunner) StartBuild(ctx context.Context, workflowID string, in d
 		ID:                    workflowID,
 		TaskQueue:             r.rt.TaskQueue(),
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
-	}, devflow.DevFlowWorkflowName, in)
+	}, delivery.DevFlowWorkflowName, in)
 	if err != nil {
 		return "", fmt.Errorf("start workflow: %w", err)
 	}
 	return run.GetRunID(), nil
 }
 
-func (r *TemporalRunner) BuildStatus(ctx context.Context, workflowID string) (devflow.DevFlowStatus, error) {
-	var st devflow.DevFlowStatus
+func (r *TemporalRunner) BuildStatus(ctx context.Context, workflowID string) (delivery.DevFlowStatus, error) {
+	var st delivery.DevFlowStatus
 	c, err := r.rt.Client()
 	if err != nil {
 		return st, ErrTemporalUnavailable
 	}
-	resp, err := c.QueryWorkflow(ctx, workflowID, "", devflow.QueryStatus)
+	resp, err := c.QueryWorkflow(ctx, workflowID, "", delivery.QueryStatus)
 	if err != nil {
 		return st, fmt.Errorf("query workflow: %w", err)
 	}

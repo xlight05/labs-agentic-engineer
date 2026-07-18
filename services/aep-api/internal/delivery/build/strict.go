@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -40,7 +40,7 @@ var ErrBuildNotFound = errors.New("build not found")
 // port of the Huma get handler. Unknown tag (or a cross-org read: the
 // workflow_runs row is the org fence) returns ErrBuildNotFound.
 func (s *Service) Status(ctx context.Context, orgID, projectID, tag string) (BuildStatus, error) {
-	workflowID := devflow.DevWorkflowID(orgID, projectID, tag)
+	workflowID := delivery.DevWorkflowID(orgID, projectID, tag)
 	row, err := s.store.GetByWorkflowID(ctx, orgID, workflowID)
 	if err != nil {
 		return BuildStatus{}, fmt.Errorf("lookup build: %w", err)

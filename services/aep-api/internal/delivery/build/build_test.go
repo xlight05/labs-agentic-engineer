@@ -37,8 +37,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/build"
+	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -50,14 +49,14 @@ import (
 type fakeRunner struct {
 	readyErr  error
 	startErr  error
-	started   []devflow.DevFlowInput
+	started   []delivery.DevFlowInput
 	startedID string
-	status    devflow.DevFlowStatus
+	status    delivery.DevFlowStatus
 	statusErr error
 }
 
 func (f *fakeRunner) Ready() error { return f.readyErr }
-func (f *fakeRunner) StartBuild(_ context.Context, workflowID string, in devflow.DevFlowInput) (string, error) {
+func (f *fakeRunner) StartBuild(_ context.Context, workflowID string, in delivery.DevFlowInput) (string, error) {
 	if f.startErr != nil {
 		return "", f.startErr
 	}
@@ -65,7 +64,7 @@ func (f *fakeRunner) StartBuild(_ context.Context, workflowID string, in devflow
 	f.started = append(f.started, in)
 	return "run-1", nil
 }
-func (f *fakeRunner) BuildStatus(context.Context, string) (devflow.DevFlowStatus, error) {
+func (f *fakeRunner) BuildStatus(context.Context, string) (delivery.DevFlowStatus, error) {
 	return f.status, f.statusErr
 }
 
@@ -389,19 +388,19 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 		phase string
 		want  string
 	}{
-		{devflow.DevPhaseValidatingSpec, "started"},
-		{devflow.DevPhasePlanning, "in_progress"},
-		{devflow.DevPhaseExecuting, "in_progress"},
-		{devflow.DevPhaseValidating, "in_progress"},
-		{devflow.DevPhaseDone, "completed"},
-		{devflow.DevPhaseFailed, "failed"},
+		{delivery.DevPhaseValidatingSpec, "started"},
+		{delivery.DevPhasePlanning, "in_progress"},
+		{delivery.DevPhaseExecuting, "in_progress"},
+		{delivery.DevPhaseValidating, "in_progress"},
+		{delivery.DevPhaseDone, "completed"},
+		{delivery.DevPhaseFailed, "failed"},
 	}
 	for _, tc := range cases {
-		runner := &fakeRunner{status: devflow.DevFlowStatus{
+		runner := &fakeRunner{status: delivery.DevFlowStatus{
 			Phase: tc.phase,
-			Tasks: []devflow.DevTaskRef{
-				{Issue: 7, Phase: devflow.TaskPhaseCoding},
-				{Issue: 8, Phase: devflow.TaskPhaseDone, Outcome: devflow.OutcomeSucceeded},
+			Tasks: []delivery.DevTaskRef{
+				{Issue: 7, Phase: delivery.TaskPhaseCoding},
+				{Issue: 8, Phase: delivery.TaskPhaseDone, Outcome: delivery.OutcomeSucceeded},
 			},
 		}}
 		store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusRunning}}
@@ -576,9 +575,9 @@ func TestGetBuild_QueryFails_FallsBackToRowStatus(t *testing.T) {
 }
 
 func TestGetBuild_TitleFetchFailure_Degrades(t *testing.T) {
-	runner := &fakeRunner{status: devflow.DevFlowStatus{
-		Phase: devflow.DevPhaseExecuting,
-		Tasks: []devflow.DevTaskRef{{Issue: 3, Phase: devflow.TaskPhaseBuilding}},
+	runner := &fakeRunner{status: delivery.DevFlowStatus{
+		Phase: delivery.DevPhaseExecuting,
+		Tasks: []delivery.DevTaskRef{{Issue: 3, Phase: delivery.TaskPhaseBuilding}},
 	}}
 	store := &fakeStore{row: &models.DevflowRun{Status: models.WorkflowStatusRunning}}
 	svc := newSvc(runner, store, fakeRepos{}, &fakeTagger{}, fakeTasks{err: errors.New("github down")})

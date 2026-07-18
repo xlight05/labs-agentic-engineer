@@ -24,21 +24,21 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-// QueryStatus is the query name every devflow workflow exposes so the
-// API/console can read live workflow state.
-const QueryStatus = "status"
+// QueryStatus, the TaskPhase* / Outcome* protocol constants and DevFlowWorkflowName
+// live in the delivery ROOT (delivery.workflow_vocab.go) — the status vocabulary
+// the build reader interprets. Referenced here as delivery.* (§10.3.1).
 
 // TaskFlowInput starts a per-Task workflow: dispatch the coding agent, wait
 // for the PR, merge, build, deploy. Repo is "owner/name"; Issue is the task's
 // GitHub issue number.
 type TaskFlowInput struct {
-	OrgID            string     `json:"orgId"`
-	ProjectID        string     `json:"projectId"`
-	Repo             string     `json:"repo"`
-	Issue            int        `json:"issue"`
-	Tag              string     `json:"tag"`
-	ParentWorkflowID string     `json:"parentWorkflowId,omitempty"`
-	Gates            GateConfig `json:"gates"`
+	OrgID            string              `json:"orgId"`
+	ProjectID        string              `json:"projectId"`
+	Repo             string              `json:"repo"`
+	Issue            int                 `json:"issue"`
+	Tag              string              `json:"tag"`
+	ParentWorkflowID string              `json:"parentWorkflowId,omitempty"`
+	Gates            delivery.GateConfig `json:"gates"`
 }
 
 // TaskFlowStatus is the QueryStatus result for a task workflow.
@@ -58,17 +58,6 @@ type TaskFlowResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// TaskFlow phase values.
-const (
-	TaskPhaseStarting  = "starting"
-	TaskPhaseCoding    = "coding"
-	TaskPhaseMerging   = "merging"
-	TaskPhaseBuilding  = "building"
-	TaskPhaseDeploying = "deploying"
-	TaskPhaseDone      = "done"
-	TaskPhaseFailed    = "failed"
-)
-
 // Signal-wait deadlines. Generous — a stuck run surfaces via the status query
 // rather than a silent hang; the workflow run timeout is the final backstop.
 const (
@@ -78,31 +67,24 @@ const (
 	deployWaitTimeout = 15 * time.Minute
 )
 
-// Outcome values for TaskFlowResult.
-const (
-	OutcomeSucceeded     = "succeeded"
-	OutcomeFailed        = "failed"
-	OutcomeSkippedDepFai = "skipped-dep-failed"
-)
-
 // TaskFlowWorkflow is the per-Task lifecycle: dispatch the coding agent, wait
 // for the PR, merge (auto or human-gated), wait for the build, wait for the
 // deploy, then report to the parent. Every wait is driven by a signal the
 // existing webhook handlers / watchers emit (see signaler.go), not polling.
 func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, error) {
-	status := TaskFlowStatus{Phase: TaskPhaseStarting, Issue: in.Issue}
-	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (TaskFlowStatus, error) {
+	status := TaskFlowStatus{Phase: delivery.TaskPhaseStarting, Issue: in.Issue}
+	if err := workflow.SetQueryHandler(ctx, delivery.QueryStatus, func() (TaskFlowStatus, error) {
 		return status, nil
 	}); err != nil {
-		return TaskFlowResult{Issue: in.Issue, Outcome: OutcomeFailed, Error: err.Error()}, err
+		return TaskFlowResult{Issue: in.Issue, Outcome: delivery.OutcomeFailed, Error: err.Error()}, err
 	}
 	gates := newGateKeeper(in.Gates, func(g string) { status.PendingGate = g })
 	info := workflow.GetInfo(ctx)
 
 	fail := func(msg string) (TaskFlowResult, error) {
-		status.Phase, status.Error = TaskPhaseFailed, msg
+		status.Phase, status.Error = delivery.TaskPhaseFailed, msg
 		markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusFailed, msg)
-		return TaskFlowResult{Issue: in.Issue, Outcome: OutcomeFailed, Error: msg}, nil
+		return TaskFlowResult{Issue: in.Issue, Outcome: delivery.OutcomeFailed, Error: msg}, nil
 	}
 
 	if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).RecordWorkflowRun, RecordWorkflowRunInput{
@@ -137,7 +119,7 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 	}
 
 	// Wait for the build (spawned by the merge webhook, driven by the funnel).
-	status.Phase = TaskPhaseBuilding
+	status.Phase = delivery.TaskPhaseBuilding
 	buildStatus := workflow.GetSignalChannel(ctx, delivery.SigBuildStatus)
 	if s, ok := awaitRunStatus(ctx, buildStatus, buildWaitTimeout); !ok {
 		return fail("timed out waiting for the build")
@@ -146,7 +128,7 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 	}
 
 	// Wait for the deploy signal.
-	status.Phase = TaskPhaseDeploying
+	status.Phase = delivery.TaskPhaseDeploying
 	deployStatus := workflow.GetSignalChannel(ctx, delivery.SigDeployStatus)
 	if s, ok := awaitRunStatus(ctx, deployStatus, deployWaitTimeout); !ok {
 		return fail("timed out waiting for the deploy")
@@ -154,7 +136,7 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 		return fail("deploy failed: " + s.Message)
 	}
 
-	status.Phase = TaskPhaseDone
+	status.Phase = delivery.TaskPhaseDone
 	markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusCompleted, "")
-	return TaskFlowResult{Issue: in.Issue, Outcome: OutcomeSucceeded}, nil
+	return TaskFlowResult{Issue: in.Issue, Outcome: delivery.OutcomeSucceeded}, nil
 }

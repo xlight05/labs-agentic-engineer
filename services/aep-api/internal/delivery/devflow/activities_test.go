@@ -20,17 +20,19 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // fakeBuildProvisioner records the ProvisionForBuild delegation.
 type fakeBuildProvisioner struct {
 	calls     int
-	gotInputs []ProvisionInput
+	gotInputs []delivery.ProvisionInput
 	fails     []ProvisionFailure
 	err       error
 }
 
-func (f *fakeBuildProvisioner) ProvisionForBuild(_ context.Context, _, _, _ string, inputs []ProvisionInput) ([]ProvisionFailure, error) {
+func (f *fakeBuildProvisioner) ProvisionForBuild(_ context.Context, _, _, _ string, inputs []delivery.ProvisionInput) ([]ProvisionFailure, error) {
 	f.calls++
 	f.gotInputs = inputs
 	return f.fails, f.err
@@ -44,7 +46,7 @@ func TestProvisionDependencies_Delegates(t *testing.T) {
 
 	got, err := acts.ProvisionDependencies(context.Background(), ProvisionDepsInput{
 		OrgID: "acme", ProjectID: "shop", Tag: "v3",
-		Inputs: []ProvisionInput{{Component: "o", Dependency: "stripe", Kind: "external-config"}},
+		Inputs: []delivery.ProvisionInput{{Component: "o", Dependency: "stripe", Kind: "external-config"}},
 	})
 	if err != nil {
 		t.Fatalf("ProvisionDependencies: %v", err)
@@ -96,7 +98,7 @@ func TestProvisionDependencies_PropagatesError(t *testing.T) {
 	fp := &fakeBuildProvisioner{err: errors.New("infra down")}
 	acts := NewActivities(Deps{Provisioner: fp})
 	_, err := acts.ProvisionDependencies(context.Background(), ProvisionDepsInput{
-		Inputs: []ProvisionInput{{Dependency: "x", Kind: "external-config"}},
+		Inputs: []delivery.ProvisionInput{{Dependency: "x", Kind: "external-config"}},
 	})
 	if err == nil {
 		t.Fatalf("port error must surface as the activity error")
@@ -108,7 +110,7 @@ func TestProvisionDependencies_PropagatesError(t *testing.T) {
 func TestProvisionDependencies_InputsButUnwiredErrors(t *testing.T) {
 	acts := NewActivities(Deps{})
 	_, err := acts.ProvisionDependencies(context.Background(), ProvisionDepsInput{
-		Inputs: []ProvisionInput{{Dependency: "x", Kind: "external-config"}},
+		Inputs: []delivery.ProvisionInput{{Dependency: "x", Kind: "external-config"}},
 	})
 	if err == nil {
 		t.Fatalf("inputs with no provisioner wired must error")

@@ -21,8 +21,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -124,7 +125,7 @@ type buildProvisioner struct {
 	prov   *provisioning.Service
 }
 
-func (b buildProvisioner) ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, inputs []devflow.ProvisionInput) ([]devflow.ProvisionFailure, error) {
+func (b buildProvisioner) ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, inputs []delivery.ProvisionInput) ([]devflow.ProvisionFailure, error) {
 	if err := b.design.RegisterExternalResources(ctx, orgID, projectID); err != nil {
 		return nil, err
 	}

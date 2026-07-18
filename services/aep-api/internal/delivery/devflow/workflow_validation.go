@@ -52,8 +52,8 @@ type ValidationFlowInput struct {
 	// DevWorkflowID is the spawning dev run's workflow id — stamped as the
 	// orchestrator row's ParentWorkflowID so the status builder's
 	// ValidationRunByParent(devRunID) join keeps working.
-	DevWorkflowID string     `json:"devWorkflowId"`
-	Gates         GateConfig `json:"gates"`
+	DevWorkflowID string              `json:"devWorkflowId"`
+	Gates         delivery.GateConfig `json:"gates"`
 }
 
 // ValidationLane is one automated validation lane: a lane kind plus the
@@ -88,12 +88,12 @@ const ValidationOutcomeSkipped = "skipped"
 
 // ValidationFlowStatus is the orchestrator's QueryStatus payload.
 type ValidationFlowStatus struct {
-	Phase       string       `json:"phase"` // starting | running | merging | done | failed
-	Issue       int          `json:"issue,omitempty"`
-	PRNumber    int          `json:"prNumber,omitempty"`
-	Lanes       []DevTaskRef `json:"lanes,omitempty"`
-	PendingGate string       `json:"pendingGate,omitempty"`
-	Error       string       `json:"error,omitempty"`
+	Phase       string                `json:"phase"` // starting | running | merging | done | failed
+	Issue       int                   `json:"issue,omitempty"`
+	PRNumber    int                   `json:"prNumber,omitempty"`
+	Lanes       []delivery.DevTaskRef `json:"lanes,omitempty"`
+	PendingGate string                `json:"pendingGate,omitempty"`
+	Error       string                `json:"error,omitempty"`
 }
 
 // ValidationTaskInput starts one lane child. The parent dispatched the lane's
@@ -141,18 +141,18 @@ type laneRun struct {
 // succeeded — merge the SINGLE validation PR. A failing lane or merge fails
 // the phase; failures are returned as data (the dev workflow decides).
 func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (ValidationFlowResult, error) {
-	status := ValidationFlowStatus{Phase: TaskPhaseStarting}
+	status := ValidationFlowStatus{Phase: delivery.TaskPhaseStarting}
 	// runMergePhase mutates a TaskFlowStatus; mirror its live gate into the
 	// query view so a manual merge gate stays visible on the orchestrator.
 	var ms TaskFlowStatus
-	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (ValidationFlowStatus, error) {
+	if err := workflow.SetQueryHandler(ctx, delivery.QueryStatus, func() (ValidationFlowStatus, error) {
 		out := status
 		if out.PendingGate == "" {
 			out.PendingGate = ms.PendingGate
 		}
 		return out, nil
 	}); err != nil {
-		return ValidationFlowResult{Outcome: OutcomeFailed, Reason: err.Error()}, err
+		return ValidationFlowResult{Outcome: delivery.OutcomeFailed, Reason: err.Error()}, err
 	}
 	gates := newGateKeeper(in.Gates, func(g string) { status.PendingGate = g })
 	info := workflow.GetInfo(ctx)
@@ -160,11 +160,11 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 	recorded := false
 	var laneResults []ValidationLaneResult
 	fail := func(msg string) (ValidationFlowResult, error) {
-		status.Phase, status.Error = TaskPhaseFailed, msg
+		status.Phase, status.Error = delivery.TaskPhaseFailed, msg
 		if recorded {
 			markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusFailed, msg)
 		}
-		return ValidationFlowResult{Outcome: OutcomeFailed, Reason: msg, PRNumber: status.PRNumber, Lanes: laneResults}, nil
+		return ValidationFlowResult{Outcome: delivery.OutcomeFailed, Reason: msg, PRNumber: status.PRNumber, Lanes: laneResults}, nil
 	}
 
 	// 1. Resolve the validation issue (idempotent ensure + find). 0 ⇒ no
@@ -177,7 +177,7 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 		return fail("resolve validation task: " + err.Error())
 	}
 	if issue == 0 {
-		status.Phase = TaskPhaseDone
+		status.Phase = delivery.TaskPhaseDone
 		return ValidationFlowResult{Outcome: ValidationOutcomeSkipped, Reason: "no acceptance criteria"}, nil
 	}
 	status.Issue = issue
@@ -231,7 +231,7 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 			return fail(fmt.Sprintf("start %s lane child: %s", lane.Kind, err.Error()))
 		}
 		runs = append(runs, &laneRun{lane: lane, execID: executionID, future: cf})
-		status.Lanes = append(status.Lanes, DevTaskRef{Issue: lane.Issue, WorkflowID: wid, Phase: TaskPhaseCoding})
+		status.Lanes = append(status.Lanes, delivery.DevTaskRef{Issue: lane.Issue, WorkflowID: wid, Phase: delivery.TaskPhaseCoding})
 	}
 
 	// 5. Signal pump: route the issue's webhook signals to the lanes until
@@ -289,13 +289,13 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 			sel.AddFuture(r.future, func(f workflow.Future) {
 				var lr ValidationLaneResult
 				if err := f.Get(ctx, &lr); err != nil {
-					lr = ValidationLaneResult{Kind: r.lane.Kind, Issue: r.lane.Issue, Outcome: OutcomeFailed, Error: err.Error()}
+					lr = ValidationLaneResult{Kind: r.lane.Kind, Issue: r.lane.Issue, Outcome: delivery.OutcomeFailed, Error: err.Error()}
 				}
 				r.result, r.done = lr, true
 				remaining--
-				status.Lanes[idx].Phase = TaskPhaseDone
-				if lr.Outcome != OutcomeSucceeded {
-					status.Lanes[idx].Phase = TaskPhaseFailed
+				status.Lanes[idx].Phase = delivery.TaskPhaseDone
+				if lr.Outcome != delivery.OutcomeSucceeded {
+					status.Lanes[idx].Phase = delivery.TaskPhaseFailed
 				}
 				status.Lanes[idx].Outcome = lr.Outcome
 			})
@@ -310,7 +310,7 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 		laneResults = append(laneResults, r.result)
 	}
 	for _, r := range runs {
-		if r.result.Outcome != OutcomeSucceeded {
+		if r.result.Outcome != delivery.OutcomeSucceeded {
 			return fail(fmt.Sprintf("lane %s (#%d): %s", r.lane.Kind, r.lane.Issue, orEmpty(r.result.Error, r.result.Outcome)))
 		}
 	}
@@ -321,14 +321,14 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 	if status.PRNumber == 0 {
 		return fail("validation lanes finished but no pull request was opened")
 	}
-	status.Phase = TaskPhaseMerging
+	status.Phase = delivery.TaskPhaseMerging
 	if err := runMergePhase(ctx, in.OrgID, in.ProjectID, status.PRNumber, in.Gates, &ms); err != nil {
 		return fail(err.Error())
 	}
 
-	status.Phase = TaskPhaseDone
+	status.Phase = delivery.TaskPhaseDone
 	markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusCompleted, "")
-	return ValidationFlowResult{Outcome: OutcomeSucceeded, PRNumber: status.PRNumber, Lanes: laneResults}, nil
+	return ValidationFlowResult{Outcome: delivery.OutcomeSucceeded, PRNumber: status.PRNumber, Lanes: laneResults}, nil
 }
 
 // ValidationTaskWorkflow is one validation lane: it waits for the terminal
@@ -336,11 +336,11 @@ func ValidationFlowWorkflow(ctx workflow.Context, in ValidationFlowInput) (Valid
 // the issue's webhook signals) and reports it back as the lane result.
 // Failures are data, not workflow errors — the parent aggregates them.
 func ValidationTaskWorkflow(ctx workflow.Context, in ValidationTaskInput) (ValidationLaneResult, error) {
-	status := TaskFlowStatus{Phase: TaskPhaseCoding, Issue: in.Issue, ExecutionID: in.ExecutionID}
-	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (TaskFlowStatus, error) {
+	status := TaskFlowStatus{Phase: delivery.TaskPhaseCoding, Issue: in.Issue, ExecutionID: in.ExecutionID}
+	if err := workflow.SetQueryHandler(ctx, delivery.QueryStatus, func() (TaskFlowStatus, error) {
 		return status, nil
 	}); err != nil {
-		return ValidationLaneResult{Kind: in.Lane, Issue: in.Issue, Outcome: OutcomeFailed, Error: err.Error()}, err
+		return ValidationLaneResult{Kind: in.Lane, Issue: in.Issue, Outcome: delivery.OutcomeFailed, Error: err.Error()}, err
 	}
 
 	timeout := in.WaitTimeout
@@ -363,16 +363,16 @@ func ValidationTaskWorkflow(ctx workflow.Context, in ValidationTaskInput) (Valid
 	res := ValidationLaneResult{Kind: in.Lane, Issue: in.Issue}
 	switch {
 	case !received:
-		res.Outcome, res.Error = OutcomeFailed, "timed out waiting for lane completion"
+		res.Outcome, res.Error = delivery.OutcomeFailed, "timed out waiting for lane completion"
 	case got.Phase == delivery.PhaseSucceeded:
-		res.Outcome = OutcomeSucceeded
+		res.Outcome = delivery.OutcomeSucceeded
 	default:
-		res.Outcome, res.Error = OutcomeFailed, got.Message
+		res.Outcome, res.Error = delivery.OutcomeFailed, got.Message
 	}
-	if res.Outcome == OutcomeSucceeded {
-		status.Phase = TaskPhaseDone
+	if res.Outcome == delivery.OutcomeSucceeded {
+		status.Phase = delivery.TaskPhaseDone
 	} else {
-		status.Phase, status.Error = TaskPhaseFailed, res.Error
+		status.Phase, status.Error = delivery.TaskPhaseFailed, res.Error
 	}
 	return res, nil
 }

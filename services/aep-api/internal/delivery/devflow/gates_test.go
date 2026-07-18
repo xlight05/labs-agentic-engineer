@@ -28,9 +28,9 @@ import (
 
 func TestGateConfig_IsAuto(t *testing.T) {
 	// Nil config → everything auto (the default).
-	require.True(t, GateConfig{}.IsAuto(GatePlan))
+	require.True(t, delivery.GateConfig{}.IsAuto(GatePlan))
 	// A gate absent from the map is auto; present=false is manual.
-	c := GateConfig{Auto: map[string]bool{GateValidate: false, GatePlan: true}}
+	c := delivery.GateConfig{Auto: map[string]bool{GateValidate: false, GatePlan: true}}
 	require.False(t, c.IsAuto(GateValidate))
 	require.True(t, c.IsAuto(GatePlan))
 	require.True(t, c.IsAuto(GateComplete))
@@ -45,16 +45,16 @@ func TestDevFlowWorkflow_ManualPlanGate_Reject(t *testing.T) {
 		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GatePlan, Approve: false, Note: "not yet"})
 	}, time.Second)
 
-	env.ExecuteWorkflow(DevFlowWorkflow, DevFlowInput{
+	env.ExecuteWorkflow(DevFlowWorkflow, delivery.DevFlowInput{
 		OrgID: "org1", ProjectID: "proj1", Repo: "org1/proj1", Tag: "v1",
-		Gates: GateConfig{Auto: map[string]bool{GatePlan: false}},
+		Gates: delivery.GateConfig{Auto: map[string]bool{GatePlan: false}},
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	var res DevFlowStatus
+	var res delivery.DevFlowStatus
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, DevPhaseFailed, res.Phase)
+	require.Equal(t, delivery.DevPhaseFailed, res.Phase)
 	require.Contains(t, res.Error, "plan gate rejected")
 }
 
@@ -65,16 +65,16 @@ func TestDevFlowWorkflow_ManualGate_ApprovalTimeout(t *testing.T) {
 
 	// plan gate is manual with a 60s approval timeout; send no decision so the
 	// timeout fires (the test env auto-advances time while idle) → rejection.
-	env.ExecuteWorkflow(DevFlowWorkflow, DevFlowInput{
+	env.ExecuteWorkflow(DevFlowWorkflow, delivery.DevFlowInput{
 		OrgID: "org1", ProjectID: "proj1", Repo: "org1/proj1", Tag: "v1",
-		Gates: GateConfig{Auto: map[string]bool{GatePlan: false}, ApprovalTimeoutSeconds: 60},
+		Gates: delivery.GateConfig{Auto: map[string]bool{GatePlan: false}, ApprovalTimeoutSeconds: 60},
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	var res DevFlowStatus
+	var res delivery.DevFlowStatus
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, DevPhaseFailed, res.Phase)
+	require.Equal(t, delivery.DevPhaseFailed, res.Phase)
 	require.Contains(t, res.Error, "plan gate rejected")
 }
 
@@ -83,30 +83,30 @@ func TestDevFlowWorkflow_PendingGate_VisibleInQuery(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 	registerDevActivities(env, []PlannedTask{{Issue: 1, Key: "api"}})
 	env.RegisterWorkflow(TaskFlowWorkflow)
-	env.OnWorkflow(TaskFlowWorkflow, mock.Anything, mock.Anything).Return(TaskFlowResult{Outcome: OutcomeSucceeded}, nil)
+	env.OnWorkflow(TaskFlowWorkflow, mock.Anything, mock.Anything).Return(TaskFlowResult{Outcome: delivery.OutcomeSucceeded}, nil)
 	mockValidationFlow(env, validationSkipped(), nil)
 
 	// While paused at the manual plan gate, the status query must surface it.
 	env.RegisterDelayedCallback(func() {
-		res, err := env.QueryWorkflow(QueryStatus)
+		res, err := env.QueryWorkflow(delivery.QueryStatus)
 		require.NoError(t, err)
-		var st DevFlowStatus
+		var st delivery.DevFlowStatus
 		require.NoError(t, res.Get(&st))
 		require.Equal(t, GatePlan, st.PendingGate)
 		// Release the gate so the workflow completes.
 		env.SignalWorkflow(delivery.SigGateDecision, delivery.GateDecisionSignal{Gate: GatePlan, Approve: true})
 	}, time.Second)
 
-	env.ExecuteWorkflow(DevFlowWorkflow, DevFlowInput{
+	env.ExecuteWorkflow(DevFlowWorkflow, delivery.DevFlowInput{
 		OrgID: "org1", ProjectID: "proj1", Repo: "org1/proj1", Tag: "v1",
-		Gates: GateConfig{Auto: map[string]bool{GatePlan: false}},
+		Gates: delivery.GateConfig{Auto: map[string]bool{GatePlan: false}},
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	var res DevFlowStatus
+	var res delivery.DevFlowStatus
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, DevPhaseDone, res.Phase)
+	require.Equal(t, delivery.DevPhaseDone, res.Phase)
 	require.Empty(t, res.PendingGate) // cleared after the gate resolved
 }
 
@@ -124,12 +124,12 @@ func TestTaskFlowWorkflow_ManualMergeGate_Reject(t *testing.T) {
 
 	env.ExecuteWorkflow(TaskFlowWorkflow, TaskFlowInput{
 		OrgID: "org1", ProjectID: "proj1", Repo: "org1/proj1", Issue: 7, Tag: "v1-1",
-		Gates: GateConfig{Auto: map[string]bool{GateMergePR: false}},
+		Gates: delivery.GateConfig{Auto: map[string]bool{GateMergePR: false}},
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
 	var res TaskFlowResult
 	require.NoError(t, env.GetWorkflowResult(&res))
-	require.Equal(t, OutcomeFailed, res.Outcome)
+	require.Equal(t, delivery.OutcomeFailed, res.Outcome)
 }

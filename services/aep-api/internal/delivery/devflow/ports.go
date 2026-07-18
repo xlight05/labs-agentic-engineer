@@ -19,6 +19,7 @@ package devflow
 import (
 	"context"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -89,7 +90,7 @@ type ValidationResolver interface {
 // provisioning features — devflow imports neither. A returned error retries the
 // activity; per-dependency failures are returned as data (ProvisionFailure).
 type BuildProvisioner interface {
-	ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, inputs []ProvisionInput) ([]ProvisionFailure, error)
+	ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, inputs []delivery.ProvisionInput) ([]ProvisionFailure, error)
 }
 
 // ProvisionFailure is one dependency's provisioning failure surfaced to the

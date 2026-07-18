@@ -42,26 +42,9 @@ const (
 	GateRetryBuild  = "retry-build"  // after a failed build: retry or fail
 )
 
-// GateConfig selects auto vs human-in-the-loop per gate for one run.
-// A gate absent from Auto runs in auto mode (the default): awaitGate returns
-// immediately. Auto[name] = false makes the gate manual: the workflow pauses,
-// surfaces the gate in its status query, and waits for a SigGateDecision.
-type GateConfig struct {
-	Auto map[string]bool `json:"auto,omitempty"`
-	// ApprovalTimeoutSeconds bounds a manual gate's wait; 0 means wait
-	// indefinitely (the workflow run timeout still applies). A timeout is
-	// treated as a rejection.
-	ApprovalTimeoutSeconds int `json:"approvalTimeoutSeconds,omitempty"`
-}
-
-// IsAuto reports whether the named gate runs without a human pause.
-func (c GateConfig) IsAuto(gate string) bool {
-	if c.Auto == nil {
-		return true
-	}
-	auto, ok := c.Auto[gate]
-	return !ok || auto
-}
+// GateConfig (auto vs human-in-the-loop per gate) lives in the delivery ROOT
+// (delivery.workflow_vocab.go): DevFlowInput carries it, so it is part of the
+// build↔workflow contract. Referenced here as delivery.GateConfig (§10.3.1).
 
 // gateKeeper multiplexes the single SigGateDecision channel to per-gate
 // waiters. One keeper is created per workflow run; awaitGate consumes
@@ -69,11 +52,11 @@ func (c GateConfig) IsAuto(gate string) bool {
 // waiting on — the API layer validates gate names, so a mismatch is a stale
 // or duplicate click, not a lost approval.
 type gateKeeper struct {
-	cfg        GateConfig
+	cfg        delivery.GateConfig
 	setPending func(string) // updates the status query's PendingGate
 }
 
-func newGateKeeper(cfg GateConfig, setPending func(string)) *gateKeeper {
+func newGateKeeper(cfg delivery.GateConfig, setPending func(string)) *gateKeeper {
 	return &gateKeeper{cfg: cfg, setPending: setPending}
 }
 
