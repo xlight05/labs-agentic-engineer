@@ -37,11 +37,11 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -142,7 +142,7 @@ func newProvHarness(t *testing.T, svc *provisioning.Service) *componenttest.Harn
 	if err != nil {
 		t.Fatalf("assemble dependencies domain: %v", err)
 	}
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{Dependencies: deps}})
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{Dependencies: deps}})
 }
 
 // ----- tests --------------------------------------------------------------------
@@ -151,7 +151,7 @@ func newProvHarness(t *testing.T, svc *provisioning.Service) *componenttest.Harn
 // the flat envelope, mirroring the retired RegisterResources nil guard.
 func TestProvisioningComponent_Unconfigured503(t *testing.T) {
 	t.Parallel()
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{}})
 
 	resp := h.AsOrg("acme").Get("/api/v1/dependencies/external-resources")
 	if resp.Code != 503 {

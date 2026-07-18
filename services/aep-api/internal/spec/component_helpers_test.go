@@ -26,7 +26,7 @@ import (
 // mustSpecHandlers assembles the spec domain for a component test, filling only
 // the field(s) the op under test needs (the rest stay nil and fail loud only if
 // invoked, exactly as the edge does). Mirrors how the composition root builds
-// api.Deps.Spec — the component test now wires the domain, not the loose
+// edge.Deps.Spec — the component test now wires the domain, not the loose
 // per-service fields the edge no longer carries.
 func mustSpecHandlers(t *testing.T, d spec.Deps) *spechttpapi.Handlers {
 	t.Helper()

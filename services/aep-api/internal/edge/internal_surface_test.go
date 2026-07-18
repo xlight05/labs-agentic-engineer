@@ -21,7 +21,7 @@
 // shape: exact top-level body keys and the capitalized Identity keys — the
 // runner must work unchanged against this surface.
 
-package api
+package edge
 
 import (
 	"context"

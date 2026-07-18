@@ -46,7 +46,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -89,7 +89,7 @@ func (f *fakeCollabRepos) DeleteRepo(context.Context, string, string) error {
 // newReqHarness assembles the real chain around the REAL collab service.
 func newReqHarness(t *testing.T, repos sourcecontrol.RepoService) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Spec: mustSpecHandlers(t, spec.Deps{CollabRepo: repos}),
 	}})
 }

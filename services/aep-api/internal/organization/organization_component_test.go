@@ -56,9 +56,9 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
@@ -131,7 +131,7 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 	resp := h.AsOrg("acme").Get(orgListPath)
 	if resp.Code != 200 {
@@ -186,7 +186,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 				},
 			}
 			svc := organization.NewOrganizationService(nil, ns) // nil DB: errors before any DB access
-			h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
+			h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 			resp := h.AsOrg("acme").Get(orgListPath)
 			if resp.Code != tc.wantStatus {
@@ -216,7 +216,7 @@ func TestOrganizationComponent_CarveOut_NoGate(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(nil, ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 	resp := h.NoAuth().Get(orgListPath)
 	if resp.Code == 401 {

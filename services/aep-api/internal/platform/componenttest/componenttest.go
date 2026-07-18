@@ -15,7 +15,7 @@
 // under the License.
 
 // Package componenttest is the in-process component-tier harness. It
-// assembles the REAL BFF /api handler via api.NewHandlerForTest — the same
+// assembles the REAL BFF /api handler via edge.NewHandlerForTest — the same
 // mountSurfaces assembly
 // production uses — with exactly one seam swapped: the JWKS verifier is
 // replaced by fakeInboundAuth, so the real tenant gate runs in ENFORCE with no
@@ -43,7 +43,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 )
 
@@ -53,7 +53,7 @@ type Options struct {
 	// (internal/api/gen, generated from packages/contracts/api/v1) — the REAL
 	// service under test, with its out-of-process clients mocked. Fields left
 	// zero register nothing for that feature (its routes 404/nil-guard).
-	Deps api.Deps
+	Deps edge.Deps
 
 	// DB is optional and passed through to AppParams.DB. Note orgensure is a
 	// no-op in the harness REGARDLESS of DB: NewHandlerForTest never sets
@@ -74,11 +74,11 @@ type Harness struct {
 }
 
 // New assembles the harness. It builds the real handler once via
-// api.NewHandlerForTest with fakeInboundAuth in place of the JWKS verifier.
+// edge.NewHandlerForTest with fakeInboundAuth in place of the JWKS verifier.
 func New(t testing.TB, opt Options) *Harness {
 	t.Helper()
 	return &Harness{
-		Handler: api.NewHandlerForTest(opt.Deps, fakeInboundAuth, opt.DB),
+		Handler: edge.NewHandlerForTest(opt.Deps, fakeInboundAuth, opt.DB),
 		t:       t,
 	}
 }

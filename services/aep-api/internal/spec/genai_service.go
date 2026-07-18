@@ -222,7 +222,7 @@ type ServiceDeps struct {
 }
 
 // Service is the typed entry point behind the turn/status/stream/rehydrate
-// endpoints. api.Deps holds it as a concrete *genai.Service — there is one
+// endpoints. edge.Deps holds it as a concrete *genai.Service — there is one
 // implementation and no test fake (the old GenAIService interface had no
 // substitution; the component tier exercises the real service).
 type Service struct {

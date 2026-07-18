@@ -56,10 +56,11 @@ var targetDomains = map[string]bool{
 }
 
 // nonDomainPkgs are the internal/ packages that are NOT business domains: the
-// kernel, the edge machinery, and the legacy scaffolding still being migrated.
-// The legacy rows (api, feature) are deleted in P9.
+// kernel + the edge machinery. The legacy rows (api, feature) were deleted in P9
+// once internal/api collapsed into edge/ and every feature moved to its domain.
 var nonDomainPkgs = map[string]bool{
 	"platform":  true, // the kernel
+	"edge":      true, // the surface composer (was internal/api)
 	"gen":       true, // generated wire types — public surface
 	"igen":      true, // generated wire types — S2S surface
 	"migrate":   true, // the ordered migration list
@@ -69,17 +70,14 @@ var nonDomainPkgs = map[string]bool{
 	"config":    true,
 	"contracts": true,
 	"seed":      true,
-	// ── legacy, deleted in P9 ──
-	"api": true, // the exiled handler layer -> edge/ + domain slices
 }
 
 // plannedPkgs are classified names that do not exist YET. They are listed
 // separately so the honesty check below can demand that every OTHER row
 // correspond to something real — the distinction between "planned" and "stale"
-// is exactly what a classification map loses if nobody checks it.
-var plannedPkgs = map[string]bool{
-	"edge": true, // the surface composer; internal/api collapses into it in P9
-}
+// is exactly what a classification map loses if nobody checks it. Empty now:
+// edge/ exists, so nothing is merely planned.
+var plannedPkgs = map[string]bool{}
 
 // domainsOnDisk returns the target domains that actually exist yet. During the
 // migration this grows one entry per phase; the rules apply only to these, which

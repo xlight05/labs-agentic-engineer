@@ -37,13 +37,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
@@ -181,7 +181,7 @@ func taskIssue(number int, component, state string, extra ...string) sourcecontr
 func newRig(t *testing.T, iss *fakeIssues, execs fakeExecs) *componenttest.Harness {
 	t.Helper()
 	reads := task.NewReads(iss, fakeRepos{}, execs, nil, nil)
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{TaskReads: reads})),
 	}})
 }

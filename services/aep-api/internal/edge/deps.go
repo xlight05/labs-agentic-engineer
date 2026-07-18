@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package edge
 
 import (
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"

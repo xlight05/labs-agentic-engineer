@@ -49,7 +49,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -66,7 +66,7 @@ const (
 func newHarness(t *testing.T) (*componenttest.Harness, *spec.ComponentStore) {
 	t.Helper()
 	store := spec.NewComponentStore(t)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Spec: mustSpecHandlers(t, spec.Deps{
 		Skills:      store.Svc,
 		SkillMut:    spec.NewSkillMutationService(store.Svc),
 		SkillImport: spec.NewSkillImportService(store.Svc),
@@ -541,7 +541,7 @@ func TestSkillsComponent_Create_MutationUnconfigured_503(t *testing.T) {
 	t.Parallel()
 	// SkillSvc wired for reads, but no mutation service → create is 503.
 	store := spec.NewComponentStore(t)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{Skills: store.Svc})}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Spec: mustSpecHandlers(t, spec.Deps{Skills: store.Svc})}})
 
 	body := `{"name":"cool-skill","skillMd":` + jsonString(skillMD("cool-skill", "")) + `,"references":{}}`
 	resp := h.AsOrg("acme").Post(base, body)

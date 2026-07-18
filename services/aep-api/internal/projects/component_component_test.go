@@ -63,10 +63,10 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	projectshttpapi "github.com/wso2/aep/aep-api/internal/projects/httpapi"
@@ -100,7 +100,7 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 		// The env-var mirror onto OC is unit-tested; disable it here (nil).
 		cfgSvc = projects.NewConfigService(f.configRepo, nil)
 	}
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Projects: mustProjects(projectshttpapi.New(projects.Deps{
 			ComponentSvc: compSvc,
 			ConfigSvc:    cfgSvc,

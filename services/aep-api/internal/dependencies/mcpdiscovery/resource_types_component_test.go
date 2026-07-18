@@ -32,9 +32,9 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 )
 
@@ -54,7 +54,7 @@ func newLister(t *testing.T, lister stubResourceTypeLister) *componenttest.Harne
 	if err != nil {
 		t.Fatalf("assemble dependencies domain: %v", err)
 	}
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{Dependencies: deps}})
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{Dependencies: deps}})
 }
 
 // TestPlatformResourceTypes_MapsDomainToDTOs verifies the domain→DTO
@@ -117,7 +117,7 @@ func TestPlatformResourceTypes_UpstreamFailure502(t *testing.T) {
 // retired RegisterResourceTypes nil guard.
 func TestPlatformResourceTypes_Unconfigured503(t *testing.T) {
 	t.Parallel()
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{}})
 
 	resp := h.AsOrg("acme").Get("/api/v1/dependencies/platform-resource-types")
 	if resp.Code != 503 {

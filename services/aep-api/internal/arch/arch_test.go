@@ -114,7 +114,7 @@ func TestNoFlatServicesOrControllers(t *testing.T) {
 	// internal/feature/ is GONE (every feature migrated into a domain), so the
 	// only remaining risk is a composition-root regression re-importing the
 	// deleted flat services/controllers packages.
-	for _, p := range []string{"/internal/app", "/cmd/aep-api", "/internal/api"} {
+	for _, p := range []string{"/internal/app", "/cmd/aep-api", "/internal/edge"} {
 		pkg := mod + p
 		if imports(t, pkg, mod+"/controllers") {
 			t.Errorf("%s imports the controllers package — it is deleted; wire features directly", p)
@@ -245,8 +245,8 @@ func TestTaskmetaIsPure(t *testing.T) {
 // into a rubber stamp (docs/design/domain-oriented-architecture.md §19.6).
 var gormImporters = map[string]bool{
 	// Composition + kernel (structurally hold gorm; not feature slices).
-	"internal/api": true,
-	"internal/app": true,
+	"internal/edge": true,
+	"internal/app":  true,
 	// The secret kernel module (§10.4): its Postgres-backed store is one of the
 	// four backends it exists to own. Was internal/credentials.
 	"internal/platform/secrets": true,

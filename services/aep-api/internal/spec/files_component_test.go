@@ -40,7 +40,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
@@ -113,7 +113,7 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	engine := workspacetest.NewEngine(t)
 	gitOps := sourcecontrol.NewGitOpsService(filesStubResolver{}, engine)
 	svc := spec.NewFilesService(filesStubRepoResolver{rec: rec}, gitOps)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{Files: svc})}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Spec: mustSpecHandlers(t, spec.Deps{Files: svc})}})
 	return &filesRig{h: h, remote: remote, engine: engine}
 }
 

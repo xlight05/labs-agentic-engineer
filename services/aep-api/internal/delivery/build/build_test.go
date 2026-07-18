@@ -35,10 +35,10 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -150,7 +150,7 @@ func newSvc(runner *fakeRunner, store *fakeStore, repos fakeRepos, tagger *fakeT
 // newHarness assembles the real handler chain around the real build service.
 func newHarness(t *testing.T, svc *build.Service) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{BuildSvc: svc})),
 	}})
 }
@@ -624,7 +624,7 @@ func TestGetPreflight_WiredThroughRealService(t *testing.T) {
 			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
 		}}}
 	pfSvc := build.NewPreflightService(build.PreflightDeps{Design: pfDesign{comps: comps}, Status: pfStatus{}})
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{PreflightSvc: pfSvc})),
 	}})
 
@@ -646,7 +646,7 @@ func TestGetPreflight_Unconfigured503(t *testing.T) {
 	// The domain is wired but its preflight service is not (an empty Deps): the
 	// build handler is non-nil and answers 503 from its own nil guard, exactly as
 	// the pre-migration edge did on an unset PreflightSvc.
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{})),
 	}})
 	resp := h.AsOrg("acme").Get("/api/v1/projects/shop/build/preflight")

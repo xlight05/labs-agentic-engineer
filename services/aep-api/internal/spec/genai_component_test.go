@@ -41,8 +41,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
@@ -511,7 +511,7 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 		MCPTokens:  cfg.mcpTokens,
 		MCPBaseURL: cfg.mcpBaseURL,
 	})
-	rig.h = componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{GenAI: svc})}})
+	rig.h = componenttest.New(t, componenttest.Options{Deps: edge.Deps{Spec: mustSpecHandlers(t, spec.Deps{GenAI: svc})}})
 	return rig
 }
 

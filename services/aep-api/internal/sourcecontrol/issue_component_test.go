@@ -31,7 +31,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/api"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
@@ -77,7 +77,7 @@ func TestIssueComponent_CreateAndList(t *testing.T) {
 	}}
 	// The harness wires the DOMAIN, not a loose service: the edge embeds
 	// sourcecontrol's handlers, so this assembles the same graph production does.
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{SourceControl: scWith(t, svc)}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{SourceControl: scWith(t, svc)}})
 
 	// Create: org from the verified token, result keys lowercase.
 	resp := h.AsOrg("acme").Post("/api/v1/projects/web/issues",
@@ -131,7 +131,7 @@ func TestIssueComponent_CreateAndList(t *testing.T) {
 	}
 
 	// Nil service → 503 service_unavailable, not a panic.
-	h2 := componenttest.New(t, componenttest.Options{Deps: api.Deps{}})
+	h2 := componenttest.New(t, componenttest.Options{Deps: edge.Deps{}})
 	if resp := h2.AsOrg("acme").Get("/api/v1/projects/web/issues"); resp.Code != 503 {
 		t.Fatalf("nil svc: want 503, got %d body=%s", resp.Code, resp.Body.String())
 	}

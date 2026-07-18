@@ -33,7 +33,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/oauth"
@@ -57,6 +56,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/dependencies/runtimeconfig"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/organization"
@@ -687,12 +687,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	)
 
 	// Controllers
-	params := api.AppParams{
+	params := edge.AppParams{
 		Config: cfg,
 		// Runner callbacks are the internal contract-first surface (InternalDeps);
 		// only the connect-callback + webhook controllers remain raw handlers.
 		// Every other feature is served by the strict handlers via params.Deps.
-		InternalDeps: api.InternalDeps{
+		InternalDeps: edge.InternalDeps{
 			CredsRefresh:          credRefreshService,
 			RunnerAuth:            runnerAuth,
 			ValidationContext:     validationContextSvc,
@@ -726,7 +726,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 
 	// Strict-handler feature dependencies — everything the contract-first
 	// /api/v1 edge serves (internal/api/handlers_*.go).
-	params.Deps = api.Deps{
+	params.Deps = edge.Deps{
 		TaskTokens: taskTokens,
 		// The projects domain (project CRUD + component read/build + config) is
 		// assembled below (params.Deps.Projects).
@@ -1009,7 +1009,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 
 	slog.Info("OpenChoreo API", "baseURL", cfg.PlatformAPI.BaseURL)
 
-	handler := api.NewHandler(params)
+	handler := edge.NewHandler(params)
 
 	// Background watchers, launched by main under a shared cancellable context.
 	// State lives in Postgres + GitHub, so a plain goroutine per watcher is

@@ -46,8 +46,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
+	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
@@ -187,7 +187,7 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 
 	// The harness wires the DOMAIN, not a loose service: the edge embeds
 	// organization's handlers, so this assembles the same graph production does.
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{Config: svc})}})
+	h := componenttest.New(t, componenttest.Options{Deps: edge.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{Config: svc})}})
 	return &configHarness{h: h, db: db, gh: gh, anth: anth}
 }
 

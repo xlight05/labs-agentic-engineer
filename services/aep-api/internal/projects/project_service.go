@@ -43,7 +43,7 @@ var (
 	ErrForbidden       = errors.New("forbidden")
 )
 
-// Service handles business logic for project operations. api.Deps holds it as a
+// Service handles business logic for project operations. edge.Deps holds it as a
 // concrete *project.Service (there is one implementation; the old ProjectService
 // interface existed only to be faked, and the component tier fakes at the HTTP
 // edge instead).
