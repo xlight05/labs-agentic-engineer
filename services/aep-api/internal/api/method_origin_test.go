@@ -30,31 +30,23 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
-// The migration ledger + the second of the two nets guarding the edge
+// The op→embed ledger + the reflection net guarding the edge
 // (docs/design/domain-oriented-architecture.md §19.1).
 //
 // apiServer declares no methods: it satisfies gen.StrictServerInterface purely
-// by promotion from its embedded fields. That makes "which embed serves this
-// op?" the load-bearing question of the whole migration, and the compiler only
-// answers it in one case (a same-depth tie). These tests answer it for all 61.
+// by promotion from its embedded domain fields. That makes "which embed serves
+// this op?" the load-bearing question, and the compiler only answers it in one
+// case (a same-depth tie). These tests answer it for all 61.
 //
-// Why this is not redundant with the legacyShim:
-//
-//   - the SHIM turns double coverage into a compile error, but ONLY when the two
-//     candidates tie at the same depth. A domain aggregator that DECLARED a
-//     handler method itself would sit at depth-1 and silently beat the shimmed
-//     legacy method at depth-2 — green build, dead legacy duplicate.
-//   - this REFLECTION gate asks each embed directly "do you have this method?",
-//     so it catches double coverage at ANY depth. It is strictly stronger.
-//
-// Migrating an op is one edit here: flip its row from legacyShim to the domain's
-// embed. A row that disagrees with reality fails, in either direction.
+// Why this reflection gate is not redundant with the compiler's own ambiguity
+// error: a domain aggregator that DECLARED a handler method itself would sit at
+// depth-1 and silently beat a depth-2 slice method — green build, dead slice.
+// This gate asks each embed directly "do you have this method?", so it catches
+// double coverage at ANY depth. It is strictly stronger. (Through P8 the ledger
+// also carried the migration's legacyShim; P8 landed the last op and the shim is
+// gone, so every op now names its domain embed.)
 
-// embedLegacy is the apiServer FIELD name of the legacy shim (the field name of
-// an embedded type is its unqualified type name).
-const embedLegacy = "legacyShim"
-
-// One const per landed domain — the field name of its embed in apiServer.
+// One const per domain — the field name of its embed in apiServer.
 const (
 	embedOps           = "opsHandlers"           // P1
 	embedSourceControl = "sourcecontrolHandlers" // P2
@@ -221,8 +213,8 @@ func TestOpOwnerLedgerIsHonest(t *testing.T) {
 //
 // This has to read the SOURCE. Reflection cannot answer it: a method declared on
 // apiServer sits at depth-0 and shadows every embed, yet it changes nothing about
-// what the embeds themselves provide — so embedsProviding still returns
-// ["legacyShim"], the ledger still matches, and every reflection assertion passes
+// what the embeds themselves provide — so embedsProviding still returns the
+// domain embed, the ledger still matches, and every reflection assertion passes
 // while the edge serves a body no embed supplied. Only the declaration site
 // distinguishes "composed" from "implemented".
 func methodsDeclaredOn(t *testing.T, dir, recvType string) []string {
@@ -370,7 +362,7 @@ func TestMethodOriginGateAcceptsACorrectCut(t *testing.T) {
 func TestApiServerDeclaresNoMethodsFires(t *testing.T) {
 	dir := t.TempDir()
 	body := "package api\n\n" +
-		"type apiServer struct{ legacyShim }\n\n" +
+		"type apiServer struct{ opsHandlers }\n\n" +
 		"// The shadowing method: depth-0, beats every embed, invisible to reflection.\n" +
 		"func (s *apiServer) ListProjects() string { return \"shadowed\" }\n"
 	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(body), 0o600); err != nil {
@@ -388,13 +380,13 @@ func TestApiServerDeclaresNoMethodsFires(t *testing.T) {
 func TestApiServerDeclaresNoMethodsDoesNotOverfire(t *testing.T) {
 	dir := t.TempDir()
 	body := "package api\n\n" +
-		"type legacyHandlers struct{}\n\n" +
-		"func (l *legacyHandlers) ListProjects() string { return \"legacy\" }\n\n" +
-		"type apiServer struct{ legacyShim }\n"
+		"type otherHandlers struct{}\n\n" +
+		"func (o *otherHandlers) ListProjects() string { return \"other\" }\n\n" +
+		"type apiServer struct{ opsHandlers }\n"
 	if err := os.WriteFile(filepath.Join(dir, "planted.go"), []byte(body), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
 	if got := methodsDeclaredOn(t, dir, "apiServer"); len(got) != 0 {
-		t.Fatalf("the detector reported %v for methods declared on legacyHandlers, not apiServer", got)
+		t.Fatalf("the detector reported %v for methods declared on a non-apiServer type, not apiServer", got)
 	}
 }

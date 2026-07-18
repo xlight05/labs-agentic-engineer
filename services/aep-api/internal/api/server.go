@@ -31,50 +31,20 @@ import (
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 )
 
-// legacyHandlers holds every operation that has NOT yet moved into its domain
-// slice — one per-feature handlers_*.go file. Handlers read the gate-bound org
-// via tenant.BoundOrgFromContext and pass it to services as an explicit
-// argument — services never dig org out of context.
-//
-// It shrinks by one method per migrated operation and is deleted in P9, when
-// the last op lands in its domain (docs/design/domain-oriented-architecture.md
-// §19.3).
-type legacyHandlers struct {
-	deps Deps
-}
-
-// legacyShim exists for exactly one reason: to equalise embedding depth.
-//
-// aep:migration-shim retires=P9 reason=deleted with legacyHandlers once every op has moved into its domain
-//
-// The domain path is two levels deep — apiServer → <domain>/httpapi.Handlers →
-// <slice>.Handler — so a migrated op's method reaches apiServer at depth-2. If
-// legacyHandlers were embedded DIRECTLY, its methods would sit at depth-1, and
-// Go's promotion rule (shallowest wins, silently) means an op that was added to
-// its domain but NOT cut from legacy would still resolve to the stale legacy
-// body: it compiles green, the new slice is dead code, and componenttest cannot
-// see it because both bodies return the same shape.
-//
-// Wrapping legacy in this shim puts its methods at depth-2 as well, so the two
-// candidates tie — and a tie is an `ambiguous selector` COMPILE error, not a
-// silent stale serve. The likeliest migration slip becomes a build failure.
-// (Verified against all four states; §19.1 records the matrix.)
-type legacyShim struct{ *legacyHandlers }
-
 // apiServer implements the generated strict interface (gen.StrictServerInterface)
 // for the public /api/v1 edge by METHOD PROMOTION ONLY — it declares no methods
-// of its own. Every operation of the committed contract is promoted from exactly
-// one embed, all at equal depth:
+// of its own. Every one of the 61 operations is promoted from exactly one domain
+// embed, all at equal depth (apiServer → <domain>/httpapi.Handlers → <slice>.Handler):
 //
-//   - legacyShim              ops not yet migrated (shrinks each phase, gone in P9)
-//   - *<domain>/httpapi.Handlers   one embed per landed domain (added from P1)
+//	*<domain>/httpapi.Handlers   one embed per domain
 //
-// TestMethodOrigin pins WHICH embed each op comes from, so a migration that
-// forgets to cut the legacy method fails the build (ambiguity) and a migration
-// that moves an op silently fails the test.
+// TestMethodOrigin pins WHICH embed each op comes from, so a duplicate (an op
+// served by two domains) fails the build (`ambiguous selector`) and a moved op
+// silently fails the test. The migration's legacyShim — the depth-equalising
+// wrapper that held not-yet-migrated ops through P1–P8 — is gone: P8 landed the
+// last op, so every op now resolves to its domain (docs/design/
+// domain-oriented-architecture.md §19).
 type apiServer struct {
-	legacyShim
-	// One embed per landed domain phase (P1–P8).
 	*opsHandlers           // P1 — ops (Incident RCA)
 	*sourcecontrolHandlers // P2 — sourcecontrol (Source Control & Webhooks)
 	*organizationHandlers  // P3 — organization (Org Config & Organizations)
@@ -106,8 +76,7 @@ var _ gen.StrictServerInterface = (*apiServer)(nil)
 // newAPIV1Handler assembles the whole contract-first serving chain for the
 // public edge, innermost first:
 //
-//	strict impl (apiServer)               promotion-only composite: legacyShim
-//	                                       (handlers_*.go) + one embed per landed domain
+//	strict impl (apiServer)               promotion-only composite: one embed per domain
 //	→ tenant gate                          deny-by-default, tenant_gate.go
 //	→ strict wrapper                       generated; envelope error writers
 //	→ generated std ServeMux router        one pattern per contract operation
@@ -119,7 +88,6 @@ var _ gen.StrictServerInterface = (*apiServer)(nil)
 func newAPIV1Handler(deps Deps) http.Handler {
 	strict := gen.NewStrictHandlerWithOptions(
 		&apiServer{
-			legacyShim:            legacyShim{&legacyHandlers{deps: deps}},
 			opsHandlers:           deps.Ops,
 			sourcecontrolHandlers: sourceControlOrEmpty(deps.SourceControl),
 			organizationHandlers:  deps.Organization,

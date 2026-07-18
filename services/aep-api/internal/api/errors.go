@@ -33,8 +33,8 @@ import (
 // The envelope itself now lives in platform/apierr, because a domain SLICE must
 // be able to return a 404 without importing the edge (which would be a cycle —
 // the edge composes slices). What stays here is the writers: the one place that
-// turns an *apierr.Error into wire bytes. The aliases below keep the legacy
-// handlers reading as they did; they die with legacyHandlers in P9.
+// turns an *apierr.Error into wire bytes. The aliases below are the edge's stable
+// error-code/constructor surface, shared by the S2S internalServer + the validator.
 const (
 	CodeValidationFailed   = apierr.CodeValidationFailed
 	CodeBadRequest         = apierr.CodeBadRequest
