@@ -28,7 +28,7 @@
 // carries per-file baseSha optimistic-concurrency: a stale baseSha (or a
 // baseSha-omitted write to a path that already exists) fails the whole batch
 // with 409 and nothing is applied. There are no individual PUT/DELETE routes.
-package files
+package spec
 
 import (
 	"context"
@@ -48,8 +48,9 @@ import (
 // ---- errors ----------------------------------------------------------------
 
 var (
-	// ErrProjectRepoNotFound — no git repo for (org, project); maps to 404.
-	ErrProjectRepoNotFound = errors.New("project repository not found")
+	// ErrProjectRepoNotFound (the "no git repo for (org, project)" 404) is
+	// declared once for the whole spec domain in genai_service.go's error block;
+	// the files service returns that same shared sentinel.
 	// ErrPathInvalid — a path escapes specs/, is non-canonical, or is oversized;
 	// maps to 400.
 	ErrPathInvalid = errors.New("invalid file path")
@@ -122,17 +123,17 @@ type Conflict struct {
 
 // ---- ports (consumer-side; concrete gitrepo services satisfy them) ---------
 
-// RepoResolver looks up the project's git repo row. *sourcecontrol.repoService
+// FilesRepoResolver looks up the project's git repo row. *sourcecontrol.repoService
 // satisfies it via GetRepo (which returns sourcecontrol.ErrRepoNotFound when absent).
-type RepoResolver interface {
+type FilesRepoResolver interface {
 	GetRepo(ctx context.Context, orgID, projectID string) (*models.GitRepository, error)
 }
 
-// GitGateway is the narrow git surface + credential resolver + save identities.
+// FilesGitGateway is the narrow git surface + credential resolver + save identities.
 // Every operation — reads and the Apply write — goes through the Workspace port
 // (the mounted bare mirror); the feature holds no REST Git-Data dependency.
 // *sourcecontrol.gitOpsService satisfies it structurally.
-type GitGateway interface {
+type FilesGitGateway interface {
 	// Workspace is the mount-backed git engine serving all reads and writes.
 	Workspace() sourcecontrol.Workspace
 	Resolver() secrets.Resolver
@@ -149,13 +150,13 @@ type FilesService interface {
 }
 
 type service struct {
-	repos RepoResolver
-	git   GitGateway
+	repos FilesRepoResolver
+	git   FilesGitGateway
 }
 
-// NewService wires the Files API. Either dep may be nil in degraded boot; the
+// NewFilesService wires the Files API. Either dep may be nil in degraded boot; the
 // operations then surface ErrProjectRepoNotFound.
-func NewService(repos RepoResolver, git GitGateway) FilesService {
+func NewFilesService(repos FilesRepoResolver, git FilesGitGateway) FilesService {
 	return &service{repos: repos, git: git}
 }
 

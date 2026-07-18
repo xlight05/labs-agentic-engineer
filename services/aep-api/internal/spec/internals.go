@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package files
+package spec
 
 import (
 	"crypto/sha1" //nolint:gosec // git object names are SHA-1 by definition

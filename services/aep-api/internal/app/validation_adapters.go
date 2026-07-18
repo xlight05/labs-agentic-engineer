@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/validation"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
@@ -39,13 +38,13 @@ const validationCriteriaPath = "specs/validation/validation-criteria.json"
 // absent at HEAD as found=false with no error (the design agent has not authored
 // the oracle yet). Keeps the files feature out of the validation package.
 type validationCriteria struct {
-	files files.FilesService
+	files spec.FilesService
 }
 
 func (a validationCriteria) ReadValidationCriteria(ctx context.Context, orgID, projectID string) (raw []byte, found bool, err error) {
 	fc, rerr := a.files.Read(ctx, orgID, projectID, validationCriteriaPath)
 	if rerr != nil {
-		if errors.Is(rerr, files.ErrFileNotFound) {
+		if errors.Is(rerr, spec.ErrFileNotFound) {
 			return nil, false, nil
 		}
 		return nil, false, rerr

@@ -21,16 +21,16 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/feature/design"
-	"github.com/wso2/aep/aep-api/internal/feature/files"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // designFilesCommitter adapts the Files API (feature/files) to design's narrow
 // designFileCommitter port — the committed-truth single-commit write surface
 // design.CollectSpec uses to persist a consumed OpenAPI spec + the design.json
 // specPath edit atomically to main. It lives at the composition root so the
-// design feature imports only artifacts (arch boundary), never files.
+// design feature imports only artifacts (arch boundary), never the files service directly.
 type designFilesCommitter struct {
-	files files.FilesService
+	files spec.FilesService
 }
 
 // ReadFile returns a file's current content + blob sha (the CAS token). A file
@@ -38,7 +38,7 @@ type designFilesCommitter struct {
 func (a designFilesCommitter) ReadFile(ctx context.Context, orgID, projectID, path string) (content, sha string, ok bool, err error) {
 	fc, rerr := a.files.Read(ctx, orgID, projectID, path)
 	if rerr != nil {
-		if errors.Is(rerr, files.ErrFileNotFound) {
+		if errors.Is(rerr, spec.ErrFileNotFound) {
 			return "", "", false, nil
 		}
 		return "", "", false, rerr
@@ -50,13 +50,13 @@ func (a designFilesCommitter) ReadFile(ctx context.Context, orgID, projectID, pa
 // CAS. A stale precondition (concurrent design edit) surfaces as
 // design.ErrSpecCommitConflict so the route can 409.
 func (a designFilesCommitter) Commit(ctx context.Context, orgID, projectID string, writes []design.DesignFileWrite, message string) error {
-	ops := make([]files.WriteOp, 0, len(writes))
+	ops := make([]spec.WriteOp, 0, len(writes))
 	for _, w := range writes {
-		ops = append(ops, files.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSHA})
+		ops = append(ops, spec.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSHA})
 	}
-	_, conflicts, err := a.files.Apply(ctx, orgID, projectID, files.ApplyRequest{Writes: ops, Message: message})
+	_, conflicts, err := a.files.Apply(ctx, orgID, projectID, spec.ApplyRequest{Writes: ops, Message: message})
 	if err != nil {
-		if errors.Is(err, files.ErrApplyConflict) {
+		if errors.Is(err, spec.ErrApplyConflict) {
 			return design.ErrSpecCommitConflict
 		}
 		return err

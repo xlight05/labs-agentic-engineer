@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
-	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/skills"
@@ -55,7 +54,7 @@ type Deps struct {
 	SkillSvc            *skills.SkillService
 	SkillMutationSvc    *skills.SkillMutationService
 	SkillImportSvc      *skills.SkillImportService
-	FilesSvc            files.FilesService
+	FilesSvc            spec.FilesService
 	ArtifactSvc         spec.ArtifactService
 	GenAISvc            *spec.Service
 	BuildSvc            *build.Service

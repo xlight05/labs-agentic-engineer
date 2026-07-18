@@ -24,7 +24,7 @@
 // a multi-write+delete apply is a real single commit pushed to origin under
 // --force-with-lease, and a read right after an apply proves the mirror
 // freshening.
-package files_test
+package spec_test
 
 import (
 	"context"
@@ -41,7 +41,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/api"
-	"github.com/wso2/aep/aep-api/internal/feature/files"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
@@ -52,41 +52,41 @@ import (
 )
 
 const (
-	testOrg  = "acme-org"
-	testProj = "widgets"
+	filesTestOrg  = "acme-org"
+	filesTestProj = "widgets"
 	testSlug = "acme-widgets"
-	apiBase  = "/api/v1/projects/" + testProj + "/files"
+	apiBase  = "/api/v1/projects/" + filesTestProj + "/files"
 )
 
 // ---- faked edges ----
 
-// stubRepoResolver hands out the single repo row, keyed by the AUTHENTICATED
+// filesStubRepoResolver hands out the single repo row, keyed by the AUTHENTICATED
 // org — a caller resolved to any other org gets ErrRepoNotFound (the 404),
 // mirroring the production (org_id, project_id) row lookup.
-type stubRepoResolver struct{ rec *models.GitRepository }
+type filesStubRepoResolver struct{ rec *models.GitRepository }
 
-func (s stubRepoResolver) GetRepo(_ context.Context, orgID, _ string) (*models.GitRepository, error) {
+func (s filesStubRepoResolver) GetRepo(_ context.Context, orgID, _ string) (*models.GitRepository, error) {
 	if s.rec == nil || orgID != s.rec.OrgID {
 		return nil, sourcecontrol.ErrRepoNotFound
 	}
 	return s.rec, nil
 }
 
-type stubCred struct{}
+type filesStubCred struct{}
 
-func (stubCred) Token(context.Context) (string, time.Time, error) {
+func (filesStubCred) Token(context.Context) (string, time.Time, error) {
 	return "test-token", time.Time{}, nil
 }
-func (stubCred) Identity() secrets.Identity {
+func (filesStubCred) Identity() secrets.Identity {
 	return secrets.Identity{Name: "Bot", Email: "bot@aep.dev", Login: "bot"}
 }
-func (stubCred) RepoOwner() string                        { return "acme" }
-func (stubCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPlatform }
+func (filesStubCred) RepoOwner() string                        { return "acme" }
+func (filesStubCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPlatform }
 
-type stubResolver struct{}
+type filesStubResolver struct{}
 
-func (stubResolver) Resolve(context.Context, string) (secrets.Credential, error) {
-	return stubCred{}, nil
+func (filesStubResolver) Resolve(context.Context, string) (secrets.Credential, error) {
+	return filesStubCred{}, nil
 }
 
 // ---- harness ----
@@ -101,8 +101,8 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	t.Helper()
 	remote := gittest.NewRemote(t, gittest.WithSeed(seed, "seed"))
 	rec := &models.GitRepository{
-		OrgID:         testOrg,
-		ProjectID:     testProj,
+		OrgID:         filesTestOrg,
+		ProjectID:     filesTestProj,
 		RepoURL:       remote.URL(),
 		RepoSlug:      testSlug, // pinned — SlugForURL can't parse file:// URLs
 		DefaultBranch: "main",
@@ -112,8 +112,8 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	// write run through the Workspace port (the REST git-object port is nil —
 	// files never touches it).
 	engine := workspacetest.NewEngine(t)
-	gitOps := sourcecontrol.NewGitOpsService(stubResolver{}, engine)
-	svc := files.NewService(stubRepoResolver{rec: rec}, gitOps)
+	gitOps := sourcecontrol.NewGitOpsService(filesStubResolver{}, engine)
+	svc := spec.NewFilesService(filesStubRepoResolver{rec: rec}, gitOps)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{FilesSvc: svc}})
 	return &filesRig{h: h, remote: remote, engine: engine}
 }
@@ -123,7 +123,7 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 func (r *filesRig) mirrorRevParse(t *testing.T, rev string) string {
 	t.Helper()
 	gitDir, err := gitfs.GitDir(r.engine.Root(), gitfs.RepoRef{
-		OrgID: testOrg, ProjectID: testProj, RepoSlug: testSlug,
+		OrgID: filesTestOrg, ProjectID: filesTestProj, RepoSlug: testSlug,
 	})
 	if err != nil {
 		t.Fatalf("mirror git dir: %v", err)
@@ -138,11 +138,11 @@ func (r *filesRig) mirrorRevParse(t *testing.T, rev string) string {
 }
 
 func (r *filesRig) get(path string) *httptest.ResponseRecorder {
-	return r.h.AsOrg(testOrg).Get(path)
+	return r.h.AsOrg(filesTestOrg).Get(path)
 }
 
 func (r *filesRig) apply(body string) *httptest.ResponseRecorder {
-	return r.h.AsOrg(testOrg).Post(apiBase+"/apply", body)
+	return r.h.AsOrg(filesTestOrg).Post(apiBase+"/apply", body)
 }
 
 // readSHA reads a file through the API and returns its blob sha (the draft's
@@ -153,7 +153,7 @@ func (r *filesRig) readSHA(t *testing.T, path string) string {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("read %s: code %d (%s)", path, rec.Code, rec.Body.String())
 	}
-	var fc files.FileContent
+	var fc spec.FileContent
 	if err := json.Unmarshal(rec.Body.Bytes(), &fc); err != nil {
 		t.Fatalf("decode read: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestListAtHead_FilteredByPrefix(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("code %d: %s", rec.Code, rec.Body.String())
 	}
-	var metas []files.FileMeta
+	var metas []spec.FileMeta
 	if err := json.Unmarshal(rec.Body.Bytes(), &metas); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestReadAtHead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("code %d: %s", rec.Code, rec.Body.String())
 	}
-	var fc files.FileContent
+	var fc spec.FileContent
 	_ = json.Unmarshal(rec.Body.Bytes(), &fc)
 	if fc.Content != "hello world" || fc.Path != "specs/requirements/requirements.md" || fc.SHA == "" {
 		t.Fatalf("read wrong: %+v", fc)
@@ -219,19 +219,19 @@ func TestApply_MultiWriteAndDelete_SingleCommit(t *testing.T) {
 	todoSHA := r.readSHA(t, "specs/requirements/todo.md")
 	headBefore := r.remote.HeadSHA(t)
 
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/requirements/requirements.md", Content: "new", BaseSHA: reqSHA},
 			{Path: "specs/design/design.md", Content: "# Design"}, // baseSha omitted ⇒ create
 		},
-		Deletes: []files.DeleteOp{{Path: "specs/requirements/todo.md", BaseSHA: todoSHA}},
+		Deletes: []spec.DeleteOp{{Path: "specs/requirements/todo.md", BaseSHA: todoSHA}},
 		Message: "from test",
 	})
 	rec := r.apply(body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply code %d: %s", rec.Code, rec.Body.String())
 	}
-	var res files.ApplyResult
+	var res spec.ApplyResult
 	_ = json.Unmarshal(rec.Body.Bytes(), &res)
 	if res.CommitSHA == "" || len(res.Files) != 2 {
 		t.Fatalf("apply result wrong: %+v", res)
@@ -259,8 +259,8 @@ func TestApply_StaleBaseSHA_409_NothingApplied(t *testing.T) {
 	r := newFilesRig(t, map[string]string{"specs/requirements/requirements.md": "v1"})
 	headBefore := r.remote.HeadSHA(t)
 
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/requirements/requirements.md", Content: "v2", BaseSHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"},
 		},
 	})
@@ -305,19 +305,19 @@ func TestApply_BatchConflict_AllOrNothing_CollectsAllConflicts(t *testing.T) {
 	todoSHA := r.readSHA(t, "specs/requirements/todo.md")
 	headBefore := r.remote.HeadSHA(t)
 
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/requirements/requirements.md", Content: "clobber", BaseSHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"},
 			{Path: "specs/design/design.md", Content: "new", BaseSHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}, // absent + baseSha set ⇒ conflict too
 		},
-		Deletes: []files.DeleteOp{{Path: "specs/requirements/todo.md", BaseSHA: todoSHA}}, // valid — must still NOT apply
+		Deletes: []spec.DeleteOp{{Path: "specs/requirements/todo.md", BaseSHA: todoSHA}}, // valid — must still NOT apply
 	})
 	rec := r.apply(body)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("code %d, want 409: %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
-		Conflicts []files.Conflict `json:"conflicts"`
+		Conflicts []spec.Conflict `json:"conflicts"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode conflicts: %v", err)
@@ -335,8 +335,8 @@ func TestApply_BatchConflict_AllOrNothing_CollectsAllConflicts(t *testing.T) {
 
 func TestApply_BaseSHAOmittedButExists_409(t *testing.T) {
 	r := newFilesRig(t, map[string]string{"specs/requirements/requirements.md": "exists"})
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/requirements/requirements.md", Content: "clobber"}, // no baseSha ⇒ must-not-exist
 		},
 	})
@@ -345,7 +345,7 @@ func TestApply_BaseSHAOmittedButExists_409(t *testing.T) {
 		t.Fatalf("code %d, want 409: %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
-		Conflicts []files.Conflict `json:"conflicts"`
+		Conflicts []spec.Conflict `json:"conflicts"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &got)
 	if len(got.Conflicts) != 1 || got.Conflicts[0].BaseSHA != "" || got.Conflicts[0].CurrentSHA == "" {
@@ -356,9 +356,9 @@ func TestApply_BaseSHAOmittedButExists_409(t *testing.T) {
 func TestApply_PathRejections(t *testing.T) {
 	r := newFilesRig(t, map[string]string{"specs/requirements/requirements.md": "x"})
 	cases := map[string]string{
-		"traversal": mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "specs/../etc/passwd", Content: "x"}}}),
-		"non-specs": mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "README.md", Content: "x"}}}),
-		"absolute":  mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "/specs/x.md", Content: "x"}}}),
+		"traversal": mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "specs/../etc/passwd", Content: "x"}}}),
+		"non-specs": mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "README.md", Content: "x"}}}),
+		"absolute":  mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "/specs/x.md", Content: "x"}}}),
 	}
 	for name, body := range cases {
 		if rec := r.apply(body); rec.Code != http.StatusBadRequest {
@@ -370,7 +370,7 @@ func TestApply_PathRejections(t *testing.T) {
 func TestApply_SizeCap(t *testing.T) {
 	r := newFilesRig(t, map[string]string{"specs/requirements/requirements.md": "x"})
 	huge := strings.Repeat("A", (5<<20)+1)
-	body := mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "specs/requirements/big.md", Content: huge}}})
+	body := mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "specs/requirements/big.md", Content: huge}}})
 	if rec := r.apply(body); rec.Code != http.StatusBadRequest {
 		t.Errorf("size cap: code %d, want 400", rec.Code)
 	}
@@ -378,8 +378,8 @@ func TestApply_SizeCap(t *testing.T) {
 
 func TestApply_WarningsNonBlocking(t *testing.T) {
 	r := newFilesRig(t, nil)
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/design/components/foo/design.json", Content: "{ not valid json"},
 		},
 	})
@@ -387,7 +387,7 @@ func TestApply_WarningsNonBlocking(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("invalid json must NOT block apply: code %d (%s)", rec.Code, rec.Body.String())
 	}
-	var res files.ApplyResult
+	var res spec.ApplyResult
 	_ = json.Unmarshal(rec.Body.Bytes(), &res)
 	if len(res.Warnings) != 1 || res.Warnings[0].Code != "INVALID_JSON" {
 		t.Fatalf("expected one INVALID_JSON warning: %+v", res.Warnings)
@@ -402,14 +402,14 @@ func TestApply_SchemaViolationWarning_NonBlocking(t *testing.T) {
 	r := newFilesRig(t, nil)
 	// Valid JSON + valid schema, but name != component directory ("bar" != "foo").
 	valid := `{"name":"bar","type":"service","version":"1","language":"go","buildpack":"go","appPath":".","entrypoint":"m","exposure":"intranet","connections":[],"description":"d"}`
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{{Path: "specs/design/components/foo/design.json", Content: valid}},
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{{Path: "specs/design/components/foo/design.json", Content: valid}},
 	})
 	rec := r.apply(body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("schema violation must NOT block apply: code %d (%s)", rec.Code, rec.Body.String())
 	}
-	var res files.ApplyResult
+	var res spec.ApplyResult
 	_ = json.Unmarshal(rec.Body.Bytes(), &res)
 	if len(res.Warnings) != 1 || res.Warnings[0].Code != "SCHEMA_VIOLATION" {
 		t.Fatalf("expected one SCHEMA_VIOLATION warning: %+v", res.Warnings)
@@ -452,7 +452,7 @@ func TestReadAtHead_UnicodePath(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("unicode read: code %d (%s)", rec.Code, rec.Body.String())
 	}
-	var fc files.FileContent
+	var fc spec.FileContent
 	if err := json.Unmarshal(rec.Body.Bytes(), &fc); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -461,7 +461,7 @@ func TestReadAtHead_UnicodePath(t *testing.T) {
 	}
 
 	list := r.get(apiBase + "?prefix=specs/requirements/")
-	var metas []files.FileMeta
+	var metas []spec.FileMeta
 	_ = json.Unmarshal(list.Body.Bytes(), &metas)
 	if len(metas) != 1 || metas[0].Path != path {
 		t.Fatalf("unicode list wrong: %+v", metas)
@@ -479,7 +479,7 @@ func TestReadAtHead_LargeFile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("large read: code %d", rec.Code)
 	}
-	var fc files.FileContent
+	var fc spec.FileContent
 	if err := json.Unmarshal(rec.Body.Bytes(), &fc); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -488,7 +488,7 @@ func TestReadAtHead_LargeFile(t *testing.T) {
 	}
 
 	list := r.get(apiBase + "?prefix=specs/design/")
-	var metas []files.FileMeta
+	var metas []spec.FileMeta
 	_ = json.Unmarshal(list.Body.Bytes(), &metas)
 	if len(metas) != 1 || metas[0].Size != int64(len(content)) {
 		t.Fatalf("large list wrong: %+v", metas)
@@ -503,8 +503,8 @@ func TestApply_ShaConsistency_OriginMirrorAndReadBack(t *testing.T) {
 	r := newFilesRig(t, map[string]string{"specs/requirements/requirements.md": "v1"})
 	reqSHA := r.readSHA(t, "specs/requirements/requirements.md")
 
-	body := mustJSON(t, files.ApplyRequest{
-		Writes: []files.WriteOp{
+	body := mustJSON(t, spec.ApplyRequest{
+		Writes: []spec.WriteOp{
 			{Path: "specs/requirements/requirements.md", Content: "v2", BaseSHA: reqSHA},
 			{Path: "specs/design/design.md", Content: "# Design"},
 		},
@@ -513,7 +513,7 @@ func TestApply_ShaConsistency_OriginMirrorAndReadBack(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply code %d: %s", rec.Code, rec.Body.String())
 	}
-	var res files.ApplyResult
+	var res spec.ApplyResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -540,8 +540,8 @@ func TestApply_ConcurrentDisjointApplies_BothLand(t *testing.T) {
 	base := r.remote.HeadSHA(t)
 
 	bodies := []string{
-		mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "specs/design/a.md", Content: "A"}}}),
-		mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: "specs/design/b.md", Content: "B"}}}),
+		mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "specs/design/a.md", Content: "A"}}}),
+		mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: "specs/design/b.md", Content: "B"}}}),
 	}
 	codes := make([]int, 2)
 	var wg sync.WaitGroup
@@ -578,8 +578,8 @@ func TestApply_ConcurrentSamePath_OneLandsOne409(t *testing.T) {
 	baseSHA := r.readSHA(t, path)
 
 	bodies := []string{
-		mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: path, Content: "first", BaseSHA: baseSHA}}}),
-		mustJSON(t, files.ApplyRequest{Writes: []files.WriteOp{{Path: path, Content: "second", BaseSHA: baseSHA}}}),
+		mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: path, Content: "first", BaseSHA: baseSHA}}}),
+		mustJSON(t, spec.ApplyRequest{Writes: []spec.WriteOp{{Path: path, Content: "second", BaseSHA: baseSHA}}}),
 	}
 	codes := make([]int, 2)
 	var wg sync.WaitGroup
@@ -625,7 +625,7 @@ func TestRead_SeesOriginAdvanceImmediately(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("re-read: code %d", rec.Code)
 	}
-	var fc files.FileContent
+	var fc spec.FileContent
 	_ = json.Unmarshal(rec.Body.Bytes(), &fc)
 	if fc.Content != "v2 external" {
 		t.Fatalf("content = %q, want the origin's new commit (no stale cache)", fc.Content)

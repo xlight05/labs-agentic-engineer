@@ -101,7 +101,6 @@ var featureEdgeAllowlist = map[string][]string{
 	// consumer-side port, not a direct artifacts import. It NEVER imports
 	// feature/task — the §1 split is a package boundary.
 	"execution": {"devflow"},
-	"files":     {},
 	"project":   {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate

@@ -54,7 +54,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/design"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
-	"github.com/wso2/aep/aep-api/internal/feature/files"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
@@ -333,7 +332,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 
 	// Files API — generic specs/-scoped, GitHub-at-HEAD reads + atomic apply
 	// (commits straight to main under CAS retry). No local working tree.
-	filesSvc := files.NewService(repoService, gitOpsService)
+	filesSvc := spec.NewFilesService(repoService, gitOpsService)
 
 	// Unified genai committed-truth turn surface (shared-volume-clone §6). It
 	// resolves the org Anthropic key (no platform fallback), snapshots the

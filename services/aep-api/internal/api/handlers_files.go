@@ -20,13 +20,13 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/files"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
-// Files feature on the strict interface: list-files / read-file / apply-files.
+// Files feature on the strict interface: list-files / read-file / apply-spec.
 // Reads are served at the branch tip through the workspace mirror; the single
 // write is the atomic apply. Every operation is org-scoped — the tenant gate
 // bound the token org before these run. read-file's {path} spans multiple
@@ -75,7 +75,7 @@ func (s *legacyHandlers) ApplyFiles(ctx context.Context, request gen.ApplyFilesR
 	}
 	res, conflicts, err := s.deps.FilesSvc.Apply(ctx, org, request.ProjectName, applyRequestFromWire(*request.Body))
 	if err != nil {
-		if errors.Is(err, files.ErrApplyConflict) {
+		if errors.Is(err, spec.ErrApplyConflict) {
 			return applyConflictsToWire(conflicts), nil
 		}
 		return nil, mapFilesError(err)
@@ -87,7 +87,7 @@ func (s *legacyHandlers) ApplyFiles(ctx context.Context, request gen.ApplyFilesR
 // declared 409 body (ApplyConflicts — the FE's baseSha CAS flow consumes it;
 // nothing was applied when this is returned). files_component_test.go pins the
 // field set + values.
-func applyConflictsToWire(conflicts []files.Conflict) gen.ApplyFiles409JSONResponse {
+func applyConflictsToWire(conflicts []spec.Conflict) gen.ApplyFiles409JSONResponse {
 	out := gen.ApplyConflicts{Conflicts: make([]gen.ApplyConflict, 0, len(conflicts))}
 	for _, c := range conflicts {
 		out.Conflicts = append(out.Conflicts, gen.ApplyConflict{
@@ -98,19 +98,19 @@ func applyConflictsToWire(conflicts []files.Conflict) gen.ApplyFiles409JSONRespo
 }
 
 // applyRequestFromWire converts the generated body into the service's shape.
-func applyRequestFromWire(in gen.ApplyRequest) files.ApplyRequest {
-	out := files.ApplyRequest{Message: in.Message}
+func applyRequestFromWire(in gen.ApplyRequest) spec.ApplyRequest {
+	out := spec.ApplyRequest{Message: in.Message}
 	for _, w := range in.Writes {
-		out.Writes = append(out.Writes, files.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSha})
+		out.Writes = append(out.Writes, spec.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSha})
 	}
 	for _, d := range in.Deletes {
-		out.Deletes = append(out.Deletes, files.DeleteOp{Path: d.Path, BaseSHA: d.BaseSha})
+		out.Deletes = append(out.Deletes, spec.DeleteOp{Path: d.Path, BaseSHA: d.BaseSha})
 	}
 	return out
 }
 
 // applyResultToWire converts the service result into the contract schema.
-func applyResultToWire(res *files.ApplyResult) gen.ApplyResult {
+func applyResultToWire(res *spec.ApplyResult) gen.ApplyResult {
 	out := gen.ApplyResult{CommitSha: res.CommitSHA, Files: make([]gen.FileMeta, 0, len(res.Files))}
 	for _, f := range res.Files {
 		out.Files = append(out.Files, gen.FileMeta{Path: f.Path, Sha: f.SHA, Size: f.Size})
@@ -125,11 +125,11 @@ func applyResultToWire(res *files.ApplyResult) gen.ApplyResult {
 // the strict-server port of the feature's Huma-era mapper.
 func mapFilesError(err error) error {
 	switch {
-	case errors.Is(err, files.ErrProjectRepoNotFound):
+	case errors.Is(err, spec.ErrProjectRepoNotFound):
 		return errNotFound("project repository not found")
-	case errors.Is(err, files.ErrFileNotFound):
+	case errors.Is(err, spec.ErrFileNotFound):
 		return errNotFound("file not found")
-	case errors.Is(err, files.ErrPathInvalid):
+	case errors.Is(err, spec.ErrPathInvalid):
 		return errBadRequest(err.Error())
 	case errors.Is(err, sourcecontrol.ErrRefNotFastForward):
 		// Workspace.Mutate exhausted its CAS retries: the ref tip moved under
