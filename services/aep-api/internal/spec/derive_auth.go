@@ -14,22 +14,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package design
+package spec
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // Auth-as-platform-resource (learning/thunder-resource/PLAN-generalization.md):
 // a `service` component that declares a `platform-resource` dependency whose
 // ClusterResourceType carries the PE-authored `aep.wso2.com/role:
-// end-user-auth` label (resources.TypeMarkers.EndUserAuth) gets end-user
+// end-user-auth` label (CRTMarkers.EndUserAuth) gets end-user
 // gateway auth on its managed API for free — the platform derives
 // `exposesAPI.auth` from the dependency instead of requiring the architect (or
 // a human editor) to author it separately. The membership test keys on the CRT
@@ -57,7 +55,7 @@ const (
 // markers map (no platform-resource deps → no catalog fetch) qualifies nothing.
 // On a conflict, nothing in components is mutated — the caller sees the
 // original, unmodified state.
-func deriveEndUserAuth(components []models.DesignComponent, markers map[string]resources.TypeMarkers) error {
+func deriveEndUserAuth(components []models.DesignComponent, markers map[string]CRTMarkers) error {
 	for i := range components {
 		comp := &components[i]
 		if comp.ComponentType != models.ComponentTypeService {
@@ -84,7 +82,7 @@ func deriveEndUserAuth(components []models.DesignComponent, markers map[string]r
 // endUserAuthDependency returns the first platform-resource dependency in deps
 // whose resourceType carries the end-user-auth role marker, if any. A nil
 // markers map (a Go nil-map read is a safe zero-value lookup) matches nothing.
-func endUserAuthDependency(deps []models.Dependency, markers map[string]resources.TypeMarkers) (models.Dependency, bool) {
+func endUserAuthDependency(deps []models.Dependency, markers map[string]CRTMarkers) (models.Dependency, bool) {
 	for _, d := range deps {
 		if d.Kind == models.DependencyKindPlatformResource && markers[d.ResourceType].EndUserAuth {
 			return d, true
@@ -102,7 +100,7 @@ func endUserAuthDependency(deps []models.Dependency, markers map[string]resource
 // (a silent skip could leave an API that must sit behind end-user login
 // exposed). Returns (nil, nil) when there is no platform-resource dependency:
 // deriveEndUserAuth over a nil map qualifies nothing, which is exactly right.
-func (s *designService) resourceMarkersForAuthDerivation(ctx context.Context, designFile *spec.DesignFile) (map[string]resources.TypeMarkers, error) {
+func (s *designService) resourceMarkersForAuthDerivation(ctx context.Context, designFile *DesignFile) (map[string]CRTMarkers, error) {
 	if !hasPlatformResourceDependency(designFile.Components) {
 		return nil, nil
 	}
@@ -154,7 +152,7 @@ func exposesAPIEqual(a, b *models.ExposesAPI) bool {
 func (s *designService) DeriveEndUserAuthAtHead(ctx context.Context, orgID, projectID string) error {
 	designFile, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if spec.IsNotFound(err) {
+		if IsNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("read design: %w", err)
@@ -193,7 +191,7 @@ func (s *designService) DeriveEndUserAuthAtHead(ctx context.Context, orgID, proj
 // no-op after a successful derivation: designFile.Components is still mutated
 // in place so THIS response reflects the derived value, but nothing is
 // persisted, so it will not survive to the next independent design read.
-func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID, projectID string, designFile *spec.DesignFile, markers map[string]resources.TypeMarkers) (bool, error) {
+func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID, projectID string, designFile *DesignFile, markers map[string]CRTMarkers) (bool, error) {
 	// Snapshot a COPY of each ExposesAPI value (not the pointer): when a
 	// component already carries a non-nil ExposesAPI, deriveEndUserAuth
 	// mutates its Auth field THROUGH that same pointer — capturing the
@@ -219,7 +217,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 			continue
 		}
 		comp := designFile.Components[i]
-		rendered, rerr := spec.SplitDesign(&spec.DesignFile{Components: []models.DesignComponent{comp}})
+		rendered, rerr := SplitDesign(&DesignFile{Components: []models.DesignComponent{comp}})
 		if rerr != nil {
 			return false, fmt.Errorf("render component %q design.json: %w", comp.Name, rerr)
 		}
@@ -228,7 +226,7 @@ func (s *designService) persistEndUserAuthDerivation(ctx context.Context, orgID,
 		if !ok {
 			return false, fmt.Errorf("render component %q design.json: %q missing from split", comp.Name, designSub)
 		}
-		designFull := spec.DesignDir + "/" + designSub
+		designFull := DesignDir + "/" + designSub
 		_, sha, exists, rerr := s.fileCommitter.ReadFile(ctx, orgID, projectID, designFull)
 		if rerr != nil {
 			return false, fmt.Errorf("read %q for CAS: %w", designFull, rerr)

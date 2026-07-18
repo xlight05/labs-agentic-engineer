@@ -14,18 +14,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package design
+package spec
 
 import (
-	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 // Generic conditional skill attachment (Task G4,
 // learning/thunder-resource/PLAN-generalization.md): a `platform-resource`
 // dependency whose ClusterResourceType carries the PE-authored
-// `aep.wso2.com/skill` annotation (resources.TypeMarkers.Skill) means the
+// `aep.wso2.com/skill` annotation (CRTMarkers.Skill) means the
 // design needs that skill's agent instructions to work with the dependency —
 // so design save ensures the skill name is present in the OWNING component's
 // skillsApplied (per-component design.json — see
@@ -52,7 +50,7 @@ import (
 // names of components that gained at least one skill. A nil/empty markers map
 // (no platform-resource dependency in the design, or none of its types carry
 // the annotation) changes nothing.
-func attachAnnotatedSkills(designFile *spec.DesignFile, markers map[string]resources.TypeMarkers) []string {
+func attachAnnotatedSkills(designFile *DesignFile, markers map[string]CRTMarkers) []string {
 	var changed []string
 	for i := range designFile.Components {
 		comp := &designFile.Components[i]

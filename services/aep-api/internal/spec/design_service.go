@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package design
+package spec
 
 import (
 	"context"
@@ -23,8 +23,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -37,7 +35,7 @@ var ErrSpecNotApproved = errors.New("spec must be saved (tagged) before generati
 // controller) when the tag-cut (SaveAndProceed) is attempted while a
 // dependency in the design being tagged is still in a non-actionable state:
 // an `org-service` that is not namespace-visible (unresolved/blocked/ambiguous
-// against the live org catalog — see spec.resolveOrgServices), or an
+// against the live org catalog — see resolveOrgServices), or an
 // `external` dependency that declares needsSpec but has no collected spec yet.
 // external-values (config-only) and platform-resource dependencies are NOT
 // proceed-gated here — they are dispatch-gated in Phase 6. The tag-cut is the
@@ -102,8 +100,8 @@ var (
 // adapts the two build-path methods onto narrow consumer interfaces
 // (internal/app/build_adapters.go) since build cannot import design.
 type designService struct {
-	store               *spec.ArtifactStore
-	artifactSvc         spec.ArtifactService
+	store               *ArtifactStore
+	artifactSvc         ArtifactService
 	externalResourceReg externalResourceRegistrar // for RegisterExternalResources; may be nil
 	fileCommitter       designFileCommitter       // for CollectSpec's committed-truth spec write; may be nil
 	resourceCatalog     resourceMarkerCatalog     // for DeriveEndUserAuthAtHead end-user-auth derivation; may be nil (fails closed when platform-resource deps exist)
@@ -135,14 +133,14 @@ type designFileCommitter interface {
 
 // resourceMarkerCatalog is design_service's narrow consumer port over the
 // dependencies/resources catalog: it returns the PE-authored CRT marker map
-// (resources.TypeMarkers keyed by resourceType name) that design-save keys the
+// (CRTMarkers keyed by resourceType name) that design-save keys the
 // end-user-auth derivation on — replacing the deleted hardcoded thunder-app
 // resourceType name. *resources.ResourceTypeCatalog satisfies it structurally. Wired via
 // SetResourceCatalog at the composition root; a nil catalog fails the save
 // closed (ErrResourceCatalogUnavailable) whenever the design declares a
 // platform-resource dependency, so the derivation is never silently skipped.
 type resourceMarkerCatalog interface {
-	MarkersByName(ctx context.Context) (map[string]resources.TypeMarkers, error)
+	MarkersByName(ctx context.Context) (map[string]CRTMarkers, error)
 }
 
 // externalResourceRegistrar is design_service's narrow consumer port for the
@@ -155,8 +153,8 @@ type externalResourceRegistrar interface {
 }
 
 func NewDesignService(
-	store *spec.ArtifactStore,
-	artifactSvc spec.ArtifactService,
+	store *ArtifactStore,
+	artifactSvc ArtifactService,
 ) *designService {
 	return &designService{
 		store:       store,
@@ -191,7 +189,7 @@ func (s *designService) SetResourceCatalog(c resourceMarkerCatalog) {
 // reusable definition layer consumers request access to later). Non-fatal: a
 // registry hiccup must never fail a design save — the value/wiring provisioning
 // happens later, independently, when a consumer requests access (Phase 6).
-func (s *designService) registerExternalResources(ctx context.Context, orgID string, design *spec.DesignFile) {
+func (s *designService) registerExternalResources(ctx context.Context, orgID string, design *DesignFile) {
 	if s.externalResourceReg == nil || design == nil {
 		return
 	}
@@ -251,7 +249,7 @@ func (s *designService) CollectSpec(ctx context.Context, orgID, projectID, compo
 	// unknown dep (404) or a non-external dep (400) never leaves an orphan blob.
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if spec.IsNotFound(err) {
+		if IsNotFound(err) {
 			return "", fmt.Errorf("%w: no design for project %q", ErrDependencyNotFound, projectID)
 		}
 		return "", fmt.Errorf("read design: %w", err)
@@ -283,7 +281,7 @@ func (s *designService) CollectSpec(ctx context.Context, orgID, projectID, compo
 	}
 
 	if hasURL {
-		fetched, ferr := spec.FetchSpecFromURL(ctx, specURL)
+		fetched, ferr := FetchSpecFromURL(ctx, specURL)
 		if ferr != nil {
 			return "", fmt.Errorf("%w: %v", ErrSpecFetchFailed, ferr)
 		}
@@ -294,7 +292,7 @@ func (s *designService) CollectSpec(ctx context.Context, orgID, projectID, compo
 	// specPath and the normalized blob to commit.
 	specPath, normalized, err := s.store.StoreConsumedSpec(ctx, orgID, projectID, component, depName, rawSpec)
 	if err != nil {
-		if errors.Is(err, spec.ErrInvalidSpecContent) {
+		if errors.Is(err, ErrInvalidSpecContent) {
 			return "", fmt.Errorf("%w: %v", ErrInvalidSpec, err)
 		}
 		return "", err
@@ -305,7 +303,7 @@ func (s *designService) CollectSpec(ctx context.Context, orgID, projectID, compo
 	comp := design.Components[compIdx]
 	comp.Dependencies[depIdx].SpecPath = specPath
 	comp.Dependencies[depIdx].SpecUrl = ""
-	rendered, rerr := spec.SplitDesign(&spec.DesignFile{Components: []models.DesignComponent{comp}})
+	rendered, rerr := SplitDesign(&DesignFile{Components: []models.DesignComponent{comp}})
 	if rerr != nil {
 		return "", fmt.Errorf("render component %q design.json: %w", component, rerr)
 	}
@@ -317,8 +315,8 @@ func (s *designService) CollectSpec(ctx context.Context, orgID, projectID, compo
 
 	// Full repo paths + CAS shas. design.json must exist; the spec file may not
 	// yet (a fresh collect creates it, a re-collect overwrites at its sha).
-	designFull := spec.DesignDir + "/" + designSub
-	specFull := spec.DesignDir + "/components/" + component + "/" + specPath
+	designFull := DesignDir + "/" + designSub
+	specFull := DesignDir + "/components/" + component + "/" + specPath
 	_, designSHA, designExists, rerr := s.fileCommitter.ReadFile(ctx, orgID, projectID, designFull)
 	if rerr != nil {
 		return "", fmt.Errorf("read design.json for CAS: %w", rerr)
@@ -358,7 +356,7 @@ func (s *designService) MarkOrgPublished(ctx context.Context, orgID, projectID, 
 	}
 	design, err := s.store.ReadDesign(ctx, orgID, projectID)
 	if err != nil {
-		if spec.IsNotFound(err) {
+		if IsNotFound(err) {
 			return nil // no design — nothing to mark
 		}
 		return fmt.Errorf("read design: %w", err)
@@ -385,7 +383,7 @@ func (s *designService) MarkOrgPublished(ctx context.Context, orgID, projectID, 
 	}
 	comp.ExposesAPI.OrgPublished = true
 
-	rendered, err := spec.SplitDesign(&spec.DesignFile{Components: []models.DesignComponent{comp}})
+	rendered, err := SplitDesign(&DesignFile{Components: []models.DesignComponent{comp}})
 	if err != nil {
 		return fmt.Errorf("render component %q design.json: %w", component, err)
 	}
@@ -394,7 +392,7 @@ func (s *designService) MarkOrgPublished(ctx context.Context, orgID, projectID, 
 	if !ok {
 		return fmt.Errorf("render component %q design.json: %q missing from split", component, designSub)
 	}
-	designFull := spec.DesignDir + "/" + designSub
+	designFull := DesignDir + "/" + designSub
 	_, sha, exists, err := s.fileCommitter.ReadFile(ctx, orgID, projectID, designFull)
 	if err != nil {
 		return fmt.Errorf("read design.json for CAS: %w", err)

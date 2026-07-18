@@ -51,7 +51,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/endpoints"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/design"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/execution"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
@@ -403,7 +402,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	buildStager := buildSecretStagerAdapter{svc: buildCredService}
 	componentService := component.NewComponentService(componentClient, observClient, artifactStore, repoService, buildStager)
 	configService := component.NewConfigService(configRepo, componentService)
-	designService := design.NewDesignService(artifactStore, artifactSvcGit)
+	designService := spec.NewDesignService(artifactStore, artifactSvcGit)
 
 	// Tasks are GitHub issues (the Task/Execution split, tasks-github-native):
 	// the read + plan surface reads them live and fuses executions. The dispatch
@@ -810,7 +809,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// holds only a narrow MarkersByName port. When the design declares a
 	// platform-resource dependency and this catalog is unreachable, the save
 	// fails closed (ErrResourceCatalogUnavailable → 503).
-	designService.SetResourceCatalog(resourceTypeCatalog)
+	designService.SetResourceCatalog(crtMarkerCatalog{resourceTypeCatalog})
 
 	// Read-time org-service dependency resolution (dependency-management Phase 5):
 	// the same endpoint catalog that backs the MCP list_org_endpoints tool marks

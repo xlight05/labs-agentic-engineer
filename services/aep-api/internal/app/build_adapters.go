@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/design"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/models"
@@ -67,9 +66,9 @@ func (d buildAuthDeriver) DeriveEndUserAuthAtHead(ctx context.Context, orgID, pr
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, design.ErrEndUserAuthConflict):
+	case errors.Is(err, spec.ErrEndUserAuthConflict):
 		return fmt.Errorf("%w: %v", build.ErrEndUserAuthConflict, err)
-	case errors.Is(err, design.ErrResourceCatalogUnavailable):
+	case errors.Is(err, spec.ErrResourceCatalogUnavailable):
 		return fmt.Errorf("%w: %v", build.ErrResourceCatalogUnavailable, err)
 	default:
 		return err

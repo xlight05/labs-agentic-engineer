@@ -14,15 +14,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package design
+package spec
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 )
 
 // --- proceed-gate (dependency-management Phase 5) ----------------------------
@@ -38,7 +36,7 @@ import (
 // component carries the given dependencies JSON array.
 func designFilesWithDeps(depsJSON string) map[string]string {
 	return map[string]string{
-		spec.DesignRootFile: "---\nsourceSpec: v1\n---\n\nOverview.\n",
+		DesignRootFile: "---\nsourceSpec: v1\n---\n\nOverview.\n",
 		"components/consumer/design.json": `{
   "name": "consumer",
   "type": "service",
@@ -53,13 +51,13 @@ func designFilesWithDeps(depsJSON string) map[string]string {
 // readsFor wires a fake artifact service for the SaveAndProceed pre-gate read
 // (HEAD resolution) with the given design tree. SaveDesign is set to fail the
 // test — a proceed-gate that blocks must never reach the tag-cut.
-func readsFor(t *testing.T, files map[string]string) *artifactstest.FakeArtifactService {
+func readsFor(t *testing.T, files map[string]string) *fakeArtifactSvc {
 	t.Helper()
-	return &artifactstest.FakeArtifactService{
+	return &fakeArtifactSvc{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
-		SaveDesignFunc: func(context.Context, string, string, spec.SaveRequest) (*spec.DesignSaveResult, error) {
+		SaveDesignFunc: func(context.Context, string, string, SaveRequest) (*DesignSaveResult, error) {
 			t.Error("proceed-gate should have blocked before SaveDesign (tag-cut) was reached")
 			return nil, errors.New("SaveDesign must not be called")
 		},
@@ -68,16 +66,16 @@ func readsFor(t *testing.T, files map[string]string) *artifactstest.FakeArtifact
 
 // happySave wires a fake that lets the tag-cut through: a resolved read, a
 // successful SaveDesign, and a version list.
-func happySave(files map[string]string) *artifactstest.FakeArtifactService {
-	return &artifactstest.FakeArtifactService{
+func happySave(files map[string]string) *fakeArtifactSvc {
+	return &fakeArtifactSvc{
 		ListDesignFilesFunc: func(context.Context, string, string) (map[string]string, error) {
 			return files, nil
 		},
-		SaveDesignFunc: func(context.Context, string, string, spec.SaveRequest) (*spec.DesignSaveResult, error) {
-			return &spec.DesignSaveResult{Status: "approved", Tag: "v1-1", RequirementsVersion: 1, DesignRevision: 1}, nil
+		SaveDesignFunc: func(context.Context, string, string, SaveRequest) (*DesignSaveResult, error) {
+			return &DesignSaveResult{Status: "approved", Tag: "v1-1", RequirementsVersion: 1, DesignRevision: 1}, nil
 		},
-		ListDesignVersionsFunc: func(context.Context, string, string) ([]spec.DesignVersionInfo, error) {
-			return []spec.DesignVersionInfo{{Tag: "v1-1", RequirementsVersion: 1, DesignRevision: 1}}, nil
+		ListDesignVersionsFunc: func(context.Context, string, string) ([]DesignVersionInfo, error) {
+			return []DesignVersionInfo{{Tag: "v1-1", RequirementsVersion: 1, DesignRevision: 1}}, nil
 		},
 	}
 }

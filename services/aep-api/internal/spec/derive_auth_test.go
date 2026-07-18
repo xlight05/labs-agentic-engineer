@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package design
+package spec
 
 import (
 	"context"
@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -38,20 +37,20 @@ func thunderDep(name string) models.Dependency {
 
 // authRole returns a marker map flagging resourceType as carrying the
 // end-user-auth role — the labeled sample type the derivation stamps on.
-func authRole(resourceType string) map[string]resources.TypeMarkers {
-	return map[string]resources.TypeMarkers{resourceType: {EndUserAuth: true}}
+func authRole(resourceType string) map[string]CRTMarkers {
+	return map[string]CRTMarkers{resourceType: {EndUserAuth: true}}
 }
 
 // fakeMarkerCatalog is the resourceMarkerCatalog port double for SaveAndProceed
 // integration tests: it records whether it was consulted and serves a canned
 // marker map (or an error to exercise the fail-closed save gate).
 type fakeMarkerCatalog struct {
-	markers map[string]resources.TypeMarkers
+	markers map[string]CRTMarkers
 	err     error
 	calls   int
 }
 
-func (f *fakeMarkerCatalog) MarkersByName(context.Context) (map[string]resources.TypeMarkers, error) {
+func (f *fakeMarkerCatalog) MarkersByName(context.Context) (map[string]CRTMarkers, error) {
 	f.calls++
 	return f.markers, f.err
 }
@@ -187,7 +186,7 @@ func TestDeriveEndUserAuth_UnlabeledTypeUntouchedEvenIfNamedThunderApp(t *testin
 	}}
 
 	// Empty marker map: "thunder-app" carries no role — nothing to derive.
-	if err := deriveEndUserAuth(comps, map[string]resources.TypeMarkers{}); err != nil {
+	if err := deriveEndUserAuth(comps, map[string]CRTMarkers{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if comps[0].ExposesAPI != nil {

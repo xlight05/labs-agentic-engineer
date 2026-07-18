@@ -20,9 +20,34 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/design"
+	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
+
+// crtMarkerCatalog adapts the dependencies resource-type catalog onto spec's
+// own CRTMarkers vocabulary: design-save's resourceMarkerCatalog port returns
+// spec.CRTMarkers, so the spec domain names the dependencies feature nowhere
+// (the "a domain names no other domain's entity, even in a port" rule). It is
+// the projection point — dependencies becomes a domain in P8; this stays a port.
+type crtMarkerCatalog struct{ cat *resources.ResourceTypeCatalog }
+
+func (c crtMarkerCatalog) MarkersByName(ctx context.Context) (map[string]spec.CRTMarkers, error) {
+	m, err := c.cat.MarkersByName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]spec.CRTMarkers, len(m))
+	for k, v := range m {
+		out[k] = spec.CRTMarkers{
+			EndUserAuth:          v.EndUserAuth,
+			ConsumerURLEnvConfig: v.ConsumerURLEnvConfig,
+			ConsumerURLPath:      v.ConsumerURLPath,
+			Skill:                v.Skill,
+			Description:          v.Description,
+		}
+	}
+	return out, nil
+}
 
 // designFilesCommitter adapts the Files API (feature/files) to design's narrow
 // designFileCommitter port — the committed-truth single-commit write surface
@@ -48,8 +73,8 @@ func (a designFilesCommitter) ReadFile(ctx context.Context, orgID, projectID, pa
 
 // Commit writes every file in one atomic apply → main under per-file baseSha
 // CAS. A stale precondition (concurrent design edit) surfaces as
-// design.ErrSpecCommitConflict so the route can 409.
-func (a designFilesCommitter) Commit(ctx context.Context, orgID, projectID string, writes []design.DesignFileWrite, message string) error {
+// spec.ErrSpecCommitConflict so the route can 409.
+func (a designFilesCommitter) Commit(ctx context.Context, orgID, projectID string, writes []spec.DesignFileWrite, message string) error {
 	ops := make([]spec.WriteOp, 0, len(writes))
 	for _, w := range writes {
 		ops = append(ops, spec.WriteOp{Path: w.Path, Content: w.Content, BaseSHA: w.BaseSHA})
@@ -57,12 +82,12 @@ func (a designFilesCommitter) Commit(ctx context.Context, orgID, projectID strin
 	_, conflicts, err := a.files.Apply(ctx, orgID, projectID, spec.ApplyRequest{Writes: ops, Message: message})
 	if err != nil {
 		if errors.Is(err, spec.ErrApplyConflict) {
-			return design.ErrSpecCommitConflict
+			return spec.ErrSpecCommitConflict
 		}
 		return err
 	}
 	if len(conflicts) > 0 {
-		return design.ErrSpecCommitConflict
+		return spec.ErrSpecCommitConflict
 	}
 	return nil
 }
