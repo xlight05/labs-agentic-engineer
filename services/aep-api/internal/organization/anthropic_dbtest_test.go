@@ -36,7 +36,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
 // anthropicDBAESKey is the 32-byte AES-256 key for the real DBStore.
@@ -303,8 +303,8 @@ func TestAnthropicApplyWPSecret_NilClientDegradedMode_DB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply with nil wpClient must degrade cleanly: %v", err)
 	}
-	if res.SecretRefName != models.AnthropicSecretName {
-		t.Fatalf("secretRefName: got %q, want %q", res.SecretRefName, models.AnthropicSecretName)
+	if res.SecretRefName != tenant.AnthropicSecretName {
+		t.Fatalf("secretRefName: got %q, want %q", res.SecretRefName, tenant.AnthropicSecretName)
 	}
 
 	// Row active but bytes missing → a hard error (NOT the 422 sentinel):

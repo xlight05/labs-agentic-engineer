@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package models
+package tenant
 
 import (
 	"regexp"
@@ -42,6 +42,21 @@ func TestWorkflowPlaneNamespace_LowercasesAndTrims(t *testing.T) {
 	// / whitespace-padded org ids normalise rather than producing invalid names.
 	if got := WorkflowPlaneNamespace("  Acme  "); got != "workflows-acme" {
 		t.Errorf("WorkflowPlaneNamespace(padded/mixed) = %q; want workflows-acme", got)
+	}
+}
+
+func TestWorkflowPlaneNamespace_TableCases(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"default", "workflows-default"},
+		{"Acme-Co", "workflows-acme-co"}, // case-normalised, interior hyphen kept
+		{"  trimmed  ", "workflows-trimmed"},
+	}
+	for _, c := range cases {
+		if got := WorkflowPlaneNamespace(c.in); got != c.want {
+			t.Errorf("WorkflowPlaneNamespace(%q) = %q; want %q", c.in, got, c.want)
+		}
 	}
 }
 

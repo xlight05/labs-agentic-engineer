@@ -54,6 +54,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -447,7 +448,7 @@ func (s *AnthropicCredentialService) ApplyWPSecret(ctx context.Context, ocOrgID 
 		return nil, fmt.Errorf("anthropic apply-wp-secret: ssa: %w", err)
 	}
 
-	return &ApplyWPSecretResult{SecretRefName: models.AnthropicSecretName}, nil
+	return &ApplyWPSecretResult{SecretRefName: tenant.AnthropicSecretName}, nil
 }
 
 // applyAnthropicSecret SSA-applies the per-org Opaque Secret carrying
@@ -460,11 +461,11 @@ func (s *AnthropicCredentialService) applyAnthropicSecret(ctx context.Context, o
 		return nil
 	}
 
-	ns := models.WorkflowPlaneNamespace(ocOrgID)
+	ns := tenant.WorkflowPlaneNamespace(ocOrgID)
 	secret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      models.AnthropicSecretName,
+			Name:      tenant.AnthropicSecretName,
 			Namespace: ns,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by":   "aep-git-service",
@@ -496,10 +497,10 @@ func (s *AnthropicCredentialService) DeleteAnthropicSecret(ctx context.Context, 
 	if s.wpClient == nil {
 		return nil
 	}
-	ns := models.WorkflowPlaneNamespace(ocOrgID)
+	ns := tenant.WorkflowPlaneNamespace(ocOrgID)
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      models.AnthropicSecretName,
+			Name:      tenant.AnthropicSecretName,
 			Namespace: ns,
 		},
 	}

@@ -29,7 +29,6 @@ import (
 
 	k8sclient "github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // k8sJobRunnerSA is the ServiceAccount created in the org's data-plane
@@ -85,7 +84,7 @@ func (d *K8sJobDispatcher) Dispatch(ctx context.Context, in K8sJobInput) (string
 	if err != nil {
 		return "", fmt.Errorf("k8s-job: anthropic key for org %q: %w", in.OrgID, err)
 	}
-	if err := d.applySecret(ctx, ns, models.AnthropicSecretName, in.OrgID, map[string]string{
+	if err := d.applySecret(ctx, ns, tenant.AnthropicSecretName, in.OrgID, map[string]string{
 		"ANTHROPIC_API_KEY": anthropicKey,
 	}); err != nil {
 		return "", fmt.Errorf("k8s-job: apply anthropic secret: %w", err)
@@ -100,7 +99,7 @@ func (d *K8sJobDispatcher) Dispatch(ctx context.Context, in K8sJobInput) (string
 		ComponentName:       in.Component,
 		RunnerImage:         d.runnerImage,
 		ServiceAccountName:  k8sJobRunnerSA,
-		AnthropicSecretName: models.AnthropicSecretName,
+		AnthropicSecretName: tenant.AnthropicSecretName,
 		// GitHubSecretName intentionally empty: the runner authenticates to
 		// GitHub via AEP_BEARER -> aep-api /credentials/* callback.
 		RepoURL:       in.RepoURL,

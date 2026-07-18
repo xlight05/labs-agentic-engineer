@@ -38,18 +38,3 @@ func TestSlugForURL(t *testing.T) {
 		}
 	}
 }
-
-func TestWorkflowPlaneNamespace(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{"default", "workflows-default"},
-		{"Acme-Co", "workflows-acme-co"}, // case-normalised
-		{"  trimmed  ", "workflows-trimmed"},
-	}
-	for _, c := range cases {
-		if got := WorkflowPlaneNamespace(c.in); got != c.want {
-			t.Errorf("WorkflowPlaneNamespace(%q) = %q; want %q", c.in, got, c.want)
-		}
-	}
-}
