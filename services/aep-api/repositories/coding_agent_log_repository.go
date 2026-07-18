@@ -29,7 +29,7 @@ import (
 // CodingAgentLogRepository is the coding_agent_logs store: the JobWatcher
 // captures a terminal agent pod's stdout once, keyed by (execution id, run
 // name), and the AgentProgressReader reads that snapshot back for the log
-// stream's final page. Extracted out of internal/feature/codingagent during the
+// stream's final page. Extracted out of internal/delivery/codingagent during the
 // delivery fold (P6) so the domain lands gorm-free — the ORM stays fenced to
 // repositories/ (the gorm-into-<domain>/repository.go move defers to P9 with the
 // entity, as every domain's did). Lookups miss with (nil, nil), matching the

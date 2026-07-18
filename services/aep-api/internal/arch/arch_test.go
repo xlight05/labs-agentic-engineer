@@ -63,15 +63,6 @@ var featureEdgeAllowlist = map[string][]string{
 	// workflow_runs, repo lookup) stay behind consumer-side ports wired at the
 	// composition root. (Its gitrepo edge became a sourcecontrol DOMAIN edge in P2.)
 	"build": {"task"},
-	// codingagent is the funnel's one registered executor: it implements the
-	// delivery.Executor kernel port and reaches every other service —
-	// identities, anthropic, repos, OC — through consumer ports wired at the
-	// composition root. It also holds the delivery Signaler (nil-safe) so the
-	// coding/build/deploy watchers can signal a waiting TaskFlow workflow. Both
-	// the Executor port and the Signaler now live in the delivery domain ROOT
-	// (§10.3.1), reached as slice/feature→root, so codingagent has no
-	// feature→feature edge.
-	"codingagent": {},
 	"component":   {},
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and

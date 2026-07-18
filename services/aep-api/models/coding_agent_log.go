@@ -33,7 +33,7 @@ import (
 // `run_name` per minute-bucket and a new sidecar row, preserving
 // per-run logs across retries.
 //
-// Captured by `internal/feature/codingagent.JobWatcher` when a Job hits
+// Captured by `internal/delivery/codingagent.JobWatcher` when a Job hits
 // terminal (Failed/Succeeded). Read by the codingagent progress service
 // on the post-terminal branch of `GetAgentProgress`.
 type CodingAgentLog struct {

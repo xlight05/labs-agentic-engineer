@@ -258,7 +258,7 @@ func (s *AnthropicCredentialService) Connect(ctx context.Context, ocOrgID string
 // back from the row this call just stamped), via the same
 // cluster-gateway-proxy ApplyExternalSecret the coding-agent dispatcher
 // already uses for its own per-run ExternalSecrets
-// (internal/feature/codingagent/dispatcher.go). Idempotent: re-applying
+// (internal/delivery/codingagent/dispatcher.go). Idempotent: re-applying
 // with the same name updates in place.
 func (s *AnthropicCredentialService) pushExternalSecret(ctx context.Context, ocOrgID string) error {
 	row, err := s.fetchRow(ctx, ocOrgID)

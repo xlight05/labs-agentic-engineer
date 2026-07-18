@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
+	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
 )
 
 // fakeProjectTraitSyncer records the (orgID, projectID) pairs the deploy
