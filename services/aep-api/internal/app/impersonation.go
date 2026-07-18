@@ -22,8 +22,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/wso2/aep/aep-api/internal/organization"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // impersonationResolver maps an OC namespace (the org handle the BFF puts in the
@@ -63,7 +63,7 @@ func (r impersonationResolver) Resolve(ctx context.Context, namespace string) (s
 type orgSideCar struct{ db *gorm.DB }
 
 func (s orgSideCar) OrgUUIDByHandle(ctx context.Context, handle string) (string, error) {
-	var org models.Organization
+	var org organization.Organization
 	if err := s.db.WithContext(ctx).Where("name = ?", handle).First(&org).Error; err != nil {
 		return "", fmt.Errorf("resolve impersonation org for namespace %q: %w", handle, err)
 	}

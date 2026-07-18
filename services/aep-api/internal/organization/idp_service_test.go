@@ -35,7 +35,6 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- shared fake Thunder admin client ---------------------------------------
@@ -122,7 +121,7 @@ func TestProfileSummary_NilIsZero(t *testing.T) {
 
 func TestProfileSummary_ProjectsAuditFieldsAndNeverLeaksSecret(t *testing.T) {
 	t.Parallel()
-	p := &models.OrganizationIDPProfile{
+	p := &OrganizationIDPProfile{
 		Kind:                  "platform",
 		Issuer:                "https://idp.test",
 		JWKSURL:               "https://idp.test/jwks",
@@ -164,7 +163,7 @@ func TestProfileSummary_ProjectsAuditFieldsAndNeverLeaksSecret(t *testing.T) {
 
 func TestProfileSummary_HasClientSecretFalseWhenEmpty(t *testing.T) {
 	t.Parallel()
-	got := profileSummary(&models.OrganizationIDPProfile{Kind: "platform"})
+	got := profileSummary(&OrganizationIDPProfile{Kind: "platform"})
 	if got.HasClientSecret {
 		t.Fatalf("hasClientSecret must be false when no secret is stored")
 	}

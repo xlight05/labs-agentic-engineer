@@ -38,7 +38,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // CredentialService is the orchestration layer behind /internal/credentials/orgs/...
@@ -212,7 +211,7 @@ type Projection struct {
 	PrevIdentityLogin *string    `json:"prevIdentityLogin,omitempty"`
 }
 
-func projectionFromRow(r *models.OrgCredential) *Projection {
+func projectionFromRow(r *OrgCredential) *Projection {
 	p := &Projection{
 		OcOrgID:           r.OcOrgID,
 		Kind:              r.Kind,
@@ -266,7 +265,7 @@ func (s *CredentialService) WithGitHubAPIBase(base string) *CredentialService {
 // helpers
 // ----------------------------------------------------------------------------
 
-func (s *CredentialService) fetchRow(ctx context.Context, ocOrgID string) (*models.OrgCredential, error) {
+func (s *CredentialService) fetchRow(ctx context.Context, ocOrgID string) (*OrgCredential, error) {
 	row, err := s.repo.GetByOrg(ctx, ocOrgID)
 	if err != nil {
 		return nil, err

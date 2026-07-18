@@ -24,8 +24,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ----------------------------------------------------------------------------
@@ -118,6 +116,6 @@ func (s *CredentialService) UpdateGitHubLogin(ctx context.Context, ocOrgID, gith
 // status. The validator (pkg/credentials/validator.go) walks this list
 // once per tick. The result is materialised — the validator releases the
 // validator-scoped advisory lock before iterating.
-func (s *CredentialService) ListActiveRows(ctx context.Context) ([]models.OrgCredential, error) {
+func (s *CredentialService) ListActiveRows(ctx context.Context) ([]OrgCredential, error) {
 	return s.repo.ListActiveRows(ctx)
 }

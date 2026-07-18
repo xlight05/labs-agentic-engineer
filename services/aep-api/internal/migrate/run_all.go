@@ -36,11 +36,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // BaseModels is the single source of truth for the AutoMigrate set that must
@@ -58,7 +58,7 @@ func BaseModels() []any {
 		&projects.ComponentConfig{},
 		&sourcecontrol.WebhookDelivery{},
 		&sourcecontrol.WebhookPayload{},
-		&models.Organization{},
+		&organization.Organization{},
 		&delivery.Execution{},
 		&spec.AgentTurn{},
 		&delivery.DevflowRun{},

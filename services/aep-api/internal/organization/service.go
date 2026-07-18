@@ -32,7 +32,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/oidc"
 	"github.com/wso2/aep/aep-api/internal/platform/orgconfig"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ErrGitHubAppNotConfigured is returned by StartGitHubConnect when the GitHub
@@ -354,7 +353,7 @@ func gitProviderMode(kind string) string {
 	}
 }
 
-func idpProjectionFrom(p *models.OrganizationIDPProfile) orgconfig.IDPProjection {
+func idpProjectionFrom(p *OrganizationIDPProfile) orgconfig.IDPProjection {
 	return orgconfig.IDPProjection{
 		Kind:              p.Kind,
 		Issuer:            p.Issuer,

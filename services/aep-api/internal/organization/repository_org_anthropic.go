@@ -21,8 +21,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // OrgAnthropicRepository persists the per-org Anthropic API key metadata row
@@ -37,7 +35,7 @@ import (
 // nil) or rolls back (fn returns an error).
 type OrgAnthropicRepository interface {
 	// GetByOrg returns the row for ocOrgID, or nil when absent (not an error).
-	GetByOrg(ctx context.Context, ocOrgID string) (*models.OrgAnthropicCredential, error)
+	GetByOrg(ctx context.Context, ocOrgID string) (*OrgAnthropicCredential, error)
 	// UpdateColumns writes the given columns onto the row scoped to
 	// oc_org_id (a map so nil values are written as NULL, not skipped).
 	UpdateColumns(ctx context.Context, ocOrgID string, updates map[string]any) error
@@ -55,7 +53,7 @@ type OrgAnthropicTx interface {
 	// Upsert INSERTs the row or, on oc_org_id conflict, UPDATEs the metadata
 	// columns — deliberately preserving the ORIGINAL connected_at on a
 	// replace — and scans the persisted connected_at back into row.ConnectedAt.
-	Upsert(row *models.OrgAnthropicCredential) error
+	Upsert(row *OrgAnthropicCredential) error
 	// DeleteByOrg removes the metadata row for ocOrgID within the tx.
 	DeleteByOrg(ocOrgID string) error
 }
@@ -69,8 +67,8 @@ func NewOrgAnthropicRepository(db *gorm.DB) OrgAnthropicRepository {
 	return &orgAnthropicRepository{db: db}
 }
 
-func (r *orgAnthropicRepository) GetByOrg(ctx context.Context, ocOrgID string) (*models.OrgAnthropicCredential, error) {
-	var row models.OrgAnthropicCredential
+func (r *orgAnthropicRepository) GetByOrg(ctx context.Context, ocOrgID string) (*OrgAnthropicCredential, error) {
+	var row OrgAnthropicCredential
 	err := r.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -83,7 +81,7 @@ func (r *orgAnthropicRepository) GetByOrg(ctx context.Context, ocOrgID string) (
 
 func (r *orgAnthropicRepository) UpdateColumns(ctx context.Context, ocOrgID string, updates map[string]any) error {
 	return r.db.WithContext(ctx).
-		Model(&models.OrgAnthropicCredential{}).
+		Model(&OrgAnthropicCredential{}).
 		Where("oc_org_id = ?", ocOrgID).
 		Updates(updates).Error
 }
@@ -108,7 +106,7 @@ func (t *orgAnthropicTx) AdvisoryLock(key string) error {
 	return t.tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, key).Error
 }
 
-func (t *orgAnthropicTx) Upsert(row *models.OrgAnthropicCredential) error {
+func (t *orgAnthropicTx) Upsert(row *OrgAnthropicCredential) error {
 	// Upsert via ON CONFLICT DO UPDATE so Replace is idempotent. The UPDATE
 	// deliberately omits connected_at so a replace preserves the ORIGINAL
 	// connection time; RETURNING that column reads the persisted value back so

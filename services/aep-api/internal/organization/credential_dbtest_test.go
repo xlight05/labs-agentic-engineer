@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package organization
+package organization_test
 
 // DBTEST tier ("store"; skips under -short, runs on
 // `make test-db`): the REAL CredentialService over a pristine per-test Postgres
@@ -27,22 +27,26 @@ package organization
 //
 // Behavior is pinned AS-IS ahead of the credential_service.go split (ADR-0003
 // Pilot B) and depends only on the package's API, so it survives the file move.
+//
+// External test package: credential_service_test.go (unit tier, package
+// organization) imports dbtest, which imports migrate, which imports
+// organization — an in-package dbtest file would be an import cycle. stubGitHub
+// and assertValidationCode are duplicated in dbtest_helpers_test.go.
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
-	"sort"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // credAESKey is a fixed 32-byte AES-256 key for the test credential store.
@@ -64,14 +68,14 @@ func newCredStore(t testing.TB, db *gorm.DB) secrets.OpenBaoStore {
 // GitHub. minter is no-app mode (nil material), which is correct for the
 // PAT paths; the OAuth bind path is disabled (nil githubClient, empty client
 // id/secret). Returns the store too so tests can inspect the sealed PAT.
-func newCredSvcDB(t testing.TB, db *gorm.DB, gh *stubGitHub) (*CredentialService, secrets.OpenBaoStore) {
+func newCredSvcDB(t testing.TB, db *gorm.DB, gh *stubGitHub) (*organization.CredentialService, secrets.OpenBaoStore) {
 	t.Helper()
 	store := newCredStore(t, db)
 	minter, err := secrets.NewAppTokenMinter(nil)
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
-	svc := NewCredentialService(NewOrgCredentialRepository(db), store, minter, envWebhookSecret, "", "", nil).WithGitHubAPIBase(gh.URL)
+	svc := organization.NewCredentialService(organization.NewOrgCredentialRepository(db), store, minter, envWebhookSecret, "", "", nil).WithGitHubAPIBase(gh.URL)
 	return svc, store
 }
 
@@ -98,9 +102,9 @@ func (f *fakeBuildCleaner) DeleteBuildSecretsForOrg(_ context.Context, ocOrgID s
 
 // getRow reads the raw credential row for assertions the projection hides
 // (webhook_secrets, drift columns).
-func getRow(t testing.TB, db *gorm.DB, ocOrgID string) models.OrgCredential {
+func getRow(t testing.TB, db *gorm.DB, ocOrgID string) organization.OrgCredential {
 	t.Helper()
-	var row models.OrgCredential
+	var row organization.OrgCredential
 	if err := db.Where("oc_org_id = ?", ocOrgID).First(&row).Error; err != nil {
 		t.Fatalf("load row %s: %v", ocOrgID, err)
 	}
@@ -113,7 +117,7 @@ func getRow(t testing.TB, db *gorm.DB, ocOrgID string) models.OrgCredential {
 func insertAppRow(t testing.TB, db *gorm.DB, ocOrgID string, installID int64, status string, selected []string) {
 	t.Helper()
 	id := installID
-	row := models.OrgCredential{
+	row := organization.OrgCredential{
 		OcOrgID:        ocOrgID,
 		Kind:           "app-installation",
 		GitHubLogin:    "acme-org",
@@ -121,7 +125,7 @@ func insertAppRow(t testing.TB, db *gorm.DB, ocOrgID string, installID int64, st
 		IdentityEmail:  "bot@aep.dev",
 		IdentityLogin:  "aep[bot]",
 		InstallationID: &id,
-		SelectedRepos:  models.JSONStringList(selected),
+		SelectedRepos:  organization.JSONStringList(selected),
 		Status:         status,
 		ConnectedAt:    time.Now().UTC(),
 	}
@@ -141,7 +145,7 @@ func TestConnectPAT_FreshRow_DB(t *testing.T) {
 	gh := patHappyGitHub(t, "ada", "Ada Lovelace", "ada@example.com")
 	svc, store := newCredSvcDB(t, db, gh)
 
-	proj, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp_live", GitHubLogin: "ada"})
+	proj, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp_live", GitHubLogin: "ada"})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -182,12 +186,12 @@ func TestConnectPAT_InvalidPAT_DB(t *testing.T) {
 	gh.on("GET", "/user", 401, `{"message":"Bad credentials"}`)
 	svc, _ := newCredSvcDB(t, db, gh)
 
-	_, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "bad", GitHubLogin: "ada"})
+	_, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "bad", GitHubLogin: "ada"})
 	assertValidationCode(t, err, "pat_invalid")
 
 	// No row must be created when validation fails (the tx rolls back).
 	var count int64
-	db.Model(&models.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
+	db.Model(&organization.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
 	if count != 0 {
 		t.Fatalf("failed connect must not leave a row, got %d", count)
 	}
@@ -199,10 +203,10 @@ func TestConnectPAT_MissingFields_DB(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
 
-	_, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "", GitHubLogin: "ada"})
+	_, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "", GitHubLogin: "ada"})
 	assertValidationCode(t, err, "pat_missing")
 
-	_, err = svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: ""})
+	_, err = svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: ""})
 	assertValidationCode(t, err, "github_login_missing")
 }
 
@@ -211,7 +215,7 @@ func TestConnect_UnknownKind_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
-	_, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "wat"})
+	_, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "wat"})
 	assertValidationCode(t, err, "kind_invalid")
 }
 
@@ -222,7 +226,7 @@ func TestConnectPAT_ReplaceRecordsDrift_DB(t *testing.T) {
 	gh := patHappyGitHub(t, "ada", "Ada Lovelace", "ada@example.com")
 	svc, _ := newCredSvcDB(t, db, gh)
 
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "p1", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "p1", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("first connect: %v", err)
 	}
 	before := getRow(t, db, "acme")
@@ -232,7 +236,7 @@ func TestConnectPAT_ReplaceRecordsDrift_DB(t *testing.T) {
 	// existing webhook_secrets.
 	gh.on("GET", "/user", 200, `{"login":"bob","name":"Bob","email":"bob@example.com"}`)
 	gh.on("GET", "/orgs/bob/repos", 200, `[]`)
-	proj, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "p2", GitHubLogin: "bob"})
+	proj, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "p2", GitHubLogin: "bob"})
 	if err != nil {
 		t.Fatalf("replace: %v", err)
 	}
@@ -257,9 +261,9 @@ func TestStatus_NotFound_DB(t *testing.T) {
 	db := dbtest.New(t)
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
 	_, err := svc.Status(context.Background(), "ghost")
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if !errors.As(err, &nfe) {
-		t.Fatalf("want *NotFoundError, got %#v", err)
+		t.Fatalf("want *organization.NotFoundError, got %#v", err)
 	}
 }
 
@@ -276,7 +280,7 @@ func TestDisconnect_ClearsRowAndSecrets_DB(t *testing.T) {
 	cleaner := &fakeBuildCleaner{}
 	svc.WithBuildSecretCleaner(cleaner)
 
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	if err := svc.Disconnect(ctx, "acme"); err != nil {
@@ -306,7 +310,7 @@ func TestDisconnect_Idempotent_DB(t *testing.T) {
 		t.Fatalf("disconnect absent: %v", err)
 	}
 	// Connect then disconnect twice → both nil, terminal state stable.
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	if err := svc.Disconnect(ctx, "acme"); err != nil {
@@ -330,7 +334,7 @@ func TestWebhookSecrets_RoundTrip_DB(t *testing.T) {
 	ctx := context.Background()
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	svc, _ := newCredSvcDB(t, db, gh)
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 
@@ -360,7 +364,7 @@ func TestWebhookSecrets_RoundTrip_DB(t *testing.T) {
 
 	// Cannot drop the last secret.
 	err = svc.RemoveWebhookSecret(ctx, "acme", "rotated")
-	var ce *ConflictError
+	var ce *organization.ConflictError
 	if !errors.As(err, &ce) {
 		t.Fatalf("dropping last secret must ConflictError, got %#v", err)
 	}
@@ -374,7 +378,7 @@ func TestWebhookSecrets_AppModeConflict_DB(t *testing.T) {
 	insertAppRow(t, db, "acme", 555, "active", nil)
 
 	// Rotation is PAT-only — App rows 409.
-	var ce *ConflictError
+	var ce *organization.ConflictError
 	if err := svc.AppendWebhookSecret(ctx, "acme", "x"); !errors.As(err, &ce) {
 		t.Fatalf("append on app row must ConflictError, got %#v", err)
 	}
@@ -394,7 +398,7 @@ func TestWebhookSecrets_MissingRow_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if err := svc.AppendWebhookSecret(ctx, "ghost", "x"); !errors.As(err, &nfe) {
 		t.Fatalf("append on missing row must NotFoundError, got %#v", err)
 	}
@@ -418,7 +422,7 @@ func TestOrgIDByInstallationID_DB(t *testing.T) {
 	if err != nil || org != "acme" {
 		t.Fatalf("lookup: org=%q err=%v", org, err)
 	}
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if _, err := svc.OrgIDByInstallationID(ctx, 111111); !errors.As(err, &nfe) {
 		t.Fatalf("absent install must NotFoundError, got %#v", err)
 	}
@@ -451,7 +455,7 @@ func TestOrgIDByRepoFullName_DB(t *testing.T) {
 		t.Fatalf(".git match: org=%q err=%v", org, err)
 	}
 
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if _, err := svc.OrgIDByRepoFullName(ctx, "nobody/nope"); !errors.As(err, &nfe) {
 		t.Fatalf("absent repo must NotFoundError, got %#v", err)
 	}
@@ -507,7 +511,7 @@ func TestMergeSelectedRepos_DB(t *testing.T) {
 	if len(got) != 2 || !got["acme-org/b"] || !got["acme-org/c"] || got["acme-org/a"] {
 		t.Fatalf("merged set: %v", row.SelectedRepos)
 	}
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if err := svc.MergeSelectedRepos(ctx, 424242, nil, nil); !errors.As(err, &nfe) {
 		t.Fatalf("merge on missing install must NotFoundError, got %#v", err)
 	}
@@ -523,7 +527,7 @@ func TestRecordIdentityFromGitHub_Drift_DB(t *testing.T) {
 	ctx := context.Background()
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	svc, _ := newCredSvcDB(t, db, gh)
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 
@@ -553,7 +557,7 @@ func TestTouchValidatedAt_DB(t *testing.T) {
 	ctx := context.Background()
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	svc, _ := newCredSvcDB(t, db, gh)
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	before := getRow(t, db, "acme").LastValidatedAt
@@ -603,10 +607,10 @@ func TestOrgIsolation_DB(t *testing.T) {
 	gh.on("GET", "/orgs/ada/repos", 200, `[]`)
 	svc, _ := newCredSvcDB(t, db, gh)
 
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "pa", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "pa", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect acme: %v", err)
 	}
-	if _, err := svc.Connect(ctx, "globex", ConnectRequest{Kind: "user-pat", PAT: "pg", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "globex", organization.ConnectRequest{Kind: "user-pat", PAT: "pg", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect globex: %v", err)
 	}
 
@@ -646,7 +650,7 @@ func TestPrepareSMAPISeed_NoTriplet_DB(t *testing.T) {
 		t.Fatalf("absent org: b=%v err=%v", b, err)
 	}
 	// Connected PAT but no SM-API triplet stamped (writer disabled) → (nil, nil).
-	if _, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	if b, err := svc.PrepareSMAPISeed(ctx, "acme"); b != nil || err != nil {
@@ -674,7 +678,7 @@ func goldenKeys(t testing.TB) []string {
 }
 
 // projectionKeys marshals the projection and returns its sorted JSON keys.
-func projectionKeys(t testing.TB, p *Projection) []string {
+func projectionKeys(t testing.TB, p *organization.Projection) []string {
 	t.Helper()
 	raw, err := json.Marshal(p)
 	if err != nil {
@@ -687,14 +691,8 @@ func projectionKeys(t testing.TB, p *Projection) []string {
 	return sortedKeys(m)
 }
 
-func sortedKeys(m map[string]any) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	sort.Strings(ks)
-	return ks
-}
+// sortedKeys is the generic helper from organization_component_test.go (same
+// package) — not redefined here to avoid a duplicate declaration.
 
 func equalStrs(a, b []string) bool {
 	if len(a) != len(b) {
@@ -720,17 +718,17 @@ func TestConnectApp_EntryGuards_DB(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newCredSvcDB(t, db, newStubGitHub(t))
 
-	_, err := svc.Connect(ctx, "acme", ConnectRequest{Kind: "app-installation", InstallationID: 0})
+	_, err := svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "app-installation", InstallationID: 0})
 	assertValidationCode(t, err, "installation_id_missing")
 
-	_, err = svc.Connect(ctx, "acme", ConnectRequest{Kind: "app-installation", InstallationID: 5})
-	var ce *ConflictError
+	_, err = svc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "app-installation", InstallationID: 5})
+	var ce *organization.ConflictError
 	if !errors.As(err, &ce) || ce.Reason != "GitHub App not configured on this deployment" {
 		t.Fatalf("no-app minter must yield the not-configured ConflictError, got %v", err)
 	}
 	// Neither guard may leave a row behind.
 	var n int64
-	if err := db.Model(&models.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&n).Error; err != nil || n != 0 {
+	if err := db.Model(&organization.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&n).Error; err != nil || n != 0 {
 		t.Fatalf("entry guards must not persist anything: n=%d err=%v", n, err)
 	}
 }

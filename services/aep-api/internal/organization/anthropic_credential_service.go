@@ -55,7 +55,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // AnthropicCredentialService — see package doc.
@@ -154,7 +153,7 @@ type AnthropicProjection struct {
 	ValidationError *string    `json:"validationError,omitempty"`
 }
 
-func projectionFromAnthropicRow(r *models.OrgAnthropicCredential) *AnthropicProjection {
+func projectionFromAnthropicRow(r *OrgAnthropicCredential) *AnthropicProjection {
 	return &AnthropicProjection{
 		OcOrgID:         r.OcOrgID,
 		KeyPrefix:       r.KeyPrefix,
@@ -192,7 +191,7 @@ func (s *AnthropicCredentialService) Connect(ctx context.Context, ocOrgID string
 	now := time.Now().UTC()
 	prefix, last4 := anthropicKeyPreview(key)
 
-	row := models.OrgAnthropicCredential{
+	row := OrgAnthropicCredential{
 		OcOrgID:         ocOrgID,
 		KeyPrefix:       prefix,
 		KeyLast4:        last4,
@@ -553,7 +552,7 @@ func (s *AnthropicCredentialService) PrepareSMAPISeed(ctx context.Context, ocOrg
 	}, nil
 }
 
-func (s *AnthropicCredentialService) fetchRow(ctx context.Context, ocOrgID string) (*models.OrgAnthropicCredential, error) {
+func (s *AnthropicCredentialService) fetchRow(ctx context.Context, ocOrgID string) (*OrgAnthropicCredential, error) {
 	row, err := s.repo.GetByOrg(ctx, ocOrgID)
 	if err != nil {
 		return nil, err

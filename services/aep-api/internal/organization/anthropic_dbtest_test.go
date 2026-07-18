@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package organization
+package organization_test
 
 // DBTEST tier (skips under -short; `make test-db` runs it): the REAL
 // AnthropicCredentialService over a pristine per-test Postgres (dbtest.New)
@@ -22,10 +22,15 @@ package organization
 // under pin: Connect's advisory-lock + ON CONFLICT upsert, the org_secrets
 // write, Status/fetchRow org scoping, Disconnect's delete + best-effort GC,
 // EffectiveKey resolution, and ApplyWPSecret's nil-wpClient degraded mode.
-// The Anthropic probe is faked at the HTTP boundary (anthropicFakeAPI, shared
-// with the unit tier). wpClient stays nil, so the K8s SSA apply/delete paths
-// are NOT covered here (they need a cluster — integration-owned); only their
-// documented degraded-mode contract is.
+// The Anthropic probe is faked at the HTTP boundary (anthropicFakeAPI,
+// duplicated in dbtest_helpers_test.go — the unit tier's copy stays in
+// package organization). wpClient stays nil, so the K8s SSA apply/delete
+// paths are NOT covered here (they need a cluster — integration-owned); only
+// their documented degraded-mode contract is.
+//
+// External test package: anthropic_service_test.go (unit tier, package
+// organization) imports dbtest, which imports migrate, which imports
+// organization — an in-package dbtest file would be an import cycle.
 
 import (
 	"context"
@@ -34,6 +39,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
@@ -47,7 +53,7 @@ const anthropicDBKey2 = "sk-ant-api03-ZyXwVuTsRqPoNmLkJiHgFe-second-9876"
 
 // anthropicDBService wires the real service: per-test Postgres + the real
 // encrypted DBStore + a fake Anthropic API answering apiStatus; wpClient nil.
-func anthropicDBService(t *testing.T, apiStatus int) (*AnthropicCredentialService, secrets.OpenBaoStore) {
+func anthropicDBService(t *testing.T, apiStatus int) (*organization.AnthropicCredentialService, secrets.OpenBaoStore) {
 	t.Helper()
 	db := dbtest.New(t)
 	store, err := secrets.NewDBStore(db, []byte(anthropicDBAESKey))
@@ -55,13 +61,13 @@ func anthropicDBService(t *testing.T, apiStatus int) (*AnthropicCredentialServic
 		t.Fatalf("real DBStore: %v", err)
 	}
 	base, _ := anthropicFakeAPI(t, apiStatus)
-	return NewAnthropicCredentialService(NewOrgAnthropicRepository(db), store, nil).WithAnthropicAPIBase(base), store
+	return organization.NewAnthropicCredentialService(organization.NewOrgAnthropicRepository(db), store, nil).WithAnthropicAPIBase(base), store
 }
 
 // anthropicMustConnect connects key for org or fails the test.
-func anthropicMustConnect(t *testing.T, svc *AnthropicCredentialService, org, key string) *AnthropicProjection {
+func anthropicMustConnect(t *testing.T, svc *organization.AnthropicCredentialService, org, key string) *organization.AnthropicProjection {
 	t.Helper()
-	proj, err := svc.Connect(context.Background(), org, AnthropicConnectRequest{APIKey: key})
+	proj, err := svc.Connect(context.Background(), org, organization.AnthropicConnectRequest{APIKey: key})
 	if err != nil {
 		t.Fatalf("connect %s: %v", org, err)
 	}
@@ -75,7 +81,7 @@ func TestAnthropicConnect_HappyPath_DB(t *testing.T) {
 	start := time.Now().UTC().Add(-time.Second)
 
 	// The key arrives padded — Connect must trim before shape-check + store.
-	proj, err := svc.Connect(ctx, "acme", AnthropicConnectRequest{APIKey: "  " + anthropicUnitKey + "\n"})
+	proj, err := svc.Connect(ctx, "acme", organization.AnthropicConnectRequest{APIKey: "  " + anthropicUnitKey + "\n"})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -113,13 +119,13 @@ func TestAnthropicConnect_RejectedKeyLeavesNoTrace_DB(t *testing.T) {
 	svc, store := anthropicDBService(t, http.StatusUnauthorized)
 	ctx := context.Background()
 
-	_, err := svc.Connect(ctx, "acme", AnthropicConnectRequest{APIKey: anthropicUnitKey})
+	_, err := svc.Connect(ctx, "acme", organization.AnthropicConnectRequest{APIKey: anthropicUnitKey})
 	if got := anthropicValidationCode(t, err); got != "anthropic_key_invalid" {
 		t.Fatalf("code: got %q, want anthropic_key_invalid", got)
 	}
 
 	// No metadata row…
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if _, err := svc.Status(ctx, "acme"); !errors.As(err, &nfe) {
 		t.Fatalf("status after rejected connect: want NotFoundError, got %v", err)
 	}
@@ -177,9 +183,9 @@ func TestAnthropicStatus_AbsentOrgIsNotFound_DB(t *testing.T) {
 	svc, _ := anthropicDBService(t, http.StatusOK)
 
 	_, err := svc.Status(context.Background(), "acme")
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if !errors.As(err, &nfe) {
-		t.Fatalf("want *NotFoundError, got %T: %v", err, err)
+		t.Fatalf("want *organization.NotFoundError, got %T: %v", err, err)
 	}
 	if nfe.What != "org_anthropic_credentials.acme" {
 		t.Fatalf("NotFoundError.What: got %q", nfe.What)
@@ -195,7 +201,7 @@ func TestAnthropicDisconnect_RemovesRowAndBytes_Idempotent_DB(t *testing.T) {
 	if err := svc.Disconnect(ctx, "acme"); err != nil {
 		t.Fatalf("disconnect: %v", err)
 	}
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if _, err := svc.Status(ctx, "acme"); !errors.As(err, &nfe) {
 		t.Fatalf("status after disconnect: want NotFoundError, got %v", err)
 	}
@@ -267,7 +273,7 @@ func TestAnthropicOrgIsolation_DB(t *testing.T) {
 	}
 
 	// A third org sharing the table sees nothing.
-	var nfe *NotFoundError
+	var nfe *organization.NotFoundError
 	if _, err := svc.Status(ctx, "intruder"); !errors.As(err, &nfe) {
 		t.Fatalf("intruder must get NotFound, got %v", err)
 	}
@@ -290,8 +296,8 @@ func TestAnthropicApplyWPSecret_NilClientDegradedMode_DB(t *testing.T) {
 	ctx := context.Background()
 
 	// No row → the dispatch-path sentinel (mapped to 422 at that edge).
-	if _, err := svc.ApplyWPSecret(ctx, "acme"); !errors.Is(err, ErrAnthropicKeyRequired) {
-		t.Fatalf("absent org: want ErrAnthropicKeyRequired, got %v", err)
+	if _, err := svc.ApplyWPSecret(ctx, "acme"); !errors.Is(err, organization.ErrAnthropicKeyRequired) {
+		t.Fatalf("absent org: want organization.ErrAnthropicKeyRequired, got %v", err)
 	}
 
 	// Connected + nil wpClient → success with the fixed secret name; the SSA
@@ -313,7 +319,7 @@ func TestAnthropicApplyWPSecret_NilClientDegradedMode_DB(t *testing.T) {
 		t.Fatalf("store delete: %v", err)
 	}
 	_, err = svc.ApplyWPSecret(ctx, "acme")
-	if err == nil || errors.Is(err, ErrAnthropicKeyRequired) || !errors.Is(err, secrets.ErrSecretNotFound) {
+	if err == nil || errors.Is(err, organization.ErrAnthropicKeyRequired) || !errors.Is(err, secrets.ErrSecretNotFound) {
 		t.Fatalf("active row without bytes: want a wrapped ErrSecretNotFound, got %v", err)
 	}
 }

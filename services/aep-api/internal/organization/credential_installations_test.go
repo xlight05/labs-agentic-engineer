@@ -58,13 +58,28 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
+
+// sortedKeys returns the sorted JSON keys of a decoded object. Package-scoped
+// (not file-scoped): idp_service_test.go also calls this. It used to be
+// defined in credential_dbtest_test.go, which moved to package
+// organization_test during the dbtest/import-cycle conversion (see AGENTS.md
+// task notes on that migration); kept here, in a file that stays package
+// organization, so idp_service_test.go's reference keeps resolving.
+func sortedKeys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
 
 // --- key + minter helpers -----------------------------------------------------
 
@@ -472,60 +487,10 @@ func TestResolveUserInstallations_ValidationAndUpstreamErrors(t *testing.T) {
 	})
 }
 
-// TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB pins the
-// cross-tenant filter: only installations the user administers (per
-// GetUserInstallations) AND that are either unbound or bound to the
-// REQUESTING org survive; installs bound to a different org are dropped so
-// their existence isn't leaked to an admin who happens to share GitHub
-// access. This filter reads org_credentials directly, so it needs a real DB.
-func TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB(t *testing.T) {
-	t.Parallel()
-	db := dbtest.New(t)
-
-	// installation 1: bound to "acme" (the requesting org) — kept.
-	insertAppRow(t, db, "acme", 1, "active", nil)
-	// installation 2: bound to "other-org" — must be dropped.
-	insertAppRow(t, db, "other-org", 2, "active", nil)
-	// installation 3: bound to a DIFFERENT other org but disconnected — status
-	// filter (`IN ('active','suspended')`) means a disconnected row doesn't
-	// count as "bound elsewhere", so this installation is NOT filtered out.
-	insertAppRow(t, db, "other-org-2", 3, "disconnected", nil)
-	// installation 4: no row at all — unbound, kept.
-	// installation 5: the user does NOT administer this one on GitHub — must
-	// be dropped regardless of binding.
-
-	minter := newConfiguredMinter(t, 1)
-	gh := &fakeAppInstallOps{
-		userInstallsFn: func(context.Context, string) ([]int64, error) {
-			return []int64{1, 2, 3, 4}, nil // user administers 1-4, not 5
-		},
-		listAppFn: func(context.Context, *secrets.AppTokenMinter) ([]sourcecontrol.AppInstallationSummary, error) {
-			return []sourcecontrol.AppInstallationSummary{
-				{InstallationID: 1, AccountLogin: "acme-org", AccountType: "Organization"},
-				{InstallationID: 2, AccountLogin: "other-org", AccountType: "Organization"},
-				{InstallationID: 3, AccountLogin: "other-org-disconnected", AccountType: "Organization"},
-				{InstallationID: 4, AccountLogin: "fresh-org", AccountType: "Organization"},
-				{InstallationID: 5, AccountLogin: "no-access-org", AccountType: "Organization"},
-			}, nil
-		},
-	}
-	svc := NewCredentialService(NewOrgCredentialRepository(db), nil, minter, "", "cid", "csecret", gh)
-
-	got, err := svc.ResolveUserInstallations(context.Background(), "acme", "code", "https://cb")
-	if err != nil {
-		t.Fatalf("ResolveUserInstallations: %v", err)
-	}
-	ids := map[int64]bool{}
-	for _, c := range got {
-		ids[c.InstallationID] = true
-	}
-	if len(got) != 3 || !ids[1] || !ids[3] || !ids[4] {
-		t.Fatalf("filtered candidates = %+v; want installations {1,3,4}", got)
-	}
-	if ids[2] {
-		t.Fatalf("installation 2 (bound to another active org) must be filtered out: %+v", got)
-	}
-	if ids[5] {
-		t.Fatalf("installation 5 (user has no GitHub access) must be filtered out: %+v", got)
-	}
-}
+// TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB (the
+// cross-tenant org-binding filter, which needs a real DB) lives in the
+// black-box credential_installations_dbtest_test.go (package
+// organization_test) — this file stays package organization (it drives
+// fetchInstallation/fetchAppBotIdentity, unexported methods with no test seam
+// reachable from outside the package) and must not import dbtest, which would
+// reintroduce the organization→dbtest→migrate→organization cycle.

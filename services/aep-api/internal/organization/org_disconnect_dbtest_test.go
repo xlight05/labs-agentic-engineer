@@ -22,7 +22,13 @@
 // severs the credential (Phase A confirm → Phase D finalize) and leaves the
 // platform-owned executions rows untouched — severing the credential makes the
 // org's issues inert to the webhook router, which is the disconnect effect.
-package organization
+//
+// External test package: credential_service_test.go (unit tier, package
+// organization) imports dbtest, which imports migrate, which imports
+// organization — an in-package dbtest file would be an import cycle.
+// patHappyGitHub/newCredSvcDB/getRow come from credential_dbtest_test.go, same
+// converted package.
+package organization_test
 
 import (
 	"context"
@@ -32,6 +38,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 )
 
@@ -42,7 +49,7 @@ func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
 
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	credSvc, _ := newCredSvcDB(t, db, gh)
-	if _, err := credSvc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := credSvc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 
@@ -61,7 +68,7 @@ func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
 
 	// issueSvc is nil: the disconnect cascade no longer touches issues (the task
 	// abandon cascade that used it is gone).
-	svc := NewOrgDisconnectService(credSvc, nil)
+	svc := organization.NewOrgDisconnectService(credSvc, nil)
 	if err := svc.Disconnect(ctx, "acme", "manual.disconnect", false); err != nil {
 		t.Fatalf("disconnect: %v", err)
 	}
@@ -86,12 +93,12 @@ func TestOrgDisconnect_UnknownOrg_ReturnsNotFound_DB(t *testing.T) {
 
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	credSvc, _ := newCredSvcDB(t, db, gh)
-	svc := NewOrgDisconnectService(credSvc, nil)
+	svc := organization.NewOrgDisconnectService(credSvc, nil)
 
-	// Phase A existence check: no credential row → ErrOrgNotFound (the controller
+	// Phase A existence check: no credential row → organization.ErrOrgNotFound (the controller
 	// maps it to an idempotent 200).
-	if err := svc.Disconnect(ctx, "ghost", "manual.disconnect", false); !errors.Is(err, ErrOrgNotFound) {
-		t.Fatalf("disconnect unknown org: err = %v, want ErrOrgNotFound", err)
+	if err := svc.Disconnect(ctx, "ghost", "manual.disconnect", false); !errors.Is(err, organization.ErrOrgNotFound) {
+		t.Fatalf("disconnect unknown org: err = %v, want organization.ErrOrgNotFound", err)
 	}
 }
 
@@ -102,10 +109,10 @@ func TestOrgDisconnect_AlreadyDisconnected_NoOp_DB(t *testing.T) {
 
 	gh := patHappyGitHub(t, "ada", "Ada", "ada@x.io")
 	credSvc, _ := newCredSvcDB(t, db, gh)
-	if _, err := credSvc.Connect(ctx, "acme", ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
+	if _, err := credSvc.Connect(ctx, "acme", organization.ConnectRequest{Kind: "user-pat", PAT: "ghp", GitHubLogin: "ada"}); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	svc := NewOrgDisconnectService(credSvc, nil)
+	svc := organization.NewOrgDisconnectService(credSvc, nil)
 
 	if err := svc.Disconnect(ctx, "acme", "manual.disconnect", false); err != nil {
 		t.Fatalf("first disconnect: %v", err)

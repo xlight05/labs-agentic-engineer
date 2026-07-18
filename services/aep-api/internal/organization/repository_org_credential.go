@@ -21,8 +21,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // BoundInstallation is the (installation_id, oc_org_id) projection the
@@ -46,15 +44,15 @@ type BoundInstallation struct {
 type OrgCredentialRepository interface {
 	// GetByOrg returns the row for ocOrgID, or nil when absent (not an
 	// error) — callers distinguish "no row yet" from a failure.
-	GetByOrg(ctx context.Context, ocOrgID string) (*models.OrgCredential, error)
+	GetByOrg(ctx context.Context, ocOrgID string) (*OrgCredential, error)
 	// GetByInstallationID returns the row bound to installationID, or nil
 	// when absent (not an error).
-	GetByInstallationID(ctx context.Context, installationID int64) (*models.OrgCredential, error)
+	GetByInstallationID(ctx context.Context, installationID int64) (*OrgCredential, error)
 	// UpdateColumns writes the given columns onto the row scoped to
 	// oc_org_id (a map so empty/nil values are written, not skipped).
 	UpdateColumns(ctx context.Context, ocOrgID string, updates map[string]any) error
 	// ListActiveRows returns every row in 'active' or 'suspended' status.
-	ListActiveRows(ctx context.Context) ([]models.OrgCredential, error)
+	ListActiveRows(ctx context.Context) ([]OrgCredential, error)
 	// ListBoundInstallations returns the (installation_id, oc_org_id) pairs
 	// for rows that carry an installation_id and are active/suspended.
 	ListBoundInstallations(ctx context.Context) ([]BoundInstallation, error)
@@ -81,12 +79,12 @@ type OrgCredentialTx interface {
 	// transaction-scoped lock released on commit or rollback.
 	AdvisoryLock(key string) error
 	// GetByOrg returns the row for ocOrgID within the tx, or nil when absent.
-	GetByOrg(ocOrgID string) (*models.OrgCredential, error)
+	GetByOrg(ocOrgID string) (*OrgCredential, error)
 	// GetByInstallationID returns the row bound to installationID within the
 	// tx, or nil when absent.
-	GetByInstallationID(installationID int64) (*models.OrgCredential, error)
+	GetByInstallationID(installationID int64) (*OrgCredential, error)
 	// Create inserts a new row within the tx.
-	Create(row *models.OrgCredential) error
+	Create(row *OrgCredential) error
 	// UpdateColumns writes the given columns scoped to oc_org_id within the tx.
 	UpdateColumns(ocOrgID string, updates map[string]any) error
 	// UpdateStatusByInstallationID flips status on the row bound to
@@ -103,8 +101,8 @@ func NewOrgCredentialRepository(db *gorm.DB) OrgCredentialRepository {
 	return &orgCredentialRepository{db: db}
 }
 
-func (r *orgCredentialRepository) GetByOrg(ctx context.Context, ocOrgID string) (*models.OrgCredential, error) {
-	var row models.OrgCredential
+func (r *orgCredentialRepository) GetByOrg(ctx context.Context, ocOrgID string) (*OrgCredential, error) {
+	var row OrgCredential
 	err := r.db.WithContext(ctx).Where("oc_org_id = ?", ocOrgID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -115,8 +113,8 @@ func (r *orgCredentialRepository) GetByOrg(ctx context.Context, ocOrgID string) 
 	return &row, nil
 }
 
-func (r *orgCredentialRepository) GetByInstallationID(ctx context.Context, installationID int64) (*models.OrgCredential, error) {
-	var row models.OrgCredential
+func (r *orgCredentialRepository) GetByInstallationID(ctx context.Context, installationID int64) (*OrgCredential, error) {
+	var row OrgCredential
 	err := r.db.WithContext(ctx).Where("installation_id = ?", installationID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -129,13 +127,13 @@ func (r *orgCredentialRepository) GetByInstallationID(ctx context.Context, insta
 
 func (r *orgCredentialRepository) UpdateColumns(ctx context.Context, ocOrgID string, updates map[string]any) error {
 	return r.db.WithContext(ctx).
-		Model(&models.OrgCredential{}).
+		Model(&OrgCredential{}).
 		Where("oc_org_id = ?", ocOrgID).
 		Updates(updates).Error
 }
 
-func (r *orgCredentialRepository) ListActiveRows(ctx context.Context) ([]models.OrgCredential, error) {
-	var rows []models.OrgCredential
+func (r *orgCredentialRepository) ListActiveRows(ctx context.Context) ([]OrgCredential, error) {
+	var rows []OrgCredential
 	err := r.db.WithContext(ctx).
 		Where("status IN ?", []string{"active", "suspended"}).
 		Find(&rows).Error
@@ -148,7 +146,7 @@ func (r *orgCredentialRepository) ListActiveRows(ctx context.Context) ([]models.
 func (r *orgCredentialRepository) ListBoundInstallations(ctx context.Context) ([]BoundInstallation, error) {
 	var bound []BoundInstallation
 	if err := r.db.WithContext(ctx).
-		Model(&models.OrgCredential{}).
+		Model(&OrgCredential{}).
 		Where("installation_id IS NOT NULL AND status IN ?", []string{"active", "suspended"}).
 		Select("installation_id, oc_org_id").
 		Find(&bound).Error; err != nil {
@@ -198,8 +196,8 @@ func (t *orgCredentialTx) AdvisoryLock(key string) error {
 	return t.tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, key).Error
 }
 
-func (t *orgCredentialTx) GetByOrg(ocOrgID string) (*models.OrgCredential, error) {
-	var row models.OrgCredential
+func (t *orgCredentialTx) GetByOrg(ocOrgID string) (*OrgCredential, error) {
+	var row OrgCredential
 	err := t.tx.Where("oc_org_id = ?", ocOrgID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -210,8 +208,8 @@ func (t *orgCredentialTx) GetByOrg(ocOrgID string) (*models.OrgCredential, error
 	return &row, nil
 }
 
-func (t *orgCredentialTx) GetByInstallationID(installationID int64) (*models.OrgCredential, error) {
-	var row models.OrgCredential
+func (t *orgCredentialTx) GetByInstallationID(installationID int64) (*OrgCredential, error) {
+	var row OrgCredential
 	err := t.tx.Where("installation_id = ?", installationID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -222,20 +220,20 @@ func (t *orgCredentialTx) GetByInstallationID(installationID int64) (*models.Org
 	return &row, nil
 }
 
-func (t *orgCredentialTx) Create(row *models.OrgCredential) error {
+func (t *orgCredentialTx) Create(row *OrgCredential) error {
 	return t.tx.Create(row).Error
 }
 
 func (t *orgCredentialTx) UpdateColumns(ocOrgID string, updates map[string]any) error {
 	return t.tx.
-		Model(&models.OrgCredential{}).
+		Model(&OrgCredential{}).
 		Where("oc_org_id = ?", ocOrgID).
 		Updates(updates).Error
 }
 
 func (t *orgCredentialTx) UpdateStatusByInstallationID(installationID int64, status string) error {
 	return t.tx.
-		Model(&models.OrgCredential{}).
+		Model(&OrgCredential{}).
 		Where("installation_id = ?", installationID).
 		Update("status", status).Error
 }

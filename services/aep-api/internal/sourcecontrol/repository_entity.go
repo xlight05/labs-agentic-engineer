@@ -27,7 +27,7 @@ import (
 // compiling as `models.X`; each migrates to naming.X when its feature becomes a
 // domain, and these thin aliases shrink to nothing.
 //
-// aep:migration-shim retires=P9 reason=legacy features still reference models.SlugForURL etc.; they move to naming.* as each feature becomes a domain
+// aep:migration-shim retires=P9 reason=legacy features still reference sourcecontrol.SlugForURL etc.; they move to naming.* as each feature becomes a domain
 
 // SlugForURL re-exports naming.SlugForURL.
 func SlugForURL(repoURL string) string { return naming.SlugForURL(repoURL) }

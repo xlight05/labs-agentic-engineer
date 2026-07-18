@@ -33,7 +33,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ----------------------------------------------------------------------------
@@ -139,7 +138,7 @@ func (s *CredentialService) MergeSelectedRepos(ctx context.Context, installation
 
 		now := time.Now().UTC()
 		return tx.UpdateColumns(row.OcOrgID, map[string]any{
-			"selected_repos":    models.JSONStringList(merged),
+			"selected_repos":    JSONStringList(merged),
 			"last_validated_at": now,
 		})
 	})

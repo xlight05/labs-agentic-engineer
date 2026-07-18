@@ -79,7 +79,7 @@ func NewOrgResolver(db *gorm.DB, store OpenBaoStore, minter *AppTokenMinter) Res
 	}
 }
 
-// orgCredentialRow mirrors models.OrgCredential without dragging the
+// orgCredentialRow mirrors organization.OrgCredential without dragging the
 // models package into pkg/credentials (keeping the dependency arrow
 // pointing the right way: models → credentials, not the other way).
 type orgCredentialRow struct {

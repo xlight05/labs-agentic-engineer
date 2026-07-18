@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // IDPService manages per-organisation IDP profiles + the matching
@@ -47,11 +46,11 @@ type IDPService interface {
 	// default platform-kind row (kind=platform, issuer/jwksURL from
 	// the platform IDP config) when none exists. The publisher_*
 	// columns stay empty until EnsureOrgPublisher fires.
-	GetOrCreateProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error)
+	GetOrCreateProfile(ctx context.Context, orgID string) (*OrganizationIDPProfile, error)
 
 	// GetProfile returns the existing profile, or nil + nil error when
 	// none exists yet.
-	GetProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error)
+	GetProfile(ctx context.Context, orgID string) (*OrganizationIDPProfile, error)
 
 	// EnsureOrgPublisher creates (or returns the existing) Thunder
 	// publisher OAuth app for the org, persists the credentials on
@@ -82,7 +81,7 @@ type IDPService interface {
 	// deployments/manifests/api-platform/gateway-config.yaml's
 	// jwtauth_v1 block, then re-run setup-prerequisites. Keymanager
 	// registration is a manual ops step.
-	UpdateProfile(ctx context.Context, orgID, actor string, req UpdateProfileRequest) (*models.OrganizationIDPProfile, error)
+	UpdateProfile(ctx context.Context, orgID, actor string, req UpdateProfileRequest) (*OrganizationIDPProfile, error)
 
 	// SetProfile wholesale-replaces the org's IDP configuration behind
 	// PATCH /config {idp}: kind + issuer + jwksURL are written exactly as
@@ -92,7 +91,7 @@ type IDPService interface {
 	// restores the cluster platform defaults (a platform IDP's issuer/JWKS
 	// are cluster config, not per-org data). A kind switch cascades the same
 	// publisher revoke UpdateProfile does. Audit-logged.
-	SetProfile(ctx context.Context, orgID, actor, kind, issuer, jwksURL string) (*models.OrganizationIDPProfile, error)
+	SetProfile(ctx context.Context, orgID, actor, kind, issuer, jwksURL string) (*OrganizationIDPProfile, error)
 }
 
 // UpdateProfileRequest is the input for IDPService.UpdateProfile.
@@ -147,7 +146,7 @@ func (s *idpService) WithSMAPIWriter(w *SMAPIWriter) *idpService {
 // provisioning is best-effort and the next dispatch tries again.
 var ErrIDPThunderUnavailable = errors.New("idp_service: thunder admin client not configured")
 
-func (s *idpService) GetProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error) {
+func (s *idpService) GetProfile(ctx context.Context, orgID string) (*OrganizationIDPProfile, error) {
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID required")
 	}
@@ -158,7 +157,7 @@ func (s *idpService) GetProfile(ctx context.Context, orgID string) (*models.Orga
 	return profile, nil
 }
 
-func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error) {
+func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*OrganizationIDPProfile, error) {
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID required")
 	}
@@ -196,7 +195,7 @@ func (s *idpService) GetOrCreateProfile(ctx context.Context, orgID string) (*mod
 		return existing, nil
 	}
 
-	profile := models.OrganizationIDPProfile{
+	profile := OrganizationIDPProfile{
 		OrgID:     orgID,
 		Kind:      "platform",
 		Issuer:    s.platform.Issuer,
@@ -262,7 +261,7 @@ func (s *idpService) EnsureOrgPublisher(ctx context.Context, orgID, actor string
 	}
 	clientID, clientSecret, created, terr := s.thunder.EnsurePublisherApp(ctx, orgID, orgOUID)
 	if terr != nil {
-		s.audit(ctx, orgID, models.IDPAuditEnsurePublisher, actor, beforeJSON, nil, terr)
+		s.audit(ctx, orgID, IDPAuditEnsurePublisher, actor, beforeJSON, nil, terr)
 		return "", "", false, fmt.Errorf("idp_service.EnsureOrgPublisher: %w", terr)
 	}
 
@@ -277,7 +276,7 @@ func (s *idpService) EnsureOrgPublisher(ctx context.Context, orgID, actor string
 		updates["publisher_client_secret"] = clientSecret
 	}
 	if err := s.repo.UpdateProfileColumns(ctx, profile, orgID, updates); err != nil {
-		s.audit(ctx, orgID, models.IDPAuditEnsurePublisher, actor, beforeJSON, nil, err)
+		s.audit(ctx, orgID, IDPAuditEnsurePublisher, actor, beforeJSON, nil, err)
 		return "", "", false, fmt.Errorf("idp_service.EnsureOrgPublisher persist: %w", err)
 	}
 
@@ -297,7 +296,7 @@ func (s *idpService) EnsureOrgPublisher(ctx context.Context, orgID, actor string
 	// Re-read for the audit "after" snapshot.
 	after, _ := s.GetProfile(ctx, orgID)
 	afterJSON, _ := json.Marshal(profileSummary(after))
-	s.audit(ctx, orgID, models.IDPAuditEnsurePublisher, actor, beforeJSON, afterJSON, nil)
+	s.audit(ctx, orgID, IDPAuditEnsurePublisher, actor, beforeJSON, afterJSON, nil)
 
 	slog.InfoContext(ctx, "idp_service: EnsureOrgPublisher",
 		"orgID", orgID,
@@ -326,7 +325,7 @@ func (s *idpService) RevokeOrgPublisher(ctx context.Context, orgID, actor string
 
 	deleted, terr := s.thunder.DeletePublisherApp(ctx, orgID)
 	if terr != nil {
-		s.audit(ctx, orgID, models.IDPAuditRevokePublisher, actor, beforeJSON, nil, terr)
+		s.audit(ctx, orgID, IDPAuditRevokePublisher, actor, beforeJSON, nil, terr)
 		return false, fmt.Errorf("idp_service.RevokeOrgPublisher: %w", terr)
 	}
 
@@ -337,7 +336,7 @@ func (s *idpService) RevokeOrgPublisher(ctx context.Context, orgID, actor string
 			"publisher_secret_ref":    "",
 			"updated_at":              time.Now().UTC(),
 		}); err != nil {
-		s.audit(ctx, orgID, models.IDPAuditRevokePublisher, actor, beforeJSON, nil, err)
+		s.audit(ctx, orgID, IDPAuditRevokePublisher, actor, beforeJSON, nil, err)
 		return deleted, fmt.Errorf("idp_service.RevokeOrgPublisher persist: %w", err)
 	}
 
@@ -352,7 +351,7 @@ func (s *idpService) RevokeOrgPublisher(ctx context.Context, orgID, actor string
 
 	after, _ := s.GetProfile(ctx, orgID)
 	afterJSON, _ := json.Marshal(profileSummary(after))
-	s.audit(ctx, orgID, models.IDPAuditRevokePublisher, actor, beforeJSON, afterJSON, nil)
+	s.audit(ctx, orgID, IDPAuditRevokePublisher, actor, beforeJSON, afterJSON, nil)
 
 	slog.InfoContext(ctx, "idp_service: RevokeOrgPublisher",
 		"orgID", orgID, "deleted", deleted)
@@ -377,7 +376,7 @@ func (s *idpService) RegenerateClientSecret(ctx context.Context, orgID, actor st
 
 	newSecret, terr := s.thunder.RegenerateClientSecret(ctx, orgID)
 	if terr != nil {
-		s.audit(ctx, orgID, models.IDPAuditRegenerateSecret, actor, beforeJSON, nil, terr)
+		s.audit(ctx, orgID, IDPAuditRegenerateSecret, actor, beforeJSON, nil, terr)
 		return "", fmt.Errorf("idp_service.RegenerateClientSecret: %w", terr)
 	}
 
@@ -386,7 +385,7 @@ func (s *idpService) RegenerateClientSecret(ctx context.Context, orgID, actor st
 			"publisher_client_secret": newSecret,
 			"updated_at":              time.Now().UTC(),
 		}); err != nil {
-		s.audit(ctx, orgID, models.IDPAuditRegenerateSecret, actor, beforeJSON, nil, err)
+		s.audit(ctx, orgID, IDPAuditRegenerateSecret, actor, beforeJSON, nil, err)
 		return "", fmt.Errorf("idp_service.RegenerateClientSecret persist: %w", err)
 	}
 
@@ -402,7 +401,7 @@ func (s *idpService) RegenerateClientSecret(ctx context.Context, orgID, actor st
 
 	after, _ := s.GetProfile(ctx, orgID)
 	afterJSON, _ := json.Marshal(profileSummary(after))
-	s.audit(ctx, orgID, models.IDPAuditRegenerateSecret, actor, beforeJSON, afterJSON, nil)
+	s.audit(ctx, orgID, IDPAuditRegenerateSecret, actor, beforeJSON, afterJSON, nil)
 
 	slog.InfoContext(ctx, "idp_service: RegenerateClientSecret", "orgID", orgID)
 	return newSecret, nil
@@ -413,7 +412,7 @@ func (s *idpService) RegenerateClientSecret(ctx context.Context, orgID, actor st
 // EnsureOrgPublisher creates a fresh one tied to the new IDP). When
 // only issuer/JWKS URL change but kind stays the same, the publisher
 // app is preserved.
-func (s *idpService) UpdateProfile(ctx context.Context, orgID, actor string, req UpdateProfileRequest) (*models.OrganizationIDPProfile, error) {
+func (s *idpService) UpdateProfile(ctx context.Context, orgID, actor string, req UpdateProfileRequest) (*OrganizationIDPProfile, error) {
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID required")
 	}
@@ -466,13 +465,13 @@ func (s *idpService) UpdateProfile(ctx context.Context, orgID, actor string, req
 	}
 
 	if err := s.repo.UpdateProfileColumns(ctx, existing, orgID, updates); err != nil {
-		s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
+		s.audit(ctx, orgID, IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
 		return nil, fmt.Errorf("idp_service.UpdateProfile persist: %w", err)
 	}
 
 	after, _ := s.GetProfile(ctx, orgID)
 	afterJSON, _ := json.Marshal(profileSummary(after))
-	s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, afterJSON, nil)
+	s.audit(ctx, orgID, IDPAuditUpdateProfile, actor, beforeJSON, afterJSON, nil)
 	slog.InfoContext(ctx, "idp_service: UpdateProfile",
 		"orgID", orgID, "kindChanged", kindChanged,
 		"newKind", req.Kind, "newIssuer", req.Issuer)
@@ -485,7 +484,7 @@ func (s *idpService) UpdateProfile(ctx context.Context, orgID, actor string, req
 // kind switch cascades the publisher revoke. Map-based Updates writes every
 // column including empty strings, so an omitted jwksURL genuinely clears it —
 // the field-level behavior org-config-consolidation.md §4/E4 pins.
-func (s *idpService) SetProfile(ctx context.Context, orgID, actor, kind, issuer, jwksURL string) (*models.OrganizationIDPProfile, error) {
+func (s *idpService) SetProfile(ctx context.Context, orgID, actor, kind, issuer, jwksURL string) (*OrganizationIDPProfile, error) {
 	if orgID == "" {
 		return nil, fmt.Errorf("orgID required")
 	}
@@ -531,13 +530,13 @@ func (s *idpService) SetProfile(ctx context.Context, orgID, actor, kind, issuer,
 	}
 
 	if err := s.repo.UpdateProfileColumns(ctx, existing, orgID, updates); err != nil {
-		s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
+		s.audit(ctx, orgID, IDPAuditUpdateProfile, actor, beforeJSON, nil, err)
 		return nil, fmt.Errorf("idp_service.SetProfile persist: %w", err)
 	}
 
 	after, _ := s.GetProfile(ctx, orgID)
 	afterJSON, _ := json.Marshal(profileSummary(after))
-	s.audit(ctx, orgID, models.IDPAuditUpdateProfile, actor, beforeJSON, afterJSON, nil)
+	s.audit(ctx, orgID, IDPAuditUpdateProfile, actor, beforeJSON, afterJSON, nil)
 	slog.InfoContext(ctx, "idp_service: SetProfile",
 		"orgID", orgID, "kindChanged", kindChanged, "newKind", kind)
 	return after, nil
@@ -547,7 +546,7 @@ func (s *idpService) SetProfile(ctx context.Context, orgID, actor, kind, issuer,
 // insert logs but doesn't propagate (the principal action already
 // happened on Thunder / in the DB).
 func (s *idpService) audit(ctx context.Context, orgID, action, actor string, before, after []byte, opErr error) {
-	row := models.IDPAuditEvent{
+	row := IDPAuditEvent{
 		OrgID:       orgID,
 		Action:      action,
 		Actor:       coalesceActor(actor),
@@ -582,7 +581,7 @@ type profileSummaryFields struct {
 	HasClientSecret   bool   `json:"hasClientSecret"`
 }
 
-func profileSummary(p *models.OrganizationIDPProfile) profileSummaryFields {
+func profileSummary(p *OrganizationIDPProfile) profileSummaryFields {
 	if p == nil {
 		return profileSummaryFields{}
 	}

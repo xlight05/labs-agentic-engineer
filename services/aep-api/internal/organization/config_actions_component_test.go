@@ -31,8 +31,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/contracttest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeThunder is the component tier's Thunder admin stub — only Regenerate is
@@ -134,7 +134,7 @@ func TestConfigComponent_RotateClientSecret_Happy(t *testing.T) {
 	// Seed a profile that already has a publisher client, so Regenerate has
 	// something to rotate.
 	now := time.Now().UTC()
-	if err := c.db.Create(&models.OrganizationIDPProfile{
+	if err := c.db.Create(&organization.OrganizationIDPProfile{
 		OrgID: "acme", Kind: "platform", Issuer: platformIss, JWKSURL: platformJWKS,
 		PublisherClientID: "pub-x", PublisherClientSecret: "old", CreatedAt: now, UpdatedAt: now,
 	}).Error; err != nil {

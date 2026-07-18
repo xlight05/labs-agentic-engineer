@@ -52,7 +52,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ============================================================================
@@ -287,7 +286,7 @@ func newInstallCredSvc(t *testing.T, db *gorm.DB) *organization.CredentialServic
 func insertAppRow(t *testing.T, db *gorm.DB, ocOrgID string, installID int64, status string, selected []string) {
 	t.Helper()
 	id := installID
-	row := models.OrgCredential{
+	row := organization.OrgCredential{
 		OcOrgID:        ocOrgID,
 		Kind:           "app-installation",
 		GitHubLogin:    ocOrgID + "-org",
@@ -295,7 +294,7 @@ func insertAppRow(t *testing.T, db *gorm.DB, ocOrgID string, installID int64, st
 		IdentityEmail:  "bot@aep.dev",
 		IdentityLogin:  "aep[bot]",
 		InstallationID: &id,
-		SelectedRepos:  models.JSONStringList(selected),
+		SelectedRepos:  organization.JSONStringList(selected),
 		Status:         status,
 		ConnectedAt:    time.Now().UTC(),
 	}
@@ -304,9 +303,9 @@ func insertAppRow(t *testing.T, db *gorm.DB, ocOrgID string, installID int64, st
 	}
 }
 
-func loadCred(t *testing.T, db *gorm.DB, ocOrgID string) models.OrgCredential {
+func loadCred(t *testing.T, db *gorm.DB, ocOrgID string) organization.OrgCredential {
 	t.Helper()
-	var row models.OrgCredential
+	var row organization.OrgCredential
 	if err := db.Where("oc_org_id = ?", ocOrgID).First(&row).Error; err != nil {
 		t.Fatalf("load cred %s: %v", ocOrgID, err)
 	}

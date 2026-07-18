@@ -37,8 +37,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- fake GitHub -------------------------------------------------------------
@@ -100,7 +98,7 @@ func TestProjectionFromRow_FieldMapping(t *testing.T) {
 	instID := int64(4242)
 	prev := "old-login"
 
-	row := &models.OrgCredential{
+	row := &OrgCredential{
 		OcOrgID:           "acme",
 		Kind:              "user-pat",
 		GitHubLogin:       "acme-org",
@@ -108,7 +106,7 @@ func TestProjectionFromRow_FieldMapping(t *testing.T) {
 		IdentityEmail:     "ada@example.com",
 		IdentityLogin:     "ada",
 		InstallationID:    &instID,
-		SelectedRepos:     models.JSONStringList{"acme-org/one", "acme-org/two"},
+		SelectedRepos:     JSONStringList{"acme-org/one", "acme-org/two"},
 		Status:            "active",
 		ConnectedAt:       connectedAt,
 		LastValidatedAt:   &validated,
@@ -147,7 +145,7 @@ func TestProjectionFromRow_NilSelectedReposStaysNil(t *testing.T) {
 	t.Parallel()
 	// A user-pat row carries no selected_repos; the projection must leave the
 	// slice nil (so it JSON-omits) rather than materialize an empty [].
-	p := projectionFromRow(&models.OrgCredential{OcOrgID: "acme", Kind: "user-pat"})
+	p := projectionFromRow(&OrgCredential{OcOrgID: "acme", Kind: "user-pat"})
 	if p.SelectedRepos != nil {
 		t.Fatalf("nil SelectedRepos must stay nil, got %#v", p.SelectedRepos)
 	}

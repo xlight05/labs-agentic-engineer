@@ -23,8 +23,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ----------------------------------------------------------------------------
@@ -92,7 +90,7 @@ func (s *CredentialService) AppendWebhookSecret(ctx context.Context, ocOrgID, se
 		if row.Kind != "user-pat" {
 			return &ConflictError{Reason: "webhook-secret rotation is PAT-only; App-mode rotation lives in _platform"}
 		}
-		row.WebhookSecrets = append(models.WebhookSecrets{{Secret: secret, AddedAt: time.Now().UTC()}}, row.WebhookSecrets...)
+		row.WebhookSecrets = append(WebhookSecrets{{Secret: secret, AddedAt: time.Now().UTC()}}, row.WebhookSecrets...)
 		return tx.UpdateColumns(ocOrgID, map[string]any{"webhook_secrets": row.WebhookSecrets})
 	})
 }

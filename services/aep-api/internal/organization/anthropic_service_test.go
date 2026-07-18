@@ -36,8 +36,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // anthropicUnitKey is shaped like a real key ("sk-ant-api03-" + suffix), long
@@ -137,7 +135,7 @@ func TestAnthropicProjectionFromRow(t *testing.T) {
 	now := time.Date(2026, 7, 1, 5, 2, 1, 0, time.UTC)
 	valErr := "probe failed"
 	smRef := "must-not-leak"
-	row := &models.OrgAnthropicCredential{
+	row := &OrgAnthropicCredential{
 		OcOrgID:         "acme",
 		KeyPrefix:       "sk-ant-api03-Ab",
 		KeyLast4:        "1234",

@@ -24,9 +24,9 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // OrgPublisher is the narrow per-org Thunder publisher-provisioning surface
@@ -35,7 +35,7 @@ import (
 // service satisfies it structurally and is injected via SetIDPService at the
 // composition root.
 type OrgPublisher interface {
-	GetProfile(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error)
+	GetProfile(ctx context.Context, orgID string) (*organization.OrganizationIDPProfile, error)
 	EnsureOrgPublisher(ctx context.Context, orgID, actor string) (clientID, clientSecret string, created bool, err error)
 }
 

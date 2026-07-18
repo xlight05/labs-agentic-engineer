@@ -54,7 +54,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/contracttest"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -265,7 +264,7 @@ func TestConfigComponent_B1_FreshOrg(t *testing.T) {
 	}
 	// GET is side-effect free — no idp row was created on read.
 	var count int64
-	c.db.Model(&models.OrganizationIDPProfile{}).Where("org_id = ?", "acme").Count(&count)
+	c.db.Model(&organization.OrganizationIDPProfile{}).Where("org_id = ?", "acme").Count(&count)
 	if count != 0 {
 		t.Fatalf("GET must not persist an idp row, found %d", count)
 	}
@@ -319,7 +318,7 @@ func TestConfigComponent_B3_LLMProbeFailedStatus(t *testing.T) {
 	c := newConfigHarness(t)
 
 	// Seed an llm row in a non-active state carrying a validation error.
-	if err := c.db.Create(&models.OrgAnthropicCredential{
+	if err := c.db.Create(&organization.OrgAnthropicCredential{
 		OcOrgID:         "acme",
 		KeyPrefix:       "sk-ant-api03-XX",
 		KeyLast4:        "9999",
@@ -342,7 +341,7 @@ func TestConfigComponent_B4_GitHubAppMode(t *testing.T) {
 	t.Parallel()
 	c := newConfigHarness(t)
 	id := int64(4242)
-	if err := c.db.Create(&models.OrgCredential{
+	if err := c.db.Create(&organization.OrgCredential{
 		OcOrgID:        "acme",
 		Kind:           "app-installation",
 		GitHubLogin:    "acme-org",
@@ -350,7 +349,7 @@ func TestConfigComponent_B4_GitHubAppMode(t *testing.T) {
 		IdentityEmail:  "bot@aep.dev",
 		IdentityLogin:  "aep[bot]",
 		InstallationID: &id,
-		SelectedRepos:  models.JSONStringList{"acme/api", "acme/web"},
+		SelectedRepos:  organization.JSONStringList{"acme/api", "acme/web"},
 		Status:         "active",
 		ConnectedAt:    time.Now().UTC(),
 	}).Error; err != nil {
@@ -498,7 +497,7 @@ func TestConfigComponent_C4_NullClearsWhileConnected(t *testing.T) {
 	}
 	// The credential row is purged.
 	var count int64
-	c.db.Model(&models.OrgAnthropicCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
+	c.db.Model(&organization.OrgAnthropicCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
 	if count != 0 {
 		t.Fatalf("llm:null must purge the row, found %d", count)
 	}
@@ -564,7 +563,7 @@ func TestConfigComponent_D2_PatProbeFails(t *testing.T) {
 	}
 	// Nothing persisted.
 	var count int64
-	c.db.Model(&models.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
+	c.db.Model(&organization.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&count)
 	if count != 0 {
 		t.Fatalf("failed probe must persist nothing, found %d", count)
 	}
@@ -600,7 +599,7 @@ func TestConfigComponent_D5_PatOverAppIsConflict(t *testing.T) {
 	// Existing ACTIVE app-installation row → the reused CredentialService.Connect
 	// refuses a cross-mode PAT write with a 409 (disconnect before switching).
 	id := int64(4242)
-	if err := c.db.Create(&models.OrgCredential{
+	if err := c.db.Create(&organization.OrgCredential{
 		OcOrgID: "acme", Kind: "app-installation", GitHubLogin: "acme-org",
 		IdentityName: "AEP Bot", IdentityEmail: "bot@aep.dev", IdentityLogin: "aep[bot]",
 		InstallationID: &id, Status: "active", ConnectedAt: time.Now().UTC(),
@@ -738,8 +737,8 @@ func TestConfigComponent_F3_AtomicityLLMNotPersistedWhenGitFails(t *testing.T) {
 	}
 	// The valid llm section must NOT have been persisted (probe-before-persist).
 	var llmCount, gitCount int64
-	c.db.Model(&models.OrgAnthropicCredential{}).Where("oc_org_id = ?", "acme").Count(&llmCount)
-	c.db.Model(&models.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&gitCount)
+	c.db.Model(&organization.OrgAnthropicCredential{}).Where("oc_org_id = ?", "acme").Count(&llmCount)
+	c.db.Model(&organization.OrgCredential{}).Where("oc_org_id = ?", "acme").Count(&gitCount)
 	if llmCount != 0 || gitCount != 0 {
 		t.Fatalf("atomicity violated: llm rows=%d git rows=%d (both must be 0)", llmCount, gitCount)
 	}
@@ -817,7 +816,7 @@ func TestConfigComponent_G2_TenantIsolation(t *testing.T) {
 	t.Parallel()
 	c := newConfigHarness(t)
 	// Seed org B's llm row directly.
-	if err := c.db.Create(&models.OrgAnthropicCredential{
+	if err := c.db.Create(&organization.OrgAnthropicCredential{
 		OcOrgID: "orgb", KeyPrefix: "sk-ant-api03-BB", KeyLast4: "0000",
 		Status: "active", ConnectedAt: time.Now().UTC(),
 	}).Error; err != nil {
@@ -902,7 +901,7 @@ func TestConfigComponent_H1b_SkillsRenamed(t *testing.T) {
 func seedCustomIDP(t *testing.T, db *gorm.DB, org string) {
 	t.Helper()
 	now := time.Now().UTC()
-	if err := db.Create(&models.OrganizationIDPProfile{
+	if err := db.Create(&organization.OrganizationIDPProfile{
 		OrgID:                 org,
 		Kind:                  "custom",
 		Issuer:                "https://byo.example",

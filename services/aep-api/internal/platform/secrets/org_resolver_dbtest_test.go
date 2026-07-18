@@ -40,9 +40,9 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeOpenBaoStore is a minimal in-memory secrets.OpenBaoStore double. Get can be
@@ -92,7 +92,7 @@ func newTestMinter(t *testing.T) *secrets.AppTokenMinter {
 // secrets_shape_per_kind CHECK constraint requires kind='user-pat' rows to
 // carry at least one webhook secret (App-mode rows must have none), so a
 // default is filled in here unless the caller already set one.
-func insertOrgCredRow(t *testing.T, db *gorm.DB, row models.OrgCredential) {
+func insertOrgCredRow(t *testing.T, db *gorm.DB, row organization.OrgCredential) {
 	t.Helper()
 	if row.Status == "" {
 		row.Status = "active"
@@ -101,7 +101,7 @@ func insertOrgCredRow(t *testing.T, db *gorm.DB, row models.OrgCredential) {
 		row.ConnectedAt = time.Now().UTC()
 	}
 	if row.Kind == "user-pat" && row.WebhookSecrets == nil {
-		row.WebhookSecrets = models.WebhookSecrets{{Secret: "test-webhook-secret", AddedAt: row.ConnectedAt}}
+		row.WebhookSecrets = organization.WebhookSecrets{{Secret: "test-webhook-secret", AddedAt: row.ConnectedAt}}
 	}
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatalf("insert org_credentials row %q: %v", row.OcOrgID, err)
@@ -138,7 +138,7 @@ func TestOrgResolver_Resolve_UserPAT_DB(t *testing.T) {
 	store := &fakeOpenBaoStore{value: []byte("ghp_secret")}
 	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:       "acme",
 		Kind:          "user-pat",
 		GitHubLogin:   "acme-org",
@@ -172,7 +172,7 @@ func TestOrgResolver_Resolve_AppInstallation_DB(t *testing.T) {
 	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
 	installID := int64(4242)
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:        "acme",
 		Kind:           "app-installation",
 		GitHubLogin:    "acme-org",
@@ -228,7 +228,7 @@ func TestOrgResolver_Resolve_NotActive_DB(t *testing.T) {
 	db := dbtest.New(t)
 	resolver := secrets.NewOrgResolver(db, &fakeOpenBaoStore{}, newTestMinter(t))
 
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:       "acme",
 		Kind:          "user-pat",
 		GitHubLogin:   "acme-org",
@@ -262,7 +262,7 @@ func TestOrgResolver_Resolve_UnknownKind_DB(t *testing.T) {
 	// Resolve's default-case error as the second line of defense (e.g. a
 	// future kind added by a newer binary, read by this one mid-rollout).
 	dropOrgCredentialsCheckConstraints(t, db)
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:       "acme",
 		Kind:          "carrier-pigeon",
 		GitHubLogin:   "acme-org",
@@ -292,7 +292,7 @@ func TestOrgResolver_Resolve_AppInstallation_NilInstallationID_DB(t *testing.T) 
 	// clone so the row can exist, pinning the resolver's own defensive
 	// nil-check as a second layer, not just relying on the DB constraint.
 	dropOrgCredentialsCheckConstraints(t, db)
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:       "acme",
 		Kind:          "app-installation",
 		GitHubLogin:   "acme-org",
@@ -319,7 +319,7 @@ func TestOrgResolver_UserPATToken_Singleflight_DB(t *testing.T) {
 	store := &fakeOpenBaoStore{value: []byte("ghp_secret"), gate: make(chan struct{})}
 	resolver := secrets.NewOrgResolver(db, store, newTestMinter(t))
 
-	insertOrgCredRow(t, db, models.OrgCredential{
+	insertOrgCredRow(t, db, organization.OrgCredential{
 		OcOrgID:       "acme",
 		Kind:          "user-pat",
 		GitHubLogin:   "acme-org",

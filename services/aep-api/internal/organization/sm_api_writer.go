@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/secretmanagersvc"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // vaultPathPrefix is the KV mount prefix SM-API writes user-app
@@ -314,7 +313,7 @@ func (w *SMAPIWriter) WritePublisher(ctx context.Context, ocOrgID, clientID, cli
 		return secretRefName, fmt.Errorf("sm-api writer: resolve publisher vault key: %w", err)
 	}
 	now := time.Now().UTC()
-	if err := w.idpRepo.UpdateProfileColumns(ctx, &models.OrganizationIDPProfile{}, ocOrgID, map[string]interface{}{
+	if err := w.idpRepo.UpdateProfileColumns(ctx, &OrganizationIDPProfile{}, ocOrgID, map[string]interface{}{
 		"sm_api_secret_ref_name": secretRefName,
 		"sm_api_kv_path":         vaultKey,
 		"sm_api_property":        "publisher",
@@ -354,7 +353,7 @@ func (w *SMAPIWriter) DeletePublisher(ctx context.Context, ocOrgID string) error
 	if err := w.client.DeleteSecret(ctx, loc, refName); err != nil {
 		return fmt.Errorf("sm-api writer: delete publisher secret: %w", err)
 	}
-	return w.idpRepo.UpdateProfileColumns(ctx, &models.OrganizationIDPProfile{}, ocOrgID, map[string]interface{}{
+	return w.idpRepo.UpdateProfileColumns(ctx, &OrganizationIDPProfile{}, ocOrgID, map[string]interface{}{
 		"sm_api_secret_ref_name": nil,
 		"sm_api_kv_path":         nil,
 		"sm_api_property":        nil,

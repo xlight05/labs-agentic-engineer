@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package organization
+package organization_test
 
 // DBTEST tier (skips under -short; `make test-db` runs it): EnsureForOuHandle —
 // the JIT org-row side-car the auth middleware calls on every authenticated
@@ -33,6 +33,18 @@ package organization
 // (TestEnsureThunderUUID_PhantomOverwriteRefused_DB) AND the fresh-org NULL-set
 // path (TestEnsureForOuHandle_PhantomOnFreshOrgIsRejected_DB) — the latter closed
 // a gap where the guard was skipped for a just-backfilled NULL row.
+//
+// External test package: ou_validation_test.go (unit tier, package
+// organization) imports dbtest, which imports migrate, which imports
+// organization — an in-package dbtest file would be an import cycle.
+// fakeOUValidator is duplicated from ou_validation_test.go below (single
+// consumer here). TestEnsureForOuHandle_CacheExpiryReverifies_DB previously
+// simulated TTL expiry by writing straight into the unexported
+// organizationService.ensureCache map; that's unreachable from a black-box
+// test, so it now drives the SAME observable (OC-hit count before/after
+// expiry) through organization.(*organizationService).WithEnsureCacheTTL — a
+// small test-only production seam (organization_service.go) — plus a real,
+// short sleep instead of rewriting the private map.
 
 import (
 	"context"
@@ -49,9 +61,21 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
 )
+
+// fakeOUValidator duplicates ou_validation_test.go's fakeOUValidator (package
+// organization, stays white-box — it also asserts on unexported
+// organizationService.ouValidator directly).
+type fakeOUValidator struct {
+	exists bool
+	err    error
+}
+
+func (f fakeOUValidator) OUExists(_ context.Context, _ string) (bool, error) {
+	return f.exists, f.err
+}
 
 // nsMockReturning builds a NamespaceClient whose GetNamespace answers a live
 // namespace for any handle (keyed by the requested name so concurrent
@@ -66,9 +90,9 @@ func nsMockReturning() *ocmocks.NamespaceClientMock {
 }
 
 // loadOrg reads the single organizations row for name (t.Fatal if 0 or >1).
-func loadOrg(t *testing.T, db *gorm.DB, name string) models.Organization {
+func loadOrg(t *testing.T, db *gorm.DB, name string) organization.Organization {
 	t.Helper()
-	var rows []models.Organization
+	var rows []organization.Organization
 	if err := db.Where("name = ?", name).Find(&rows).Error; err != nil {
 		t.Fatalf("load org %q: %v", name, err)
 	}
@@ -81,7 +105,7 @@ func loadOrg(t *testing.T, db *gorm.DB, name string) models.Organization {
 func countOrg(t *testing.T, db *gorm.DB, name string) int64 {
 	t.Helper()
 	var n int64
-	if err := db.Model(&models.Organization{}).Where("name = ?", name).Count(&n).Error; err != nil {
+	if err := db.Model(&organization.Organization{}).Where("name = ?", name).Count(&n).Error; err != nil {
 		t.Fatalf("count org %q: %v", name, err)
 	}
 	return n
@@ -95,7 +119,7 @@ func TestEnsureForOuHandle_FirstCallBackfillsRow_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	thunder := uuid.NewString()
 
 	if err := svc.EnsureForOuHandle(ctx, "acme", thunder); err != nil {
@@ -126,7 +150,7 @@ func TestEnsureForOuHandle_SecondCallIsCacheServed_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	thunder := uuid.NewString()
 
 	if err := svc.EnsureForOuHandle(ctx, "acme", thunder); err != nil {
@@ -158,10 +182,10 @@ func TestEnsureForOuHandle_ExistingRowSkipsOCVerify_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 
 	// Pre-seed the row (simulating an earlier process/warm start).
-	if err := db.Create(&models.Organization{UUID: uuid.New(), Name: "acme"}).Error; err != nil {
+	if err := db.Create(&organization.Organization{UUID: uuid.New(), Name: "acme"}).Error; err != nil {
 		t.Fatalf("seed row: %v", err)
 	}
 
@@ -174,7 +198,7 @@ func TestEnsureForOuHandle_ExistingRowSkipsOCVerify_DB(t *testing.T) {
 }
 
 // TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB pins the
-// unprovisioned path: no local row + OC 404 → ErrOrganizationNotProvisioned and
+// unprovisioned path: no local row + OC 404 → organization.ErrOrganizationNotProvisioned and
 // NO row created (the BFF never fabricates a namespace-less org).
 func TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB(t *testing.T) {
 	t.Parallel()
@@ -185,11 +209,11 @@ func TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB(t *testing.T) {
 			return nil, openchoreo.ErrNotFound
 		},
 	}
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 
 	err := svc.EnsureForOuHandle(ctx, "ghost", uuid.NewString())
-	if !errors.Is(err, ErrOrganizationNotProvisioned) {
-		t.Fatalf("want ErrOrganizationNotProvisioned, got %v", err)
+	if !errors.Is(err, organization.ErrOrganizationNotProvisioned) {
+		t.Fatalf("want organization.ErrOrganizationNotProvisioned, got %v", err)
 	}
 	if countOrg(t, db, "ghost") != 0 {
 		t.Fatal("unprovisioned org must not create a local row")
@@ -200,12 +224,20 @@ func TestEnsureForOuHandle_MissingNamespaceIsNotProvisioned_DB(t *testing.T) {
 // exact check a "flip the cache" mutation would break. Within the TTL a deleted
 // namespace is NOT re-verified (cache still warm); once the entry ages past the
 // TTL, the next call re-verifies against OC. Proven by GetNamespace call count.
+//
+// The production TTL is 5 minutes, far too long to elapse in a test. This
+// black-box test can't reach into the unexported ensureCache map to fake
+// elapsed time either (the previous in-package version did), so it uses
+// WithEnsureCacheTTL — a test-only production seam — to shrink the TTL to a
+// few milliseconds and then lets it actually elapse via a real sleep. Same
+// observable (OC-hit count) proves the same property.
 func TestEnsureForOuHandle_CacheExpiryReverifies_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	const shortTTL = 40 * time.Millisecond
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns).WithEnsureCacheTTL(shortTTL)
 
 	// Call 1: cold cache → verify + backfill (OC hit #1).
 	if err := svc.EnsureForOuHandle(ctx, "acme", ""); err != nil {
@@ -216,7 +248,7 @@ func TestEnsureForOuHandle_CacheExpiryReverifies_DB(t *testing.T) {
 	}
 	// Delete the row so any RE-verify would have to hit OC again (the row-first
 	// branch can no longer satisfy it).
-	if err := db.Where("name = ?", "acme").Delete(&models.Organization{}).Error; err != nil {
+	if err := db.Where("name = ?", "acme").Delete(&organization.Organization{}).Error; err != nil {
 		t.Fatalf("delete row: %v", err)
 	}
 
@@ -229,10 +261,8 @@ func TestEnsureForOuHandle_CacheExpiryReverifies_DB(t *testing.T) {
 		t.Fatalf("call 2 (within TTL) must be cache-served, got %d OC hits", got)
 	}
 
-	// Age the cache entry past the TTL, then call again → re-verify (OC hit #2).
-	svc.ensureMu.Lock()
-	svc.ensureCache["acme"] = time.Now().Add(-ensureCacheTTL - time.Minute)
-	svc.ensureMu.Unlock()
+	// Let the short TTL actually elapse, then call again → re-verify (OC hit #2).
+	time.Sleep(5 * shortTTL)
 
 	if err := svc.EnsureForOuHandle(ctx, "acme", ""); err != nil {
 		t.Fatalf("call 3: %v", err)
@@ -252,11 +282,11 @@ func TestEnsureThunderUUID_PhantomOverwriteRefused_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: false}) // Thunder: this ouId does NOT exist
 
 	good := uuid.New()
-	if err := db.Create(&models.Organization{UUID: uuid.New(), Name: "acme", ThunderOrgUUID: &good}).Error; err != nil {
+	if err := db.Create(&organization.Organization{UUID: uuid.New(), Name: "acme", ThunderOrgUUID: &good}).Error; err != nil {
 		t.Fatalf("seed row: %v", err)
 	}
 
@@ -284,11 +314,11 @@ func TestEnsureThunderUUID_ValidatedDriftOverwrites_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: true}) // Thunder: the new ouId is real
 
 	old := uuid.New()
-	if err := db.Create(&models.Organization{UUID: uuid.New(), Name: "acme", ThunderOrgUUID: &old}).Error; err != nil {
+	if err := db.Create(&organization.Organization{UUID: uuid.New(), Name: "acme", ThunderOrgUUID: &old}).Error; err != nil {
 		t.Fatalf("seed row: %v", err)
 	}
 
@@ -317,7 +347,7 @@ func TestEnsureForOuHandle_PhantomOnFreshOrgIsRejected_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	svc.SetOUValidator(fakeOUValidator{exists: false}) // Thunder: this ouId does NOT exist
 
 	phantom := uuid.NewString()
@@ -352,7 +382,7 @@ func TestEnsureForOuHandle_ConcurrentSameHandleCollapses_DB(t *testing.T) {
 			return &gen.OrganizationView{Name: name, Status: "Active"}, nil
 		},
 	}
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 
 	const n = 10
 	start := make(chan struct{})
@@ -393,7 +423,7 @@ func TestEnsureForOuHandle_DifferentHandlesDoNotInterfere_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 
 	handles := []string{"acme", "globex", "initech", "umbrella"}
 	start := make(chan struct{})
@@ -436,7 +466,7 @@ func TestEnsureForOuHandle_IsNameScopedAmongDecoys_DB(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ns := nsMockReturning()
-	svc := NewOrganizationService(NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 
 	// Seed several decoys, each with a distinct, recorded thunder_org_uuid.
 	decoyUUID := map[string]uuid.UUID{}
@@ -444,7 +474,7 @@ func TestEnsureForOuHandle_IsNameScopedAmongDecoys_DB(t *testing.T) {
 		name := fmt.Sprintf("decoy-%d", i)
 		u := uuid.New()
 		decoyUUID[name] = u
-		if err := db.Create(&models.Organization{UUID: uuid.New(), Name: name, ThunderOrgUUID: &u}).Error; err != nil {
+		if err := db.Create(&organization.Organization{UUID: uuid.New(), Name: name, ThunderOrgUUID: &u}).Error; err != nil {
 			t.Fatalf("seed decoy %q: %v", name, err)
 		}
 	}

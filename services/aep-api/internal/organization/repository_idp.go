@@ -21,8 +21,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // IDPRepository persists the idp feature's two tables: the per-org
@@ -36,19 +34,19 @@ import (
 type IDPRepository interface {
 	// GetProfileByOrgID returns the org's IDP profile, or nil when absent
 	// (not an error) — the caller distinguishes "no profile yet" from failure.
-	GetProfileByOrgID(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error)
+	GetProfileByOrgID(ctx context.Context, orgID string) (*OrganizationIDPProfile, error)
 	// CreateProfile inserts a new profile row, returning the raw driver error
 	// so the caller can recover from a create-vs-create race by re-reading.
-	CreateProfile(ctx context.Context, profile *models.OrganizationIDPProfile) error
+	CreateProfile(ctx context.Context, profile *OrganizationIDPProfile) error
 	// UpdateProfileColumns writes the given columns onto the loaded profile
 	// row, scoped to org_id. profile is the row Model() keys the statement on
 	// (its primary key), so the caller passes the exact row it read; updates is
 	// the column set the caller decided to write (a map so empty strings are
 	// written, not skipped — the field-level "empty clears it" semantics some
 	// write paths depend on).
-	UpdateProfileColumns(ctx context.Context, profile *models.OrganizationIDPProfile, orgID string, updates map[string]interface{}) error
+	UpdateProfileColumns(ctx context.Context, profile *OrganizationIDPProfile, orgID string, updates map[string]interface{}) error
 	// CreateAuditEvent appends one row to idp_audit_events.
-	CreateAuditEvent(ctx context.Context, event *models.IDPAuditEvent) error
+	CreateAuditEvent(ctx context.Context, event *IDPAuditEvent) error
 }
 
 type idpRepository struct {
@@ -60,8 +58,8 @@ func NewIDPRepository(db *gorm.DB) IDPRepository {
 	return &idpRepository{db: db}
 }
 
-func (r *idpRepository) GetProfileByOrgID(ctx context.Context, orgID string) (*models.OrganizationIDPProfile, error) {
-	var profile models.OrganizationIDPProfile
+func (r *idpRepository) GetProfileByOrgID(ctx context.Context, orgID string) (*OrganizationIDPProfile, error) {
+	var profile OrganizationIDPProfile
 	err := r.db.WithContext(ctx).Where("org_id = ?", orgID).First(&profile).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -72,17 +70,17 @@ func (r *idpRepository) GetProfileByOrgID(ctx context.Context, orgID string) (*m
 	return &profile, nil
 }
 
-func (r *idpRepository) CreateProfile(ctx context.Context, profile *models.OrganizationIDPProfile) error {
+func (r *idpRepository) CreateProfile(ctx context.Context, profile *OrganizationIDPProfile) error {
 	return r.db.WithContext(ctx).Create(profile).Error
 }
 
-func (r *idpRepository) UpdateProfileColumns(ctx context.Context, profile *models.OrganizationIDPProfile, orgID string, updates map[string]interface{}) error {
+func (r *idpRepository) UpdateProfileColumns(ctx context.Context, profile *OrganizationIDPProfile, orgID string, updates map[string]interface{}) error {
 	return r.db.WithContext(ctx).
 		Model(profile).
 		Where("org_id = ?", orgID).
 		Updates(updates).Error
 }
 
-func (r *idpRepository) CreateAuditEvent(ctx context.Context, event *models.IDPAuditEvent) error {
+func (r *idpRepository) CreateAuditEvent(ctx context.Context, event *IDPAuditEvent) error {
 	return r.db.WithContext(ctx).Create(event).Error
 }

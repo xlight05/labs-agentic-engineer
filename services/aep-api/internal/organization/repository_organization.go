@@ -23,8 +23,6 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // OrganizationRepository manages the local `organizations` side-car rows (the
@@ -34,13 +32,13 @@ import (
 // so a dropped filter is a missing method, not a cross-org write.
 type OrganizationRepository interface {
 	// ListByNames loads the rows whose name is in names (one indexed batch).
-	ListByNames(ctx context.Context, names []string) ([]models.Organization, error)
+	ListByNames(ctx context.Context, names []string) ([]Organization, error)
 	// GetByName returns the row for name, or nil when absent (not an error) —
 	// the verify path treats absence as "fall through to OC".
-	GetByName(ctx context.Context, name string) (*models.Organization, error)
+	GetByName(ctx context.Context, name string) (*Organization, error)
 	// Create inserts a row, returning the raw driver error so the caller can
 	// classify a unique-name race with IsUniqueViolation.
-	Create(ctx context.Context, org *models.Organization) error
+	Create(ctx context.Context, org *Organization) error
 	// SetThunderOrgUUID writes just the thunder_org_uuid column for name.
 	SetThunderOrgUUID(ctx context.Context, name string, id uuid.UUID) error
 }
@@ -54,16 +52,16 @@ func NewOrganizationRepository(db *gorm.DB) OrganizationRepository {
 	return &organizationRepository{db: db}
 }
 
-func (r *organizationRepository) ListByNames(ctx context.Context, names []string) ([]models.Organization, error) {
-	var rows []models.Organization
+func (r *organizationRepository) ListByNames(ctx context.Context, names []string) ([]Organization, error) {
+	var rows []Organization
 	if err := r.db.WithContext(ctx).Where("name IN ?", names).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
 }
 
-func (r *organizationRepository) GetByName(ctx context.Context, name string) (*models.Organization, error) {
-	var row models.Organization
+func (r *organizationRepository) GetByName(ctx context.Context, name string) (*Organization, error) {
+	var row Organization
 	if err := r.db.WithContext(ctx).Where("name = ?", name).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -73,13 +71,13 @@ func (r *organizationRepository) GetByName(ctx context.Context, name string) (*m
 	return &row, nil
 }
 
-func (r *organizationRepository) Create(ctx context.Context, org *models.Organization) error {
+func (r *organizationRepository) Create(ctx context.Context, org *Organization) error {
 	return r.db.WithContext(ctx).Create(org).Error
 }
 
 func (r *organizationRepository) SetThunderOrgUUID(ctx context.Context, name string, id uuid.UUID) error {
 	return r.db.WithContext(ctx).
-		Model(&models.Organization{}).
+		Model(&Organization{}).
 		Where("name = ?", name).
 		Update("thunder_org_uuid", id).Error
 }
