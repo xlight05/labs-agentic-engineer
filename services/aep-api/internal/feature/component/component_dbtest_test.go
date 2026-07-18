@@ -24,15 +24,11 @@ package component
 //     (org_id, project_name, component_name) scoping, with MANY decoy rows so a
 //     broken WHERE clause returns the wrong row rather than flaky-passing under
 //     random UUID ordering.
-//  2. The TraitSyncWatcher's DISTINCT (org_id, project_id, component_name) sweep
-//     over the component_tasks table — dedup, the empty-field exclusion, and the
-//     k8s-name transform — observed through the OC client the reconcile fans out to.
 
 import (
 	"context"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
@@ -127,18 +123,4 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 	if err != nil || inserted == nil || inserted.ID == targetID {
 		t.Fatalf("insert must create a new row, got %+v (err %v)", inserted, err)
 	}
-}
-
-// --- TraitSyncWatcher DISTINCT tuple sweep over component_tasks ----------------
-
-// multiComponentDesign returns a design tree containing one service component
-// dir per supplied k8s name, so SyncComponentTraits finds a match for every
-// tuple the sweep enumerates (regardless of which project it reads).
-func multiComponentDesign(names ...string) map[string]string {
-	files := map[string]string{spec.DesignRootFile: "# Overview\n"}
-	for _, n := range names {
-		files["components/"+n+"/design.json"] = "{\n  \"name\": \"" + n +
-			"\",\n  \"type\": \"service\",\n  \"description\": \"body\",\n  \"dependencies\": []\n}\n"
-	}
-	return files
 }

@@ -370,7 +370,6 @@ var gormImporters = map[string]bool{
 	"internal/platform/dbtest":        true,
 	"internal/platform/componenttest": true,
 	// Features with raw gorm still to migrate into repositories/ (step 11).
-	"internal/feature/component":     true,
 	"internal/feature/runtimeconfig": true,
 	"internal/feature/webhook":       true,
 }
