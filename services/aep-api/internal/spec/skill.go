@@ -28,9 +28,8 @@ import (
 // this shape over the wire — it clones `org-skills` and resolves applied skills
 // locally.)
 //
-// Lives in models (the shared value-type layer) so the skills feature and its
-// consumers can reference it without crossing a feature boundary. The skills
-// package keeps a `type Skill = Skill` alias.
+// Skill is the resolved skill value type, owned by the spec domain (skills
+// live under specs/). Cross-domain consumers reference it as spec.Skill.
 type Skill struct {
 	OrgID         string            `json:"orgId"`
 	Name          string            `json:"name"`
@@ -63,8 +62,8 @@ const (
 
 // SkillsRepoSentinelProjectID and SkillsRepoDirName re-export the canonical
 // gitfs constants (§11.3 — the workspace-naming vocabulary lives in the package
-// that owns the workspace layout). Kept as models.* for legacy callers until
-// each becomes a domain. See docs/design/skills-repo-storage.md §10.1.
+// that owns the workspace layout). Owned by the spec domain; consumers reference
+// them as spec.*. See docs/design/skills-repo-storage.md §10.1.
 const (
 	SkillsRepoSentinelProjectID = naming.SkillsRepoSentinelProjectID
 	SkillsRepoDirName           = naming.SkillsRepoDirName

@@ -151,9 +151,13 @@ func TestOrgResolver_Resolve_UserPAT_DB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	// user-PAT mode is verified behaviourally via the exported Credential
-	// surface (secrets.WebhookPerRepo strategy + the acme-scoped identity/owner below)
-	// rather than a concrete-type assertion — this is a black-box test.
+	// user-PAT mode + acme scoping, verified through the exported surface
+	// (secrets.WebhookPerRepo strategy + the acme identity/owner below) and the
+	// test-only OcOrgIDForTest seam — this is a black-box test, so no
+	// concrete-type assertion.
+	if ocOrgID, ok := secrets.OcOrgIDForTest(cred); !ok || ocOrgID != "acme" {
+		t.Fatalf("resolved credential is not a user-PAT scoped to acme: ocOrgID=%q ok=%v", ocOrgID, ok)
+	}
 	if got := cred.Identity(); got.Name != "Ada Lovelace" || got.Email != "ada@example.com" || got.Login != "ada" {
 		t.Fatalf("Identity() = %+v", got)
 	}
@@ -186,9 +190,13 @@ func TestOrgResolver_Resolve_AppInstallation_DB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	// app-installation mode is verified behaviourally (secrets.WebhookPlatform strategy
-	// + acme-org owner below); the concrete type + installation-id are internal
-	// details this black-box test does not reach into.
+	// app-installation mode is verified through the exported surface
+	// (secrets.WebhookPlatform strategy + acme-org owner below) and the
+	// test-only InstallationIDForTest seam, which pins the row.installation_id ->
+	// credential mapping that Token() mints against (the App-side tenant key).
+	if id, ok := secrets.InstallationIDForTest(cred); !ok || id != installID {
+		t.Fatalf("resolved credential is not an app-installation with id %d: id=%d ok=%v", installID, id, ok)
+	}
 	if got := cred.RepoOwner(); got != "acme-org" {
 		t.Fatalf("RepoOwner() = %q; want acme-org", got)
 	}
