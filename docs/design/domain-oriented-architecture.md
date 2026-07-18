@@ -1294,6 +1294,35 @@ kernel-root + sub-package shape *before* relocating; these are the surprises fro
   old location, so the fix was repointing that one line — worth knowing before moving any package whose name
   collides with a build-output convention.
 
+**P7 (`projects`) findings** — a moderate flat-root fold (project + component → one domain), notable mostly
+for what it *didn't* need:
+
+- **The "gorm payoff" can be a delete, not an extraction.** The only raw gorm in project+component was
+  `TraitSyncWatcher` — and it was verified-dead: never constructed (no ctor caller, absent from app.go's
+  `Watchers` slice and cmd/), querying the `component_tasks` table the tasks-github-native cutover DROPPED,
+  with an already-orphaned test helper. Deleting it (not extracting its gorm to a repository) made the domain
+  gorm-free with no dead machinery carried forward. Re-check "does this even run?" before paying a fold cost
+  for a feature's DB seam.
+- **Not every `x-go-type: models.X` is a P7 wire split.** `ComponentConfig`/`EnvVar` are gorm entities used
+  directly as wire types, which §7's finding #1 classifies "split." But the deferral pattern makes the split
+  a P9 concern, not a P7 one: the entity stays in `models/` (the kernel) until `models/` dissolves, so `gen`
+  keeps `x-go-type: models.X` (importing the kernel, not a domain — legal) and the domain consumes
+  `models.ComponentConfig` directly. Only a *domain*-typed `x-go-type` forces the leaf split now (P7 had
+  none, so no P7.0). Same call P3 made for its five org-config schemas.
+- **A flat-root domain still needs a root home for shared HTTP vocab.** project and component share slug
+  guards + error mappers across what become four slices; `slice ⊥ sibling` forbids a shared slice, so the
+  vocabulary (`RequireSlug`, `MapProjectError`, `MapComponentError`, `errFromStatus`) is exported from the
+  domain ROOT and the slices call it — the flat-root analogue of delivery's kernel. `apierr` has no
+  `FromStatus`, so `errFromStatus` is reproduced there (as the delivery `build` slice also had to).
+- **The depth-change path break bites every relocation.** Moving from `internal/feature/component` (depth 3)
+  to `internal/projects` (depth 2) silently broke a golden-file helper's `filepath.Join("..","..","..",…)` —
+  compile-green, fail-at-run, exactly as P3/P4 warned. Grep every `..`-relative path (and `runtime.Caller`
+  base) in the moved test files after any package move.
+- **P7c (secrets) was a no-op**, like P3c/P4c: projects touches no secret backend, so the fence holds with no
+  code. And the method-origin fires-proof must be re-pointed when its example op migrates — it hard-coded
+  `ListProjects`, which P7b moved off `legacyShim`, so the planted double-coverage was re-anchored on
+  `ListPlatformResourceTypes` (a real op still legacy until P8) to stay a genuine two-provider tie.
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |
