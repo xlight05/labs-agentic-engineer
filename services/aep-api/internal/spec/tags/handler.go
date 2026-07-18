@@ -14,30 +14,36 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package tags
 
 import (
 	"context"
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
-// Artifacts feature on the strict interface: the spec-version tag read (#117).
-// The console's overview and spec view poll it for the "vN published" /
+// Handler serves the artifacts feature: the spec-version tag read (#117). The
+// console's overview and spec view poll it for the "vN published" /
 // "draft changes" chips.
+type Handler struct{ artifacts spec.ArtifactService }
 
-func (s *legacyHandlers) ListProjectTags(ctx context.Context, request gen.ListProjectTagsRequestObject) (gen.ListProjectTagsResponseObject, error) {
+// New returns the slice's handler.
+func New(artifacts spec.ArtifactService) *Handler { return &Handler{artifacts: artifacts} }
+
+func (h *Handler) ListProjectTags(ctx context.Context, request gen.ListProjectTagsRequestObject) (gen.ListProjectTagsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	tags, err := s.deps.ArtifactSvc.ListSpecVersionTags(ctx, org, request.ProjectName)
+	tags, err := h.artifacts.ListSpecVersionTags(ctx, org, request.ProjectName)
 	if err != nil {
 		switch {
 		case errors.Is(err, sourcecontrol.ErrRepoNotFound), errors.Is(err, sourcecontrol.ErrRepoNotReady):
-			return nil, errNotFound("project repository not found")
+			return nil, apierr.NotFound("project repository not found")
 		default:
-			return nil, errInternal("internal error")
+			return nil, apierr.Internal("internal error")
 		}
 	}
 	return gen.ListProjectTags200JSONResponse(gen.TagList{

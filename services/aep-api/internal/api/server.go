@@ -25,6 +25,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
+	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 )
 
 // legacyHandlers holds every operation that has NOT yet moved into its domain
@@ -74,6 +75,7 @@ type apiServer struct {
 	*opsHandlers           // P1 — ops (Incident RCA)
 	*sourcecontrolHandlers // P2 — sourcecontrol (Source Control & Webhooks)
 	*organizationHandlers  // P3 — organization (Org Config & Organizations)
+	*specHandlers          // P4 — spec (Spec Authoring & Versioning)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
@@ -84,6 +86,7 @@ type (
 	opsHandlers           = opshttpapi.Handlers
 	sourcecontrolHandlers = schttpapi.Handlers
 	organizationHandlers  = orghttpapi.Handlers
+	specHandlers          = spechttpapi.Handlers
 )
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
@@ -111,6 +114,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 			opsHandlers:           deps.Ops,
 			sourcecontrolHandlers: sourceControlOrEmpty(deps.SourceControl),
 			organizationHandlers:  deps.Organization,
+			specHandlers:          deps.Spec,
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{

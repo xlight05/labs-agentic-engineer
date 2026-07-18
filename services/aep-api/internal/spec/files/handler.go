@@ -14,34 +14,39 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package files
 
 import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
-// Files feature on the strict interface: list-files / read-file / apply-spec.
-// Reads are served at the branch tip through the workspace mirror; the single
-// write is the atomic apply. Every operation is org-scoped — the tenant gate
-// bound the token org before these run. read-file's {path} spans multiple
-// segments: the generated single-segment pattern serves plain paths and the
-// ServeMux catch-all registered in server.go routes nested ones — both land
-// here with PathValue-decoded (unescaped) bytes, so unicode/escaped paths
-// survive the chain byte-identically.
+// Handler serves the files feature: list-files / read-file / apply-spec. Reads
+// are served at the branch tip through the workspace mirror; the single write
+// is the atomic apply. Every operation is org-scoped — the tenant gate bound
+// the token org before these run. read-file's {path} spans multiple segments:
+// the generated single-segment pattern serves plain paths and the ServeMux
+// catch-all registered in server.go routes nested ones — both land here with
+// PathValue-decoded (unescaped) bytes, so unicode/escaped paths survive the
+// chain byte-identically.
+type Handler struct{ files spec.FilesService }
 
-func (s *legacyHandlers) ListFiles(ctx context.Context, request gen.ListFilesRequestObject) (gen.ListFilesResponseObject, error) {
+// New returns the slice's handler.
+func New(files spec.FilesService) *Handler { return &Handler{files: files} }
+
+func (h *Handler) ListFiles(ctx context.Context, request gen.ListFilesRequestObject) (gen.ListFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	prefix := ""
 	if request.Params.Prefix != "" {
 		prefix = request.Params.Prefix
 	}
-	metas, err := s.deps.FilesSvc.List(ctx, org, request.ProjectName, prefix)
+	metas, err := h.files.List(ctx, org, request.ProjectName, prefix)
 	if err != nil {
 		return nil, mapFilesError(err)
 	}
@@ -52,12 +57,12 @@ func (s *legacyHandlers) ListFiles(ctx context.Context, request gen.ListFilesReq
 	return gen.ListFiles200JSONResponse(out), nil
 }
 
-func (s *legacyHandlers) ReadFile(ctx context.Context, request gen.ReadFileRequestObject) (gen.ReadFileResponseObject, error) {
+func (h *Handler) ReadFile(ctx context.Context, request gen.ReadFileRequestObject) (gen.ReadFileResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Path == "" {
-		return nil, errBadRequest("path is required")
+		return nil, apierr.BadRequest("path is required")
 	}
-	fc, err := s.deps.FilesSvc.Read(ctx, org, request.ProjectName, request.Path)
+	fc, err := h.files.Read(ctx, org, request.ProjectName, request.Path)
 	if err != nil {
 		return nil, mapFilesError(err)
 	}
@@ -68,12 +73,12 @@ func (s *legacyHandlers) ReadFile(ctx context.Context, request gen.ReadFileReque
 	}), nil
 }
 
-func (s *legacyHandlers) ApplyFiles(ctx context.Context, request gen.ApplyFilesRequestObject) (gen.ApplyFilesResponseObject, error) {
+func (h *Handler) ApplyFiles(ctx context.Context, request gen.ApplyFilesRequestObject) (gen.ApplyFilesResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
 	if request.Body == nil {
-		return nil, errBadRequest("request body required")
+		return nil, apierr.BadRequest("request body required")
 	}
-	res, conflicts, err := s.deps.FilesSvc.Apply(ctx, org, request.ProjectName, applyRequestFromWire(*request.Body))
+	res, conflicts, err := h.files.Apply(ctx, org, request.ProjectName, applyRequestFromWire(*request.Body))
 	if err != nil {
 		if errors.Is(err, spec.ErrApplyConflict) {
 			return applyConflictsToWire(conflicts), nil
@@ -126,17 +131,17 @@ func applyResultToWire(res *spec.ApplyResult) gen.ApplyResult {
 func mapFilesError(err error) error {
 	switch {
 	case errors.Is(err, spec.ErrProjectRepoNotFound):
-		return errNotFound("project repository not found")
+		return apierr.NotFound("project repository not found")
 	case errors.Is(err, spec.ErrFileNotFound):
-		return errNotFound("file not found")
+		return apierr.NotFound("file not found")
 	case errors.Is(err, spec.ErrPathInvalid):
-		return errBadRequest(err.Error())
+		return apierr.BadRequest(err.Error())
 	case errors.Is(err, sourcecontrol.ErrRefNotFastForward):
 		// Workspace.Mutate exhausted its CAS retries: the ref tip moved under
 		// us on every attempt. That is a concurrent-write conflict, not a
 		// server fault — surface it as a retryable 409, never a 500.
-		return errConflict("the repository changed during the write; retry")
+		return apierr.Conflict("the repository changed during the write; retry")
 	default:
-		return errInternal("internal error")
+		return apierr.Internal("internal error")
 	}
 }

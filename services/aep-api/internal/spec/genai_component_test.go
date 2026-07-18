@@ -43,12 +43,12 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -512,7 +512,7 @@ func newGenaiRig(t *testing.T, seed map[string]string, opts ...rigOption) *genai
 		MCPTokens:  cfg.mcpTokens,
 		MCPBaseURL: cfg.mcpBaseURL,
 	})
-	rig.h = componenttest.New(t, componenttest.Options{Deps: api.Deps{GenAISvc: svc}})
+	rig.h = componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{GenAI: svc})}})
 	return rig
 }
 

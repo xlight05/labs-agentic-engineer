@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package files
 
 import (
 	"errors"
@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
@@ -31,12 +32,12 @@ import (
 // feature's Huma-era internal test at the contract-first cutover.)
 func TestMapFilesError_CASExhaustionMapsTo409(t *testing.T) {
 	err := mapFilesError(fmt.Errorf("apply: mutate: %w", sourcecontrol.ErrRefNotFastForward))
-	var ae *apiError
+	var ae *apierr.Error
 	if !errors.As(err, &ae) {
-		t.Fatalf("mapped error %T is not an *apiError", err)
+		t.Fatalf("mapped error %T is not an *apierr.Error", err)
 	}
-	if ae.Status != http.StatusConflict || ae.Code != CodeConflict {
+	if ae.Status != http.StatusConflict || ae.Code != apierr.CodeConflict {
 		t.Fatalf("status/code = %d/%s, want 409/%s (CAS exhaustion is a retryable conflict)",
-			ae.Status, ae.Code, CodeConflict)
+			ae.Status, ae.Code, apierr.CodeConflict)
 	}
 }

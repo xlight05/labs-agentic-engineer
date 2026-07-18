@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package genaiturns
 
 import (
 	"bytes"
@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
@@ -165,4 +166,15 @@ func TestGenAISkillsUnavailable_LogsCause(t *testing.T) {
 	if !strings.Contains(buf.String(), "git ref not found") {
 		t.Errorf("503 log did not carry the cause; log = %q", buf.String())
 	}
+}
+
+// statusOf casts a transport error to its wire status, failing the test if it
+// is not an *apierr.Error (the slice's error type).
+func statusOf(t *testing.T, err error) int {
+	t.Helper()
+	var ae *apierr.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected an *apierr.Error, got %T (%v)", err, err)
+	}
+	return ae.Status
 }

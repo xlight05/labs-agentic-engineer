@@ -41,21 +41,21 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/api"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
 	filesTestOrg  = "acme-org"
 	filesTestProj = "widgets"
-	testSlug = "acme-widgets"
-	apiBase  = "/api/v1/projects/" + filesTestProj + "/files"
+	testSlug      = "acme-widgets"
+	apiBase       = "/api/v1/projects/" + filesTestProj + "/files"
 )
 
 // ---- faked edges ----
@@ -114,7 +114,7 @@ func newFilesRig(t *testing.T, seed map[string]string) *filesRig {
 	engine := workspacetest.NewEngine(t)
 	gitOps := sourcecontrol.NewGitOpsService(filesStubResolver{}, engine)
 	svc := spec.NewFilesService(filesStubRepoResolver{rec: rec}, gitOps)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{FilesSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Spec: mustSpecHandlers(t, spec.Deps{Files: svc})}})
 	return &filesRig{h: h, remote: remote, engine: engine}
 }
 

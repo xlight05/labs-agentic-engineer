@@ -49,6 +49,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -90,7 +91,7 @@ func (f *fakeCollabRepos) DeleteRepo(context.Context, string, string) error {
 func newReqHarness(t *testing.T, repos sourcecontrol.RepoService) *componenttest.Harness {
 	t.Helper()
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
-		CollabRepo: repos,
+		Spec: mustSpecHandlers(t, spec.Deps{CollabRepo: repos}),
 	}})
 }
 

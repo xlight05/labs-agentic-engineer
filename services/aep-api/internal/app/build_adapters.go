@@ -21,11 +21,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
 	"github.com/wso2/aep/aep-api/internal/feature/devflow"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 

@@ -29,7 +29,9 @@ import (
 // spec.CRTMarkers, so the spec domain names the dependencies feature nowhere
 // (the "a domain names no other domain's entity, even in a port" rule). It is
 // the projection point — dependencies becomes a domain in P8; this stays a port.
-type crtMarkerCatalog struct{ cat *resources.ResourceTypeCatalog }
+type crtMarkerCatalog struct {
+	cat *resources.ResourceTypeCatalog
+}
 
 func (c crtMarkerCatalog) MarkersByName(ctx context.Context) (map[string]spec.CRTMarkers, error) {
 	m, err := c.cat.MarkersByName(ctx)

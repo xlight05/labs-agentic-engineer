@@ -17,11 +17,8 @@
 package api
 
 import (
-	"errors"
 	"io"
 	"net/http"
-
-	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 )
 
 // sseStream stamps the standard SSE response preamble — the four event-stream
@@ -45,21 +42,4 @@ func sseStream(w http.ResponseWriter, run func(w io.Writer, flush func())) error
 	flush()
 	run(w, flush)
 	return nil
-}
-
-// mapAgentsUpstreamError applies the shared BFF edge policy for a pre-stream
-// agents-service failure: if err is an *agentsvc.UpstreamError, the caller's
-// per-status override (e.g. a typed 409 in-progress body) wins, and any other
-// upstream status maps to 502. Returns (nil, false) when err is not an
-// upstream error, so feature-specific sentinel mapping stays in the caller.
-// (Strict-server re-home of humakit.MapAgentsUpstreamError.)
-func mapAgentsUpstreamError(err error, overrides map[int]error) (error, bool) {
-	var ue *agentsvc.UpstreamError
-	if !errors.As(err, &ue) {
-		return nil, false
-	}
-	if mapped, ok := overrides[ue.StatusCode]; ok {
-		return mapped, true
-	}
-	return errBadGateway("agents service error"), true
 }

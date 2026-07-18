@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
 )
 
 // --- proceed-gate (dependency-management Phase 5) ----------------------------

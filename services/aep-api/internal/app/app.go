@@ -44,7 +44,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/config"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/feature/build"
 	"github.com/wso2/aep/aep-api/internal/feature/codingagent"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
@@ -71,6 +70,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
+	"github.com/wso2/aep/aep-api/internal/spec"
+	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -724,20 +725,13 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Strict-handler feature dependencies — everything the contract-first
 	// /api/v1 edge serves (internal/api/handlers_*.go).
 	params.Deps = api.Deps{
-		ProjectSvc:       projectService,
-		ComponentSvc:     componentService,
-		ConfigSvc:        configService,
-		CollabRepo:       repoService,
-		TaskReads:        taskReads,
-		TaskCommands:     taskCommands,
-		TaskStream:       taskStreamSvc,
-		TaskTokens:       taskTokens,
-		SkillSvc:         skillSvc,
-		SkillMutationSvc: skillMutationSvc,
-		SkillImportSvc:   skillImportSvc,
-		FilesSvc:         filesSvc,
-		ArtifactSvc:      artifactSvcGit,
-		GenAISvc:         genaiSvc,
+		ProjectSvc:   projectService,
+		ComponentSvc: componentService,
+		ConfigSvc:    configService,
+		TaskReads:    taskReads,
+		TaskCommands: taskCommands,
+		TaskStream:   taskStreamSvc,
+		TaskTokens:   taskTokens,
 		// BuildSvc is assigned below (params.Deps.BuildSvc), after the
 		// external-resource provisioner exists — its InputsCoordinator stages the
 		// drawer's external-config secrets through that provisioner's SM-API write.
@@ -785,6 +779,23 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		return nil, fmt.Errorf("assemble organization domain: %w", err)
 	}
 	params.Deps.Organization = orgHandlers
+
+	// spec — the Spec Authoring & Versioning domain (P4): genai turns, files,
+	// tag reads, the org skills library, and the collab oracle/descriptor. Its
+	// slice handlers embed straight into the edge's composite.
+	specHandlers, err := spechttpapi.New(spec.Deps{
+		GenAI:       genaiSvc,
+		Files:       filesSvc,
+		Artifacts:   artifactSvcGit,
+		Skills:      skillSvc,
+		SkillMut:    skillMutationSvc,
+		SkillImport: skillImportSvc,
+		CollabRepo:  repoService,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("assemble spec domain: %w", err)
+	}
+	params.Deps.Spec = specHandlers
 
 	opsHandlers, err := opshttpapi.New(ops.Deps{
 		Reports: ops.NewRepository(db),
