@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package projects
 
 import (
 	"errors"
@@ -23,14 +23,27 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 )
+
+// statusOf casts a transport error to its wire status, failing the test if the
+// mapper returned something that is not an *apierr.Error.
+func statusOf(t *testing.T, err error) int {
+	t.Helper()
+	var ae *apierr.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected an *apierr.Error, got %T (%v)", err, err)
+	}
+	return ae.Status
+}
 
 // TestMapComponentError pins the mapper directly: every OpenChoreo sentinel
 // that componentService passes through is translated to its HTTP status via
 // the shared ocerr classifier, and anything that is not an OC sentinel
 // collapses to a fixed-message 500 that never leaks the internal cause.
-// (Moved from the component feature with the handler at the contract-first
-// cutover — the mapper lives beside the strict handler now.)
+// (Moved here with the mapper when the projects HTTP handlers were extracted
+// into their slices — the shared mapper lives in the domain root the slices
+// import.)
 func TestMapComponentError(t *testing.T) {
 	t.Parallel()
 
@@ -45,15 +58,15 @@ func TestMapComponentError(t *testing.T) {
 		{openchoreo.ErrBadRequest, http.StatusBadRequest},
 	}
 	for _, tc := range ocCases {
-		err := mapComponentError(tc.err, "failed to do thing")
+		err := MapComponentError(tc.err, "failed to do thing")
 		if got := statusOf(t, err); got != tc.want {
-			t.Fatalf("mapComponentError(%v) → %v, want status %d", tc.err, err, tc.want)
+			t.Fatalf("MapComponentError(%v) → %v, want status %d", tc.err, err, tc.want)
 		}
 	}
 
 	// Anything that is not an OC sentinel → opaque 500 carrying the supplied
 	// internal message, never the raw error.
-	err := mapComponentError(errors.New("pg: connection refused"), "failed to list components")
+	err := MapComponentError(errors.New("pg: connection refused"), "failed to list components")
 	if got := statusOf(t, err); got != http.StatusInternalServerError {
 		t.Fatalf("opaque error must map to 500, got %v", err)
 	}

@@ -42,9 +42,20 @@ import (
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/projects"
+	projectshttpapi "github.com/wso2/aep/aep-api/internal/projects/httpapi"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
+
+// mustProjects assembles the projects domain from its Deps or fails the harness
+// wiring loudly. Shared by both projects_test component files (the config +
+// component harness lives in component_component_test.go).
+func mustProjects(h *projectshttpapi.Handlers, err error) *projectshttpapi.Handlers {
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
 
 // conflictRepoSvc is a minimal sourcecontrol.RepoService whose CreateRepo always
 // reports a name conflict; every other method is unreachable from create.
@@ -77,7 +88,7 @@ func newProjectHarness(t *testing.T) (*componenttest.Harness, *ocmocks.ProjectCl
 	t.Helper()
 	oc := &ocmocks.ProjectClientMock{}
 	svc := projects.NewProjectService(oc, nil, nil, nil, nil)
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}}), oc
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{Projects: mustProjects(projectshttpapi.New(projects.Deps{ProjectSvc: svc}))}}), oc
 }
 
 func TestProjectComponent_ListAuthedReachesRealService(t *testing.T) {
@@ -198,7 +209,7 @@ func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 		DeleteProjectFunc: func(context.Context, string, string) error { return nil },
 	}
 	svc := projects.NewProjectService(oc, conflictRepoSvc{}, nil, nil, nil)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Projects: mustProjects(projectshttpapi.New(projects.Deps{ProjectSvc: svc}))}})
 
 	resp := h.AsOrg("acme").Post("/api/v1/projects", `{"name":"gym","repoName":"taken-repo"}`)
 	if resp.Code != 409 {

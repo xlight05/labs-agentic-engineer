@@ -392,9 +392,9 @@ func TestComponentService_GetComponentOpenAPI_ServiceReturnsSpec(t *testing.T) {
 	}
 }
 
-// mapComponentError's sentinel mapping is pinned in the api package
-// (internal/api/handlers_component_test.go) — the mapper moved beside the
-// strict handler at the contract-first cutover.
+// MapComponentError's sentinel mapping is pinned in the projects package
+// (internal/projects/httperrors_test.go) — the shared mapper lives in the domain
+// root the slices import (projects HTTP handler extraction, P7b).
 
 // TestComponentService_CreateComponent_PassthroughAndError mirrors its sibling
 // passthrough tests (review follow-up): CreateComponent has no HTTP surface —

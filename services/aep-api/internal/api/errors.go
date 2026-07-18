@@ -62,26 +62,6 @@ func errInternal(msg string) error           { return apierr.Internal(msg) }
 func errBadGateway(msg string) error         { return apierr.BadGateway(msg) }
 func errServiceUnavailable(msg string) error { return apierr.ServiceUnavailable(msg) }
 
-// errFromStatus maps a sentinel-classified HTTP status (e.g. an OpenChoreo
-// pass-through classified by ocerr.Status) onto the envelope, mirroring the
-// retired humakit.ErrorFromStatus ladder.
-func errFromStatus(status int, msg string) error {
-	switch status {
-	case http.StatusBadRequest:
-		return errBadRequest(msg)
-	case http.StatusUnauthorized:
-		return errUnauthorized(msg)
-	case http.StatusForbidden:
-		return errForbidden(msg)
-	case http.StatusNotFound:
-		return errNotFound(msg)
-	case http.StatusConflict:
-		return errConflict(msg)
-	default:
-		return errInternal(msg)
-	}
-}
-
 // writeErrorEnvelope writes the flat envelope. It is the single place a
 // non-2xx body is produced on the public edge.
 func writeErrorEnvelope(w http.ResponseWriter, status int, code, msg string, details []gen.ErrorDetail) {

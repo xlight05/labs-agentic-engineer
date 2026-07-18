@@ -14,21 +14,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
-
-import (
-	"errors"
-	"testing"
-)
-
-// statusOf casts a transport error to its wire status, failing the test if the
-// mapper returned something that is not an *apiError. Shared across the api
-// handler tests that assert error-to-status mapping.
-func statusOf(t *testing.T, err error) int {
-	t.Helper()
-	var ae *apiError
-	if !errors.As(err, &ae) {
-		t.Fatalf("expected an *apiError, got %T (%v)", err, err)
-	}
-	return ae.Status
-}
+// Package httpapi embeds the projects slices into the one type the edge embeds,
+// and assembles the domain from its Deps.
+//
+// It declares NO methods — a method here sits at depth-1 and silently shadows
+// its slice (TestAggregatorsDeclareNoMethods). The assembly lives here, not in
+// the domain root, because root→httpapi→slices→root would be a cycle.
+// [Why →] docs/design/domain-oriented-architecture.md#8-structural-convention-the-composition-root
+package httpapi

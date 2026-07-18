@@ -33,8 +33,8 @@
 // excluded from both sides.
 //
 // OC-SENTINEL MAPPING: componentService passes OpenChoreo sentinels through
-// untranslated, and mapComponentError (beside the strict handler,
-// api/handlers_component.go) runs them through the shared ocerr classifier — so
+// untranslated, and projects.MapComponentError (the shared mapper in the domain
+// root, internal/projects/httperrors.go) runs them through the shared ocerr classifier — so
 // an OC 404 / 401 / 403 / 409 surfaces as that status (matching project), and a
 // missing component (openchoreo.ErrNotFound) is a real 404. The former
 // get-component ErrComponentNotFound branch (unreachable — the service never
@@ -69,6 +69,7 @@ import (
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/projects"
+	projectshttpapi "github.com/wso2/aep/aep-api/internal/projects/httpapi"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
@@ -102,8 +103,10 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 		cfgSvc = projects.NewConfigService(f.configRepo, nil)
 	}
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
-		ComponentSvc: compSvc,
-		ConfigSvc:    cfgSvc,
+		Projects: mustProjects(projectshttpapi.New(projects.Deps{
+			ComponentSvc: compSvc,
+			ConfigSvc:    cfgSvc,
+		})),
 	}})
 }
 
@@ -547,7 +550,7 @@ func TestComponentComponent_MalformedSlugIs400(t *testing.T) {
 
 // TestComponentComponent_ErrorMapping pins the FIXED behavior: every OpenChoreo
 // sentinel that reaches componentService is now translated to its HTTP status by
-// the shared ocerr classifier (api/handlers_component.go's mapComponentError),
+// the shared ocerr classifier (projects.MapComponentError, internal/projects/httperrors.go),
 // matching project. An opaque error still collapses to a fixed-message 500 with
 // no internal leak.
 func TestComponentComponent_ErrorMapping(t *testing.T) {

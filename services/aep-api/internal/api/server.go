@@ -24,6 +24,7 @@ import (
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
+	projectshttpapi "github.com/wso2/aep/aep-api/internal/projects/httpapi"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
@@ -78,6 +79,7 @@ type apiServer struct {
 	*organizationHandlers  // P3 — organization (Org Config & Organizations)
 	*specHandlers          // P4 — spec (Spec Authoring & Versioning)
 	*deliveryHandlers      // P6 — delivery (Build, Tasks & Task-log stream)
+	*projectsHandlers      // P7 — projects (Projects, Components, Builds & Config)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
@@ -90,6 +92,7 @@ type (
 	organizationHandlers  = orghttpapi.Handlers
 	specHandlers          = spechttpapi.Handlers
 	deliveryHandlers      = deliveryhttpapi.Handlers
+	projectsHandlers      = projectshttpapi.Handlers
 )
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
@@ -119,6 +122,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 			organizationHandlers:  deps.Organization,
 			specHandlers:          deps.Spec,
 			deliveryHandlers:      deps.Delivery,
+			projectsHandlers:      deps.Projects,
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{

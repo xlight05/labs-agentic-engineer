@@ -61,6 +61,7 @@ const (
 	embedOrganization  = "organizationHandlers"  // P3
 	embedSpec          = "specHandlers"          // P4
 	embedDelivery      = "deliveryHandlers"      // P6
+	embedProjects      = "projectsHandlers"      // P7
 )
 
 // opOwner maps every operation of the committed contract to the apiServer
@@ -70,27 +71,27 @@ var opOwner = map[string]string{
 	"BuildProject":                  embedDelivery,
 	"CollectExternalResourceValues": embedLegacy,
 	"CreateIssue":                   embedSourceControl,
-	"CreateProject":                 embedLegacy,
+	"CreateProject":                 embedProjects,
 	"CreateRcaAgentReport":          embedOps,
 	"CreateSkill":                   embedSpec,
 	"CreateTurn":                    embedSpec,
 	"DeleteExternalResource":        embedLegacy,
-	"DeleteProject":                 embedLegacy,
+	"DeleteProject":                 embedProjects,
 	"DeleteSkill":                   embedSpec,
 	"DisconnectGitProvider":         embedOrganization,
 	"DiscoverIdp":                   embedOrganization,
 	"GetActiveTurn":                 embedSpec,
-	"GetBuildLogs":                  embedLegacy,
+	"GetBuildLogs":                  embedProjects,
 	"GetBuildPreflight":             embedDelivery,
-	"GetComponent":                  embedLegacy,
-	"GetComponentConfig":            embedLegacy,
-	"GetComponentOpenapi":           embedLegacy,
+	"GetComponent":                  embedProjects,
+	"GetComponentConfig":            embedProjects,
+	"GetComponentOpenapi":           embedProjects,
 	"GetConfig":                     embedOrganization,
 	"GetConversation":               embedSpec,
 	"GetDependencyStatus":           embedLegacy,
-	"GetProject":                    embedLegacy,
+	"GetProject":                    embedProjects,
 	"GetProjectBuild":               embedDelivery,
-	"GetProjectStatus":              embedLegacy,
+	"GetProjectStatus":              embedProjects,
 	"GetRcaAgentReport":             embedOps,
 	"GetSkill":                      embedSpec,
 	"GetSpecCollabSession":          embedSpec,
@@ -98,9 +99,9 @@ var opOwner = map[string]string{
 	"GetTurn":                       embedSpec,
 	"ImportSkill":                   embedSpec,
 	"ListAccessRequests":            embedLegacy,
-	"ListBuilds":                    embedLegacy,
-	"ListComponents":                embedLegacy,
-	"ListDeployments":               embedLegacy,
+	"ListBuilds":                    embedProjects,
+	"ListComponents":                embedProjects,
+	"ListDeployments":               embedProjects,
 	"ListExternalResources":         embedLegacy,
 	"ListFiles":                     embedSpec,
 	"ListIssues":                    embedSourceControl,
@@ -108,7 +109,7 @@ var opOwner = map[string]string{
 	"ListPlatformResourceTypes":     embedLegacy,
 	"ListProjectBuilds":             embedDelivery,
 	"ListProjectTags":               embedSpec,
-	"ListProjects":                  embedLegacy,
+	"ListProjects":                  embedProjects,
 	"ListRcaAgentReports":           embedOps,
 	"ListSkillUpdates":              embedSpec,
 	"ListSkills":                    embedSpec,
@@ -122,8 +123,8 @@ var opOwner = map[string]string{
 	"StreamTaskLog":                 embedDelivery,
 	"StreamTurn":                    embedSpec,
 	"SyncSkills":                    embedSpec,
-	"TriggerBuild":                  embedLegacy,
-	"UpdateComponentConfig":         embedLegacy,
+	"TriggerBuild":                  embedProjects,
+	"UpdateComponentConfig":         embedProjects,
 	"UpdateConfig":                  embedOrganization,
 	"UpdateSkill":                   embedSpec,
 	"ValidateCollabAccess":          embedSpec,
@@ -296,10 +297,13 @@ func TestEmbedsAreConcrete(t *testing.T) {
 // migration is expected to make and assert the gate reports them.
 
 // plantedSlice stands in for a migrated slice handler. It declares a REAL
-// contract op, so the shape below is byte-for-byte the shape P1+ produces.
+// contract op, so the shape below is byte-for-byte the shape P1+ produces. The
+// op it declares must be one legacy STILL serves, so the planted double-coverage
+// below is a genuine two-provider tie (ListPlatformResourceTypes has not migrated
+// off legacyShim — it is embedLegacy in the ledger above).
 type plantedSlice struct{}
 
-func (plantedSlice) ListProjects(ctx context.Context, request gen.ListProjectsRequestObject) (gen.ListProjectsResponseObject, error) {
+func (plantedSlice) ListPlatformResourceTypes(ctx context.Context, request gen.ListPlatformResourceTypesRequestObject) (gen.ListPlatformResourceTypesResponseObject, error) {
 	return nil, nil
 }
 
@@ -307,10 +311,10 @@ func (plantedSlice) ListProjects(ctx context.Context, request gen.ListProjectsRe
 // declares nothing and only embeds slice handlers.
 type plantedAggregator struct{ plantedSlice }
 
-// plantedDoubleCover is the migration slip: ListProjects was added to the domain
-// but NOT cut from legacy. Both candidates sit at depth-2, which is why the real
-// apiServer would refuse to compile — so the fixture is a separate type, and the
-// detector is aimed at it directly.
+// plantedDoubleCover is the migration slip: ListPlatformResourceTypes was added
+// to the domain but NOT cut from legacy. Both candidates sit at depth-2, which is
+// why the real apiServer would refuse to compile — so the fixture is a separate
+// type, and the detector is aimed at it directly.
 type plantedDoubleCover struct {
 	legacyShim
 	plantedAggregator
@@ -322,7 +326,7 @@ type plantedDoubleCover struct {
 // beat the shimmed legacy method. The reflection gate asks every embed
 // regardless of depth, so it catches both.
 func TestMethodOriginGateFires(t *testing.T) {
-	got := embedsProvidingIn(reflect.TypeOf(plantedDoubleCover{}), "ListProjects")
+	got := embedsProvidingIn(reflect.TypeOf(plantedDoubleCover{}), "ListPlatformResourceTypes")
 	if len(got) != 2 {
 		t.Fatalf("planted double coverage went UNDETECTED: embedsProvidingIn = %v, want both "+
 			"[legacyShim plantedAggregator] — the migration's headline net is not working", got)
@@ -340,7 +344,7 @@ func TestMethodOriginGateAcceptsACorrectCut(t *testing.T) {
 	type correctCut struct {
 		plantedAggregator // legacy method cut -> only the domain supplies it
 	}
-	if got := embedsProvidingIn(reflect.TypeOf(correctCut{}), "ListProjects"); len(got) != 1 {
+	if got := embedsProvidingIn(reflect.TypeOf(correctCut{}), "ListPlatformResourceTypes"); len(got) != 1 {
 		t.Fatalf("a correctly-cut op reported %v, want exactly one provider", got)
 	}
 }
