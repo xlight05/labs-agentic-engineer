@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
@@ -45,7 +44,8 @@ const finalLogTailBytes = 256 * 1024
 // fails/vanishes, and captures the pod's final log into coding_agent_logs. State
 // is written through the execution repository (one discipline).
 type JobWatcher struct {
-	db       *gorm.DB
+	logs     repositories.CodingAgentLogRepository
+	orgs     repositories.OrganizationRepository
 	proxy    *clustergatewayproxy.Client
 	execRows repositories.ExecutionRepository
 
@@ -66,12 +66,12 @@ type JobWatcher struct {
 	notifier *execution.TaskStreamHub
 }
 
-// NewJobWatcher constructs a watcher. db + proxy + execRows required.
-func NewJobWatcher(db *gorm.DB, proxy *clustergatewayproxy.Client, execRows repositories.ExecutionRepository) *JobWatcher {
-	if db == nil || proxy == nil || execRows == nil {
-		panic("codingagent.JobWatcher: db + proxy + execRows are required")
+// NewJobWatcher constructs a watcher. logs + orgs + proxy + execRows required.
+func NewJobWatcher(logs repositories.CodingAgentLogRepository, orgs repositories.OrganizationRepository, proxy *clustergatewayproxy.Client, execRows repositories.ExecutionRepository) *JobWatcher {
+	if logs == nil || orgs == nil || proxy == nil || execRows == nil {
+		panic("codingagent.JobWatcher: logs + orgs + proxy + execRows are required")
 	}
-	return &JobWatcher{db: db, proxy: proxy, execRows: execRows, pollInterval: 30 * time.Second}
+	return &JobWatcher{logs: logs, orgs: orgs, proxy: proxy, execRows: execRows, pollInterval: 30 * time.Second}
 }
 
 // WithWorkflowSignaler wires the devflow signaler so a coding-job failure
@@ -200,10 +200,12 @@ func (w *JobWatcher) cleanupPerRunExternalSecrets(ctx context.Context, row *mode
 // captureFinalLog reads the agent pod's stdout/stderr once and persists it to
 // coding_agent_logs, keyed by the execution id. Idempotent on (task_id,run_name).
 func (w *JobWatcher) captureFinalLog(ctx context.Context, row *models.Execution, ns, phase string) {
-	var exists int64
-	if err := w.db.WithContext(ctx).Model(&models.CodingAgentLog{}).
-		Where("task_id = ? AND run_name = ?", row.ID, row.RunName).
-		Count(&exists).Error; err == nil && exists > 0 {
+	execUUID, err := uuid.Parse(row.ID)
+	if err != nil {
+		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: invalid execution id", "execution", row.ID, "error", err)
+		return
+	}
+	if existing, err := w.logs.GetByRun(ctx, execUUID, row.RunName); err == nil && existing != nil {
 		return
 	}
 	podName, err := w.proxy.GetJobPodName(ctx, ns, row.RunName)
@@ -216,18 +218,13 @@ func (w *JobWatcher) captureFinalLog(ctx context.Context, row *models.Execution,
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: tail failed", "execution", row.ID, "ns", ns, "pod", podName, "error", err)
 		return
 	}
-	execUUID, err := uuid.Parse(row.ID)
-	if err != nil {
-		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: invalid execution id", "execution", row.ID, "error", err)
-		return
-	}
-	if err := w.db.WithContext(ctx).Create(&models.CodingAgentLog{
+	if err := w.logs.Create(ctx, &models.CodingAgentLog{
 		TaskID:     execUUID,
 		RunName:    row.RunName,
 		FinalPhase: phase,
 		LogText:    string(body),
 		SizeBytes:  int64(len(body)),
-	}).Error; err != nil {
+	}); err != nil {
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: persist failed", "execution", row.ID, "run", row.RunName, "error", err)
 		return
 	}
@@ -235,5 +232,5 @@ func (w *JobWatcher) captureFinalLog(ctx context.Context, row *models.Execution,
 }
 
 func (w *JobWatcher) resolveNS(ctx context.Context, orgID string) (string, bool) {
-	return resolveRemoteWorkerNS(ctx, w.db, orgID)
+	return resolveRemoteWorkerNS(ctx, w.orgs, orgID)
 }

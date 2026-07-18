@@ -71,7 +71,7 @@ func buildDispatch(row *models.Execution) execution.DispatchRequest {
 }
 
 func newBuildExecutor(oc openchoreo.ComponentClient, repo *models.GitRepository, execRows *fakeExecRepo) *CodingExecutor {
-	return NewCodingExecutor(oc, fakeRepos{repo: repo}, nil, nil, nil, execRows, "http://git", "http://platform")
+	return NewCodingExecutor(oc, fakeRepos{repo: repo}, nil, nil, nil, execRows, "http://git", "http://platform", nil, nil, nil, nil)
 }
 
 func TestRunBuild_StagesSecret_PassesRefToBuild(t *testing.T) {

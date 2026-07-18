@@ -602,13 +602,16 @@ root), never a sub-package import.
 **codingagent's gorm + setters (the P6 payoff).** codingagent is delivery's only raw-gorm importer, and
 its reads are two kinds: its own `CodingAgentLog` (→ a new `repositories.CodingAgentLogRepository`) and
 raw **org-credential** reads (`Organization`/`OrgCredential`/`OrgAnthropicCredential`/
-`OrganizationIDPProfile`) it does through the `*gorm.DB` its `With*` setters inject. The fold routes both
-through ports: `CodingAgentLog` behind the new repository, the org reads behind an `Identities` /
-`CredentialReader` port satisfied at the composition root by adapters over the **existing P3a org
-repositories** (delivery names no org entity). Removing the `db` removes the reason those setters carry
-it, so the chained mutable `With*(...)` wiring collapses into **constructor injection** (a
-`CodingExecutorDeps` struct) — the §8 rule the doc reserves for P6. Result: delivery is gorm-free (trim
-the `codingagent` `gormImporters` row) and setter-free.
+`OrganizationIDPProfile`) it does through the `*gorm.DB` its `With*` setters inject. The fold removes the
+gorm: `CodingAgentLog` moves behind the new repository, and the org reads swap onto the **existing P3a
+org repositories** (`repositories.{Organization,OrgCredential,OrgAnthropic,IDP}Repository`) — consumed
+directly, exactly as spec/task consume `repositories.*`, so the row-usage code is untouched and only the
+query mechanism changes. Naming `models.OrgCredential` here is fence-legal (shared kernel); wrapping
+those reads in a codingagent-vocabulary port + moving the org entities into `organization` is the P9
+cleanup (with every domain's entity move), not a P6 gate. Removing the `db` removes the reason the
+`WithProxy(db)`/`WithK8sJobDispatch(db)` setters carry it; the remaining mutable `With*(...)` chain
+collapses into **constructor injection** as a follow-on. Result of P6a: delivery is gorm-free (trim the
+`codingagent` `gormImporters` row).
 
 ### 10.4 Secrets: a platform module
 **Decision: `platform/secrets` consolidates the backend mechanics behind a few purpose-specific ports.**

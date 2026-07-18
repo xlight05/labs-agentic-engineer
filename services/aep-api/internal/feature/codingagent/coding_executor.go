@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
@@ -58,11 +57,18 @@ type CodingExecutor struct {
 
 	// Proxy dispatch (nil → fall through to the direct k8sJob path).
 	proxy *Dispatcher
-	db    *gorm.DB
+
+	// Org-scoped repository reads, always wired at the composition root: the
+	// per-org Anthropic/GitHub SM-API triplets + IDP publisher profile for the
+	// proxy dispatch, and the org lookup for the data-plane UUID.
+	orgs           repositories.OrganizationRepository
+	anthropicCreds repositories.OrgAnthropicRepository
+	githubCreds    repositories.OrgCredentialRepository
+	idpProfiles    repositories.IDPRepository
 
 	// k8sJob is the direct K8s Job dispatch path — the sole fallback when the
 	// proxy path is not configured (nil → no fallback; dispatch errors out).
-	// Requires db to be set (for org UUID lookup).
+	// Requires the org repository to be set (for org UUID lookup).
 	k8sJob             *K8sJobDispatcher
 	idp                OrgPublisherProvisioner
 	runnerImage        string
@@ -120,19 +126,23 @@ func NewCodingExecutor(
 	tokens TokenIssuer,
 	execRows repositories.ExecutionRepository,
 	gitServiceURL, platformURL string,
+	orgs repositories.OrganizationRepository,
+	anthropicCreds repositories.OrgAnthropicRepository,
+	githubCreds repositories.OrgCredentialRepository,
+	idpProfiles repositories.IDPRepository,
 ) *CodingExecutor {
 	return &CodingExecutor{
 		oc: oc, repos: repos, identities: identities, anthropic: anthropic,
 		tokens: tokens, execRows: execRows, gitServiceURL: gitServiceURL, platformURL: platformURL,
+		orgs: orgs, anthropicCreds: anthropicCreds, githubCreds: githubCreds, idpProfiles: idpProfiles,
 	}
 }
 
 // WithProxy enables the cluster-gateway-proxy coding-agent dispatch path (the
 // `ca-…` Job path the local plane uses). idp may be nil (publisher-cc skipped —
 // required only on the cloud gateway, i.e. an https platform URL).
-func (e *CodingExecutor) WithProxy(proxy *Dispatcher, db *gorm.DB, idp OrgPublisherProvisioner, runnerImage, clusterSecretStore string) *CodingExecutor {
+func (e *CodingExecutor) WithProxy(proxy *Dispatcher, idp OrgPublisherProvisioner, runnerImage, clusterSecretStore string) *CodingExecutor {
 	e.proxy = proxy
-	e.db = db
 	e.idp = idp
 	e.runnerImage = runnerImage
 	e.clusterSecretStore = clusterSecretStore
@@ -148,14 +158,11 @@ func (e *CodingExecutor) WithValidationImage(image string) *CodingExecutor {
 	return e
 }
 
-// WithK8sJobDispatch enables the direct K8s Job dispatch path. db is used to
-// look up the org UUID (needed to derive the data-plane namespace) and is set on
-// the executor if not already populated by WithProxy.
-func (e *CodingExecutor) WithK8sJobDispatch(d *K8sJobDispatcher, db *gorm.DB) *CodingExecutor {
+// WithK8sJobDispatch enables the direct K8s Job dispatch path. The org UUID
+// lookup (needed to derive the data-plane namespace) reads through the org
+// repository wired at construction.
+func (e *CodingExecutor) WithK8sJobDispatch(d *K8sJobDispatcher) *CodingExecutor {
 	e.k8sJob = d
-	if e.db == nil {
-		e.db = db
-	}
 	return e
 }
 
@@ -395,18 +402,16 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req execution.DispatchRe
 // execution id — the re-keyed runner contract (§9.2).
 func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req execution.DispatchRequest, repo *models.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
 	t := req.Task
-	if e.proxy == nil || e.db == nil || disp.image == "" || e.clusterSecretStore == "" {
+	if e.proxy == nil || disp.image == "" || e.clusterSecretStore == "" {
 		return false, "", nil
 	}
-	var (
-		anthropicRow models.OrgAnthropicCredential
-		githubRow    models.OrgCredential
-	)
-	if err := e.db.WithContext(ctx).Where("oc_org_id = ?", t.OrgID).First(&anthropicRow).Error; err != nil {
+	anthropicRow, err := e.anthropicCreds.GetByOrg(ctx, t.OrgID)
+	if err != nil || anthropicRow == nil {
 		slog.InfoContext(ctx, "proxy dispatch: anthropic row missing; falling back", "org", t.OrgID, "error", err)
 		return false, "", nil
 	}
-	if err := e.db.WithContext(ctx).Where("oc_org_id = ?", t.OrgID).First(&githubRow).Error; err != nil {
+	githubRow, err := e.githubCreds.GetByOrg(ctx, t.OrgID)
+	if err != nil || githubRow == nil {
 		slog.InfoContext(ctx, "proxy dispatch: github row missing; falling back", "org", t.OrgID, "error", err)
 		return false, "", nil
 	}
@@ -425,8 +430,7 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req execution.Dis
 			slog.ErrorContext(ctx, "proxy dispatch: EnsureOrgPublisher failed — runner cc may be invalid", "org", t.OrgID, "error", perr)
 		}
 	}
-	var idpRow models.OrganizationIDPProfile
-	if err := e.db.WithContext(ctx).Where("org_id = ?", t.OrgID).First(&idpRow).Error; err == nil {
+	if idpRow, err := e.idpProfiles.GetProfileByOrgID(ctx, t.OrgID); err == nil && idpRow != nil {
 		if idpRow.SMAPIKVPath != nil && idpRow.SMAPISecretRefName != nil {
 			publisherSR = &SecretRef{
 				SecretRefName: derefStr(idpRow.SMAPISecretRefName),
@@ -593,9 +597,12 @@ func (e *CodingExecutor) startRun(ctx context.Context, id, runName string) {
 }
 
 func (e *CodingExecutor) lookupOrgUUID(ctx context.Context, ocOrgID string) (string, error) {
-	var org models.Organization
-	if err := e.db.WithContext(ctx).Where("name = ?", ocOrgID).First(&org).Error; err != nil {
+	org, err := e.orgs.GetByName(ctx, ocOrgID)
+	if err != nil {
 		return "", err
+	}
+	if org == nil {
+		return "", fmt.Errorf("organization %s not found", ocOrgID)
 	}
 	if org.ThunderOrgUUID != nil && *org.ThunderOrgUUID != uuid.Nil {
 		return org.ThunderOrgUUID.String(), nil

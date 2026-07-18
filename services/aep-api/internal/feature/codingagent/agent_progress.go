@@ -42,13 +42,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/repositories"
 )
 
 const (
@@ -132,13 +132,14 @@ func bootstrapEvent(podFound bool, phase, waitingReason string) contracts.Progre
 // only, the pre-reconnect behaviour).
 type AgentProgressReader struct {
 	proxy *clustergatewayproxy.Client
-	db    *gorm.DB
+	logs  repositories.CodingAgentLogRepository
+	orgs  repositories.OrganizationRepository
 }
 
-// NewAgentProgressReader wires the reader. proxy/db may be nil in degraded boot
-// (AgentProgress then returns an empty, non-final response).
-func NewAgentProgressReader(proxy *clustergatewayproxy.Client, db *gorm.DB) *AgentProgressReader {
-	return &AgentProgressReader{proxy: proxy, db: db}
+// NewAgentProgressReader wires the reader. proxy/logs may be nil in degraded
+// boot (AgentProgress then returns an empty, non-final response).
+func NewAgentProgressReader(proxy *clustergatewayproxy.Client, logs repositories.CodingAgentLogRepository, orgs repositories.OrganizationRepository) *AgentProgressReader {
+	return &AgentProgressReader{proxy: proxy, logs: logs, orgs: orgs}
 }
 
 // AgentProgress returns the coding execution's activity, filtered to events
@@ -155,7 +156,7 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *models.Exe
 		CursorMillis:  sinceMillis,
 		Final:         false,
 	}
-	if r == nil || r.proxy == nil || r.db == nil || row == nil || row.RunName == "" {
+	if r == nil || r.proxy == nil || r.logs == nil || row == nil || row.RunName == "" {
 		return resp, nil
 	}
 	execUUID, err := uuid.Parse(row.ID)
@@ -165,11 +166,9 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *models.Exe
 
 	// Snapshot path: prefer the persisted sidecar row when present (the watcher
 	// wrote it on terminal Job state — the complete final log).
-	var snap models.CodingAgentLog
-	switch err := r.db.WithContext(ctx).
-		Where("task_id = ? AND run_name = ?", execUUID, row.RunName).
-		First(&snap).Error; {
-	case err == nil:
+	snap, err := r.logs.GetByRun(ctx, execUUID, row.RunName)
+	switch {
+	case err == nil && snap != nil:
 		resp.Lines, resp.Truncated = pageEvents(snap.LogText, sinceMillis)
 		if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
 			resp.CursorMillis = cur
@@ -182,14 +181,14 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *models.Exe
 		}
 		resp.Final = true
 		return resp, nil
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case err == nil && snap == nil:
 		// fall through to the live tail
 	default:
 		return nil, fmt.Errorf("read coding_agent_logs: %w", err)
 	}
 
 	// Live tail path: the watcher hasn't captured yet (Job still active).
-	ns, ok := resolveRemoteWorkerNS(ctx, r.db, row.OrgID)
+	ns, ok := resolveRemoteWorkerNS(ctx, r.orgs, row.OrgID)
 	if !ok {
 		// Org row missing / no Thunder UUID yet — keep polling non-final; the
 		// watcher captures on terminal state regardless.
@@ -271,9 +270,9 @@ func pageEvents(text string, sinceMillis int64) ([]contracts.ProgressEvent, bool
 // resolveRemoteWorkerNS maps an OC org handle to its remote-worker namespace
 // (the ca-… Job namespace). Shared by the JobWatcher (log capture) and the
 // AgentProgressReader (live tail).
-func resolveRemoteWorkerNS(ctx context.Context, db *gorm.DB, orgID string) (string, bool) {
-	var org models.Organization
-	if err := db.WithContext(ctx).Where("name = ?", orgID).First(&org).Error; err != nil {
+func resolveRemoteWorkerNS(ctx context.Context, orgs repositories.OrganizationRepository, orgID string) (string, bool) {
+	org, err := orgs.GetByName(ctx, orgID)
+	if err != nil || org == nil {
 		return "", false
 	}
 	var uid string

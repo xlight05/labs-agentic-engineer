@@ -44,7 +44,7 @@ const noDispatchPathErr = "no coding-agent dispatch path configured"
 func codingExecutorFor(t *testing.T, ensurer ComponentEnsurer, oc openchoreo.ComponentClient, row *models.Execution) *CodingExecutor {
 	t.Helper()
 	e := NewCodingExecutor(oc, fakeRepos{repo: &models.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
-		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform")
+		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform", nil, nil, nil, nil)
 	return e.WithComponentEnsurer(ensurer)
 }
 
@@ -166,7 +166,7 @@ func TestRunBuild_ComponentMissing_ActionableError(t *testing.T) {
 	}
 	row := buildRow("b1")
 	e := NewCodingExecutor(oc, fakeRepos{repo: &models.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
-		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform")
+		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform", nil, nil, nil, nil)
 
 	err := e.Run(context.Background(), buildDispatch(row))
 	if err == nil {

@@ -123,6 +123,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	orgCredRepo := repositories.NewOrgCredentialRepository(db)
 	orgAnthropicRepo := repositories.NewOrgAnthropicRepository(db)
 	idpRepo := repositories.NewIDPRepository(db)
+	codingAgentLogRepo := repositories.NewCodingAgentLogRepository(db)
 
 	// Temporal devflow runtime. Constructed always, but connects lazily in the
 	// worker watcher's retry loop (never at Build time), so aep-api boots and
@@ -427,7 +428,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// via the direct K8sJobDispatcher but still reads pod logs through the
 	// proxy stub, so streaming works regardless of which dispatcher ran.
 	if cgwClient != nil {
-		execProgressSvc.WithCodingProgress(codingagent.NewAgentProgressReader(cgwClient, db))
+		execProgressSvc.WithCodingProgress(codingagent.NewAgentProgressReader(cgwClient, codingAgentLogRepo, orgRepo))
 	}
 	// The task-log SSE stream: one connection per open task-detail page carries
 	// the Task's whole live state (status + executions + unified timeline across
@@ -550,7 +551,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	codingExecutor := codingagent.NewCodingExecutor(
 		componentClient, repoService, identities{cred: credService},
 		anthropicProvisioner{svc: anthropicCredService}, taskTokens, executionRepo,
-		cfg.AgentPlatformURL, cfg.AgentPlatformURL)
+		cfg.AgentPlatformURL, cfg.AgentPlatformURL,
+		orgRepo, orgAnthropicRepo, orgCredRepo, idpRepo)
 	// Stamp AEP_SKILLS_REPO_URL so the runner clones `org-skills` and resolves
 	// applied skills locally (the same EnsureProvisioned+GetRepo closure the
 	// genai + task-plan turns use for their SkillsRef).
@@ -564,7 +566,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// falls through to the direct K8sJobDispatcher, which writes the Anthropic
 	// Secret straight into the runner namespace (no OpenBao/ESO/sm-api).
 	if cgwClient != nil && cfg.SecretManagerAPIURL != "" {
-		codingExecutor.WithProxy(codingagent.New(cgwClient), db, idpService, cfg.AgentRunnerImage, cfg.AgentClusterSecretStore)
+		codingExecutor.WithProxy(codingagent.New(cgwClient), idpService, cfg.AgentRunnerImage, cfg.AgentClusterSecretStore)
 		slog.Info("coding executor: cluster-gateway-proxy dispatch path enabled (proxy + sm-api)",
 			"runnerImage", cfg.AgentRunnerImage, "clusterSecretStore", cfg.AgentClusterSecretStore)
 	}
@@ -577,7 +579,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 			cfg.AgentPlatformURL,
 			cfg.AgentRunnerImage,
 		)
-		codingExecutor.WithK8sJobDispatch(k8sJobDispatcher, db)
+		codingExecutor.WithK8sJobDispatch(k8sJobDispatcher)
 		slog.Info("coding executor: direct k8s-job dispatch path enabled", "runnerImage", cfg.AgentRunnerImage)
 	}
 	// Build-secret staging so the post-merge build clones a PRIVATE project repo
@@ -1006,7 +1008,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// (proxy and direct K8sJobDispatcher) emit `ca-…` run names, so the watcher
 	// reads job status + logs through the proxy stub regardless of dispatcher.
 	if cgwClient != nil {
-		jobWatcher := codingagent.NewJobWatcher(db, cgwClient, executionRepo).
+		jobWatcher := codingagent.NewJobWatcher(codingAgentLogRepo, orgRepo, cgwClient, executionRepo).
 			WithWorkflowSignaler(devflowSignaler).
 			WithTaskNotifier(taskStreamHub)
 		// Per-run ExternalSecret teardown applies only to the proxy dispatch
