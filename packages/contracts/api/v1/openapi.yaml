@@ -2582,9 +2582,9 @@ components:
       - key
       type: object
     ConfigPatch:
-      x-go-type: models.ConfigPatch
+      x-go-type: orgconfig.ConfigPatch
       x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
+        path: github.com/wso2/aep/aep-api/internal/platform/orgconfig
       additionalProperties: false
       properties:
         gitProvider:
@@ -2641,9 +2641,9 @@ components:
           nullable: true
       type: object
     ConfigProjection:
-      x-go-type: models.ConfigProjection
+      x-go-type: orgconfig.ConfigProjection
       x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
+        path: github.com/wso2/aep/aep-api/internal/platform/orgconfig
       additionalProperties: false
       properties:
         gitProvider:
@@ -3027,9 +3027,9 @@ components:
       - sha
       type: object
     GitProviderProjection:
-      x-go-type: models.GitProviderProjection
+      x-go-type: orgconfig.GitProviderProjection
       x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
+        path: github.com/wso2/aep/aep-api/internal/platform/orgconfig
       additionalProperties: false
       properties:
         connectedAt:
@@ -3077,9 +3077,9 @@ components:
       - connectedAt
       type: object
     IDPProjection:
-      x-go-type: models.IDPProjection
+      x-go-type: orgconfig.IDPProjection
       x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
+        path: github.com/wso2/aep/aep-api/internal/platform/orgconfig
       additionalProperties: false
       properties:
         hasClientSecret:
@@ -3209,9 +3209,9 @@ components:
       - Labels
       type: object
     LLMProjection:
-      x-go-type: models.LLMProjection
+      x-go-type: orgconfig.LLMProjection
       x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
+        path: github.com/wso2/aep/aep-api/internal/platform/orgconfig
       additionalProperties: false
       properties:
         connectedAt:

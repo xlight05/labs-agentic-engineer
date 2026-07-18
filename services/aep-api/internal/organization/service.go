@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/clients/oidc"
+	"github.com/wso2/aep/aep-api/internal/platform/orgconfig"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -120,8 +121,8 @@ func NewService(
 // row maps to a null section (not an error); idp is always present, synthesized
 // from the platform defaults when no row exists yet so GET stays side-effect
 // free (no row is created on read).
-func (s *Service) Get(ctx context.Context, org string) (*models.ConfigProjection, error) {
-	out := &models.ConfigProjection{}
+func (s *Service) Get(ctx context.Context, org string) (*orgconfig.ConfigProjection, error) {
+	out := &orgconfig.ConfigProjection{}
 
 	if s.anthropicSvc != nil {
 		proj, err := s.anthropicSvc.Status(ctx, org)
@@ -158,7 +159,7 @@ func (s *Service) Get(ctx context.Context, org string) (*models.ConfigProjection
 // idpProjection returns the org's persisted IDP profile, or the platform
 // default (kind=platform + cluster issuer/jwks) when none exists yet. Read-only
 // — unlike UpdateProfile's GetOrCreateProfile, it never persists on GET.
-func (s *Service) idpProjection(ctx context.Context, org string) models.IDPProjection {
+func (s *Service) idpProjection(ctx context.Context, org string) orgconfig.IDPProjection {
 	if s.idpSvc != nil {
 		if profile, err := s.idpSvc.GetProfile(ctx, org); err == nil && profile != nil {
 			return idpProjectionFrom(profile)
@@ -167,7 +168,7 @@ func (s *Service) idpProjection(ctx context.Context, org string) models.IDPProje
 				"org", org, "error", err)
 		}
 	}
-	return models.IDPProjection{
+	return orgconfig.IDPProjection{
 		Kind:    "platform",
 		Issuer:  s.platformIDP.Issuer,
 		JWKSURL: s.platformIDP.JWKSURL,
@@ -182,7 +183,7 @@ func (s *Service) idpProjection(ctx context.Context, org string) models.IDPProje
 // SectionError (422/409/502 body.<section>) with nothing written, so a bad key
 // in one section can't leave another section half-applied. Returns the
 // post-write projection (equal to an immediately following GET).
-func (s *Service) Patch(ctx context.Context, org, actor string, p models.ConfigPatch) (*models.ConfigProjection, error) {
+func (s *Service) Patch(ctx context.Context, org, actor string, p orgconfig.ConfigPatch) (*orgconfig.ConfigProjection, error) {
 	// 1. Reject the null spellings that have a dedicated action / reset instead
 	//    (Decision 7). llm:null is allowed (it clears).
 	if p.GitProvider.Sent && p.GitProvider.Null {
@@ -304,11 +305,11 @@ func (s *Service) DiscoverIDP(ctx context.Context, issuer string) (issuerOut, jw
 
 // --- projection mappers -----------------------------------------------------
 
-func llmProjectionFrom(p *AnthropicProjection) *models.LLMProjection {
+func llmProjectionFrom(p *AnthropicProjection) *orgconfig.LLMProjection {
 	if p == nil {
 		return nil
 	}
-	return &models.LLMProjection{
+	return &orgconfig.LLMProjection{
 		Kind:            "anthropic",
 		KeyPrefix:       p.KeyPrefix,
 		KeyLast4:        p.KeyLast4,
@@ -319,11 +320,11 @@ func llmProjectionFrom(p *AnthropicProjection) *models.LLMProjection {
 	}
 }
 
-func gitProviderProjectionFrom(p *Projection) *models.GitProviderProjection {
+func gitProviderProjectionFrom(p *Projection) *orgconfig.GitProviderProjection {
 	if p == nil {
 		return nil
 	}
-	return &models.GitProviderProjection{
+	return &orgconfig.GitProviderProjection{
 		Kind:              "github",
 		Mode:              gitProviderMode(p.Kind),
 		GitHubLogin:       p.GitHubLogin,
@@ -353,8 +354,8 @@ func gitProviderMode(kind string) string {
 	}
 }
 
-func idpProjectionFrom(p *models.OrganizationIDPProfile) models.IDPProjection {
-	return models.IDPProjection{
+func idpProjectionFrom(p *models.OrganizationIDPProfile) orgconfig.IDPProjection {
+	return orgconfig.IDPProjection{
 		Kind:              p.Kind,
 		Issuer:            p.Issuer,
 		JWKSURL:           p.JWKSURL,

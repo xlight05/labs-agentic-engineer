@@ -14,15 +14,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Org-config surface types (GET/PATCH /config — the consolidated llm /
-// gitProvider / idp document). HAND-WRITTEN and excluded from contract
-// codegen (exclude-schemas): ConfigPatch's sections are three-state
-// patch.Field values (absent = keep / null = clear / value = replace) and the
-// projections use pointer sections for the wire's null-means-not-connected —
-// semantics the generator cannot express. Kept field-for-field aligned with
-// packages/contracts/api/v1 (ConfigProjection, ConfigPatch, *Projection);
-// gen-api-check pins the rest of the contract.
-package models
+// Package orgconfig holds the org-config surface wire DTOs (GET/PATCH /config —
+// the consolidated llm / gitProvider / idp document). HAND-WRITTEN because the
+// generator cannot express their semantics: ConfigPatch's sections are
+// three-state patch.Field values (absent = keep / null = clear / value =
+// replace) and the projections use pointer sections for the wire's
+// null-means-not-connected. The contract points `x-go-type: orgconfig.X` at
+// these types, so `gen` emits a transparent alias (`type X = orgconfig.X`)
+// instead of a wrong generated struct.
+//
+// This is a pure, gorm-free leaf (only platform/patch + stdlib), so both the
+// generated wire layer (gen, a leaf) and the organization domain import it
+// without a cycle — the home the types needed once models/ dissolved (§7).
+// Kept field-for-field aligned with packages/contracts/api/v1; gen-api-check
+// pins the rest of the contract.
+package orgconfig
 
 import (
 	"time"
