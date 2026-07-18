@@ -802,7 +802,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 
 	opsHandlers, err := opshttpapi.New(ops.Deps{
 		Reports: ops.NewRepository(db),
-		Execs:   opsExecutionBridge{execs: executionRepo},
+		Execs:   execution.NewOpsExecutionReader(executionRepo),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assemble ops domain: %w", err)

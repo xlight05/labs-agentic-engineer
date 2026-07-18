@@ -19,54 +19,15 @@ package app
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/ops"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-// opsExecutionBridge satisfies ops.ExecutionReader from the legacy execution
-// repository — the consumer-before-provider bridge P1 exists to prove.
-//
-// aep:migration-shim retires=P6 reason=delivery lands the Execution store and implements ops.ExecutionReader directly
-//
-// ops consumes the Execution store, which the delivery domain will not own until
-// P6. Rather than block a leaf domain behind the largest one, ops declares the
-// port it needs in its OWN vocabulary (ops.ExecutionFact) and the composition
-// root adapts whatever provides it today. That is the point of a consumer-side
-// port: the direction of the dependency is chosen by the consumer, so the
-// provider can arrive late without ops changing.
-//
-// When delivery lands, it implements ops.ExecutionReader and this file is
-// deleted. Nothing in internal/ops changes — which is the property being tested.
-type opsExecutionBridge struct {
-	// execs is the legacy repositories.ExecutionRepository, narrowed to the one
-	// method ops needs (declared inline so the bridge names no more of the
-	// legacy surface than it uses).
-	execs interface {
-		LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)
-	}
-}
-
-// LatestExecutionPerKind maps the legacy Execution rows onto ops' vocabulary.
-// The mapping is the whole bridge: ops never sees models.Execution, so the
-// global models package can dissolve without touching the domain.
-func (b opsExecutionBridge) LatestExecutionPerKind(ctx context.Context, orgID, repo string, issueNumber int) (map[string]ops.ExecutionFact, error) {
-	if b.execs == nil {
-		return nil, nil
-	}
-	rows, err := b.execs.LatestPerKindScoped(ctx, orgID, repo, issueNumber)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]ops.ExecutionFact, len(rows))
-	for kind, e := range rows {
-		if e == nil {
-			continue
-		}
-		out[kind] = ops.ExecutionFact{Kind: e.Kind, Status: e.Status, EndedAt: e.EndedAt}
-	}
-	return out, nil
-}
+// The opsExecutionBridge that used to live here (satisfying ops.ExecutionReader
+// from the legacy execution repository — the consumer-before-provider bridge P1
+// existed to prove) was RETIRED in P6: delivery now owns the Execution store and
+// supplies ops.ExecutionReader directly via execution.NewOpsExecutionReader.
+// Nothing in internal/ops changed — the property the bridge was proving.
 
 // reaperRepoLister projects git_repositories rows onto the reaper's coordinate
 // port, so the kernel reaper never names the GitRepository entity.

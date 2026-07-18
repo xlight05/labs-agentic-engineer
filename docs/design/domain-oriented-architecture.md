@@ -1259,6 +1259,41 @@ surprise:
   `repositories/turn_repository.go` (P4.0) with the turn VOCABULARY re-exported into the domain via type
   aliases — the clean "gorm payoff deferred, vocabulary stays" split.
 
+**P6 (`delivery`) findings** — the one domain with a load-bearing internal boundary (§10.3.1 designed its
+kernel-root + sub-package shape *before* relocating; these are the surprises from executing it):
+
+- **`TestDomainsAreFeatureFree` scans test files too**, so entangled features cannot move one at a time.
+  `task`'s component test imported `feature/execution`, so `task` could not become a domain sub-package
+  while `execution` was still a feature — the four cross-coupled features (execution/task/build/codingagent)
+  had to move as one train after the **kernel was extracted first**. Only `validation` and `devflow` were
+  cleanly isolated enough to move solo. Extract the shared kernel before any entangled feature, not after.
+- **Lifting a workflow's I/O vocabulary is a re-qualification, not surgery — do it with a lexer, not a
+  comment-stripping regex.** Moving the ~25 devflow vocab symbols (DevFlowInput/Status, the DevPhase*/
+  TaskPhase*/Outcome* enums, DevWorkflowID, DevFlowWorkflowName) to the root re-qualified ~180 sites across
+  the Temporal workflow files. A naive `//`-stripping pass wrongly rewrote an identifier **inside a string
+  literal** (a markdown template `# Lineage diff:`), compile-green but behaviour-wrong. A proper Go-token
+  walker (skip strings/raw-strings/runes/line+block comments) is the safe tool. Two real collisions needed
+  care: a moved const in a `switch case X:` must be rewritten (ends in `:`), while a struct FIELD named the
+  same as the moved func (`ValidationFlowInput.DevWorkflowID` vs the `DevWorkflowID()` func) must NOT —
+  rewrite the func only when followed by `(`.
+- **The migration deletes to make its point.** The `opsExecutionBridge` (the P1 "consumer-before-provider"
+  demo) retired exactly as its pragma promised: `execution.OpsExecutionReader` implements `ops.ExecutionReader`
+  directly (a legal `delivery → ops` provider→consumer-port edge, acyclic because `ops` imports no delivery),
+  the app-root bridge is deleted, and **nothing in `internal/ops` changed** — the property the bridge existed
+  to prove. `TestNoShimsSurvivePastTheirPhase` (`<=`, not `<`) forces this the moment `currentPhase` reaches P6.
+- **Delivery's `Deps` cannot live in the domain root.** Every other domain keeps `Deps` in its root (§7's
+  P1 finding #2), but delivery's services live in sub-packages the root may not import (`root ⊥ slice`). The
+  `httpapi` aggregator — the one package allowed to name the siblings — is where `Deps` + `New` sit. This is
+  a structural consequence of the kernel-root shape, not a workaround.
+- **A domain sub-package legitimately imports another whole domain.** `delivery/build` imports `spec`
+  (`SpecSaveResult`/`SpecValidationError`) and `sourcecontrol`; `delivery/execution` imports `ops`. `slice ⊥
+  sibling` bans only *same-domain* sibling slices, and `TestDomainsAreFeatureFree` bans only `feature/*` —
+  cross-*domain* type/port edges are allowed and are how the pipeline composes the authoring + RCA domains.
+- **A `git mv` into a package named `build` hits `.gitignore`.** The root `build/` ignore pattern swallowed
+  `internal/delivery/build/`; the codebase already carried a `!…/internal/feature/build/` negation for the
+  old location, so the fix was repointing that one line — worth knowing before moving any package whose name
+  collides with a build-output convention.
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |
