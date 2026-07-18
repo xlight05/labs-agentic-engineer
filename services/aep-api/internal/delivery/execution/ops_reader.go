@@ -37,7 +37,7 @@ type OpsExecutionReader struct{ execs opsExecutionReads }
 
 // opsExecutionReads is the one org-scoped read the ops correlation needs,
 // narrowed so this reader names no more of the store than it uses. Satisfied by
-// repositories.ExecutionRepository.
+// delivery.ExecutionRepository.
 type opsExecutionReads interface {
 	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)
 }

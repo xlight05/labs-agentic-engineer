@@ -30,7 +30,9 @@ import (
 // carries no org context — the console renders the org switcher from it before
 // an org claim exists — and the service scopes itself. It still requires a user
 // JWT at the outer middleware.
-type Handler struct{ orgs organization.OrganizationService }
+type Handler struct {
+	orgs organization.OrganizationService
+}
 
 // New returns the slice's handler.
 func New(orgs organization.OrganizationService) *Handler { return &Handler{orgs: orgs} }

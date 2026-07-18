@@ -53,7 +53,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ----- faked edges: RepoRepository row + credential resolver -----
@@ -61,7 +60,7 @@ import (
 // stubRepoRepo returns one fixed GitRepository row.
 type stubRepoRepo struct{ rec *models.GitRepository }
 
-var _ repositories.RepoRepository = (*stubRepoRepo)(nil)
+var _ sourcecontrol.RepoRepository = (*stubRepoRepo)(nil)
 
 func (s *stubRepoRepo) GetByOrgAndProjectID(context.Context, string, string) (*models.GitRepository, error) {
 	return s.rec, nil

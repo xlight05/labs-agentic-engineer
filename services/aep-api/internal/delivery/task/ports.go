@@ -21,9 +21,9 @@ import (
 	"io"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -92,7 +92,7 @@ type SkillsRepoResolver func(ctx context.Context, orgID string) (*models.GitRepo
 
 // ExecutionReader is the read side of the executions rows (the platform-owned
 // half), consumed org-scoped by the read path to fuse derived status. It is the
-// repositories.ExecutionRepository scoped methods — the shared kernel, not the
+// delivery.ExecutionRepository scoped methods — the shared kernel, not the
 // execution feature, so the §1 package boundary holds.
 type ExecutionReader interface {
 	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)

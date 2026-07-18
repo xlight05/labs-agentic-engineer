@@ -31,7 +31,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ensureCacheTTL bounds how long a successful EnsureForOuHandle result
@@ -87,7 +86,7 @@ type OUValidator interface {
 }
 
 type organizationService struct {
-	repo  repositories.OrganizationRepository
+	repo  OrganizationRepository
 	nsCli openchoreo.NamespaceClient
 
 	// ouValidator (optional) validates a JWT `ouId` against Thunder before the
@@ -106,7 +105,7 @@ type organizationService struct {
 	ensureInflight singleflight.Group
 }
 
-func NewOrganizationService(repo repositories.OrganizationRepository, nsCli openchoreo.NamespaceClient) *organizationService {
+func NewOrganizationService(repo OrganizationRepository, nsCli openchoreo.NamespaceClient) *organizationService {
 	return &organizationService{
 		repo:        repo,
 		nsCli:       nsCli,
@@ -328,7 +327,7 @@ func (s *organizationService) backfillRow(ctx context.Context, name string, view
 	if err == nil {
 		return row
 	}
-	if repositories.IsUniqueViolation(err) {
+	if IsUniqueViolation(err) {
 		// Lost the race with a concurrent caller; re-read.
 		if existing, rerr := s.repo.GetByName(ctx, name); rerr == nil && existing != nil {
 			return *existing

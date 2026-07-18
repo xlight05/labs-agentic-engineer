@@ -66,7 +66,7 @@ type SecretStager interface {
 // synchronous row record on start (so a GET issued right after the POST
 // returns never races the workflow's own RecordWorkflowRun activity — both
 // upsert the same (workflowID, runID) row). Satisfied by
-// repositories.WorkflowRunRepository.
+// delivery.WorkflowRunRepository.
 type RunStore interface {
 	RunningDevByProject(ctx context.Context, orgID, projectID string) (*models.DevflowRun, error)
 	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*models.DevflowRun, error)

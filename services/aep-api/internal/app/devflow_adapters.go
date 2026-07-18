@@ -27,13 +27,12 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // repoFullNameLookup resolves a project's "owner/name" from the repo row —
 // the devflow API's RepoLookup port.
 type repoFullNameLookup struct {
-	repos repositories.RepoRepository
+	repos sourcecontrol.RepoRepository
 }
 
 func (l repoFullNameLookup) RepoFullName(ctx context.Context, orgID, projectID string) (string, error) {

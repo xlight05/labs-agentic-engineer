@@ -18,18 +18,17 @@ package runtimeconfig
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"log/slog"
 	"time"
-
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // DeployedProjectLister enumerates every project with something dispatched —
-// the sweep's input. *repositories.ExecutionRepository satisfies it via
+// the sweep's input. *delivery.ExecutionRepository satisfies it via
 // DistinctDeployedProjects; the watcher needs only that one method, so it takes
 // this narrow port rather than the ORM.
 type DeployedProjectLister interface {
-	DistinctDeployedProjects(ctx context.Context) ([]repositories.DeployedProjectRef, error)
+	DistinctDeployedProjects(ctx context.Context) ([]delivery.DeployedProjectRef, error)
 }
 
 // Watcher is the convergence backstop for SPA env-config.js emission — the

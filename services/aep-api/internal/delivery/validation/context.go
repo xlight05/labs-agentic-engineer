@@ -44,7 +44,7 @@ type ValidationContextResponse struct {
 }
 
 // ExecutionLocator resolves a runner's execution id to its project, fenced by
-// the caller's org (the INT-6 tenant fence). repositories.ExecutionRepository's
+// the caller's org (the INT-6 tenant fence). delivery.ExecutionRepository's
 // GetByIDScoped satisfies the adapter wired at the composition root.
 type ExecutionLocator interface {
 	LookupExecutionProject(ctx context.Context, orgHandle, executionID string) (projectID string, found bool, err error)

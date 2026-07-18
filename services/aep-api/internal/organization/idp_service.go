@@ -26,7 +26,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // IDPService manages per-organisation IDP profiles + the matching
@@ -112,8 +111,8 @@ type PlatformIDPConfig struct {
 }
 
 type idpService struct {
-	repo     repositories.IDPRepository
-	orgRepo  repositories.OrganizationRepository
+	repo     IDPRepository
+	orgRepo  OrganizationRepository
 	thunder  thundersvc.Client
 	platform PlatformIDPConfig
 	smAPI    *SMAPIWriter
@@ -127,7 +126,7 @@ type idpService struct {
 // GetOrCreateProfile) keep working. Returns the concrete type so
 // WithSMAPIWriter can chain at the composition root; the concrete value still
 // satisfies the IDPService interface for consumers that store it as such.
-func NewIDPService(repo repositories.IDPRepository, orgRepo repositories.OrganizationRepository, thunder thundersvc.Client, platform PlatformIDPConfig) *idpService {
+func NewIDPService(repo IDPRepository, orgRepo OrganizationRepository, thunder thundersvc.Client, platform PlatformIDPConfig) *idpService {
 	return &idpService{repo: repo, orgRepo: orgRepo, thunder: thunder, platform: platform}
 }
 

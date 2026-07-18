@@ -64,7 +64,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- key + minter helpers -----------------------------------------------------
@@ -510,7 +509,7 @@ func TestResolveUserInstallations_FiltersByUserAccessAndOrgBinding_DB(t *testing
 			}, nil
 		},
 	}
-	svc := NewCredentialService(repositories.NewOrgCredentialRepository(db), nil, minter, "", "cid", "csecret", gh)
+	svc := NewCredentialService(NewOrgCredentialRepository(db), nil, minter, "", "cid", "csecret", gh)
 
 	got, err := svc.ResolveUserInstallations(context.Background(), "acme", "code", "https://cb")
 	if err != nil {

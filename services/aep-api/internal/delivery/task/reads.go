@@ -26,7 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // The task read DTOs (Lineage, ExecutionView, TaskView, TaskDetail) live in the
@@ -330,7 +329,7 @@ func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[st
 	}
 	block, human, blockErr := taskmeta.ParseBody(issue.Body)
 
-	execFacts := repositories.ExecutionFacts(execs)
+	execFacts := delivery.ExecutionFacts(execs)
 	facts := taskmeta.GitHubFacts{
 		IssueOpen:   strings.EqualFold(issue.State, "open"),
 		HoldPresent: labels.Hold,

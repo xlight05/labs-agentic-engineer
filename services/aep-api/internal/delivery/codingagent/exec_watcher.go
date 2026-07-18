@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // BuildRetrier re-mints the build clone credential and re-triggers a build at
@@ -52,7 +51,7 @@ type BuildRetrier interface {
 //     watcher's auth-retry loop, re-keyed to the execution row's reason (§7).
 type ExecWatcher struct {
 	oc        openchoreo.ComponentClient
-	execRows  repositories.ExecutionRepository
+	execRows  delivery.ExecutionRepository
 	reeval    Reevaluator
 	asService func(ctx context.Context) context.Context
 	tick      time.Duration
@@ -91,7 +90,7 @@ func (w *ExecWatcher) WithTaskNotifier(h *delivery.TaskStreamHub) *ExecWatcher {
 
 // NewExecWatcher wires the watcher. asService may be nil (tests); tick defaults
 // to 10s.
-func NewExecWatcher(oc openchoreo.ComponentClient, execRows repositories.ExecutionRepository, reeval Reevaluator, asService func(ctx context.Context) context.Context, tick time.Duration) *ExecWatcher {
+func NewExecWatcher(oc openchoreo.ComponentClient, execRows delivery.ExecutionRepository, reeval Reevaluator, asService func(ctx context.Context) context.Context, tick time.Duration) *ExecWatcher {
 	if tick <= 0 {
 		tick = 10 * time.Second
 	}

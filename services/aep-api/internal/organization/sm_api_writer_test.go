@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/secretmanagersvc"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- fake secretmanagersvc.SecretManagementClient ----------------------------
@@ -505,7 +504,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeleteAnthropic on a missing row = %v; want nil", err)
 		}
@@ -520,7 +519,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", strPtr("acme-anthropic-secrets"), strPtr("user-app-secrets/wc-xxx/acme-anthropic-secrets"), strPtr("api-key"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteAnthropic: %v", err)
 		}
@@ -547,7 +546,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", nil, nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteAnthropic: %v", err)
 		}
@@ -562,7 +561,7 @@ func TestSMAPIWriter_DeleteAnthropic_DB(t *testing.T) {
 		seedAnthropicRow(t, db, "acme", strPtr("acme-anthropic-secrets"), strPtr("kv/path"), strPtr("api-key"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteAnthropic(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}
@@ -612,7 +611,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeletePublisher on a missing row = %v; want nil", err)
 		}
@@ -627,7 +626,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", strPtr("acme-publisher-secrets"), strPtr("user-app-secrets/wc-xxx/acme-publisher-secrets"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeletePublisher: %v", err)
 		}
@@ -655,7 +654,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeletePublisher: %v", err)
 		}
@@ -670,7 +669,7 @@ func TestSMAPIWriter_DeletePublisher_DB(t *testing.T) {
 		seedIDPProfileRow(t, db, "acme", strPtr("acme-publisher-secrets"), strPtr("kv/path"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeletePublisher(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}
@@ -723,7 +722,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		t.Parallel()
 		db := dbtest.New(t)
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "ghost-org"); err != nil {
 			t.Fatalf("DeleteGitHubPAT on a missing row = %v; want nil", err)
 		}
@@ -738,7 +737,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", strPtr("acme-github-pat-secrets"), strPtr("user-app-secrets/wc-xxx/acme-github-pat-secrets"))
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteGitHubPAT: %v", err)
 		}
@@ -765,7 +764,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", nil, nil)
 
 		fake := &fakeSMClient{}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err != nil {
 			t.Fatalf("DeleteGitHubPAT: %v", err)
 		}
@@ -780,7 +779,7 @@ func TestSMAPIWriter_DeleteGitHubPAT_DB(t *testing.T) {
 		seedUserPATRow(t, db, "acme", strPtr("acme-github-pat-secrets"), strPtr("kv/path"))
 
 		fake := &fakeSMClient{deleteErr: errors.New("sm-api: 500")}
-		w := NewSMAPIWriter(fake, repositories.NewOrgCredentialRepository(db), repositories.NewOrgAnthropicRepository(db), repositories.NewIDPRepository(db))
+		w := NewSMAPIWriter(fake, NewOrgCredentialRepository(db), NewOrgAnthropicRepository(db), NewIDPRepository(db))
 		if err := w.DeleteGitHubPAT(context.Background(), "acme"); err == nil {
 			t.Fatalf("want the SM-API error to propagate")
 		}

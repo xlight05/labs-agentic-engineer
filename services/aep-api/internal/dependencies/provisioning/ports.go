@@ -44,7 +44,7 @@ type IssueClient interface {
 // drives: admit the provision row (the (repo, issue, kind) mutex), start it
 // (queued → running, stamping the binding run name), finish it (→ deployed /
 // failed), and list active rows (the readiness watcher's sweep).
-// repositories.ExecutionRepository satisfies it.
+// delivery.ExecutionRepository satisfies it.
 type ExecutionStore interface {
 	TryAdmit(ctx context.Context, e *models.Execution) (admitted bool, row *models.Execution, err error)
 	StartWithRun(ctx context.Context, id, runName string) (*models.Execution, error)

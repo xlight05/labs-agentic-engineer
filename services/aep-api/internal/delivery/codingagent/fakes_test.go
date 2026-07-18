@@ -18,12 +18,12 @@ package codingagent
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"sync"
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // fakeRepos returns a fixed project repo (its RepoSlug drives build-secret
@@ -146,7 +146,7 @@ func (f *fakeRetrier) RetryAuthFailedBuild(_ context.Context, row *models.Execut
 
 func (f *fakeRetrier) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.got) }
 
-// fakeExecRepo is an in-memory repositories.ExecutionRepository covering the
+// fakeExecRepo is an in-memory delivery.ExecutionRepository covering the
 // verbs the executor + watcher drive (StartWithRun, ListActive, Finish,
 // NoteBuildRetry). Unused verbs return zero — they are never reached by these
 // tests, and a panic would mask an unexpected call regression, so they no-op
@@ -254,6 +254,6 @@ func (f *fakeExecRepo) ListByIssueScoped(context.Context, string, string, int) (
 }
 func (f *fakeExecRepo) DeleteByProject(context.Context, string, string) error { return nil }
 
-func (f *fakeExecRepo) DistinctDeployedProjects(context.Context) ([]repositories.DeployedProjectRef, error) {
+func (f *fakeExecRepo) DistinctDeployedProjects(context.Context) ([]delivery.DeployedProjectRef, error) {
 	return nil, nil
 }

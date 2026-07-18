@@ -26,7 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // reconcile loads the Task's latest-per-kind rows (as the sweep's batch load
@@ -118,7 +117,7 @@ func TestEvents_PRClosedUnmerged_RecordsRejection(t *testing.T) {
 		t.Errorf("expected a rejected coding row, got %+v", c)
 	}
 	// Derived PR state must be closed-unmerged → rejected.
-	if got := taskmeta.PRStateFromFacts(repositories.ExecutionFacts(execs)); got != taskmeta.PRClosedUnmerged {
+	if got := taskmeta.PRStateFromFacts(delivery.ExecutionFacts(execs)); got != taskmeta.PRClosedUnmerged {
 		t.Errorf("prState = %q, want closed_unmerged", got)
 	}
 }
@@ -142,7 +141,7 @@ func TestEvents_ReconcileTaskPR_MissedCloseUnmerged_HealsToRejected(t *testing.T
 		t.Fatalf("ReconcileTaskPR: %v", err)
 	}
 	execs, _ := store.LatestPerKind(context.Background(), "o/r", 2)
-	if got := taskmeta.PRStateFromFacts(repositories.ExecutionFacts(execs)); got != taskmeta.PRClosedUnmerged {
+	if got := taskmeta.PRStateFromFacts(delivery.ExecutionFacts(execs)); got != taskmeta.PRClosedUnmerged {
 		t.Errorf("missed close-unmerged must heal to rejected, prState=%q", got)
 	}
 }

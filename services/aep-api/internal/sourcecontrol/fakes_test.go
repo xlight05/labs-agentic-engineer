@@ -18,7 +18,7 @@ package sourcecontrol_test
 
 // Shared fakes for the gitrepo unit tier. Fakes sit only at the two real edges
 // of these services — the credential seam (secrets.Resolver / Credential)
-// and the persistence seam (repositories.RepoRepository). The git-exec paths
+// and the persistence seam (sourcecontrol.RepoRepository). The git-exec paths
 // run against a real gittest.Remote, and the GitHub HTTP paths run through the
 // REAL clients/github client pointed at gittest fakes (WithAPIBase /
 // WithGraphQLEndpoint). No service or client is mocked.
@@ -31,12 +31,12 @@ package sourcecontrol_test
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"sync"
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ---- credential seam -------------------------------------------------------
@@ -93,7 +93,7 @@ var _ secrets.Resolver = fakeResolver{}
 
 // ---- persistence seam ------------------------------------------------------
 
-// fakeRepoRepo is an in-memory repositories.RepoRepository keyed on
+// fakeRepoRepo is an in-memory sourcecontrol.RepoRepository keyed on
 // (orgID, projectID). It mimics gorm's copy-in/copy-out semantics — Get returns
 // a fresh copy so callers can't alias stored state — which matters for the
 // async performClone path (Get → mutate → Update). `updates` counts persisted
@@ -219,7 +219,7 @@ func (f *fakeRepoRepo) preload(rows ...*models.GitRepository) {
 	}
 }
 
-var _ repositories.RepoRepository = (*fakeRepoRepo)(nil)
+var _ sourcecontrol.RepoRepository = (*fakeRepoRepo)(nil)
 
 // ---- shared helpers --------------------------------------------------------
 

@@ -37,7 +37,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // anthropicDBAESKey is the 32-byte AES-256 key for the real DBStore.
@@ -56,7 +55,7 @@ func anthropicDBService(t *testing.T, apiStatus int) (*AnthropicCredentialServic
 		t.Fatalf("real DBStore: %v", err)
 	}
 	base, _ := anthropicFakeAPI(t, apiStatus)
-	return NewAnthropicCredentialService(repositories.NewOrgAnthropicRepository(db), store, nil).WithAnthropicAPIBase(base), store
+	return NewAnthropicCredentialService(NewOrgAnthropicRepository(db), store, nil).WithAnthropicAPIBase(base), store
 }
 
 // anthropicMustConnect connects key for org or fails the test.

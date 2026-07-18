@@ -36,7 +36,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ----- Errors -----
@@ -189,14 +188,14 @@ type ArtifactService interface {
 }
 
 type artifactService struct {
-	repo repositories.RepoRepository
+	repo sourcecontrol.RepoRepository
 	git  GitGateway
 }
 
 // NewArtifactService builds the workspace-backed ArtifactService. `git` is the
 // git-object surface + credential resolver + save identities (the concrete
 // gitOpsService); `repo` resolves the project's repo row (slug + branch).
-func NewArtifactService(repo repositories.RepoRepository, git GitGateway) ArtifactService {
+func NewArtifactService(repo sourcecontrol.RepoRepository, git GitGateway) ArtifactService {
 	return &artifactService{repo: repo, git: git}
 }
 

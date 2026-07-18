@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // credAESKey is a fixed 32-byte AES-256 key for the test credential store.
@@ -71,7 +70,7 @@ func newCredSvcDB(t testing.TB, db *gorm.DB, gh *stubGitHub) (*CredentialService
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
-	svc := NewCredentialService(repositories.NewOrgCredentialRepository(db), store, minter, envWebhookSecret, "", "", nil).WithGitHubAPIBase(gh.URL)
+	svc := NewCredentialService(NewOrgCredentialRepository(db), store, minter, envWebhookSecret, "", "", nil).WithGitHubAPIBase(gh.URL)
 	return svc, store
 }
 

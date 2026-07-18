@@ -22,13 +22,13 @@ package projects
 import (
 	"context"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 func devBinding(name, readyStatus, readyReason string) models.ReleaseBindingSummary {
@@ -300,7 +300,7 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 	cases := []struct {
 		name       string
 		child      *models.DevflowRun
-		execs      repositories.ExecutionRepository
+		execs      delivery.ExecutionRepository
 		wantStatus string
 		wantURL    string
 	}{

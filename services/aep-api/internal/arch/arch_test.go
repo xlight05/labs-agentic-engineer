@@ -349,13 +349,12 @@ var gormImporters = map[string]bool{
 	// The ordered migration LIST — names domain-owned steps, so it sits beside
 	// edge rather than in the kernel (§7).
 	"internal/migrate":                true,
-	"repositories":                    true,
 	"internal/platform/dbtest":        true,
 	"internal/platform/componenttest": true,
 	// Features with raw gorm still to migrate into repositories/ (step 11).
 	// (runtimeconfig MIGRATED in P8.0 — its convergence watcher's raw
 	// `SELECT DISTINCT … FROM executions` became
-	// repositories.ExecutionRepository.DistinctDeployedProjects, and the watcher
+	// delivery.ExecutionRepository.DistinctDeployedProjects, and the watcher
 	// now takes a narrow DeployedProjectLister port instead of *gorm.DB. Only
 	// webhook remains — it lands with P2d.)
 	"internal/feature/webhook": true,
@@ -407,13 +406,13 @@ func TestGormImportAllowlist(t *testing.T) {
 
 // TestInternalOnlyLayout asserts no Go source lives outside the sanctioned
 // top-level roots: internal/ (everything), cmd/ (mains), skills/ (go:embed
-// must anchor to the source file), and the deliberately-flat models/ +
-// repositories/ shared kernel (their relocation is an explicitly gated,
-// separate decision).
+// must anchor to the source file), and the deliberately-flat models/ shared
+// kernel (its relocation into the domains is the remaining P9 step;
+// repositories/ has already dissolved into each <domain>/repository_*.go).
 func TestInternalOnlyLayout(t *testing.T) {
 	allowedRoots := map[string]bool{
 		"internal": true, "cmd": true, "skills": true,
-		"models": true, "repositories": true,
+		"models": true,
 	}
 	root := ".." + string(filepath.Separator) + ".." // module root from internal/arch
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -436,7 +435,7 @@ func TestInternalOnlyLayout(t *testing.T) {
 		}
 		top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
 		if !allowedRoots[top] {
-			t.Errorf("Go file outside the sanctioned roots: %s (allowed: internal/, cmd/, skills/, models/, repositories/)", rel)
+			t.Errorf("Go file outside the sanctioned roots: %s (allowed: internal/, cmd/, skills/, models/)", rel)
 		}
 		return nil
 	})

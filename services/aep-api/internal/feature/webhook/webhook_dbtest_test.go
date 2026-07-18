@@ -53,7 +53,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // ============================================================================
@@ -280,7 +279,7 @@ func newInstallCredSvc(t *testing.T, db *gorm.DB) *organization.CredentialServic
 	if err != nil {
 		t.Fatalf("NewAppTokenMinter: %v", err)
 	}
-	return organization.NewCredentialService(repositories.NewOrgCredentialRepository(db), store, minter, "", "", "", nil)
+	return organization.NewCredentialService(organization.NewOrgCredentialRepository(db), store, minter, "", "", "", nil)
 }
 
 // insertAppRow inserts an app-installation org_credentials row directly,
@@ -371,7 +370,7 @@ func TestInstall_ReposRemoved_PhaseAMergesSelectedRepos(t *testing.T) {
 	credSvc := newInstallCredSvc(t, db)
 	insertAppRow(t, db, "acme", 777, "active", []string{"acme/web", "acme/api"})
 
-	if err := repositories.NewRepoRepository(db).Create(context.Background(), &models.GitRepository{
+	if err := sourcecontrol.NewRepoRepository(db).Create(context.Background(), &models.GitRepository{
 		OrgID: "acme", ProjectID: "web", Status: "ready", RepoURL: "https://github.com/acme/web.git",
 	}); err != nil {
 		t.Fatalf("seed repo: %v", err)

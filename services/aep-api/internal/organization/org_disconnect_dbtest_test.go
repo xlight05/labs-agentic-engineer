@@ -27,12 +27,12 @@ package organization
 import (
 	"context"
 	"errors"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
@@ -49,7 +49,7 @@ func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
 	// Seed platform-owned executions rows for the org's Tasks. These must SURVIVE
 	// the disconnect (the issues go inert; the rows are not purged — that is the
 	// project-delete path, not disconnect).
-	execRepo := repositories.NewExecutionRepository(db)
+	execRepo := delivery.NewExecutionRepository(db)
 	for _, issue := range []int{7, 8} {
 		if _, _, err := execRepo.TryAdmit(ctx, &models.Execution{
 			OrgID: "acme", ProjectID: "web", Repo: "acme/web", IssueNumber: issue,

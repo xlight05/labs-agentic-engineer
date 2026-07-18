@@ -19,6 +19,7 @@ package codingagent
 import (
 	"context"
 	"errors"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"log/slog"
 	"sync"
 	"time"
@@ -29,7 +30,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // finalLogTailBytes caps the captured snapshot size (~3000 lines).
@@ -43,10 +43,10 @@ const finalLogTailBytes = 256 * 1024
 // fails/vanishes, and captures the pod's final log into coding_agent_logs. State
 // is written through the execution repository (one discipline).
 type JobWatcher struct {
-	logs     repositories.CodingAgentLogRepository
-	orgs     repositories.OrganizationRepository
+	logs     delivery.CodingAgentLogRepository
+	orgs     organization.OrganizationRepository
 	proxy    *clustergatewayproxy.Client
-	execRows repositories.ExecutionRepository
+	execRows delivery.ExecutionRepository
 
 	pollInterval time.Duration
 	once         sync.Once
@@ -66,7 +66,7 @@ type JobWatcher struct {
 }
 
 // NewJobWatcher constructs a watcher. logs + orgs + proxy + execRows required.
-func NewJobWatcher(logs repositories.CodingAgentLogRepository, orgs repositories.OrganizationRepository, proxy *clustergatewayproxy.Client, execRows repositories.ExecutionRepository) *JobWatcher {
+func NewJobWatcher(logs delivery.CodingAgentLogRepository, orgs organization.OrganizationRepository, proxy *clustergatewayproxy.Client, execRows delivery.ExecutionRepository) *JobWatcher {
 	if logs == nil || orgs == nil || proxy == nil || execRows == nil {
 		panic("codingagent.JobWatcher: logs + orgs + proxy + execRows are required")
 	}

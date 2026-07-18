@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"log/slog"
 	"strings"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // CodingExecutor is the coding-class executor. Run dispatches the right OC work
@@ -51,7 +51,7 @@ type CodingExecutor struct {
 	identities    Identities
 	anthropic     AnthropicProvisioner
 	tokens        TokenIssuer
-	execRows      repositories.ExecutionRepository
+	execRows      delivery.ExecutionRepository
 	gitServiceURL string
 	platformURL   string
 
@@ -61,10 +61,10 @@ type CodingExecutor struct {
 	// Org-scoped repository reads, always wired at the composition root: the
 	// per-org Anthropic/GitHub SM-API triplets + IDP publisher profile for the
 	// proxy dispatch, and the org lookup for the data-plane UUID.
-	orgs           repositories.OrganizationRepository
-	anthropicCreds repositories.OrgAnthropicRepository
-	githubCreds    repositories.OrgCredentialRepository
-	idpProfiles    repositories.IDPRepository
+	orgs           organization.OrganizationRepository
+	anthropicCreds organization.OrgAnthropicRepository
+	githubCreds    organization.OrgCredentialRepository
+	idpProfiles    organization.IDPRepository
 
 	// k8sJob is the direct K8s Job dispatch path — the sole fallback when the
 	// proxy path is not configured (nil → no fallback; dispatch errors out).
@@ -124,12 +124,12 @@ func NewCodingExecutor(
 	identities Identities,
 	anthropic AnthropicProvisioner,
 	tokens TokenIssuer,
-	execRows repositories.ExecutionRepository,
+	execRows delivery.ExecutionRepository,
 	gitServiceURL, platformURL string,
-	orgs repositories.OrganizationRepository,
-	anthropicCreds repositories.OrgAnthropicRepository,
-	githubCreds repositories.OrgCredentialRepository,
-	idpProfiles repositories.IDPRepository,
+	orgs organization.OrganizationRepository,
+	anthropicCreds organization.OrgAnthropicRepository,
+	githubCreds organization.OrgCredentialRepository,
+	idpProfiles organization.IDPRepository,
 ) *CodingExecutor {
 	return &CodingExecutor{
 		oc: oc, repos: repos, identities: identities, anthropic: anthropic,

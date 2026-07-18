@@ -45,11 +45,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"log/slog"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // BuildGitSecretName is the OC GitSecret / SecretReference name carrying the
@@ -89,13 +89,13 @@ var (
 // returns an empty SecretRef so the build runs unauthenticated and fails at
 // clone with a clearer signal than a silent misroute.
 type BuildCredentialsService struct {
-	repos      repositories.RepoRepository
+	repos      sourcecontrol.RepoRepository
 	resolver   secrets.Resolver
 	gitSecrets openchoreo.GitSecretClient
 }
 
 func NewBuildCredentialsService(
-	repos repositories.RepoRepository,
+	repos sourcecontrol.RepoRepository,
 	resolver secrets.Resolver,
 	gitSecrets openchoreo.GitSecretClient,
 ) *BuildCredentialsService {

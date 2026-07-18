@@ -14,17 +14,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package repositories_test
+package delivery_test
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"sync"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 func newExec(org, repo string, issue int, kind taskmeta.ExecutionKind) *models.Execution {
@@ -44,7 +44,7 @@ func newExec(org, repo string, issue int, kind taskmeta.ExecutionKind) *models.E
 func TestExecutionRepository_AdmissionMutex(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db)
 	ctx := context.Background()
 
 	// Two concurrent admits for the SAME (repo, issue, kind) → exactly one wins.
@@ -106,7 +106,7 @@ func TestExecutionRepository_AdmissionMutex(t *testing.T) {
 	}
 }
 
-func findActiveCoding(t *testing.T, repo repositories.ExecutionRepository, r string, issue int) *models.Execution {
+func findActiveCoding(t *testing.T, repo delivery.ExecutionRepository, r string, issue int) *models.Execution {
 	t.Helper()
 	m, err := repo.LatestPerKind(context.Background(), r, issue)
 	if err != nil {
@@ -123,7 +123,7 @@ func findActiveCoding(t *testing.T, repo repositories.ExecutionRepository, r str
 func TestExecutionRepository_StartFinish(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db)
 	ctx := context.Background()
 
 	_, row, err := repo.TryAdmit(ctx, newExec("orga", "acme/repo", 1, taskmeta.KindCoding))
@@ -163,7 +163,7 @@ func TestExecutionRepository_StartFinish(t *testing.T) {
 func TestExecutionRepository_Reads(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db)
 	ctx := context.Background()
 
 	// Two coding attempts (first failed, then a retry) + a build, all on one Task.

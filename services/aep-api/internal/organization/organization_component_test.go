@@ -62,7 +62,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 const orgListPath = "/api/v1/organizations"
@@ -131,7 +130,7 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 			return []gen.OrganizationView{{Name: "default", Status: "Active"}}, nil
 		},
 	}
-	svc := organization.NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
+	svc := organization.NewOrganizationService(organization.NewOrganizationRepository(db), ns)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 	resp := h.AsOrg("acme").Get(orgListPath)

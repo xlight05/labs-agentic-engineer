@@ -61,7 +61,7 @@ const (
 
 // devRunRows is the narrow port over the workflow_runs lookup index: the
 // status read plus the project-delete purge.
-// repositories.WorkflowRunRepository satisfies it.
+// delivery.WorkflowRunRepository satisfies it.
 type devRunRows interface {
 	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]models.DevflowRun, error)
 	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*models.DevflowRun, error)

@@ -24,7 +24,6 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // IssueService creates and lists GitHub issues on project repositories.
@@ -65,7 +64,7 @@ type IssueService interface {
 }
 
 type issueService struct {
-	repo     repositories.RepoRepository
+	repo     RepoRepository
 	github   IssueOps
 	resolver secrets.Resolver
 	// createLocks serializes dedupe-checked creation per "owner/repo" so two
@@ -128,7 +127,7 @@ func (k *keyedMutex) lock(key string) func() {
 	}
 }
 
-func NewIssueService(repo repositories.RepoRepository, github IssueOps, resolver secrets.Resolver) IssueService {
+func NewIssueService(repo RepoRepository, github IssueOps, resolver secrets.Resolver) IssueService {
 	return &issueService{
 		repo:     repo,
 		github:   github,

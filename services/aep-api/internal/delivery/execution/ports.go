@@ -18,10 +18,10 @@ package execution
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // The consumer ports the funnel / sweep / events drive. Each is the narrow
@@ -90,7 +90,7 @@ type DesignReader interface {
 	OrgServiceDepNames(ctx context.Context, orgID, projectID string) (map[string][]string, error)
 }
 
-// ExecutionStore is the executions rows repository (repositories.ExecutionRepository).
+// ExecutionStore is the executions rows repository (delivery.ExecutionRepository).
 // Restated as a local port so the funnel depends on the verbs it drives.
 type ExecutionStore interface {
 	TryAdmit(ctx context.Context, e *models.Execution) (admitted bool, row *models.Execution, err error)
@@ -102,4 +102,4 @@ type ExecutionStore interface {
 }
 
 // Compile-time proof the concrete repository satisfies the port.
-var _ ExecutionStore = (repositories.ExecutionRepository)(nil)
+var _ ExecutionStore = (delivery.ExecutionRepository)(nil)

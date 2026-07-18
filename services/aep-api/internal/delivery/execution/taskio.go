@@ -23,7 +23,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // Reason sentinels stamped on execution rows. The closed-unmerged sentinel
@@ -90,7 +89,7 @@ func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullNam
 // computed, never-stored status (§4). execs is latest-per-kind; the PR state is
 // reconstructed from the rows (taskmeta.PRStateFromFacts).
 func deriveStatus(f delivery.TaskFacts, execs map[string]*models.Execution) taskmeta.DerivedStatus {
-	facts := repositories.ExecutionFacts(execs)
+	facts := delivery.ExecutionFacts(execs)
 	gh := taskmeta.GitHubFacts{
 		IssueOpen:   f.IssueOpen,
 		HoldPresent: f.HoldActive,

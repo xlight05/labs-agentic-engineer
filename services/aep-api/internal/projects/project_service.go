@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"log/slog"
 	"strings"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // Error sentinels for the project feature. ErrProjectNotFound is owned here.
@@ -52,7 +52,7 @@ type Service struct {
 	repoSvc        sourcecontrol.RepoService
 	webhookSvc     sourcecontrol.WebhookService
 	artifactSvc    spec.ArtifactService
-	execs          repositories.ExecutionRepository
+	execs          delivery.ExecutionRepository
 	skillsProv     skillsProvisioner
 	deprovisioner  resourceDeprovisioner // dependency provisioning teardown; may be nil
 	runReader      devRunRows            // build/deploy stage reads + delete purge (status_stages.go)
@@ -82,7 +82,7 @@ func NewProjectService(
 	repoSvc sourcecontrol.RepoService,
 	webhookSvc sourcecontrol.WebhookService,
 	artifactSvc spec.ArtifactService,
-	execs repositories.ExecutionRepository,
+	execs delivery.ExecutionRepository,
 ) *Service {
 	return &Service{
 		client:      client,

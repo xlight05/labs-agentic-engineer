@@ -25,7 +25,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // RepoService manages git repository lifecycle (create, get, delete).
@@ -55,7 +54,7 @@ type RepoService interface {
 }
 
 type repoService struct {
-	repo     repositories.RepoRepository
+	repo     RepoRepository
 	github   RepoAdmin
 	resolver secrets.Resolver
 	repoVis  string
@@ -79,7 +78,7 @@ func WithWorkspaceTrash(fn func(ctx context.Context, orgID, projectID, repoSlug 
 }
 
 func NewRepoService(
-	repo repositories.RepoRepository,
+	repo RepoRepository,
 	github RepoAdmin,
 	resolver secrets.Resolver,
 	repoVisibility string,

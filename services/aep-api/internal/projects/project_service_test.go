@@ -29,6 +29,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
 	"time"
 
@@ -40,7 +41,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // --- port fakes --------------------------------------------------------------
@@ -97,7 +97,7 @@ func (f *fakeWebhookSvc) Register(ctx context.Context, orgID, projectID string) 
 	return f.RegisterFunc(ctx, orgID, projectID)
 }
 
-// fakeExecs fakes the slice of repositories.ExecutionRepository the project
+// fakeExecs fakes the slice of delivery.ExecutionRepository the project
 // feature drives: DeleteByProject (the orphan purge). Every other verb is
 // unreachable from the project feature and returns zero.
 type fakeExecs struct {
@@ -107,7 +107,7 @@ type fakeExecs struct {
 	deleteCalls             int
 }
 
-func (f *fakeExecs) DistinctDeployedProjects(context.Context) ([]repositories.DeployedProjectRef, error) {
+func (f *fakeExecs) DistinctDeployedProjects(context.Context) ([]delivery.DeployedProjectRef, error) {
 	return nil, nil
 }
 
@@ -620,9 +620,9 @@ type statusFixture struct {
 	runsErr       error
 	bindings      []models.ReleaseBindingSummary
 	bindingsErr   error
-	validationRun *models.DevflowRun               // validation child of the newest dev run (nil = none)
-	validationErr error                            // ValidationRunByParent error
-	execs         repositories.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
+	validationRun *models.DevflowRun           // validation child of the newest dev run (nil = none)
+	validationErr error                        // ValidationRunByParent error
+	execs         delivery.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
 }
 
 func (fx statusFixture) service() *Service {

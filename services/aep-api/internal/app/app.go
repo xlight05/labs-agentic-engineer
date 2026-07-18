@@ -75,7 +75,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // Watcher is a long-running background loop. Every watcher blocks on its
@@ -117,15 +116,15 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// bootstrap: built-ins seed/reconcile into each org's repo on demand.
 
 	// Repositories
-	executionRepo := repositories.NewExecutionRepository(db)
+	executionRepo := delivery.NewExecutionRepository(db)
 	configRepo := projects.NewConfigRepository(db)
-	repoRepo := repositories.NewRepoRepository(db)
-	workflowRunRepo := repositories.NewWorkflowRunRepository(db)
-	orgRepo := repositories.NewOrganizationRepository(db)
-	orgCredRepo := repositories.NewOrgCredentialRepository(db)
-	orgAnthropicRepo := repositories.NewOrgAnthropicRepository(db)
-	idpRepo := repositories.NewIDPRepository(db)
-	codingAgentLogRepo := repositories.NewCodingAgentLogRepository(db)
+	repoRepo := sourcecontrol.NewRepoRepository(db)
+	workflowRunRepo := delivery.NewWorkflowRunRepository(db)
+	orgRepo := organization.NewOrganizationRepository(db)
+	orgCredRepo := organization.NewOrgCredentialRepository(db)
+	orgAnthropicRepo := organization.NewOrgAnthropicRepository(db)
+	idpRepo := organization.NewIDPRepository(db)
+	codingAgentLogRepo := delivery.NewCodingAgentLogRepository(db)
 
 	// Temporal devflow runtime. Constructed always, but connects lazily in the
 	// worker watcher's retry loop (never at Build time), so aep-api boots and
@@ -1163,7 +1162,7 @@ func computeDegradations(cfg config.Config, in Infra) []Degradation {
 // the execution package.
 type codingDispatcher struct {
 	funnel *execution.Funnel
-	execs  repositories.ExecutionRepository
+	execs  delivery.ExecutionRepository
 }
 
 func (d codingDispatcher) DispatchCoding(ctx context.Context, orgID, projectID, repo string, issue int) (string, error) {

@@ -14,15 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package repositories_test
+package delivery_test
 
 import (
 	"context"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 func devRun(org, project, wfID, tag string) *models.DevflowRun {
@@ -43,7 +43,7 @@ func devRun(org, project, wfID, tag string) *models.DevflowRun {
 func TestWorkflowRunRepository_TaskCounts(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewWorkflowRunRepository(db)
+	repo := delivery.NewWorkflowRunRepository(db)
 	ctx := context.Background()
 
 	row := devRun("orga", "proj", "devflow-orga-proj-v1", "v1")
@@ -122,7 +122,7 @@ func TestWorkflowRunRepository_TaskCounts(t *testing.T) {
 func TestWorkflowRunRepository_ValidationRunByParent(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewWorkflowRunRepository(db)
+	repo := delivery.NewWorkflowRunRepository(db)
 	ctx := context.Background()
 
 	dev := devRun("orga", "proj", "devflow-orga-proj-v1", "v1")
@@ -176,7 +176,7 @@ func TestWorkflowRunRepository_ValidationRunByParent(t *testing.T) {
 func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewWorkflowRunRepository(db)
+	repo := delivery.NewWorkflowRunRepository(db)
 	ctx := context.Background()
 
 	v1 := devRun("orga", "proj", "devflow-orga-proj-v1", "v1")

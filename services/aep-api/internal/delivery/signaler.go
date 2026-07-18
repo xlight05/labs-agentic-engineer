@@ -30,7 +30,7 @@ import (
 const signalTimeout = 5 * time.Second
 
 // SignalLookup resolves which running workflow (if any) wants an event.
-// Satisfied by repositories.WorkflowRunRepository.
+// Satisfied by WorkflowRunRepository.
 type SignalLookup interface {
 	RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*models.DevflowRun, error)
 }

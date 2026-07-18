@@ -55,12 +55,11 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/k8s"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // AnthropicCredentialService — see package doc.
 type AnthropicCredentialService struct {
-	repo         repositories.OrgAnthropicRepository
+	repo         OrgAnthropicRepository
 	store        secrets.OpenBaoStore
 	wpClient     client.Client
 	anthropicAPI string // "https://api.anthropic.com" by default; overridden in tests
@@ -118,7 +117,7 @@ func (s *AnthropicCredentialService) WithAnthropicAPIBase(base string) *Anthropi
 // non-nil; wpClient may be nil (off-cluster degraded mode — same shape as
 // BuildCredentialsService).
 func NewAnthropicCredentialService(
-	repo repositories.OrgAnthropicRepository,
+	repo OrgAnthropicRepository,
 	store secrets.OpenBaoStore,
 	wpClient client.Client,
 ) *AnthropicCredentialService {
@@ -201,7 +200,7 @@ func (s *AnthropicCredentialService) Connect(ctx context.Context, ocOrgID string
 		LastValidatedAt: &now,
 		ValidationError: nil,
 	}
-	err := s.repo.Tx(ctx, func(tx repositories.OrgAnthropicTx) error {
+	err := s.repo.Tx(ctx, func(tx OrgAnthropicTx) error {
 		if err := tx.AdvisoryLock("org_anthropic:" + ocOrgID); err != nil {
 			return fmt.Errorf("anthropic connect: lock: %w", err)
 		}
@@ -347,7 +346,7 @@ func (s *AnthropicCredentialService) Status(ctx context.Context, ocOrgID string)
 //
 // Idempotent: missing row is a no-op (200 → 204 at the API edge).
 func (s *AnthropicCredentialService) Disconnect(ctx context.Context, ocOrgID string) error {
-	err := s.repo.Tx(ctx, func(tx repositories.OrgAnthropicTx) error {
+	err := s.repo.Tx(ctx, func(tx OrgAnthropicTx) error {
 		if err := tx.AdvisoryLock("org_anthropic:" + ocOrgID); err != nil {
 			return fmt.Errorf("anthropic disconnect: lock: %w", err)
 		}

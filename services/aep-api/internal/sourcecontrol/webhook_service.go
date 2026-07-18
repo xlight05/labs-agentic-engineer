@@ -22,7 +22,6 @@ import (
 	"log/slog"
 
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // WebhookService manages per-repo webhook registration on GitHub.
@@ -52,7 +51,7 @@ type issueRepoResolver interface {
 }
 
 type webhookService struct {
-	repo             repositories.RepoRepository
+	repo             RepoRepository
 	github           WebhookOps
 	repoSvc          RepoService
 	issue            IssueService
@@ -62,7 +61,7 @@ type webhookService struct {
 }
 
 func NewWebhookService(
-	repo repositories.RepoRepository,
+	repo RepoRepository,
 	github WebhookOps,
 	repoSvc RepoService,
 	issueSvc IssueService,

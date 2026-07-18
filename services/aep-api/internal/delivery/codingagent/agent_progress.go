@@ -38,6 +38,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/organization"
 	"strings"
 	"time"
 
@@ -48,7 +50,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 const (
@@ -132,13 +133,13 @@ func bootstrapEvent(podFound bool, phase, waitingReason string) contracts.Progre
 // only, the pre-reconnect behaviour).
 type AgentProgressReader struct {
 	proxy *clustergatewayproxy.Client
-	logs  repositories.CodingAgentLogRepository
-	orgs  repositories.OrganizationRepository
+	logs  delivery.CodingAgentLogRepository
+	orgs  organization.OrganizationRepository
 }
 
 // NewAgentProgressReader wires the reader. proxy/logs may be nil in degraded
 // boot (AgentProgress then returns an empty, non-final response).
-func NewAgentProgressReader(proxy *clustergatewayproxy.Client, logs repositories.CodingAgentLogRepository, orgs repositories.OrganizationRepository) *AgentProgressReader {
+func NewAgentProgressReader(proxy *clustergatewayproxy.Client, logs delivery.CodingAgentLogRepository, orgs organization.OrganizationRepository) *AgentProgressReader {
 	return &AgentProgressReader{proxy: proxy, logs: logs, orgs: orgs}
 }
 
@@ -270,7 +271,7 @@ func pageEvents(text string, sinceMillis int64) ([]contracts.ProgressEvent, bool
 // resolveRemoteWorkerNS maps an OC org handle to its remote-worker namespace
 // (the ca-… Job namespace). Shared by the JobWatcher (log capture) and the
 // AgentProgressReader (live tail).
-func resolveRemoteWorkerNS(ctx context.Context, orgs repositories.OrganizationRepository, orgID string) (string, bool) {
+func resolveRemoteWorkerNS(ctx context.Context, orgs organization.OrganizationRepository, orgID string) (string, bool) {
 	org, err := orgs.GetByName(ctx, orgID)
 	if err != nil || org == nil {
 		return "", false

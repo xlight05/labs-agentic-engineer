@@ -14,15 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package repositories_test
+package sourcecontrol_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // TestRepoRepository_OrgScopedIsolation exercises real Postgres (no mock) to
@@ -33,7 +33,7 @@ func TestRepoRepository_OrgScopedIsolation(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mk := func(org, proj, url string) {
@@ -73,7 +73,7 @@ func TestRepoRepository_TwoOrgsSameProjectSlug(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	const slug = "shared-slug"
@@ -103,7 +103,7 @@ func TestRepoRepository_TwoOrgsSameProjectSlug(t *testing.T) {
 }
 
 // mkRepo persists a GitRepository row against real Postgres and returns it.
-func mkRepo(t *testing.T, repo repositories.RepoRepository, r *models.GitRepository) *models.GitRepository {
+func mkRepo(t *testing.T, repo sourcecontrol.RepoRepository, r *models.GitRepository) *models.GitRepository {
 	t.Helper()
 	if r.Status == "" {
 		r.Status = "ready"
@@ -120,7 +120,7 @@ func mkRepo(t *testing.T, repo repositories.RepoRepository, r *models.GitReposit
 func TestRepoRepository_GetByOrgAndSlug_OrgScoped(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/a/todo", RepoSlug: "a-todo"})
@@ -149,7 +149,7 @@ func TestRepoRepository_GetByOrgAndSlug_OrgScoped(t *testing.T) {
 func TestRepoRepository_ListAllReady(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
@@ -176,7 +176,7 @@ func TestRepoRepository_ListAllReady(t *testing.T) {
 func TestRepoRepository_ListAll(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "p1", RepoURL: "https://github.com/a/p1", Status: "ready"})
@@ -196,7 +196,7 @@ func TestRepoRepository_ListAll(t *testing.T) {
 func TestRepoRepository_Update(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	r := mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj", RepoURL: "https://github.com/a/proj", Status: "pending"})
@@ -219,7 +219,7 @@ func TestRepoRepository_Update(t *testing.T) {
 func TestRepoRepository_DeleteByOrgAndProjectID_OrgScoped(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "shared", RepoURL: "https://github.com/a/x"})
@@ -243,14 +243,14 @@ func TestRepoRepository_DeleteByOrgAndProjectID_OrgScoped(t *testing.T) {
 func TestLookupOrgProjectByRepoURL(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orga", ProjectID: "proj-a", RepoURL: "https://github.com/acme/todo"})
 	mkRepo(t, repo, &models.GitRepository{OrgID: "orgb", ProjectID: "proj-b", RepoURL: "https://github.com/other/todo.git"})
 
 	// Bare full_name resolves the bare-URL row.
-	org, proj, err := repositories.LookupOrgProjectByRepoURL(db.WithContext(ctx), "acme/todo")
+	org, proj, err := sourcecontrol.LookupOrgProjectByRepoURL(db.WithContext(ctx), "acme/todo")
 	if err != nil {
 		t.Fatalf("Lookup(acme/todo): %v", err)
 	}
@@ -259,7 +259,7 @@ func TestLookupOrgProjectByRepoURL(t *testing.T) {
 	}
 
 	// full_name resolves the `.git`-suffixed row too (canonical+".git").
-	org, proj, err = repositories.LookupOrgProjectByRepoURL(db.WithContext(ctx), "other/todo")
+	org, proj, err = sourcecontrol.LookupOrgProjectByRepoURL(db.WithContext(ctx), "other/todo")
 	if err != nil {
 		t.Fatalf("Lookup(other/todo): %v", err)
 	}
@@ -268,13 +268,13 @@ func TestLookupOrgProjectByRepoURL(t *testing.T) {
 	}
 
 	// Empty input short-circuits to empty (no query).
-	if o, p, err := repositories.LookupOrgProjectByRepoURL(db.WithContext(ctx), ""); err != nil || o != "" || p != "" {
+	if o, p, err := sourcecontrol.LookupOrgProjectByRepoURL(db.WithContext(ctx), ""); err != nil || o != "" || p != "" {
 		t.Fatalf("Lookup(\"\") = (%q,%q,%v); want empty", o, p, err)
 	}
 
 	// A bare repo name that a leading-wildcard LIKE would have matched must NOT
 	// resolve — the anchored equality is the INT-2 fix.
-	if o, p, err := repositories.LookupOrgProjectByRepoURL(db.WithContext(ctx), "todo"); err != nil || o != "" || p != "" {
+	if o, p, err := sourcecontrol.LookupOrgProjectByRepoURL(db.WithContext(ctx), "todo"); err != nil || o != "" || p != "" {
 		t.Fatalf("Lookup(todo) = (%q,%q,%v); want empty (no unanchored suffix match)", o, p, err)
 	}
 }
@@ -285,7 +285,7 @@ func TestRepoRepository_ListByOrg(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 
-	repo := repositories.NewRepoRepository(db)
+	repo := sourcecontrol.NewRepoRepository(db)
 	ctx := context.Background()
 
 	for _, r := range []models.GitRepository{

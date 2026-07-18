@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"strings"
 
 	"gorm.io/gorm"
@@ -33,7 +35,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
-	"github.com/wso2/aep/aep-api/repositories"
 )
 
 // The composition-root adapters that satisfy the tasks/execution/codingagent
@@ -45,7 +46,7 @@ import (
 type repoLocator struct{ db *gorm.DB }
 
 func (r repoLocator) ByFullName(_ context.Context, fullName string) (string, string, error) {
-	return repositories.LookupOrgProjectByRepoURL(r.db, fullName)
+	return sourcecontrol.LookupOrgProjectByRepoURL(r.db, fullName)
 }
 
 // taskSnapshotAdapter reads a Task's current snapshot for the task-log stream's
@@ -78,8 +79,8 @@ func (a taskSnapshotAdapter) TaskSnapshot(ctx context.Context, orgID, projectID 
 // the repo row, then the org-fenced by-issue history. Satisfies
 // execution.ExecutionHistory.
 type executionsByIssueAdapter struct {
-	repos repositories.RepoRepository
-	execs repositories.ExecutionRepository
+	repos sourcecontrol.RepoRepository
+	execs delivery.ExecutionRepository
 }
 
 func (a executionsByIssueAdapter) ByIssue(ctx context.Context, orgID, projectID string, issueNumber int) ([]models.Execution, error) {
@@ -225,7 +226,7 @@ func (o traitDeployObserver) OnComponentDeployed(ctx context.Context, orgID, pro
 // — the provision Execution row's Repo must equal the gate issue's repo full
 // name so the funnel gate resolves the run. Satisfies provisioning.RepoLocator.
 type repoNamer struct {
-	repos repositories.RepoRepository
+	repos sourcecontrol.RepoRepository
 	db    *gorm.DB
 }
 
@@ -239,13 +240,13 @@ func (r repoNamer) RepoFullName(ctx context.Context, orgID, projectID string) (s
 // issues/closed webhook uses to find the provider project of a declined
 // org-publish gate issue. Satisfies provisioning.RepoLocator.
 func (r repoNamer) ByFullName(_ context.Context, fullName string) (string, string, error) {
-	return repositories.LookupOrgProjectByRepoURL(r.db, fullName)
+	return sourcecontrol.LookupOrgProjectByRepoURL(r.db, fullName)
 }
 
 // provisionProjects enumerates an org's ready projects for the provisioning
 // feature's cross-project design scan (external-resource consumers, teardown).
 // Satisfies provisioning.ProjectLister.
-type provisionProjects struct{ repos repositories.RepoRepository }
+type provisionProjects struct{ repos sourcecontrol.RepoRepository }
 
 func (p provisionProjects) ListProjects(ctx context.Context, orgID string) ([]provisioning.ProjectRef, error) {
 	rows, err := p.repos.ListAllReady(ctx)
@@ -264,7 +265,7 @@ func (p provisionProjects) ListProjects(ctx context.Context, orgID string) ([]pr
 
 // repoLister enumerates ready project repos for the reconciliation sweep.
 // Satisfies execution.RepoLister.
-type repoLister struct{ repos repositories.RepoRepository }
+type repoLister struct{ repos sourcecontrol.RepoRepository }
 
 func (l repoLister) ListAll(ctx context.Context) ([]execution.RepoRef, error) {
 	rows, err := l.repos.ListAllReady(ctx)

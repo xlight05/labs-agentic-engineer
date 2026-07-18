@@ -25,7 +25,7 @@ import (
 
 // WorkflowRunStore is the narrow port the activities use to maintain the
 // workflow_runs lookup index. Satisfied by
-// repositories.WorkflowRunRepository. Kept as a devflow-local interface so
+// delivery.WorkflowRunRepository. Kept as a devflow-local interface so
 // the workflows/activities depend on a capability, not the concrete repo
 // (and tests can fake it).
 type WorkflowRunStore interface {
