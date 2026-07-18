@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
+	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/models"
@@ -151,15 +151,15 @@ func (s *legacyHandlers) ListAccessRequests(ctx context.Context, request gen.Lis
 // failure → 502, else an opaque 500.
 func mapProvisionError(err error) error {
 	switch {
-	case errors.Is(err, resources.ErrDepWrongKind):
+	case errors.Is(err, dependencies.ErrDepWrongKind):
 		return errBadRequest(err.Error())
-	case errors.Is(err, resources.ErrDepNotFound),
-		errors.Is(err, resources.ErrNotRegistered),
+	case errors.Is(err, dependencies.ErrDepNotFound),
+		errors.Is(err, dependencies.ErrNotRegistered),
 		errors.Is(err, provisioning.ErrOrgServiceNotFound):
 		return errNotFound(err.Error())
 	case errors.Is(err, provisioning.ErrExternalResourceInUse):
 		return errConflict(err.Error())
-	case errors.Is(err, resources.ErrProvisionFailed):
+	case errors.Is(err, dependencies.ErrProvisionFailed):
 		return errBadGateway(err.Error())
 	}
 	return errInternal("provisioning failed")

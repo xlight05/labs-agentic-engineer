@@ -25,8 +25,8 @@ import (
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
-	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
+	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 )
 
 // Deps carries every feature service the strict handlers (handlers_*.go)
@@ -37,7 +37,7 @@ import (
 // (untouched fields nil-guard or 503 in their handlers).
 type Deps struct {
 	ProvisioningSvc     *provisioning.Service
-	ResourceTypeCatalog dependencies.ResourceTypeLister
+	ResourceTypeCatalog mcpdiscovery.ResourceTypeLister
 	TaskTokens          *auth.TaskTokenManager
 
 	// Ops is the FIRST landed domain (P1): its handlers are embedded straight

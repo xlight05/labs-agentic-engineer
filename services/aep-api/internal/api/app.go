@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/config"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
+	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
@@ -95,13 +95,13 @@ type AppParams struct {
 	// a nil MCPExternalResources 503s the surface, a nil lister degrades its
 	// one tool to an empty result. The mount itself (surfaces.go) only needs
 	// Deps.TaskTokens, which verifies the caller's BFF-signed MCP token.
-	MCPExternalResources dependencies.ExternalResourceReader
-	MCPOrgEndpoints      dependencies.OrgEndpointLister
-	MCPResourceTypes     dependencies.ResourceTypeLister
+	MCPExternalResources mcpdiscovery.ExternalResourceReader
+	MCPOrgEndpoints      mcpdiscovery.OrgEndpointLister
+	MCPResourceTypes     mcpdiscovery.ResourceTypeLister
 	// MCPRemoteGit backs the read-only remote-git MCP tools (endpoint spec
 	// discovery). Nil makes get_remote_git_file_contents/search_remote_git_code
 	// return a tool error; it never affects the other tools.
-	MCPRemoteGit dependencies.RemoteGitReader
+	MCPRemoteGit mcpdiscovery.RemoteGitReader
 }
 
 // NewHandler assembles the full HTTP handler with middleware and routes.

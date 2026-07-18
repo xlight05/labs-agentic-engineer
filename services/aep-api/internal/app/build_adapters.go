@@ -24,8 +24,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
+	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -83,7 +83,7 @@ func (d buildAuthDeriver) DeriveEndUserAuthAtHead(ctx context.Context, orgID, pr
 // needs to form the per-env secret entity. orgID is unused — the SM-API write
 // keys on ocOrgID.
 type buildSecretStager struct {
-	prov *resources.ExternalResourceProvisioner
+	prov *dependencies.ExternalResourceProvisioner
 }
 
 func (s buildSecretStager) StageExternalSecrets(ctx context.Context, _, ocOrgID, projectID, depName string, secretsByEnv map[string]map[string]string) (map[string]string, error) {

@@ -21,7 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
+	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
@@ -136,7 +136,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 	// tool to an empty result (see dependencies.NewMCPHandler).
 	if params.Deps.TaskTokens != nil {
 		mcpVerifier := auth.NewAgentsScopedVerifier(params.Deps.TaskTokens)
-		mcpHandler := dependencies.NewMCPHandler(
+		mcpHandler := mcpdiscovery.NewMCPHandler(
 			params.MCPExternalResources, params.MCPOrgEndpoints, params.MCPResourceTypes, params.MCPRemoteGit)
 		mux.Handle("POST "+internalV1+"/mcp", mcpVerifier.Middleware(mcpHandler))
 
@@ -150,7 +150,7 @@ func mountSurfaces(params AppParams) *http.ServeMux {
 		// absence, matching the MCP mount's own conditional-mount posture).
 		if params.Config.PlaygroundTokenEnabled {
 			mux.Handle("POST "+internalV1+"/mcp/playground-token",
-				dependencies.NewPlaygroundTokenHandler(params.Deps.TaskTokens))
+				mcpdiscovery.NewPlaygroundTokenHandler(params.Deps.TaskTokens))
 		}
 	}
 

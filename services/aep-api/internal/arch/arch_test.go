@@ -64,39 +64,19 @@ var featureEdgeAllowlist = map[string][]string{
 	// Components domain is a flat-root merge of the two features. Their rows are
 	// gone because the features are gone; projects consumes spec + sourcecontrol
 	// as domain→domain edges, policed by TestDomainsAreFeatureFree instead.)
-	// dependencies is the dependency-management feature: the parent package (MCP
-	// discovery server + endpoints catalog) composes its own resources and
-	// endpoints subpackages (external/platform provisioner cores; the org
-	// endpoint catalog). ports.go's OrgEndpointLister.ListResolved return type is
-	// endpoints.OrgComponentEndpoint (A3's list_org_component_endpoints MCP
-	// tool), so the parent package names its own child package's type — the same
-	// shape as the resources edge below. endpoints/ and resources/ hold no
-	// cross-feature edges of their own — every other collaborator (OC client,
-	// external-resource repo, secret writer, design reader) is a consumer-side
-	// port wired at the composition root, keeping the feature edge surface minimal.
-	"dependencies": {"dependencies/resources", "dependencies/endpoints"},
-	// (execution MIGRATED to internal/delivery/execution — the platform-owned
-	// half of the Task/Execution split is now a delivery-domain sub-package, not
-	// a feature. Its row is gone because the feature is gone; the §1 boundary is
-	// re-asserted below as feature/task ⊥ delivery/execution.)
-	// provisioning is the dependency-provisioning coordinator (dependency-management
-	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
-	// issues now come from the sourcecontrol domain (P2). Every other collaborator —
-	// the executions store, the funnel Reevaluate hook, the design reader, the repo
-	// locator — is a consumer-side port wired at the composition root.
-	"provisioning": {"dependencies/resources"},
-	// (rcaagent MIGRATED to internal/ops in P1 — the first feature to become a
-	// domain. Its row is gone because the feature is gone; the allowlist may only
-	// shrink from here as each phase lands.)
-	// runtimeconfig reads the thunder-app dependency's binding outputs (OIDC
-	// config) and patches its redirect URIs declaratively; it reuses the
-	// resources package's single source of truth for the per-env binding name
-	// (ExternalResourceBindingName) rather than re-deriving the convention.
-	// (Its artifacts edge became a feature→spec-domain edge in P4.)
-	"runtimeconfig": {"dependencies/resources"},
-	// (task MIGRATED to internal/delivery/task in P6 — the GitHub-facing half of
-	// the Task/Execution split is now a delivery-domain sub-package. Its row is
-	// gone; the §1 boundary is re-asserted by TestTaskExecutionSplit as
+	// (dependencies + provisioning + runtimeconfig MIGRATED to internal/dependencies
+	// in P8 — the Dependencies & Provisioning domain, a kernel-root merge: the two
+	// pure provisioner cores (resources + endpoints) flattened into the domain ROOT,
+	// and provisioning/runtimeconfig/mcpdiscovery became sub-package slices importing
+	// only that root. Their three rows are gone because the features are gone;
+	// runtimeconfig's watcher gorm moved to repositories in P8.0, so the domain is
+	// gorm-free. Policed now by TestDomainsAreFeatureFree + root⊥slice / slice⊥sibling
+	// instead of a feature-edge row.)
+	//
+	// (execution + task MIGRATED to internal/delivery in P6; build to
+	// internal/delivery/build in P6; rcaagent to internal/ops in P1; component +
+	// project to internal/projects in P7 — every row gone with its feature. The §1
+	// Task/Execution boundary is re-asserted by TestTaskExecutionSplit as
 	// delivery/task ⊥ delivery/execution.)
 	"webhook": {},
 }

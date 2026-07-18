@@ -52,11 +52,10 @@ import (
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/endpoints"
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
-	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
+	"github.com/wso2/aep/aep-api/internal/dependencies/mcpdiscovery"
+	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
+	"github.com/wso2/aep/aep-api/internal/dependencies/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
@@ -751,9 +750,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// catalog discover each org-service's real OpenAPI contract + repo coords
 	// (endpoint spec discovery). Wired here so the A3 MCP tool projects them;
 	// the read-only List/Resolve* surface degrades gracefully if either is nil.
-	orgEndpointCatalog := endpoints.NewCatalog(resourceClient,
-		endpoints.WithRepoLocator(repoRepo),
-		endpoints.WithDesignReader(artifactStore),
+	orgEndpointCatalog := dependencies.NewCatalog(resourceClient,
+		dependencies.WithRepoLocator(repoRepo),
+		dependencies.WithDesignReader(artifactStore),
 	)
 	externalResourceRepo := repositories.NewExternalResourceRepository(db)
 	params.MCPExternalResources = externalResourceRepo
@@ -822,14 +821,14 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	}
 	params.Deps.Ops = opsHandlers
 	params.MCPOrgEndpoints = orgEndpointCatalog
-	resourceTypeCatalog := resources.NewResourceTypeCatalog(resourceClient)
+	resourceTypeCatalog := dependencies.NewResourceTypeCatalog(resourceClient)
 	params.MCPResourceTypes = resourceTypeCatalog
 	params.Deps.ResourceTypeCatalog = resourceTypeCatalog
 	// Endpoint spec discovery: the read-only remote-git reader an agent uses to
 	// read a provider's OpenAPI file from its own repo (Contents + Code Search,
 	// no clone). It resolves the org's credential (token + owner) from
 	// credResolver and refuses any owner that is not the org's GitHub account.
-	params.MCPRemoteGit = dependencies.NewRemoteGitClient(credResolver)
+	params.MCPRemoteGit = mcpdiscovery.NewRemoteGitClient(credResolver)
 	// design-save keys end-user-auth derivation on the CRT role marker read from
 	// this catalog (thunder-app generalization); wired consumer-side so design
 	// holds only a narrow MarkersByName port. When the design declares a
@@ -856,7 +855,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Executions (Kind=provision) and closes each issue with a no-secrets
 	// reference; the readiness watcher observes platform-resource bindings'
 	// native Ready condition out-of-band and releases gated consumer tasks.
-	externalProvisioner := resources.NewExternalResourceProvisioner(externalResourceRepo, resourceClient, smWriter)
+	externalProvisioner := dependencies.NewExternalResourceProvisioner(externalResourceRepo, resourceClient, smWriter)
 	// The public build surface: its InputsCoordinator runs the drawer inputs'
 	// pre-tag work (collect external specs, derive end-user auth) and stages
 	// external-config secrets to SM-API through externalProvisioner before the
@@ -874,7 +873,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 			designComponents{store: artifactStore},
 		),
 	})
-	platformProvisioner := resources.NewOCNativeProvisioner(resourceClient)
+	platformProvisioner := dependencies.NewOCNativeProvisioner(resourceClient)
 	provisioningSvc := provisioning.NewService(provisioning.Deps{
 		Issues:    issueService,
 		Execs:     executionRepo,

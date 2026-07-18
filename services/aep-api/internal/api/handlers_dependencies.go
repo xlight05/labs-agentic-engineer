@@ -19,7 +19,7 @@ package api
 import (
 	"context"
 
-	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/gen"
 )
 
@@ -47,7 +47,7 @@ func (s *legacyHandlers) ListPlatformResourceTypes(ctx context.Context, _ gen.Li
 // toPlatformResourceTypeDTOs projects the domain resource types onto the wire
 // DTO: the architect-facing fields (name, description, parameters, outputs)
 // minus the AEP-internal markers.
-func toPlatformResourceTypeDTOs(in []resources.PlatformResourceType) []gen.PlatformResourceTypeDTO {
+func toPlatformResourceTypeDTOs(in []dependencies.PlatformResourceType) []gen.PlatformResourceTypeDTO {
 	out := make([]gen.PlatformResourceTypeDTO, 0, len(in))
 	for _, t := range in {
 		out = append(out, gen.PlatformResourceTypeDTO{
