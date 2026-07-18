@@ -50,9 +50,9 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -334,7 +334,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("single auth dep: exact USER_AUTH_* key set, no THUNDER_*, patch once", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}),
 		}
 		design := readDesign(t, files)
@@ -386,7 +386,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("two PR deps: both output prefixes emitted; patch only the annotated dep", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}, {"orders-db", "postgres-cnpg"}}),
 		}
 		design := readDesign(t, files)
@@ -434,7 +434,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("custom consumer-url-path patches origin+path", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}),
 		}
 		design := readDesign(t, files)
@@ -463,7 +463,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("absent annotation: outputs emitted, NO patch call", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", []prDep{{"orders-db", "postgres-cnpg"}}),
 		}
 		design := readDesign(t, files)
@@ -489,7 +489,7 @@ func Test_buildEnvValues_genericEmission(t *testing.T) {
 	t.Run("web-app with only component deps: no catalog read, no resource client touch", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -524,7 +524,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	ctx := context.Background()
 
 	authWebFiles := map[string]string{
-		spec.DesignRootFile:     rootDesignMd(),
+		spec.DesignRootFile:          rootDesignMd(),
 		"components/web/design.json": webappWithPR("web", []prDep{{"user-auth", "thunder-app"}}, "api"),
 		"components/api/design.json": serviceComponentMd(),
 	}
@@ -532,7 +532,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("unresolved service dep gates emission (ready=false)", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -552,7 +552,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("ListDeployments error on a service dep gates emission", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappMd("web", "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -573,7 +573,7 @@ func Test_buildEnvValues_defers(t *testing.T) {
 	t.Run("non-service component dep is skipped, not gated", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:      rootDesignMd(),
+			spec.DesignRootFile:           rootDesignMd(),
 			"components/web/design.json":  webappMd("web", "peer"),
 			"components/peer/design.json": webappMd("peer"),
 		}
@@ -788,7 +788,7 @@ func Test_EmitForComponent(t *testing.T) {
 			pr = []prDep{{"user-auth", resourceType}}
 		}
 		return map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/web/design.json": webappWithPR("web", pr, "api"),
 			"components/api/design.json": serviceComponentMd(),
 		}
@@ -852,7 +852,7 @@ func Test_EmitForComponent(t *testing.T) {
 		t.Parallel()
 		for _, retired := range []string{"webapp", "web-app"} {
 			files := map[string]string{
-				spec.DesignRootFile:     rootDesignMd(),
+				spec.DesignRootFile:          rootDesignMd(),
 				"components/web/design.json": buildComponentJSON("web", retired, []string{"api"}, nil),
 				"components/api/design.json": serviceComponentMd(),
 			}
@@ -1001,7 +1001,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	ctx := context.Background()
 
 	twoSPAsOneService := map[string]string{
-		spec.DesignRootFile:      rootDesignMd(),
+		spec.DesignRootFile:           rootDesignMd(),
 		"components/web1/design.json": webappMd("web1", "api"),
 		"components/web2/design.json": webappMd("web2", "api"),
 		"components/api/design.json":  serviceComponentMd(),
@@ -1037,7 +1037,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	t.Run("no web-apps is a no-op", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     rootDesignMd(),
+			spec.DesignRootFile:          rootDesignMd(),
 			"components/api/design.json": serviceComponentMd(),
 		}
 		oc := &ocmocks.ComponentClientMock{} // must never be touched

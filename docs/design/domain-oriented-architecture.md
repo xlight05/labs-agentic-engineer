@@ -1323,6 +1323,47 @@ for what it *didn't* need:
   `ListProjects`, which P7b moved off `legacyShim`, so the planted double-coverage was re-anchored on
   `ListPlatformResourceTypes` (a real op still legacy until P8) to stay a genuine two-provider tie.
 
+**P8 (`dependencies`) findings** — the last fold, and the second kernel-root domain (after delivery). It
+merges three features whose *cores* are the shared thing, which inverts the delivery lift:
+
+- **When the cores ARE the shared kernel, flatten them into the root — don't lift a subset.** delivery lifted
+  a *subset* (types/ports) to its root and kept each feature a sub-package. dependencies is the mirror: the
+  services (provisioning/runtimeconfig/mcpdiscovery) are what vary, and they are all built on the two pure
+  provisioner *cores* (`resources`, `endpoints`). Measuring the cross-boundary surface settled it — nearly
+  the whole public API of both cores crossed into the services (result/env types, the resource-type catalog,
+  `TypeMarkers`, the naming helpers, the error sentinels). So the cores flatten into the root package and the
+  services become the slices. The tell is a package with **no back-edges** that everything else imports: that
+  is a kernel, not a slice.
+- **Flattening two packages collides on exactly the shared vocabulary — hunt it before moving.** Merging
+  `resources` + `endpoints` into one root had ONE real identifier collision (`DesignReader`, defined by both —
+  resources reads components, endpoints reads the design bundle) and two filename collisions (`doc.go`,
+  `naming.go`). A `comm -12` of each package's top-level decls found the identifier collision up front;
+  renaming endpoints' `DesignReader` → `DesignBundleReader` (a type no consumer named) and moving
+  `endpoints/naming.go` → `endpoint_naming.go` was the whole cost. Because each core never qualified its OWN
+  symbols, the *internal* code needed zero requalification — only external `resources.`/`endpoints.` →
+  `dependencies.` in consumers.
+- **The field-access hazard of a mechanical requalify is real, and `zsh` hides a whole loop.** A struct field
+  named `resources` turned `h.resources.List()` into `h.dependencies.List()` under a naive `\bresources\.`
+  rewrite — caught by the build, fixed by excluding a preceding `.` (`(?<![\w.])`). Separately, `for f in
+  $FILES` in zsh does NOT word-split an unquoted variable (unlike bash), so a consumer-requalify loop ran once
+  with `$f` = the whole string and silently changed nothing; the earlier slice loops only worked because they
+  used globs. Iterate an explicit list, and always requalify the *outgoing* package name first when one target
+  name is reused (`dependencies.`→`mcpdiscovery.` before `resources.`→`dependencies.`, else the two become
+  indistinguishable).
+- **P8 empties `legacyShim` — so the fires-proof loses its anchor.** After the 8th op migrated, all 61 ops
+  resolve to a domain and the real `legacyShim` serves NONE. The method-origin fires-proof planted a genuine
+  two-provider tie on a still-legacy op; with none left, it was re-anchored on a self-contained `plantedLegacy`
+  fixture that reproduces the pre-cut shim shape (a `struct{ *handlers }` promoting the op at depth-2). The net
+  still fires (`ambiguous selector` on a planted forgotten-cut), now independent of migration state — which it
+  must be, because P9 deletes the shim entirely.
+- **The "ops-class executor via FunnelPort" is a P9 formalisation, not a P8 rewrite.** Behaviour-preservation
+  (§19.4) forbids re-routing provisioning through a new admit path, and P7 set the precedent: projects consumes
+  `repositories.ExecutionRepository` directly (fence-legal kernel), deferring the delivery-port routing to P9.
+  dependencies does the same — its `ExecutionStore`/`Reevaluator` consumer ports stay satisfied at the root by
+  `repositories.*` + the funnel today; they become a delivery-offered `FunnelPort` when the store moves internal
+  in P9. P8c (secrets) was a no-op like every prior domain's (the `SecretWriter` port keeps the fence green),
+  and `AccessRequest` stays `x-go-type: models.X` — the same deferral P3/P7 made for their kernel-typed schemas.
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |

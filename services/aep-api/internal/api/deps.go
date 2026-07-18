@@ -17,8 +17,8 @@
 package api
 
 import (
-	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
+	dephttpapi "github.com/wso2/aep/aep-api/internal/dependencies/httpapi"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
