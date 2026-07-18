@@ -23,8 +23,6 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ErrAccessRequestNotFound is returned when no access request matches the lookup.
@@ -47,7 +45,7 @@ func NewAccessRequestRepository(db *gorm.DB) *AccessRequestRepository {
 // Create inserts a new access request. The ID is minted here when unset (so
 // the store works without relying on the DB `gen_random_uuid()` default), and
 // the status defaults to `requested` when empty.
-func (r *AccessRequestRepository) Create(ctx context.Context, ar *models.AccessRequest) error {
+func (r *AccessRequestRepository) Create(ctx context.Context, ar *AccessRequest) error {
 	if ar == nil {
 		return fmt.Errorf("access_requests: nil access request")
 	}
@@ -58,7 +56,7 @@ func (r *AccessRequestRepository) Create(ctx context.Context, ar *models.AccessR
 		ar.ID = uuid.NewString()
 	}
 	if ar.Status == "" {
-		ar.Status = models.AccessRequestStatusRequested
+		ar.Status = AccessRequestStatusRequested
 	}
 	if err := r.db.WithContext(ctx).Create(ar).Error; err != nil {
 		return fmt.Errorf("access_requests: create request: %w", err)
@@ -69,11 +67,11 @@ func (r *AccessRequestRepository) Create(ctx context.Context, ar *models.AccessR
 // Get returns a single access request scoped to (org, id). Returns
 // ErrAccessRequestNotFound when absent or owned by another org (no existence
 // leak across orgs).
-func (r *AccessRequestRepository) Get(ctx context.Context, orgID, id string) (*models.AccessRequest, error) {
+func (r *AccessRequestRepository) Get(ctx context.Context, orgID, id string) (*AccessRequest, error) {
 	if orgID == "" || id == "" {
 		return nil, fmt.Errorf("access_requests: orgID and id are required")
 	}
-	var ar models.AccessRequest
+	var ar AccessRequest
 	err := r.db.WithContext(ctx).Where("org_id = ? AND id = ?", orgID, id).First(&ar).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrAccessRequestNotFound
@@ -86,11 +84,11 @@ func (r *AccessRequestRepository) Get(ctx context.Context, orgID, id string) (*m
 
 // ListByConsumerProject returns every access request a project's components
 // have raised, newest first.
-func (r *AccessRequestRepository) ListByConsumerProject(ctx context.Context, orgID, projectID string) ([]models.AccessRequest, error) {
+func (r *AccessRequestRepository) ListByConsumerProject(ctx context.Context, orgID, projectID string) ([]AccessRequest, error) {
 	if orgID == "" || projectID == "" {
 		return nil, fmt.Errorf("access_requests: orgID and projectID are required")
 	}
-	var out []models.AccessRequest
+	var out []AccessRequest
 	if err := r.db.WithContext(ctx).
 		Where("org_id = ? AND consumer_project_id = ?", orgID, projectID).
 		Order("created_at DESC").
@@ -104,15 +102,15 @@ func (r *AccessRequestRepository) ListByConsumerProject(ctx context.Context, org
 // request targeting the given provider component, for idempotency/dedup — so
 // multiple consumers of one provider endpoint reuse the same publish task.
 // Returns (nil, nil) when there is no open request for that target.
-func (r *AccessRequestRepository) FindOpenForTarget(ctx context.Context, orgID, providerProjectID, providerComponentName string) (*models.AccessRequest, error) {
+func (r *AccessRequestRepository) FindOpenForTarget(ctx context.Context, orgID, providerProjectID, providerComponentName string) (*AccessRequest, error) {
 	if orgID == "" || providerProjectID == "" || providerComponentName == "" {
 		return nil, fmt.Errorf("access_requests: orgID, providerProjectID and providerComponentName are required")
 	}
-	var ar models.AccessRequest
+	var ar AccessRequest
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND provider_project_id = ? AND provider_component_name = ? AND status IN ?",
 			orgID, providerProjectID, providerComponentName,
-			[]string{models.AccessRequestStatusRequested, models.AccessRequestStatusInProgress}).
+			[]string{AccessRequestStatusRequested, AccessRequestStatusInProgress}).
 		Order("created_at DESC").
 		First(&ar).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -130,7 +128,7 @@ func (r *AccessRequestRepository) UpdateStatus(ctx context.Context, id, status s
 	if id == "" || status == "" {
 		return fmt.Errorf("access_requests: id and status are required")
 	}
-	res := r.db.WithContext(ctx).Model(&models.AccessRequest{}).
+	res := r.db.WithContext(ctx).Model(&AccessRequest{}).
 		Where("id = ?", id).
 		Update("status", status)
 	if res.Error != nil {
@@ -145,11 +143,11 @@ func (r *AccessRequestRepository) UpdateStatus(ctx context.Context, id, status s
 // ListByProviderTask returns every consumer request riding on one provider
 // publish task — used by the grant-sync to flip all consumers together when
 // the provider task lands.
-func (r *AccessRequestRepository) ListByProviderTask(ctx context.Context, providerTaskID string) ([]models.AccessRequest, error) {
+func (r *AccessRequestRepository) ListByProviderTask(ctx context.Context, providerTaskID string) ([]AccessRequest, error) {
 	if providerTaskID == "" {
 		return nil, fmt.Errorf("access_requests: providerTaskID is required")
 	}
-	var out []models.AccessRequest
+	var out []AccessRequest
 	if err := r.db.WithContext(ctx).
 		Where("provider_task_id = ?", providerTaskID).
 		Order("created_at DESC").

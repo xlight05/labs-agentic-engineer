@@ -22,6 +22,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -200,7 +201,7 @@ func TestGrantByProviderComponent_ResolvesConsumerVisibilityGate(t *testing.T) {
 		t.Fatalf("grant cascade must reevaluate the funnel")
 	}
 	// The rider flipped to granted.
-	if spies.access.rows[0].Status != models.AccessRequestStatusGranted {
+	if spies.access.rows[0].Status != dependencies.AccessRequestStatusGranted {
 		t.Fatalf("rider must be granted, got %q", spies.access.rows[0].Status)
 	}
 }

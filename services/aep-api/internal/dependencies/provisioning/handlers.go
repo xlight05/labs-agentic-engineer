@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Handler is the dependency-provisioning slice of the strict interface: the
@@ -137,7 +136,7 @@ func (h *Handler) RequestOrgServiceAccess(ctx context.Context, request gen.Reque
 	if err != nil {
 		return nil, mapProvisionError(err)
 	}
-	return gen.RequestOrgServiceAccess201JSONResponse(*ar), nil
+	return gen.RequestOrgServiceAccess201JSONResponse(accessRequestToWire(*ar)), nil
 }
 
 func (h *Handler) ListAccessRequests(ctx context.Context, request gen.ListAccessRequestsRequestObject) (gen.ListAccessRequestsResponseObject, error) {
@@ -150,9 +149,38 @@ func (h *Handler) ListAccessRequests(ctx context.Context, request gen.ListAccess
 		return nil, mapProvisionError(err)
 	}
 	if reqs == nil {
-		reqs = []models.AccessRequest{}
+		reqs = []dependencies.AccessRequest{}
 	}
-	return gen.ListAccessRequests200JSONResponse(reqs), nil
+	return gen.ListAccessRequests200JSONResponse(accessRequestsToWire(reqs)), nil
+}
+
+// accessRequestToWire projects the dependencies.AccessRequest domain entity
+// onto the generated wire type. Field-for-field identical except the entity's
+// ProviderIssueNumber is a plain int (the schema types it int64) — a widening
+// cast that leaves the JSON unchanged.
+func accessRequestToWire(ar dependencies.AccessRequest) gen.AccessRequest {
+	return gen.AccessRequest{
+		ID:                    ar.ID,
+		ConsumerProjectID:     ar.ConsumerProjectID,
+		ConsumerComponentName: ar.ConsumerComponentName,
+		OrgServiceName:        ar.OrgServiceName,
+		ProviderProjectID:     ar.ProviderProjectID,
+		ProviderComponentName: ar.ProviderComponentName,
+		ProviderTaskID:        ar.ProviderTaskID,
+		ProviderIssueNumber:   int64(ar.ProviderIssueNumber),
+		ProviderIssueURL:      ar.ProviderIssueURL,
+		Status:                ar.Status,
+		CreatedAt:             ar.CreatedAt,
+		UpdatedAt:             ar.UpdatedAt,
+	}
+}
+
+func accessRequestsToWire(reqs []dependencies.AccessRequest) []gen.AccessRequest {
+	out := make([]gen.AccessRequest, 0, len(reqs))
+	for _, ar := range reqs {
+		out = append(out, accessRequestToWire(ar))
+	}
+	return out
 }
 
 // mapProvisionError translates the provisioning sentinels into the envelope:

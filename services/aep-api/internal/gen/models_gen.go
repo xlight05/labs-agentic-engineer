@@ -221,7 +221,20 @@ func (e ListTasksParamsState) Valid() bool {
 }
 
 // AccessRequest defines model for AccessRequest.
-type AccessRequest = models.AccessRequest
+type AccessRequest struct {
+	ConsumerComponentName string    `json:"consumerComponentName"`
+	ConsumerProjectID     string    `json:"consumerProjectId"`
+	CreatedAt             time.Time `json:"createdAt"`
+	ID                    string    `json:"id"`
+	OrgServiceName        string    `json:"orgServiceName"`
+	ProviderComponentName string    `json:"providerComponentName,omitempty"`
+	ProviderIssueNumber   int64     `json:"providerIssueNumber,omitempty"`
+	ProviderIssueURL      string    `json:"providerIssueUrl,omitempty"`
+	ProviderProjectID     string    `json:"providerProjectId,omitempty"`
+	ProviderTaskID        string    `json:"providerTaskId,omitempty"`
+	Status                string    `json:"status"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+}
 
 // ApplyConflict One file whose baseSha no longer matches HEAD.
 type ApplyConflict struct {

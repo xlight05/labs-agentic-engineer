@@ -286,18 +286,18 @@ func (f fakeProviders) FindByComponent(_ context.Context, _, name string) (openc
 }
 
 type fakeAccess struct {
-	rows   []*models.AccessRequest
+	rows   []*dependencies.AccessRequest
 	nextID int
 }
 
-func (f *fakeAccess) Create(_ context.Context, ar *models.AccessRequest) error {
+func (f *fakeAccess) Create(_ context.Context, ar *dependencies.AccessRequest) error {
 	f.nextID++
 	ar.ID = fmt.Sprintf("ar-%d", f.nextID)
 	f.rows = append(f.rows, ar)
 	return nil
 }
-func (f *fakeAccess) ListByConsumerProject(_ context.Context, orgID, projectID string) ([]models.AccessRequest, error) {
-	var out []models.AccessRequest
+func (f *fakeAccess) ListByConsumerProject(_ context.Context, orgID, projectID string) ([]dependencies.AccessRequest, error) {
+	var out []dependencies.AccessRequest
 	for _, r := range f.rows {
 		if r.OrgID == orgID && r.ConsumerProjectID == projectID {
 			out = append(out, *r)
@@ -305,10 +305,10 @@ func (f *fakeAccess) ListByConsumerProject(_ context.Context, orgID, projectID s
 	}
 	return out, nil
 }
-func (f *fakeAccess) FindOpenForTarget(_ context.Context, orgID, providerProjectID, providerComponent string) (*models.AccessRequest, error) {
+func (f *fakeAccess) FindOpenForTarget(_ context.Context, orgID, providerProjectID, providerComponent string) (*dependencies.AccessRequest, error) {
 	for _, r := range f.rows {
 		if r.OrgID == orgID && r.ProviderProjectID == providerProjectID && r.ProviderComponentName == providerComponent &&
-			r.Status != models.AccessRequestStatusGranted && r.Status != models.AccessRequestStatusRejected {
+			r.Status != dependencies.AccessRequestStatusGranted && r.Status != dependencies.AccessRequestStatusRejected {
 			return r, nil
 		}
 	}
@@ -322,8 +322,8 @@ func (f *fakeAccess) UpdateStatus(_ context.Context, id, status string) error {
 	}
 	return nil
 }
-func (f *fakeAccess) ListByProviderTask(_ context.Context, providerTaskID string) ([]models.AccessRequest, error) {
-	var out []models.AccessRequest
+func (f *fakeAccess) ListByProviderTask(_ context.Context, providerTaskID string) ([]dependencies.AccessRequest, error) {
+	var out []dependencies.AccessRequest
 	for _, r := range f.rows {
 		if r.ProviderTaskID == providerTaskID {
 			out = append(out, *r)
@@ -337,10 +337,10 @@ func TestOnIssueClosed_RejectsUngrantedRidersOnDecline(t *testing.T) {
 	ctx := context.Background()
 	// Two consumers rode the same warehouse#12 org-publish gate issue: one still
 	// pending, one already granted (an earlier partial grant).
-	_ = access.Create(ctx, &models.AccessRequest{OrgID: "acme", ProviderProjectID: "warehouse",
-		ProviderTaskID: providerTaskKey("warehouse", 12), Status: models.AccessRequestStatusRequested})
-	_ = access.Create(ctx, &models.AccessRequest{OrgID: "acme", ProviderProjectID: "warehouse",
-		ProviderTaskID: providerTaskKey("warehouse", 12), Status: models.AccessRequestStatusGranted})
+	_ = access.Create(ctx, &dependencies.AccessRequest{OrgID: "acme", ProviderProjectID: "warehouse",
+		ProviderTaskID: providerTaskKey("warehouse", 12), Status: dependencies.AccessRequestStatusRequested})
+	_ = access.Create(ctx, &dependencies.AccessRequest{OrgID: "acme", ProviderProjectID: "warehouse",
+		ProviderTaskID: providerTaskKey("warehouse", 12), Status: dependencies.AccessRequestStatusGranted})
 	svc := NewService(Deps{Access: access, Repos: fakeRepos{}})
 
 	// Provider manually closes the gate issue → decline.
@@ -348,10 +348,10 @@ func TestOnIssueClosed_RejectsUngrantedRidersOnDecline(t *testing.T) {
 	if err := svc.OnIssueClosed(ctx, "issues", "closed", payload); err != nil {
 		t.Fatalf("OnIssueClosed: %v", err)
 	}
-	if access.rows[0].Status != models.AccessRequestStatusRejected {
+	if access.rows[0].Status != dependencies.AccessRequestStatusRejected {
 		t.Fatalf("pending rider must flip to rejected, got %q", access.rows[0].Status)
 	}
-	if access.rows[1].Status != models.AccessRequestStatusGranted {
+	if access.rows[1].Status != dependencies.AccessRequestStatusGranted {
 		t.Fatalf("already-granted rider must stay granted, got %q", access.rows[1].Status)
 	}
 }
@@ -669,7 +669,7 @@ func TestRequestAccess_CreatesRequestAndProviderIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestAccess: %v", err)
 	}
-	if ar.Status != models.AccessRequestStatusRequested {
+	if ar.Status != dependencies.AccessRequestStatusRequested {
 		t.Fatalf("new access request must be 'requested', got %q", ar.Status)
 	}
 	if ar.ProviderProjectID != "warehouse" || ar.ProviderComponentName != "inventory" {
@@ -706,15 +706,15 @@ func TestGrant_OnProviderDeploy(t *testing.T) {
 	access := &fakeAccess{}
 	// Two riders on the same provider issue, both pending.
 	pk := providerTaskKey("warehouse", 20)
-	_ = access.Create(context.Background(), &models.AccessRequest{
+	_ = access.Create(context.Background(), &dependencies.AccessRequest{
 		OrgID: "org", ConsumerProjectID: "storefront", ProviderProjectID: "warehouse",
 		ProviderComponentName: "inventory", ProviderTaskID: pk, ProviderIssueNumber: 20,
-		Status: models.AccessRequestStatusRequested,
+		Status: dependencies.AccessRequestStatusRequested,
 	})
-	_ = access.Create(context.Background(), &models.AccessRequest{
+	_ = access.Create(context.Background(), &dependencies.AccessRequest{
 		OrgID: "org", ConsumerProjectID: "another", ProviderProjectID: "warehouse",
 		ProviderComponentName: "inventory", ProviderTaskID: pk, ProviderIssueNumber: 20,
-		Status: models.AccessRequestStatusRequested,
+		Status: dependencies.AccessRequestStatusRequested,
 	})
 	svc := NewService(Deps{Issues: issues, Execs: &fakeExecStore{}, Access: access, Repos: fakeRepos{}})
 
@@ -723,7 +723,7 @@ func TestGrant_OnProviderDeploy(t *testing.T) {
 		t.Fatalf("OnComponentDeployed: %v", err)
 	}
 	for _, r := range access.rows {
-		if r.Status != models.AccessRequestStatusGranted {
+		if r.Status != dependencies.AccessRequestStatusGranted {
 			t.Fatalf("all riders must be granted, got %q", r.Status)
 		}
 	}

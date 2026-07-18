@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -35,7 +36,7 @@ import (
 // to the provider org-publish ISSUE (dependency-management §3.2 item 5). The
 // functional gate is Phase 5's proceed-gate over the live catalog; this row is
 // the tracking chip + the provider-side publish nudge.
-func (s *Service) RequestAccess(ctx context.Context, orgID, consumerProjectID, consumerComponent, orgServiceName string) (*models.AccessRequest, error) {
+func (s *Service) RequestAccess(ctx context.Context, orgID, consumerProjectID, consumerComponent, orgServiceName string) (*dependencies.AccessRequest, error) {
 	if s.access == nil || s.providers == nil {
 		return nil, ErrOrgServiceNotFound
 	}
@@ -49,13 +50,13 @@ func (s *Service) RequestAccess(ctx context.Context, orgID, consumerProjectID, c
 // recordAccessRequest resolves the org-service provider, dedupes against an open
 // request for that provider component (a second consumer rides the existing
 // provider org-publish issue), creates the provider-side org-publish gate issue
-// when none is open, and records the models.AccessRequest row. It is the shared
+// when none is open, and records the dependencies.AccessRequest row. It is the shared
 // core of BOTH the interactive RequestAccess flow (access_huma.go) and the
 // automated build-time StartOrgServiceVisibility flow (issue #164, Task 4) — the
 // single place the provider is resolved + the org-publish issue is minted, so the
 // two entry points never diverge or double-mint. It does NOT validate the
 // consumer design (callers do that with the context they have).
-func (s *Service) recordAccessRequest(ctx context.Context, orgID, consumerProjectID, consumerComponent, orgServiceName string) (*models.AccessRequest, error) {
+func (s *Service) recordAccessRequest(ctx context.Context, orgID, consumerProjectID, consumerComponent, orgServiceName string) (*dependencies.AccessRequest, error) {
 	if s.access == nil || s.providers == nil {
 		return nil, ErrOrgServiceNotFound
 	}
@@ -78,14 +79,14 @@ func (s *Service) recordAccessRequest(ctx context.Context, orgID, consumerProjec
 		return nil, fmt.Errorf("provisioning: find open access request: %w", err)
 	}
 
-	ar := &models.AccessRequest{
+	ar := &dependencies.AccessRequest{
 		OrgID:                 orgID,
 		ConsumerProjectID:     consumerProjectID,
 		ConsumerComponentName: consumerComponent,
 		OrgServiceName:        orgServiceName,
 		ProviderProjectID:     providerProject,
 		ProviderComponentName: providerComponent,
-		Status:                models.AccessRequestStatusRequested,
+		Status:                dependencies.AccessRequestStatusRequested,
 	}
 	if open != nil {
 		ar.ProviderTaskID = open.ProviderTaskID
@@ -109,7 +110,7 @@ func (s *Service) recordAccessRequest(ctx context.Context, orgID, consumerProjec
 
 // ListAccessRequests returns a consumer project's access requests (newest first
 // is the repository's concern).
-func (s *Service) ListAccessRequests(ctx context.Context, orgID, consumerProjectID string) ([]models.AccessRequest, error) {
+func (s *Service) ListAccessRequests(ctx context.Context, orgID, consumerProjectID string) ([]dependencies.AccessRequest, error) {
 	if s.access == nil {
 		return nil, nil
 	}
@@ -152,13 +153,13 @@ func (s *Service) GrantByProviderComponent(ctx context.Context, orgID, providerP
 	rows, err := s.access.ListByProviderTask(ctx, open.ProviderTaskID)
 	if err != nil {
 		slog.WarnContext(ctx, "provisioning: list riders for grant failed", "providerTask", open.ProviderTaskID, "error", err)
-		rows = []models.AccessRequest{*open}
+		rows = []dependencies.AccessRequest{*open}
 	}
 	for i := range rows {
-		if rows[i].Status == models.AccessRequestStatusGranted {
+		if rows[i].Status == dependencies.AccessRequestStatusGranted {
 			continue
 		}
-		if uerr := s.access.UpdateStatus(ctx, rows[i].ID, models.AccessRequestStatusGranted); uerr != nil {
+		if uerr := s.access.UpdateStatus(ctx, rows[i].ID, dependencies.AccessRequestStatusGranted); uerr != nil {
 			slog.WarnContext(ctx, "provisioning: grant access request failed", "id", rows[i].ID, "error", uerr)
 		}
 		// Resolve the CONSUMER-side visibility gate (issue #164, Task 4): the
@@ -220,10 +221,10 @@ func (s *Service) OnIssueClosed(ctx context.Context, _, _ string, payload []byte
 	rejected := 0
 	for i := range riders {
 		switch riders[i].Status {
-		case models.AccessRequestStatusGranted, models.AccessRequestStatusRejected:
+		case dependencies.AccessRequestStatusGranted, dependencies.AccessRequestStatusRejected:
 			continue // already resolved — a grant-driven close, not a decline
 		}
-		if uerr := s.access.UpdateStatus(ctx, riders[i].ID, models.AccessRequestStatusRejected); uerr != nil {
+		if uerr := s.access.UpdateStatus(ctx, riders[i].ID, dependencies.AccessRequestStatusRejected); uerr != nil {
 			slog.WarnContext(ctx, "provisioning: reject access request failed", "id", riders[i].ID, "error", uerr)
 			continue
 		}

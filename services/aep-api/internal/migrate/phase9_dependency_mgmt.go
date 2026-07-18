@@ -33,7 +33,7 @@ import (
 //     config key schema + the OC ResourceType the wiring maps to. One row per
 //     (org_id, name).
 //  2. CREATE TABLE access_requests — the cross-project access-request
-//     tracking rows (models.AccessRequest, P3.5): a consumer asking a
+//     tracking rows (dependencies.AccessRequest, P3.5): a consumer asking a
 //     provider project to publish an org service cross-project.
 //
 // The upstream PR #85 third step — an ALTER TABLE component_tasks adding the
@@ -83,7 +83,7 @@ func runPhase9ExternalResourcesTable(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
-// runPhase9AccessRequestsTable creates access_requests (models.AccessRequest)
+// runPhase9AccessRequestsTable creates access_requests (dependencies.AccessRequest)
 // plus the indexes its repository lookups (Get, ListByConsumerProject,
 // FindOpenForTarget, ListByProviderTask) rely on.
 func runPhase9AccessRequestsTable(ctx context.Context, db *gorm.DB) error {

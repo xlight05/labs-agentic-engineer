@@ -24,12 +24,11 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // mkAccessRequest persists an AccessRequest against real Postgres via the
 // repository under test and returns the (mutated-in-place) row.
-func mkAccessRequest(t *testing.T, repo *dependencies.AccessRequestRepository, ar *models.AccessRequest) *models.AccessRequest {
+func mkAccessRequest(t *testing.T, repo *dependencies.AccessRequestRepository, ar *dependencies.AccessRequest) *dependencies.AccessRequest {
 	t.Helper()
 	if err := repo.Create(context.Background(), ar); err != nil {
 		t.Fatalf("create access request (%s/%s): %v", ar.OrgID, ar.ConsumerProjectID, err)
@@ -48,7 +47,7 @@ func TestAccessRequestRepository_Create_MintsIDAndDefaultStatus(t *testing.T) {
 	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
-	ar := &models.AccessRequest{
+	ar := &dependencies.AccessRequest{
 		OrgID:                 "orga",
 		ConsumerProjectID:     "proj-a",
 		ConsumerComponentName: "svc-a",
@@ -60,12 +59,12 @@ func TestAccessRequestRepository_Create_MintsIDAndDefaultStatus(t *testing.T) {
 	if ar.ID == "" {
 		t.Fatalf("expected a minted id")
 	}
-	if ar.Status != models.AccessRequestStatusRequested {
-		t.Fatalf("Status = %q; want default %q", ar.Status, models.AccessRequestStatusRequested)
+	if ar.Status != dependencies.AccessRequestStatusRequested {
+		t.Fatalf("Status = %q; want default %q", ar.Status, dependencies.AccessRequestStatusRequested)
 	}
 
 	// Missing required fields is a validation error, not a DB round trip.
-	if err := repo.Create(ctx, &models.AccessRequest{}); err == nil {
+	if err := repo.Create(ctx, &dependencies.AccessRequest{}); err == nil {
 		t.Fatalf("Create with empty orgID/consumerProjectID should fail")
 	}
 	if err := repo.Create(ctx, nil); err == nil {
@@ -82,7 +81,7 @@ func TestAccessRequestRepository_Get_OrgScoped_NotFoundSentinel(t *testing.T) {
 	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
-	ar := mkAccessRequest(t, repo, &models.AccessRequest{
+	ar := mkAccessRequest(t, repo, &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "proj-a", ConsumerComponentName: "svc-a", OrgServiceName: "billing",
 	})
 
@@ -116,7 +115,7 @@ func TestAccessRequestRepository_ListByConsumerProject_ScopedNewestFirst(t *test
 	base := time.Now().Add(-1 * time.Hour)
 	mk := func(org, proj, comp, svc string, at time.Time) {
 		t.Helper()
-		ar := &models.AccessRequest{
+		ar := &dependencies.AccessRequest{
 			OrgID: org, ConsumerProjectID: proj, ConsumerComponentName: comp, OrgServiceName: svc,
 		}
 		if err := repo.Create(ctx, ar); err != nil {
@@ -161,9 +160,9 @@ func TestAccessRequestRepository_FindOpenForTarget(t *testing.T) {
 		t.Fatalf("expected nil for no open request, got %+v", none)
 	}
 
-	closed := &models.AccessRequest{
+	closed := &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "consumer-1", ConsumerComponentName: "svc-1", OrgServiceName: "provider-svc",
-		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: models.AccessRequestStatusGranted,
+		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: dependencies.AccessRequestStatusGranted,
 	}
 	mkAccessRequest(t, repo, closed)
 
@@ -176,9 +175,9 @@ func TestAccessRequestRepository_FindOpenForTarget(t *testing.T) {
 		t.Fatalf("granted request should not count as open: %+v", none2)
 	}
 
-	open1 := &models.AccessRequest{
+	open1 := &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "consumer-2", ConsumerComponentName: "svc-2", OrgServiceName: "provider-svc",
-		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: models.AccessRequestStatusRequested,
+		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: dependencies.AccessRequestStatusRequested,
 	}
 	mkAccessRequest(t, repo, open1)
 
@@ -192,9 +191,9 @@ func TestAccessRequestRepository_FindOpenForTarget(t *testing.T) {
 
 	// A second, later open request from a different consumer dedups: the most
 	// recent open one wins.
-	open2 := &models.AccessRequest{
+	open2 := &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "consumer-3", ConsumerComponentName: "svc-3", OrgServiceName: "provider-svc",
-		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: models.AccessRequestStatusInProgress,
+		ProviderProjectID: "provider-proj", ProviderComponentName: "provider-svc", Status: dependencies.AccessRequestStatusInProgress,
 	}
 	mkAccessRequest(t, repo, open2)
 	if err := db.Exec(`UPDATE access_requests SET created_at = ? WHERE id = ?`, time.Now().Add(1*time.Hour), open2.ID).Error; err != nil {
@@ -218,22 +217,22 @@ func TestAccessRequestRepository_UpdateStatus(t *testing.T) {
 	repo := dependencies.NewAccessRequestRepository(db)
 	ctx := context.Background()
 
-	ar := mkAccessRequest(t, repo, &models.AccessRequest{
+	ar := mkAccessRequest(t, repo, &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "proj-a", ConsumerComponentName: "svc-a", OrgServiceName: "billing",
 	})
 
-	if err := repo.UpdateStatus(ctx, ar.ID, models.AccessRequestStatusInProgress); err != nil {
+	if err := repo.UpdateStatus(ctx, ar.ID, dependencies.AccessRequestStatusInProgress); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, err := repo.Get(ctx, "orga", ar.ID)
 	if err != nil || got == nil {
 		t.Fatalf("reload: %v / %v", got, err)
 	}
-	if got.Status != models.AccessRequestStatusInProgress {
-		t.Fatalf("Status = %q; want %q", got.Status, models.AccessRequestStatusInProgress)
+	if got.Status != dependencies.AccessRequestStatusInProgress {
+		t.Fatalf("Status = %q; want %q", got.Status, dependencies.AccessRequestStatusInProgress)
 	}
 
-	err = repo.UpdateStatus(ctx, "00000000-0000-0000-0000-000000000000", models.AccessRequestStatusGranted)
+	err = repo.UpdateStatus(ctx, "00000000-0000-0000-0000-000000000000", dependencies.AccessRequestStatusGranted)
 	if !errors.Is(err, dependencies.ErrAccessRequestNotFound) {
 		t.Fatalf("UpdateStatus(bogus id) = %v; want ErrAccessRequestNotFound", err)
 	}
@@ -249,9 +248,9 @@ func TestAccessRequestRepository_ListByProviderTask(t *testing.T) {
 	ctx := context.Background()
 
 	const providerTask = "11111111-1111-1111-1111-111111111111"
-	mk := func(org, consumerProj string) *models.AccessRequest {
+	mk := func(org, consumerProj string) *dependencies.AccessRequest {
 		t.Helper()
-		ar := &models.AccessRequest{
+		ar := &dependencies.AccessRequest{
 			OrgID: org, ConsumerProjectID: consumerProj, ConsumerComponentName: "svc", OrgServiceName: "billing",
 			ProviderTaskID: providerTask,
 		}
@@ -260,7 +259,7 @@ func TestAccessRequestRepository_ListByProviderTask(t *testing.T) {
 	mk("orga", "consumer-1")
 	mk("orga", "consumer-2")
 	// Decoy riding a different provider task.
-	other := &models.AccessRequest{
+	other := &dependencies.AccessRequest{
 		OrgID: "orga", ConsumerProjectID: "consumer-3", ConsumerComponentName: "svc", OrgServiceName: "billing",
 		ProviderTaskID: "22222222-2222-2222-2222-222222222222",
 	}

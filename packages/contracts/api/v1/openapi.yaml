@@ -2067,9 +2067,6 @@ paths:
 components:
   schemas:
     AccessRequest:
-      x-go-type: models.AccessRequest
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
       additionalProperties: false
       properties:
         consumerComponentName:

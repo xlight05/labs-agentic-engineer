@@ -158,9 +158,9 @@ type ProviderBuildTrigger interface {
 // AccessStore is the cross-project access-request tracking table.
 // *repositories.AccessRequestRepository satisfies it.
 type AccessStore interface {
-	Create(ctx context.Context, ar *models.AccessRequest) error
-	ListByConsumerProject(ctx context.Context, orgID, projectID string) ([]models.AccessRequest, error)
-	FindOpenForTarget(ctx context.Context, orgID, providerProjectID, providerComponentName string) (*models.AccessRequest, error)
+	Create(ctx context.Context, ar *dependencies.AccessRequest) error
+	ListByConsumerProject(ctx context.Context, orgID, projectID string) ([]dependencies.AccessRequest, error)
+	FindOpenForTarget(ctx context.Context, orgID, providerProjectID, providerComponentName string) (*dependencies.AccessRequest, error)
 	UpdateStatus(ctx context.Context, id, status string) error
-	ListByProviderTask(ctx context.Context, providerTaskID string) ([]models.AccessRequest, error)
+	ListByProviderTask(ctx context.Context, providerTaskID string) ([]dependencies.AccessRequest, error)
 }
