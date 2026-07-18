@@ -132,7 +132,7 @@ func TestMigrationShimsAreLabelled(t *testing.T) {
 // currentPhase is bumped by the phase that lands; it is the one line a phase
 // must not forget, and forgetting it is caught by the shims it should have
 // retired.
-const currentPhase = "P3"
+const currentPhase = "P4"
 
 func TestNoShimsSurvivePastTheirPhase(t *testing.T) {
 	decls, _ := findShims(t, filepath.Join("..", ".."))

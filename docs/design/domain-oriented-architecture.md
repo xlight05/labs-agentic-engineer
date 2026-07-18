@@ -1159,6 +1159,44 @@ surprise:
   mirror + ExternalSecret-push mechanics into `platform/secrets` as purpose-specific ports) is target polish,
   not fence-required, and is deferred while those mechanics stay coupled to the credential lifecycle.
 
+**P4 (`spec`) findings** — the largest fold (6 features, ~17k LOC, absorbing the artifacts hub):
+
+- **The slice⊥sibling rule forces the engines into the domain ROOT, not sub-packages.** The tempting
+  structure — each absorbed feature (genai, artifacts, files, design, skills) as its own sub-package —
+  fails: the HTTP slices call the engines, and a slice may only import the domain root, never a sibling
+  slice. So the engines must be flat in `package spec` (as organization's services are), which forces
+  resolving the identifier collisions a flat merge creates. For spec those were exactly three
+  consumer-side ports/ctors (`NewService`, `RepoResolver`, `GitGateway`, all shared by genai+files+
+  artifacts) plus a duplicate `ErrProjectRepoNotFound` sentinel (genai's and files' were byte-identical —
+  merged onto one) and a handful of test helpers. Rename the NEWCOMER; the hub lands first.
+- **Order the fold hub-first.** artifacts is consumed by ~20 packages incl. design + skills + six
+  still-legacy features; land it first so the rest reference it as domain-root machinery. The still-legacy
+  consumers (build/component/project/task/…) then hold a sanctioned feature→domain edge — delete their
+  stale `artifacts` `featureEdgeAllowlist` rows (the test only polices feature→feature).
+- **A move silently breaks file-relative paths — they compile green and fail only at RUN.** The depth
+  changed from `internal/feature/<x>` (3) to `internal/spec` (2), so a `runtime.Caller`-relative
+  `os.DirFS` walk (the skills library, `../../../../..` → `../../../..`) and two `testdata` golden dirs
+  (`../../../` → `../../`) all pointed one level too high. `go build` and `go vet` pass; only the running
+  test catches it. Grep every moved test package for `..`-relative paths and `runtime.Caller`.
+- **A shared test-fixture sub-package cycles once its consumer folds in.** `spec/artifactstest`
+  (a fake ArtifactService) imports `spec`; design's tests used it fine while design was a separate
+  feature, but once design became an INTERNAL `spec` test the import cycles (`spec_test → artifactstest →
+  spec`). The exported fake stays for the still-legacy external consumers; spec's own tests get an
+  in-package twin. They unify in P9 when those consumers become domains.
+- **A domain→feature edge in the fold needs a projection port, not a direct import.** design named
+  `feature/dependencies/resources.TypeMarkers`; moving design into the spec domain would make the domain
+  import a feature (banned). Cut it the P2c way: spec gets its own `CRTMarkers` value type and its
+  `resourceMarkerCatalog` port returns THAT; a `crtMarkerCatalog` adapter at the root projects the
+  dependencies catalog onto it. dependencies becomes a domain in P8; the port stays either way. (This was
+  §3.2's one real cross-domain read — the rest were same-package once artifacts landed.)
+- **`igen`'s `validation.*` leaf violation is still owed.** P3.0 fixed `igen`'s `orgcreds.RefreshResponse`
+  alias; the internal contract still `x-go-type`s three `validation.*` types, deferred to delivery/P6
+  (same decoupled-preliminary fix).
+- **P4c (secrets) was again pre-paid by P0**, like P3c: spec reaches secret backends only through
+  `platform/secrets` interfaces, so `TestImportFences` holds with no code. genai's gorm extracted to
+  `repositories/turn_repository.go` (P4.0) with the turn VOCABULARY re-exported into the domain via type
+  aliases — the clean "gorm payoff deferred, vocabulary stays" split.
+
 ### 19.6 Cross-cutting risks
 
 | Risk | Mitigation |
