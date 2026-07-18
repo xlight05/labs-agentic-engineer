@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/wso2/aep/aep-api/internal/platform/orgconfig"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -418,7 +417,14 @@ type Component struct {
 }
 
 // ComponentConfig defines model for ComponentConfig.
-type ComponentConfig = models.ComponentConfig
+type ComponentConfig struct {
+	ComponentName string    `json:"componentName"`
+	CreatedAt     time.Time `json:"createdAt"`
+	EnvVars       []EnvVar  `json:"envVars"`
+	ID            string    `json:"id"`
+	ProjectName   string    `json:"projectName"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
 
 // ComponentList defines model for ComponentList.
 type ComponentList struct {
@@ -578,7 +584,10 @@ type DiscoverOutputBody struct {
 }
 
 // EnvVar defines model for EnvVar.
-type EnvVar = models.EnvVar
+type EnvVar struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
 
 // Error Flat error envelope returned by every non-2xx response.
 type Error struct {

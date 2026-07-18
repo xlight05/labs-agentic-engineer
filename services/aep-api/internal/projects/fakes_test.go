@@ -136,19 +136,19 @@ func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string,
 // --- ConfigRepository (hand fake for the config unit tier) -------
 
 type stubConfigRepo struct {
-	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
-	UpsertFunc         func(ctx context.Context, config *models.ComponentConfig) error
+	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error)
+	UpsertFunc         func(ctx context.Context, config *ComponentConfig) error
 }
 
 var _ ConfigRepository = (*stubConfigRepo)(nil)
 
-func (s *stubConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
+func (s *stubConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error) {
 	if s.GetByComponentFunc == nil {
 		panic("stubConfigRepo: GetByComponent not set")
 	}
 	return s.GetByComponentFunc(ctx, orgID, projectName, componentName)
 }
-func (s *stubConfigRepo) Upsert(ctx context.Context, config *models.ComponentConfig) error {
+func (s *stubConfigRepo) Upsert(ctx context.Context, config *ComponentConfig) error {
 	if s.UpsertFunc == nil {
 		panic("stubConfigRepo: Upsert not set")
 	}

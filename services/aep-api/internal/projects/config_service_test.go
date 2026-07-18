@@ -35,11 +35,11 @@ import (
 func TestConfigService_GetConfig(t *testing.T) {
 	t.Parallel()
 	// Repo hit → the config is returned verbatim.
-	repo := &stubConfigRepo{GetByComponentFunc: func(_ context.Context, org, proj, comp string) (*models.ComponentConfig, error) {
+	repo := &stubConfigRepo{GetByComponentFunc: func(_ context.Context, org, proj, comp string) (*ComponentConfig, error) {
 		if org != "acme" || proj != "web" || comp != "svc" {
 			t.Errorf("repo scope: (%q,%q,%q)", org, proj, comp)
 		}
-		return &models.ComponentConfig{OrgID: org, ProjectName: proj, ComponentName: comp, EnvVars: models.EnvVarSlice{{Key: "K", Value: "V"}}}, nil
+		return &ComponentConfig{OrgID: org, ProjectName: proj, ComponentName: comp, EnvVars: EnvVarSlice{{Key: "K", Value: "V"}}}, nil
 	}}
 	got, err := NewConfigService(repo, nil).GetConfig(context.Background(), "acme", "web", "svc")
 	if err != nil || got == nil || len(got.EnvVars) != 1 {
@@ -48,7 +48,7 @@ func TestConfigService_GetConfig(t *testing.T) {
 
 	// No row (nil,nil) is surfaced as (nil,nil) — the huma op renders it as a
 	// 200 JSON null (pinned in the component tier).
-	nilRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*models.ComponentConfig, error) {
+	nilRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*ComponentConfig, error) {
 		return nil, nil
 	}}
 	if got, err := NewConfigService(nilRepo, nil).GetConfig(context.Background(), "acme", "web", "svc"); err != nil || got != nil {
@@ -56,7 +56,7 @@ func TestConfigService_GetConfig(t *testing.T) {
 	}
 
 	// A repo error is wrapped.
-	errRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*models.ComponentConfig, error) {
+	errRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*ComponentConfig, error) {
 		return nil, errors.New("pg down")
 	}}
 	if _, err := NewConfigService(errRepo, nil).GetConfig(context.Background(), "acme", "web", "svc"); err == nil || !strings.Contains(err.Error(), "get config") {
@@ -67,25 +67,25 @@ func TestConfigService_GetConfig(t *testing.T) {
 func TestConfigService_UpdateConfig_Validation(t *testing.T) {
 	t.Parallel()
 	// Empty (whitespace-only) key is rejected BEFORE any repo write.
-	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *models.ComponentConfig) error {
+	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error {
 		t.Error("Upsert must not run on invalid env vars")
 		return nil
 	}}
 	svc := NewConfigService(repo, nil)
-	if _, err := svc.UpdateConfig(context.Background(), "acme", "web", "svc", models.EnvVarSlice{{Key: "  ", Value: "v"}}); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+	if _, err := svc.UpdateConfig(context.Background(), "acme", "web", "svc", EnvVarSlice{{Key: "  ", Value: "v"}}); err == nil || !strings.Contains(err.Error(), "cannot be empty") {
 		t.Fatalf("empty key must be rejected, got %v", err)
 	}
 
 	// Duplicate keys are rejected, naming the offending key.
-	if _, err := svc.UpdateConfig(context.Background(), "acme", "web", "svc", models.EnvVarSlice{{Key: "DB", Value: "1"}, {Key: "DB", Value: "2"}}); err == nil || !strings.Contains(err.Error(), "duplicate environment variable key: DB") {
+	if _, err := svc.UpdateConfig(context.Background(), "acme", "web", "svc", EnvVarSlice{{Key: "DB", Value: "1"}, {Key: "DB", Value: "2"}}); err == nil || !strings.Contains(err.Error(), "duplicate environment variable key: DB") {
 		t.Fatalf("duplicate key must be rejected, got %v", err)
 	}
 }
 
 func TestConfigService_UpdateConfig_PersistsAndMirrors(t *testing.T) {
 	t.Parallel()
-	var saved *models.ComponentConfig
-	repo := &stubConfigRepo{UpsertFunc: func(_ context.Context, c *models.ComponentConfig) error {
+	var saved *ComponentConfig
+	repo := &stubConfigRepo{UpsertFunc: func(_ context.Context, c *ComponentConfig) error {
 		saved = c
 		return nil
 	}}
@@ -98,7 +98,7 @@ func TestConfigService_UpdateConfig_PersistsAndMirrors(t *testing.T) {
 	}}
 	svc := NewConfigService(repo, comp)
 
-	in := models.EnvVarSlice{{Key: "DB_HOST", Value: "db"}, {Key: "PORT", Value: "8080"}}
+	in := EnvVarSlice{{Key: "DB_HOST", Value: "db"}, {Key: "PORT", Value: "8080"}}
 	out, err := svc.UpdateConfig(context.Background(), "acme", "web", "svc", in)
 	if err != nil {
 		t.Fatalf("update happy: %v", err)
@@ -122,12 +122,12 @@ func TestConfigService_UpdateConfig_PersistsAndMirrors(t *testing.T) {
 
 func TestConfigService_UpdateConfig_MirrorFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
-	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *models.ComponentConfig) error { return nil }}
+	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error { return nil }}
 	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []models.WorkflowEnvVarRef) error {
 		return errors.New("no release bindings yet")
 	}}
 	// A mirror failure is logged, not surfaced: the DB write already succeeded.
-	out, err := NewConfigService(repo, comp).UpdateConfig(context.Background(), "acme", "web", "svc", models.EnvVarSlice{{Key: "K", Value: "v"}})
+	out, err := NewConfigService(repo, comp).UpdateConfig(context.Background(), "acme", "web", "svc", EnvVarSlice{{Key: "K", Value: "v"}})
 	if err != nil || out == nil {
 		t.Fatalf("mirror failure must not fail the update: out=%+v err=%v", out, err)
 	}
@@ -137,22 +137,22 @@ func TestConfigService_UpdateConfig_NoMirrorWhenComponentSvcNil(t *testing.T) {
 	t.Parallel()
 	// componentSvc nil ⇒ the mirror is skipped entirely (env vars still land in
 	// the DB). A panicking stub would fire if the mirror ran.
-	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *models.ComponentConfig) error { return nil }}
-	if _, err := NewConfigService(repo, nil).UpdateConfig(context.Background(), "acme", "web", "svc", models.EnvVarSlice{{Key: "K", Value: "v"}}); err != nil {
+	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error { return nil }}
+	if _, err := NewConfigService(repo, nil).UpdateConfig(context.Background(), "acme", "web", "svc", EnvVarSlice{{Key: "K", Value: "v"}}); err != nil {
 		t.Fatalf("nil componentSvc update: %v", err)
 	}
 }
 
 func TestConfigService_UpdateConfig_RepoErrorWraps(t *testing.T) {
 	t.Parallel()
-	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *models.ComponentConfig) error {
+	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error {
 		return errors.New("unique violation")
 	}}
 	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []models.WorkflowEnvVarRef) error {
 		t.Error("mirror must not run when the DB write failed")
 		return nil
 	}}
-	if _, err := NewConfigService(repo, comp).UpdateConfig(context.Background(), "acme", "web", "svc", models.EnvVarSlice{{Key: "K", Value: "v"}}); err == nil || !strings.Contains(err.Error(), "update config") {
+	if _, err := NewConfigService(repo, comp).UpdateConfig(context.Background(), "acme", "web", "svc", EnvVarSlice{{Key: "K", Value: "v"}}); err == nil || !strings.Contains(err.Error(), "update config") {
 		t.Fatalf("Upsert error must wrap with 'update config', got %v", err)
 	}
 }
@@ -160,8 +160,8 @@ func TestConfigService_UpdateConfig_RepoErrorWraps(t *testing.T) {
 func TestConfigService_GetEnvVarsForDeploy(t *testing.T) {
 	t.Parallel()
 	// Populated config → its env vars.
-	repo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*models.ComponentConfig, error) {
-		return &models.ComponentConfig{EnvVars: models.EnvVarSlice{{Key: "K", Value: "V"}}}, nil
+	repo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*ComponentConfig, error) {
+		return &ComponentConfig{EnvVars: EnvVarSlice{{Key: "K", Value: "V"}}}, nil
 	}}
 	got, err := NewConfigService(repo, nil).GetEnvVarsForDeploy(context.Background(), "acme", "web", "svc")
 	if err != nil || len(got) != 1 {
@@ -170,8 +170,8 @@ func TestConfigService_GetEnvVarsForDeploy(t *testing.T) {
 
 	// No row OR an empty env list → (nil,nil): the deploy path treats "no config"
 	// and "empty config" identically.
-	for _, cfg := range []*models.ComponentConfig{nil, {EnvVars: models.EnvVarSlice{}}} {
-		repo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*models.ComponentConfig, error) {
+	for _, cfg := range []*ComponentConfig{nil, {EnvVars: EnvVarSlice{}}} {
+		repo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*ComponentConfig, error) {
 			return cfg, nil
 		}}
 		if got, err := NewConfigService(repo, nil).GetEnvVarsForDeploy(context.Background(), "acme", "web", "svc"); err != nil || got != nil {
@@ -180,7 +180,7 @@ func TestConfigService_GetEnvVarsForDeploy(t *testing.T) {
 	}
 
 	// A repo error is wrapped.
-	errRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*models.ComponentConfig, error) {
+	errRepo := &stubConfigRepo{GetByComponentFunc: func(context.Context, string, string, string) (*ComponentConfig, error) {
 		return nil, errors.New("pg down")
 	}}
 	if _, err := NewConfigService(errRepo, nil).GetEnvVarsForDeploy(context.Background(), "acme", "web", "svc"); err == nil || !strings.Contains(err.Error(), "get config for deploy") {

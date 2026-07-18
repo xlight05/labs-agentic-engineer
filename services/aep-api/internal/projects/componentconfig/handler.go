@@ -26,7 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/projects"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Handler serves the component config feature on the strict interface. Every
@@ -61,7 +60,7 @@ func (h *Handler) GetComponentConfig(ctx context.Context, request gen.GetCompone
 	if config == nil {
 		return getComponentConfigNull200Response{}, nil
 	}
-	return gen.GetComponentConfig200JSONResponse(*config), nil
+	return gen.GetComponentConfig200JSONResponse(componentConfigToWire(*config)), nil
 }
 
 func (h *Handler) UpdateComponentConfig(ctx context.Context, request gen.UpdateComponentConfigRequestObject) (gen.UpdateComponentConfigResponseObject, error) {
@@ -69,13 +68,55 @@ func (h *Handler) UpdateComponentConfig(ctx context.Context, request gen.UpdateC
 	if err := projects.RequireComponentSlugs(request.ProjectName, request.ComponentName); err != nil {
 		return nil, err
 	}
-	config, err := h.cfg.UpdateConfig(ctx, org, request.ProjectName, request.ComponentName, models.EnvVarSlice(request.Body.EnvVars))
+	config, err := h.cfg.UpdateConfig(ctx, org, request.ProjectName, request.ComponentName, envVarsFromWire(request.Body.EnvVars))
 	if err != nil {
 		// Legacy mapped any update error to 400 with the error string
 		// (validation: empty/duplicate keys, or repo upsert failure).
 		return nil, apierr.BadRequest(err.Error())
 	}
-	return gen.UpdateComponentConfig200JSONResponse(*config), nil
+	return gen.UpdateComponentConfig200JSONResponse(componentConfigToWire(*config)), nil
+}
+
+// componentConfigToWire projects the projects.ComponentConfig gorm entity onto
+// the generated wire type (OrgID is json:"-" on the entity and absent from the
+// schema, so it drops out here too). envVars nil-ness is preserved: a nil slice
+// stays nil so the body serialises "envVars":null exactly as the entity did.
+func componentConfigToWire(c projects.ComponentConfig) gen.ComponentConfig {
+	return gen.ComponentConfig{
+		ID:            c.ID,
+		ProjectName:   c.ProjectName,
+		ComponentName: c.ComponentName,
+		EnvVars:       envVarsToWire(c.EnvVars),
+		CreatedAt:     c.CreatedAt,
+		UpdatedAt:     c.UpdatedAt,
+	}
+}
+
+// envVarsToWire maps the persisted EnvVarSlice onto []gen.EnvVar, preserving
+// nil (→ JSON null) vs empty (→ []).
+func envVarsToWire(s projects.EnvVarSlice) []gen.EnvVar {
+	if s == nil {
+		return nil
+	}
+	out := make([]gen.EnvVar, 0, len(s))
+	for _, e := range s {
+		out = append(out, gen.EnvVar{Key: e.Key, Value: e.Value})
+	}
+	return out
+}
+
+// envVarsFromWire maps the request body's []gen.EnvVar onto the persisted
+// EnvVarSlice, preserving nil (the legacy `EnvVarSlice(body.EnvVars)` cast
+// produced a nil slice for a nil body).
+func envVarsFromWire(s []gen.EnvVar) projects.EnvVarSlice {
+	if s == nil {
+		return nil
+	}
+	out := make(projects.EnvVarSlice, 0, len(s))
+	for _, e := range s {
+		out = append(out, projects.EnvVar{Key: e.Key, Value: e.Value})
+	}
+	return out
 }
 
 // writeJSONBody is the buffered JSON writer this slice needs for the literal-null

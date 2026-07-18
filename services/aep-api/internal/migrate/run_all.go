@@ -36,6 +36,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/wso2/aep/aep-api/internal/platform/database"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -51,7 +52,7 @@ import (
 // entities, and the kernel stays domain-free.
 func BaseModels() []any {
 	return []any{
-		&models.ComponentConfig{},
+		&projects.ComponentConfig{},
 		&models.WebhookDelivery{},
 		&models.WebhookPayload{},
 		&models.Organization{},

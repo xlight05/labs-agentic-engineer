@@ -14,13 +14,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package projects
+package projects_test
 
 // DBTEST tier (skips under -short; `make test-db` runs it): the SQL-shaped
 // behaviors of the component feature driven against a pristine per-test Postgres
 // (dbtest.New).
 //
-//  1. The REAL ConfigRepository — get/update round-trip + the
+//  1. The REAL projects.ConfigRepository — get/update round-trip + the
 //     (org_id, project_name, component_name) scoping, with MANY decoy rows so a
 //     broken WHERE clause returns the wrong row rather than flaky-passing under
 //     random UUID ordering.
@@ -30,16 +30,16 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/projects"
 )
 
-// --- ConfigRepository round-trip + scoping ------------------------------------
+// --- projects.ConfigRepository round-trip + scoping ------------------------------------
 
-func seedConfig(t *testing.T, repo ConfigRepository, org, proj, comp, k, v string) {
+func seedConfig(t *testing.T, repo projects.ConfigRepository, org, proj, comp, k, v string) {
 	t.Helper()
-	if err := repo.Upsert(context.Background(), &models.ComponentConfig{
+	if err := repo.Upsert(context.Background(), &projects.ComponentConfig{
 		OrgID: org, ProjectName: proj, ComponentName: comp,
-		EnvVars: models.EnvVarSlice{{Key: k, Value: v}},
+		EnvVars: projects.EnvVarSlice{{Key: k, Value: v}},
 	}); err != nil {
 		t.Fatalf("seed config (%s/%s/%s): %v", org, proj, comp, err)
 	}
@@ -49,7 +49,7 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	repo := NewConfigRepository(db)
+	repo := projects.NewConfigRepository(db)
 
 	// The target row, surrounded by MANY decoys that differ in exactly one of the
 	// three scope columns (plus a same-project/other-component and an other-org
@@ -88,9 +88,9 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 	}
 
 	// Upsert on the existing tuple UPDATES in place (same ID) and replaces env.
-	if err := repo.Upsert(ctx, &models.ComponentConfig{
+	if err := repo.Upsert(ctx, &projects.ComponentConfig{
 		OrgID: "acme", ProjectName: "web", ComponentName: "svc-a",
-		EnvVars: models.EnvVarSlice{{Key: "TARGET", Value: "2"}, {Key: "EXTRA", Value: "3"}},
+		EnvVars: projects.EnvVarSlice{{Key: "TARGET", Value: "2"}, {Key: "EXTRA", Value: "3"}},
 	}); err != nil {
 		t.Fatalf("upsert-update: %v", err)
 	}
@@ -112,9 +112,9 @@ func TestConfigRepository_RoundTripAndScoping_DB(t *testing.T) {
 	}
 
 	// Upsert on a brand-new tuple INSERTS a fresh row.
-	if err := repo.Upsert(ctx, &models.ComponentConfig{
+	if err := repo.Upsert(ctx, &projects.ComponentConfig{
 		OrgID: "acme", ProjectName: "web", ComponentName: "svc-new",
-		EnvVars: models.EnvVarSlice{{Key: "NEW", Value: "1"}},
+		EnvVars: projects.EnvVarSlice{{Key: "NEW", Value: "1"}},
 	}); err != nil {
 		t.Fatalf("upsert-insert: %v", err)
 	}

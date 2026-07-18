@@ -26,9 +26,9 @@ import (
 )
 
 type ConfigService interface {
-	GetConfig(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
-	UpdateConfig(ctx context.Context, orgID, projectName, componentName string, envVars models.EnvVarSlice) (*models.ComponentConfig, error)
-	GetEnvVarsForDeploy(ctx context.Context, orgID, projectName, componentName string) (models.EnvVarSlice, error)
+	GetConfig(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error)
+	UpdateConfig(ctx context.Context, orgID, projectName, componentName string, envVars EnvVarSlice) (*ComponentConfig, error)
+	GetEnvVarsForDeploy(ctx context.Context, orgID, projectName, componentName string) (EnvVarSlice, error)
 }
 
 type configService struct {
@@ -44,7 +44,7 @@ func NewConfigService(repo ConfigRepository, componentSvc ComponentService) Conf
 	return &configService{repo: repo, componentSvc: componentSvc}
 }
 
-func (s *configService) GetConfig(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
+func (s *configService) GetConfig(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error) {
 	config, err := s.repo.GetByComponent(ctx, orgID, projectName, componentName)
 	if err != nil {
 		return nil, fmt.Errorf("get config: %w", err)
@@ -52,7 +52,7 @@ func (s *configService) GetConfig(ctx context.Context, orgID, projectName, compo
 	return config, nil
 }
 
-func (s *configService) UpdateConfig(ctx context.Context, orgID, projectName, componentName string, envVars models.EnvVarSlice) (*models.ComponentConfig, error) {
+func (s *configService) UpdateConfig(ctx context.Context, orgID, projectName, componentName string, envVars EnvVarSlice) (*ComponentConfig, error) {
 	// Validate env vars
 	seen := make(map[string]bool, len(envVars))
 	for _, ev := range envVars {
@@ -66,7 +66,7 @@ func (s *configService) UpdateConfig(ctx context.Context, orgID, projectName, co
 		seen[key] = true
 	}
 
-	config := &models.ComponentConfig{
+	config := &ComponentConfig{
 		OrgID:         orgID,
 		ProjectName:   projectName,
 		ComponentName: componentName,
@@ -100,7 +100,7 @@ func (s *configService) UpdateConfig(ctx context.Context, orgID, projectName, co
 	return config, nil
 }
 
-func (s *configService) GetEnvVarsForDeploy(ctx context.Context, orgID, projectName, componentName string) (models.EnvVarSlice, error) {
+func (s *configService) GetEnvVarsForDeploy(ctx context.Context, orgID, projectName, componentName string) (EnvVarSlice, error) {
 	config, err := s.repo.GetByComponent(ctx, orgID, projectName, componentName)
 	if err != nil {
 		return nil, fmt.Errorf("get config for deploy: %w", err)

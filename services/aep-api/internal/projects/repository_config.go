@@ -21,13 +21,11 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 type ConfigRepository interface {
-	GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
-	Upsert(ctx context.Context, config *models.ComponentConfig) error
+	GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error)
+	Upsert(ctx context.Context, config *ComponentConfig) error
 	DeleteAll(ctx context.Context) error
 }
 
@@ -39,8 +37,8 @@ func NewConfigRepository(db *gorm.DB) ConfigRepository {
 	return &configRepository{db: db}
 }
 
-func (r *configRepository) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
-	var config models.ComponentConfig
+func (r *configRepository) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*ComponentConfig, error) {
+	var config ComponentConfig
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_name = ? AND component_name = ?", orgID, projectName, componentName).
 		First(&config).Error
@@ -53,7 +51,7 @@ func (r *configRepository) GetByComponent(ctx context.Context, orgID, projectNam
 	return &config, nil
 }
 
-func (r *configRepository) Upsert(ctx context.Context, config *models.ComponentConfig) error {
+func (r *configRepository) Upsert(ctx context.Context, config *ComponentConfig) error {
 	existing, err := r.GetByComponent(ctx, config.OrgID, config.ProjectName, config.ComponentName)
 	if err != nil {
 		return err
@@ -66,5 +64,5 @@ func (r *configRepository) Upsert(ctx context.Context, config *models.ComponentC
 }
 
 func (r *configRepository) DeleteAll(ctx context.Context) error {
-	return r.db.WithContext(ctx).Where("1=1").Delete(&models.ComponentConfig{}).Error
+	return r.db.WithContext(ctx).Where("1=1").Delete(&ComponentConfig{}).Error
 }

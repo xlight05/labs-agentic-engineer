@@ -2494,9 +2494,6 @@ components:
       - name
       type: object
     ComponentConfig:
-      x-go-type: models.ComponentConfig
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
       nullable: true
       additionalProperties: false
       properties:
@@ -2893,9 +2890,6 @@ components:
     EnvVar:
       # Hand-written in models/ (the gorm-persisted EnvVarSlice embeds it);
       # gen aliases this type to keep the models↔gen dependency one-way.
-      x-go-type: models.EnvVar
-      x-go-type-import:
-        path: github.com/wso2/aep/aep-api/models
       additionalProperties: false
       properties:
         key:

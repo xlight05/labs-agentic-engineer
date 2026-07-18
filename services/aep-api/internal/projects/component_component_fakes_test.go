@@ -28,7 +28,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // --- observability.Client -----------------------------------------------------
@@ -49,19 +48,19 @@ func (s *extObservClient) GetBuildLogs(ctx context.Context, orgName, projectName
 // --- projects.ConfigRepository --------------------------------------------
 
 type extConfigRepo struct {
-	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error)
-	UpsertFunc         func(ctx context.Context, config *models.ComponentConfig) error
+	GetByComponentFunc func(ctx context.Context, orgID, projectName, componentName string) (*projects.ComponentConfig, error)
+	UpsertFunc         func(ctx context.Context, config *projects.ComponentConfig) error
 }
 
 var _ projects.ConfigRepository = (*extConfigRepo)(nil)
 
-func (s *extConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*models.ComponentConfig, error) {
+func (s *extConfigRepo) GetByComponent(ctx context.Context, orgID, projectName, componentName string) (*projects.ComponentConfig, error) {
 	if s.GetByComponentFunc == nil {
 		panic("extConfigRepo: GetByComponent not set")
 	}
 	return s.GetByComponentFunc(ctx, orgID, projectName, componentName)
 }
-func (s *extConfigRepo) Upsert(ctx context.Context, config *models.ComponentConfig) error {
+func (s *extConfigRepo) Upsert(ctx context.Context, config *projects.ComponentConfig) error {
 	if s.UpsertFunc == nil {
 		panic("extConfigRepo: Upsert not set")
 	}
