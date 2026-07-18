@@ -132,7 +132,7 @@ func TestOrganizationComponent_ListMatchesGoldenFieldSet(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(repositories.NewOrganizationRepository(db), ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 	resp := h.AsOrg("acme").Get(orgListPath)
 	if resp.Code != 200 {
@@ -187,7 +187,7 @@ func TestOrganizationComponent_ErrorMapping(t *testing.T) {
 				},
 			}
 			svc := organization.NewOrganizationService(nil, ns) // nil DB: errors before any DB access
-			h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
+			h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 			resp := h.AsOrg("acme").Get(orgListPath)
 			if resp.Code != tc.wantStatus {
@@ -217,7 +217,7 @@ func TestOrganizationComponent_CarveOut_NoGate(t *testing.T) {
 		},
 	}
 	svc := organization.NewOrganizationService(nil, ns)
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgSvc: svc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{OrgSvc: svc})}})
 
 	resp := h.NoAuth().Get(orgListPath)
 	if resp.Code == 401 {

@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package listorgs
 
 import (
 	"errors"
@@ -22,15 +22,16 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 )
 
 // statusOf casts a transport error to its wire status, failing the test if the
-// mapper returned something that is not an *apiError.
+// mapper returned something that is not an *apierr.Error.
 func statusOf(t *testing.T, err error) int {
 	t.Helper()
-	var ae *apiError
+	var ae *apierr.Error
 	if !errors.As(err, &ae) {
-		t.Fatalf("expected an *apiError, got %T (%v)", err, err)
+		t.Fatalf("expected an *apierr.Error, got %T (%v)", err, err)
 	}
 	return ae.Status
 }
@@ -40,8 +41,8 @@ func statusOf(t *testing.T, err error) int {
 // sentinel and any opaque error are an opaque 500 whose body carries a fixed
 // message (never the underlying error, so internals can't leak). The 401
 // distinction is the deliberate coarseness of the read-only List contract.
-// (Moved from the organization feature with the handler at the contract-first
-// cutover — the mapper lives beside the strict handler now.)
+// (Moved into the listorgs slice with the mapper at the organization P3
+// migration — the mapper lives beside the strict handler now.)
 func TestMapOrganizationError(t *testing.T) {
 	t.Parallel()
 

@@ -49,6 +49,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/organization"
+	"github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/contracttest"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
@@ -186,8 +187,22 @@ func newConfigHarnessOpts(t *testing.T, thunder thundersvc.Client, appClientID s
 		"http://localhost:8090", appClientID,
 	)
 
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{OrgConfigSvc: svc}})
+	// The harness wires the DOMAIN, not a loose service: the edge embeds
+	// organization's handlers, so this assembles the same graph production does.
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{Organization: mustNewOrgHandlers(t, organization.Deps{Config: svc})}})
 	return &configHarness{h: h, db: db, gh: gh, anth: anth}
+}
+
+// mustNewOrgHandlers assembles the real organization domain around the given
+// ports — the same httpapi.New the composition root calls — so a component test
+// drives the domain the edge embeds, not a loose service.
+func mustNewOrgHandlers(t *testing.T, d organization.Deps) *httpapi.Handlers {
+	t.Helper()
+	h, err := httpapi.New(d)
+	if err != nil {
+		t.Fatalf("assemble organization: %v", err)
+	}
+	return h
 }
 
 // --- decode helpers ---------------------------------------------------------

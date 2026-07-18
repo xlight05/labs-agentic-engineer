@@ -66,6 +66,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	"github.com/wso2/aep/aep-api/internal/organization"
+	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
@@ -728,14 +729,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// /api/v1 edge serves (internal/api/handlers_*.go).
 	params.Deps = api.Deps{
 		ProjectSvc:       projectService,
-		OrgSvc:           organizationService,
 		ComponentSvc:     componentService,
 		ConfigSvc:        configService,
 		CollabRepo:       repoService,
 		TaskReads:        taskReads,
 		TaskCommands:     taskCommands,
 		TaskStream:       taskStreamSvc,
-		OrgConfigSvc:     orgConfigSvc,
 		TaskTokens:       taskTokens,
 		SkillSvc:         skillSvc,
 		SkillMutationSvc: skillMutationSvc,
@@ -782,6 +781,14 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		return nil, fmt.Errorf("assemble sourcecontrol domain: %w", err)
 	}
 	params.Deps.SourceControl = scHandlers
+
+	// organization — org config + the organizations list (P3). Its handlers are
+	// embedded straight into the edge's composite; the edge holds no org service.
+	orgHandlers, err := orghttpapi.New(organization.Deps{OrgSvc: organizationService, Config: orgConfigSvc})
+	if err != nil {
+		return nil, fmt.Errorf("assemble organization domain: %w", err)
+	}
+	params.Deps.Organization = orgHandlers
 
 	opsHandlers, err := opshttpapi.New(ops.Deps{
 		Reports: ops.NewRepository(db),

@@ -21,6 +21,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
+	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/httpkit"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
@@ -72,6 +73,7 @@ type apiServer struct {
 	// One embed per landed domain phase (P1–P8).
 	*opsHandlers           // P1 — ops (Incident RCA)
 	*sourcecontrolHandlers // P2 — sourcecontrol (Source Control & Webhooks)
+	*organizationHandlers  // P3 — organization (Org Config & Organizations)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
@@ -81,6 +83,7 @@ type apiServer struct {
 type (
 	opsHandlers           = opshttpapi.Handlers
 	sourcecontrolHandlers = schttpapi.Handlers
+	organizationHandlers  = orghttpapi.Handlers
 )
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
@@ -107,6 +110,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 			legacyShim:            legacyShim{&legacyHandlers{deps: deps}},
 			opsHandlers:           deps.Ops,
 			sourcecontrolHandlers: sourceControlOrEmpty(deps.SourceControl),
+			organizationHandlers:  deps.Organization,
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{

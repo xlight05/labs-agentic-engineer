@@ -14,24 +14,29 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package listorgs
 
 import (
 	"context"
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/organization"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 )
 
-// Organizations feature on the strict interface. list-organizations is the
-// enumerated tenant-gate carve-out (tenantGateCarveOuts): it carries no org
-// context — the console renders the org switcher from it before an org claim
-// exists — and the service scopes itself. It still requires a user JWT at the
-// outer middleware.
+// Handler serves list-organizations, the enumerated tenant-gate carve-out: it
+// carries no org context — the console renders the org switcher from it before
+// an org claim exists — and the service scopes itself. It still requires a user
+// JWT at the outer middleware.
+type Handler struct{ orgs organization.OrganizationService }
 
-func (s *legacyHandlers) ListOrganizations(ctx context.Context, _ gen.ListOrganizationsRequestObject) (gen.ListOrganizationsResponseObject, error) {
-	list, err := s.deps.OrgSvc.List(ctx)
+// New returns the slice's handler.
+func New(orgs organization.OrganizationService) *Handler { return &Handler{orgs: orgs} }
+
+func (h *Handler) ListOrganizations(ctx context.Context, _ gen.ListOrganizationsRequestObject) (gen.ListOrganizationsResponseObject, error) {
+	list, err := h.orgs.List(ctx)
 	if err != nil {
 		return nil, mapOrganizationError(err)
 	}
@@ -45,7 +50,7 @@ func (s *legacyHandlers) ListOrganizations(ctx context.Context, _ gen.ListOrgani
 // never echoes the internal cause.
 func mapOrganizationError(err error) error {
 	if status, ok := ocerr.Status(err); ok && status == http.StatusUnauthorized {
-		return errUnauthorized("invalid or expired token")
+		return apierr.Unauthorized("invalid or expired token")
 	}
-	return errInternal("failed to list organizations")
+	return apierr.Internal("failed to list organizations")
 }

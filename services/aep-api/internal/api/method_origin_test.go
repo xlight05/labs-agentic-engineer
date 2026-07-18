@@ -58,6 +58,7 @@ const embedLegacy = "legacyShim"
 const (
 	embedOps           = "opsHandlers"           // P1
 	embedSourceControl = "sourcecontrolHandlers" // P2
+	embedOrganization  = "organizationHandlers"  // P3
 )
 
 // opOwner maps every operation of the committed contract to the apiServer
@@ -74,15 +75,15 @@ var opOwner = map[string]string{
 	"DeleteExternalResource":        embedLegacy,
 	"DeleteProject":                 embedLegacy,
 	"DeleteSkill":                   embedLegacy,
-	"DisconnectGitProvider":         embedLegacy,
-	"DiscoverIdp":                   embedLegacy,
+	"DisconnectGitProvider":         embedOrganization,
+	"DiscoverIdp":                   embedOrganization,
 	"GetActiveTurn":                 embedLegacy,
 	"GetBuildLogs":                  embedLegacy,
 	"GetBuildPreflight":             embedLegacy,
 	"GetComponent":                  embedLegacy,
 	"GetComponentConfig":            embedLegacy,
 	"GetComponentOpenapi":           embedLegacy,
-	"GetConfig":                     embedLegacy,
+	"GetConfig":                     embedOrganization,
 	"GetConversation":               embedLegacy,
 	"GetDependencyStatus":           embedLegacy,
 	"GetProject":                    embedLegacy,
@@ -101,7 +102,7 @@ var opOwner = map[string]string{
 	"ListExternalResources":         embedLegacy,
 	"ListFiles":                     embedLegacy,
 	"ListIssues":                    embedSourceControl,
-	"ListOrganizations":             embedLegacy,
+	"ListOrganizations":             embedOrganization,
 	"ListPlatformResourceTypes":     embedLegacy,
 	"ListProjectBuilds":             embedLegacy,
 	"ListProjectTags":               embedLegacy,
@@ -114,14 +115,14 @@ var opOwner = map[string]string{
 	"ProvisionPlatformResource":     embedLegacy,
 	"ReadFile":                      embedLegacy,
 	"RequestOrgServiceAccess":       embedLegacy,
-	"RotateIdpClientSecret":         embedLegacy,
-	"StartGitProviderConnect":       embedLegacy,
+	"RotateIdpClientSecret":         embedOrganization,
+	"StartGitProviderConnect":       embedOrganization,
 	"StreamTaskLog":                 embedLegacy,
 	"StreamTurn":                    embedLegacy,
 	"SyncSkills":                    embedLegacy,
 	"TriggerBuild":                  embedLegacy,
 	"UpdateComponentConfig":         embedLegacy,
-	"UpdateConfig":                  embedLegacy,
+	"UpdateConfig":                  embedOrganization,
 	"UpdateSkill":                   embedLegacy,
 	"ValidateCollabAccess":          embedLegacy,
 }
