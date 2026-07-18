@@ -82,7 +82,7 @@ func (h *testGitHost) EnsureBareRepo(_ context.Context, orgID, projectID, repoNa
 		RepoURL:       origin.URL(),
 		DefaultBranch: "main",
 		Status:        "ready",
-		// Production persists sourcecontrol.SlugForURL(cloneURL); file:// URLs have no
+		// Production persists naming.SlugForURL(cloneURL); file:// URLs have no
 		// owner/repo shape, so the tests pin the stable repo name as the slug —
 		// the path key the engine derives the mirror location from.
 		RepoSlug: repoName,

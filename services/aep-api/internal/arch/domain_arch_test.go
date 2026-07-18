@@ -79,9 +79,11 @@ var nonDomainPkgs = map[string]bool{
 // edge/ exists, so nothing is merely planned.
 var plannedPkgs = map[string]bool{}
 
-// domainsOnDisk returns the target domains that actually exist yet. During the
-// migration this grows one entry per phase; the rules apply only to these, which
-// is what makes the ruleset permissive without being toothless.
+// domainsOnDisk returns the target domains that exist on disk. The migration is
+// COMPLETE (all seven landed), so TestAllDomainsLanded pins that this equals the
+// full targetDomains set — a missing domain is now a regression, not a
+// not-yet-migrated phase. The rules below still range over the discovered set so
+// they stay disk-driven, but the set is no longer allowed to be a subset.
 func domainsOnDisk(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
@@ -92,6 +94,26 @@ func domainsOnDisk(t *testing.T, root string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestAllDomainsLanded is the strict-phase gate: every one of the seven target
+// domains must exist on disk. During the migration domainsOnDisk was
+// deliberately a subset (rules applied only to landed domains); now that P9 has
+// landed, a missing domain means a package was deleted or renamed away from its
+// classification — a regression this catches immediately.
+func TestAllDomainsLanded(t *testing.T) {
+	got := map[string]bool{}
+	for _, d := range domainsOnDisk(t, "..") {
+		got[d] = true
+	}
+	for d := range targetDomains {
+		if !got[d] {
+			t.Errorf("target domain %q is not on disk — every domain must exist post-migration (classification regression?)", d)
+		}
+	}
+	if len(got) != len(targetDomains) {
+		t.Errorf("domains on disk = %d, want %d (the full targetDomains set)", len(got), len(targetDomains))
+	}
 }
 
 // fileImports parses one Go file and returns its import paths. Parsing (rather

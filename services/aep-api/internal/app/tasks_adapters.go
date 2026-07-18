@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"gorm.io/gorm"
@@ -274,7 +275,7 @@ func (l repoLister) ListAll(ctx context.Context) ([]execution.RepoRef, error) {
 	}
 	out := make([]execution.RepoRef, 0, len(rows))
 	for i := range rows {
-		owner, name := sourcecontrol.OwnerRepoFromURL(rows[i].RepoURL)
+		owner, name := naming.OwnerRepoFromURL(rows[i].RepoURL)
 		if owner == "" || name == "" {
 			continue
 		}

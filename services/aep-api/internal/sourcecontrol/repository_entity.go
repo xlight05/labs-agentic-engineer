@@ -22,19 +22,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/naming"
 )
 
-// The workspace-naming vocabulary now lives in platform/gitfs (the package that
-// owns the workspace layout — §11.3). These re-exports keep legacy callers
-// compiling as `models.X`; each migrates to naming.X when its feature becomes a
-// domain, and these thin aliases shrink to nothing.
-//
-// aep:migration-shim retires=P9 reason=legacy features still reference sourcecontrol.SlugForURL etc.; they move to naming.* as each feature becomes a domain
-
-// SlugForURL re-exports naming.SlugForURL.
-func SlugForURL(repoURL string) string { return naming.SlugForURL(repoURL) }
-
-// OwnerRepoFromURL re-exports naming.OwnerRepoFromURL.
-func OwnerRepoFromURL(repoURL string) (owner, repo string) { return naming.OwnerRepoFromURL(repoURL) }
-
 // GitRepository stores metadata about a platform-provisioned git repository.
 type GitRepository struct {
 	ID string `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`

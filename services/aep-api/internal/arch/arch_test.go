@@ -257,12 +257,10 @@ var gormImporters = map[string]bool{
 	"internal/migrate":                true,
 	"internal/platform/dbtest":        true,
 	"internal/platform/componenttest": true,
-	// Features with raw gorm still to migrate into repositories/ (step 11).
-	// (runtimeconfig MIGRATED in P8.0 — its convergence watcher's raw
-	// `SELECT DISTINCT … FROM executions` became
-	// delivery.ExecutionRepository.DistinctDeployedProjects, and the watcher
-	// now takes a narrow DeployedProjectLister port instead of *gorm.DB. Only
-	// webhook remains — it lands with P2d.)
+	// No feature packages remain: the migration is complete. Every domain's raw
+	// gorm now lives behind its <domain>/repository*.go and is governed by
+	// TestGormFencedToDomainRepository, not this list. This set is the PERMANENT
+	// kernel/edge gorm allowlist — it should stay exactly this size.
 }
 
 // TestGormImportAllowlist asserts the set of packages that DIRECTLY import
