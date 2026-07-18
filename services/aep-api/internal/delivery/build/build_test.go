@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -150,7 +151,18 @@ func newSvc(runner *fakeRunner, store *fakeStore, repos fakeRepos, tagger *fakeT
 // newHarness assembles the real handler chain around the real build service.
 func newHarness(t *testing.T, svc *build.Service) *componenttest.Harness {
 	t.Helper()
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{BuildSvc: svc}})
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{BuildSvc: svc})),
+	}})
+}
+
+// mustDelivery assembles the delivery domain aggregator for the harness (New
+// never errors today; panic keeps the wiring honest if that changes).
+func mustDelivery(h *deliveryhttpapi.Handlers, err error) *deliveryhttpapi.Handlers {
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 func postBuild(t *testing.T, svc *build.Service, project string) (int, string) {
@@ -613,7 +625,9 @@ func TestGetPreflight_WiredThroughRealService(t *testing.T) {
 			{Kind: models.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg", Parameters: map[string]any{"instances": 1}},
 		}}}
 	pfSvc := build.NewPreflightService(build.PreflightDeps{Design: pfDesign{comps: comps}, Status: pfStatus{}})
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{PreflightSvc: pfSvc}})
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
+		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{PreflightSvc: pfSvc})),
+	}})
 
 	resp := h.AsOrg("acme").Get("/api/v1/projects/shop/build/preflight")
 	if resp.Code != 200 {
@@ -630,7 +644,12 @@ func TestGetPreflight_WiredThroughRealService(t *testing.T) {
 }
 
 func TestGetPreflight_Unconfigured503(t *testing.T) {
-	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{}})
+	// The domain is wired but its preflight service is not (an empty Deps): the
+	// build handler is non-nil and answers 503 from its own nil guard, exactly as
+	// the pre-migration edge did on an unset PreflightSvc.
+	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{
+		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{})),
+	}})
 	resp := h.AsOrg("acme").Get("/api/v1/projects/shop/build/preflight")
 	if resp.Code != 503 {
 		t.Fatalf("unwired preflight: want 503, got %d body=%s", resp.Code, resp.Body.String())

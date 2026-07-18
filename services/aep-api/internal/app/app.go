@@ -49,6 +49,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
@@ -731,13 +732,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		ProjectSvc:   projectService,
 		ComponentSvc: componentService,
 		ConfigSvc:    configService,
-		TaskReads:    taskReads,
-		TaskCommands: taskCommands,
-		TaskStream:   taskStreamSvc,
 		TaskTokens:   taskTokens,
-		// BuildSvc is assigned below (params.Deps.BuildSvc), after the
-		// external-resource provisioner exists — its InputsCoordinator stages the
-		// drawer's external-config secrets through that provisioner's SM-API write.
+		// The delivery domain (build + task reads/promote + task-log stream) is
+		// assembled below (params.Deps.Delivery), after the external-resource
+		// provisioner exists — the build service's InputsCoordinator stages the
+		// drawer's external-config secrets through that provisioner's SM-API write,
+		// and its PreflightService reads the provisioning tri-state.
 	}
 
 	// Dependency-management MCP discovery readers (agnostic subset — Phase 4 of
@@ -861,7 +861,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 			designComponents{store: artifactStore},
 		),
 	})
-	params.Deps.BuildSvc = buildSvc
 	platformProvisioner := resources.NewOCNativeProvisioner(resourceClient)
 	provisioningSvc := provisioning.NewService(provisioning.Deps{
 		Issues:    issueService,
@@ -882,10 +881,27 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// and emits a drawer item per dependency that still needs input, filtering out
 	// anything already provisioned OR in-flight (buildProvisionStatus collapses the
 	// provisioning tri-state onto the "already handled" bool).
-	params.Deps.PreflightSvc = build.NewPreflightService(build.PreflightDeps{
+	preflightSvc := build.NewPreflightService(build.PreflightDeps{
 		Design: designComponents{store: artifactStore},
 		Status: buildProvisionStatus{svc: provisioningSvc},
 	})
+	// delivery — the Delivery Pipeline domain (P6): the public single-tag build
+	// surface, the task read + promote-dispatch surface, and the task-log SSE
+	// stream. Its slice handlers embed straight into the edge's composite; the
+	// edge holds no build/task/stream service. Assembled here, after the build +
+	// preflight services (whose ports depend on the external-resource provisioner
+	// constructed just above).
+	deliveryHandlers, err := deliveryhttpapi.New(deliveryhttpapi.Deps{
+		BuildSvc:     buildSvc,
+		PreflightSvc: preflightSvc,
+		TaskReads:    taskReads,
+		TaskCommands: taskCommands,
+		TaskStream:   taskStreamSvc,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("assemble delivery domain: %w", err)
+	}
+	params.Deps.Delivery = deliveryHandlers
 	// Mint the project's single aep:validation Task in the PLANNING pass: the
 	// plan session mints it right after the plan tap creates the implementation
 	// issues, so it is born in the same phase as them (and never pollutes the

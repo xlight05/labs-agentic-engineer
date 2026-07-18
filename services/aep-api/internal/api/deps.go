@@ -17,15 +17,13 @@
 package api
 
 import (
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/build"
-	"github.com/wso2/aep/aep-api/internal/delivery/execution"
-	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/project"
@@ -44,12 +42,7 @@ type Deps struct {
 	ConfigSvc           component.ConfigService
 	ProvisioningSvc     *provisioning.Service
 	ResourceTypeCatalog dependencies.ResourceTypeLister
-	TaskReads           *task.Reads
-	TaskCommands        *task.Commands
-	TaskStream          *execution.TaskStreamService
 	TaskTokens          *auth.TaskTokenManager
-	BuildSvc            *build.Service
-	PreflightSvc        *build.PreflightService
 
 	// Ops is the FIRST landed domain (P1): its handlers are embedded straight
 	// into apiServer, so the edge holds no ops service and no ops handler file.
@@ -59,4 +52,5 @@ type Deps struct {
 	SourceControl *schttpapi.Handlers
 	Organization  *orghttpapi.Handlers
 	Spec          *spechttpapi.Handlers
+	Delivery      *deliveryhttpapi.Handlers
 }

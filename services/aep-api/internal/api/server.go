@@ -19,6 +19,7 @@ package api
 import (
 	"net/http"
 
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"
 	orghttpapi "github.com/wso2/aep/aep-api/internal/organization/httpapi"
@@ -76,6 +77,7 @@ type apiServer struct {
 	*sourcecontrolHandlers // P2 — sourcecontrol (Source Control & Webhooks)
 	*organizationHandlers  // P3 — organization (Org Config & Organizations)
 	*specHandlers          // P4 — spec (Spec Authoring & Versioning)
+	*deliveryHandlers      // P6 — delivery (Build, Tasks & Task-log stream)
 }
 
 // An embedded field is named by its UNQUALIFIED type name, so every domain's
@@ -87,6 +89,7 @@ type (
 	sourcecontrolHandlers = schttpapi.Handlers
 	organizationHandlers  = orghttpapi.Handlers
 	specHandlers          = spechttpapi.Handlers
+	deliveryHandlers      = deliveryhttpapi.Handlers
 )
 
 // Proves the METHOD SET only — never the wiring: it uses a nil pointer, so a
@@ -115,6 +118,7 @@ func newAPIV1Handler(deps Deps) http.Handler {
 			sourcecontrolHandlers: sourceControlOrEmpty(deps.SourceControl),
 			organizationHandlers:  deps.Organization,
 			specHandlers:          deps.Spec,
+			deliveryHandlers:      deps.Delivery,
 		},
 		[]gen.StrictMiddlewareFunc{tenantGate},
 		gen.StrictHTTPServerOptions{

@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -109,7 +110,18 @@ func newStreamHarness(t *testing.T, snap *execution.TaskSnapshot, rows []models.
 		fakeStreamRepo{},
 		delivery.NewTaskStreamHub(),
 	)
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{TaskStream: svc}})
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{TaskStream: svc})),
+	}})
+}
+
+// mustDelivery assembles the delivery domain aggregator for the harness (New
+// never errors today; panic keeps the wiring honest if that changes).
+func mustDelivery(h *deliveryhttpapi.Handlers, err error) *deliveryhttpapi.Handlers {
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 const streamPath = "/api/v1/projects/widgets/tasks/7/log"

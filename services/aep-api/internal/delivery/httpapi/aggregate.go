@@ -1,0 +1,62 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package httpapi
+
+import (
+	"github.com/wso2/aep/aep-api/internal/delivery/build"
+	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery/task"
+)
+
+// Deps carries every service the delivery slice handlers call. It lives in the
+// aggregator (not the delivery root) because delivery's services live in
+// sub-packages the root may not import — the httpapi aggregator is the one place
+// allowed to name them.
+type Deps struct {
+	BuildSvc     *build.Service
+	PreflightSvc *build.PreflightService
+	TaskReads    *task.Reads
+	TaskCommands *task.Commands
+	TaskStream   *execution.TaskStreamService
+}
+
+// Every slice names its type Handler, so embedding them directly would be
+// "Handler redeclared". Local aliases give distinct field names (§6).
+type (
+	buildHandler     = build.Handler
+	taskHandler      = task.Handler
+	executionHandler = execution.Handler
+)
+
+// Handlers is the delivery domain's slice handlers, embedded so Go promotes each
+// operation exactly once into the edge's composite. It declares nothing.
+type Handlers struct {
+	*buildHandler
+	*taskHandler
+	*executionHandler
+}
+
+// New assembles the domain: pure wiring, constructor injection only. The
+// handlers are fail-LOUD on a wired-but-nil service and 503 on an entirely
+// unwired one (each slice's nil guard), matching the pre-migration edge.
+func New(d Deps) (*Handlers, error) {
+	return &Handlers{
+		buildHandler:     build.NewHandler(d.BuildSvc, d.PreflightSvc),
+		taskHandler:      task.NewHandler(d.TaskReads, d.TaskCommands),
+		executionHandler: execution.NewHandler(d.TaskStream),
+	}, nil
+}

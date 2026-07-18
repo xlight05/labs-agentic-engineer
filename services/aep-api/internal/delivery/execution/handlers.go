@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package execution
 
 import (
 	"context"
@@ -22,12 +22,12 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-// stream-task-log on the strict interface: GET
+// Handler serves stream-task-log on the strict interface: GET
 // /projects/{projectName}/tasks/{issueNumber}/log → text/event-stream. The
 // handler runs the pre-stream fences via the service (a bad path answers a
 // normal JSON envelope, never a broken half-stream) and returns a response
@@ -35,13 +35,17 @@ import (
 // to the connection loop — the loop itself (frame framing, task/execution/
 // line/done frames, keep-alives, settle semantics) is TaskStreamService.run,
 // reused verbatim.
+type Handler struct{ stream *TaskStreamService }
 
-func (s *legacyHandlers) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
-	if s.deps.TaskStream == nil {
-		return nil, errServiceUnavailable("task stream not configured")
+// NewHandler returns the slice's handler.
+func NewHandler(stream *TaskStreamService) *Handler { return &Handler{stream: stream} }
+
+func (h *Handler) StreamTaskLog(ctx context.Context, request gen.StreamTaskLogRequestObject) (gen.StreamTaskLogResponseObject, error) {
+	if h.stream == nil {
+		return nil, apierr.ServiceUnavailable("task stream not configured")
 	}
 	org := tenant.BoundOrgFromContext(ctx)
-	run, err := s.deps.TaskStream.OpenTaskLogStream(ctx, org, request.ProjectName, int(request.IssueNumber))
+	run, err := h.stream.OpenTaskLogStream(ctx, org, request.ProjectName, int(request.IssueNumber))
 	if err != nil {
 		return nil, mapTaskStreamError(err)
 	}
@@ -65,13 +69,36 @@ func (r taskLogStreamResponse) VisitStreamTaskLogResponse(w http.ResponseWriter)
 // envelope, mirroring the retired Huma registration's ladder.
 func mapTaskStreamError(err error) error {
 	switch {
-	case errors.Is(err, execution.ErrTaskStreamRepoNotFound):
-		return errNotFound("project repository not found")
-	case errors.Is(err, execution.ErrTaskStreamTaskNotFound):
-		return errNotFound("task not found")
-	case errors.Is(err, execution.ErrTaskStreamSnapshot):
-		return errInternal("task snapshot failed")
+	case errors.Is(err, ErrTaskStreamRepoNotFound):
+		return apierr.NotFound("project repository not found")
+	case errors.Is(err, ErrTaskStreamTaskNotFound):
+		return apierr.NotFound("task not found")
+	case errors.Is(err, ErrTaskStreamSnapshot):
+		return apierr.Internal("task snapshot failed")
 	default:
-		return errInternal("internal error")
+		return apierr.Internal("internal error")
 	}
+}
+
+// sseStream stamps the standard SSE response preamble — the four event-stream
+// headers, an explicit 200, and an initial flush so the headers reach the
+// client before the first frame — then hands the body writer + a per-chunk
+// flush func to run. It is the strict-server re-home of humakit.SSEBody:
+// every streaming operation's response type wraps this in its
+// VisitXxxResponse(w) method (frame framing and loop logic stay per-feature).
+func sseStream(w http.ResponseWriter, run func(w io.Writer, flush func())) error {
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	flush()
+	run(w, flush)
+	return nil
 }

@@ -14,20 +14,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package task
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-// Task reads (list-tasks / get-task) on the strict interface. Org comes from
+// Handler serves the task read surface (list-tasks / get-task) plus the
+// promote-task-from-issue dispatch leg on the strict interface. Org comes from
 // the gate-bound context and is passed to the service explicitly. The command
 // and plan operations the retired Huma surface also carried (plan-tasks,
 // execute-task, hold-task, unhold-task) are NOT in the committed contract and
@@ -35,10 +38,19 @@ import (
 // packages/contracts/workflows). promote-task-from-issue STAYS: it is the
 // dispatch leg of the SRE/RCA alert handoff, called by the deployed
 // aep-mcp-server (AE-HANDOFF-DESIGN.md).
+type Handler struct {
+	reads    *Reads
+	commands *Commands
+}
 
-func (s *legacyHandlers) ListTasks(ctx context.Context, request gen.ListTasksRequestObject) (gen.ListTasksResponseObject, error) {
+// NewHandler returns the slice's handler.
+func NewHandler(reads *Reads, commands *Commands) *Handler {
+	return &Handler{reads: reads, commands: commands}
+}
+
+func (h *Handler) ListTasks(ctx context.Context, request gen.ListTasksRequestObject) (gen.ListTasksResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	if s.deps.TaskReads == nil {
+	if h.reads == nil {
 		return nil, errTasksNotConfigured()
 	}
 	state, tag := "", ""
@@ -48,23 +60,37 @@ func (s *legacyHandlers) ListTasks(ctx context.Context, request gen.ListTasksReq
 	if request.Params.Tag != "" {
 		tag = request.Params.Tag
 	}
-	views, err := s.deps.TaskReads.ListByTag(ctx, org, request.ProjectName, state, tag)
+	views, err := h.reads.ListByTag(ctx, org, request.ProjectName, state, tag)
 	if err != nil {
 		return nil, mapTaskReadError(err)
 	}
 	return listTasksJSONResponse(views), nil
 }
 
-func (s *legacyHandlers) GetTask(ctx context.Context, request gen.GetTaskRequestObject) (gen.GetTaskResponseObject, error) {
+func (h *Handler) GetTask(ctx context.Context, request gen.GetTaskRequestObject) (gen.GetTaskResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	if s.deps.TaskReads == nil {
+	if h.reads == nil {
 		return nil, errTasksNotConfigured()
 	}
-	detail, err := s.deps.TaskReads.Get(ctx, org, request.ProjectName, int(request.IssueNumber))
+	detail, err := h.reads.Get(ctx, org, request.ProjectName, int(request.IssueNumber))
 	if err != nil {
 		return nil, mapTaskReadError(err)
 	}
 	return getTaskJSONResponse(*detail), nil
+}
+
+// PromoteTaskFromIssue turns an ad-hoc GitHub issue into a coding Task and
+// dispatches it through the funnel (async 202, empty body). The second half
+// of the SRE/RCA handoff: aep-mcp-server calls this right after create-issue.
+func (h *Handler) PromoteTaskFromIssue(ctx context.Context, request gen.PromoteTaskFromIssueRequestObject) (gen.PromoteTaskFromIssueResponseObject, error) {
+	if h.commands == nil {
+		return nil, apierr.ServiceUnavailable("tasks not configured")
+	}
+	org := tenant.BoundOrgFromContext(ctx)
+	if err := h.commands.PromoteAndExecute(ctx, org, request.ProjectName, request.Body.ComponentName, int(request.IssueNumber)); err != nil {
+		return nil, mapTaskCommandError(err)
+	}
+	return gen.PromoteTaskFromIssue202Response{}, nil
 }
 
 // The 200 bodies are served from the delivery read DTOs (delivery.TaskView /
@@ -92,48 +118,49 @@ func (r getTaskJSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
 // errTasksNotConfigured is the nil-service guard the Huma registration carried
 // (503 "tasks not configured") — kept verbatim on the strict edge.
 func errTasksNotConfigured() error {
-	return errServiceUnavailable("tasks not configured")
+	return apierr.ServiceUnavailable("tasks not configured")
 }
 
 // mapTaskReadError translates the read-path sentinels into the envelope,
 // mirroring the retired mapReadError ladder.
 func mapTaskReadError(err error) error {
 	switch {
-	case errors.Is(err, task.ErrTaskNotFound):
-		return errNotFound("task not found")
-	case errors.Is(err, task.ErrProjectRepoNotFound):
-		return errNotFound(task.ErrProjectRepoNotFound.Error())
+	case errors.Is(err, ErrTaskNotFound):
+		return apierr.NotFound("task not found")
+	case errors.Is(err, ErrProjectRepoNotFound):
+		return apierr.NotFound(ErrProjectRepoNotFound.Error())
 	default:
-		return errInternal("internal error")
+		return apierr.Internal("internal error")
 	}
-}
-
-// PromoteTaskFromIssue turns an ad-hoc GitHub issue into a coding Task and
-// dispatches it through the funnel (async 202, empty body). The second half
-// of the SRE/RCA handoff: aep-mcp-server calls this right after create-issue.
-func (s *legacyHandlers) PromoteTaskFromIssue(ctx context.Context, request gen.PromoteTaskFromIssueRequestObject) (gen.PromoteTaskFromIssueResponseObject, error) {
-	if s.deps.TaskCommands == nil {
-		return nil, errServiceUnavailable("tasks not configured")
-	}
-	org := tenant.BoundOrgFromContext(ctx)
-	if err := s.deps.TaskCommands.PromoteAndExecute(ctx, org, request.ProjectName, request.Body.ComponentName, int(request.IssueNumber)); err != nil {
-		return nil, mapTaskCommandError(err)
-	}
-	return gen.PromoteTaskFromIssue202Response{}, nil
 }
 
 // mapTaskCommandError mirrors the retired mapCommandError ladder.
 func mapTaskCommandError(err error) error {
 	switch {
-	case errors.Is(err, task.ErrTaskNotFound):
-		return errNotFound("task not found")
-	case errors.Is(err, task.ErrProjectRepoNotFound):
-		return errNotFound(task.ErrProjectRepoNotFound.Error())
-	case errors.Is(err, task.ErrIssueClosed):
-		return errConflict("issue is closed")
-	case errors.Is(err, task.ErrComponentNameRequired):
-		return errBadRequest(task.ErrComponentNameRequired.Error())
+	case errors.Is(err, ErrTaskNotFound):
+		return apierr.NotFound("task not found")
+	case errors.Is(err, ErrProjectRepoNotFound):
+		return apierr.NotFound(ErrProjectRepoNotFound.Error())
+	case errors.Is(err, ErrIssueClosed):
+		return apierr.Conflict("issue is closed")
+	case errors.Is(err, ErrComponentNameRequired):
+		return apierr.BadRequest(ErrComponentNameRequired.Error())
 	default:
-		return errInternal("internal error")
+		return apierr.Internal("internal error")
 	}
+}
+
+// writeJSONBody is the slice-local JSON response writer (copied from the edge's
+// response_helpers.go). Buffered: an encode failure surfaces as an error BEFORE
+// headers commit (the strict wrapper then serves its 500 envelope) instead of a
+// half-written body.
+func writeJSONBody(w http.ResponseWriter, status int, body any) error {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, err := buf.WriteTo(w)
+	return err
 }

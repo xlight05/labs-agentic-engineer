@@ -60,13 +60,14 @@ const (
 	embedSourceControl = "sourcecontrolHandlers" // P2
 	embedOrganization  = "organizationHandlers"  // P3
 	embedSpec          = "specHandlers"          // P4
+	embedDelivery      = "deliveryHandlers"      // P6
 )
 
 // opOwner maps every operation of the committed contract to the apiServer
 // embedded FIELD NAME expected to supply it. P0: every op is still legacy.
 var opOwner = map[string]string{
 	"ApplyFiles":                    embedSpec,
-	"BuildProject":                  embedLegacy,
+	"BuildProject":                  embedDelivery,
 	"CollectExternalResourceValues": embedLegacy,
 	"CreateIssue":                   embedSourceControl,
 	"CreateProject":                 embedLegacy,
@@ -80,7 +81,7 @@ var opOwner = map[string]string{
 	"DiscoverIdp":                   embedOrganization,
 	"GetActiveTurn":                 embedSpec,
 	"GetBuildLogs":                  embedLegacy,
-	"GetBuildPreflight":             embedLegacy,
+	"GetBuildPreflight":             embedDelivery,
 	"GetComponent":                  embedLegacy,
 	"GetComponentConfig":            embedLegacy,
 	"GetComponentOpenapi":           embedLegacy,
@@ -88,12 +89,12 @@ var opOwner = map[string]string{
 	"GetConversation":               embedSpec,
 	"GetDependencyStatus":           embedLegacy,
 	"GetProject":                    embedLegacy,
-	"GetProjectBuild":               embedLegacy,
+	"GetProjectBuild":               embedDelivery,
 	"GetProjectStatus":              embedLegacy,
 	"GetRcaAgentReport":             embedOps,
 	"GetSkill":                      embedSpec,
 	"GetSpecCollabSession":          embedSpec,
-	"GetTask":                       embedLegacy,
+	"GetTask":                       embedDelivery,
 	"GetTurn":                       embedSpec,
 	"ImportSkill":                   embedSpec,
 	"ListAccessRequests":            embedLegacy,
@@ -105,20 +106,20 @@ var opOwner = map[string]string{
 	"ListIssues":                    embedSourceControl,
 	"ListOrganizations":             embedOrganization,
 	"ListPlatformResourceTypes":     embedLegacy,
-	"ListProjectBuilds":             embedLegacy,
+	"ListProjectBuilds":             embedDelivery,
 	"ListProjectTags":               embedSpec,
 	"ListProjects":                  embedLegacy,
 	"ListRcaAgentReports":           embedOps,
 	"ListSkillUpdates":              embedSpec,
 	"ListSkills":                    embedSpec,
-	"ListTasks":                     embedLegacy,
-	"PromoteTaskFromIssue":          embedLegacy,
+	"ListTasks":                     embedDelivery,
+	"PromoteTaskFromIssue":          embedDelivery,
 	"ProvisionPlatformResource":     embedLegacy,
 	"ReadFile":                      embedSpec,
 	"RequestOrgServiceAccess":       embedLegacy,
 	"RotateIdpClientSecret":         embedOrganization,
 	"StartGitProviderConnect":       embedOrganization,
-	"StreamTaskLog":                 embedLegacy,
+	"StreamTaskLog":                 embedDelivery,
 	"StreamTurn":                    embedSpec,
 	"SyncSkills":                    embedSpec,
 	"TriggerBuild":                  embedLegacy,

@@ -14,37 +14,46 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package api
+package build
 
 import (
 	"context"
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/apierr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 )
 
-// Build feature on the strict interface: build-project / get-project-build /
-// list-project-builds plus the dependency-drawer get-build-preflight. Every
-// operation is org-scoped — the tenant gate bound the token org before these
-// run, and the handlers pass it to the service explicitly.
+// Handler serves the build feature on the strict interface: build-project /
+// get-project-build / list-project-builds plus the dependency-drawer
+// get-build-preflight. Every operation is org-scoped — the tenant gate bound
+// the token org before these run, and the handlers pass it to the service
+// explicitly.
 //
-// Error dialect: build.Run is the same sequence the non-HTTP
-// StartProjectBuild trigger uses, whose error sites still speak the huma-era
-// edge vocabulary (one live copy — no fork until the central *_huma.go
-// deletion). mapBuildRunError translates those onto the flat envelope; the
-// former 422 spec-gate problem is a 400 validation_failed with details[] now
-// (the error-model break).
+// Error dialect: Run is the same sequence the non-HTTP StartProjectBuild
+// trigger uses, whose error sites speak the neutral *EdgeError vocabulary.
+// mapBuildRunError translates those onto the flat envelope; the former 422
+// spec-gate problem is a 400 validation_failed with details[] now (the
+// error-model break).
+type Handler struct {
+	svc       *Service
+	preflight *PreflightService
+}
 
-func (s *legacyHandlers) BuildProject(ctx context.Context, request gen.BuildProjectRequestObject) (gen.BuildProjectResponseObject, error) {
+// NewHandler returns the slice's handler.
+func NewHandler(svc *Service, preflight *PreflightService) *Handler {
+	return &Handler{svc: svc, preflight: preflight}
+}
+
+func (h *Handler) BuildProject(ctx context.Context, request gen.BuildProjectRequestObject) (gen.BuildProjectResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	var inputs []build.BuildInputItem
+	var inputs []BuildInputItem
 	if request.Body != nil {
 		inputs = toBuildInputItems(request.Body.Inputs)
 	}
-	tag, failures, err := s.deps.BuildSvc.Run(ctx, org, request.ProjectName, inputs)
+	tag, failures, err := h.svc.Run(ctx, org, request.ProjectName, inputs)
 	if err != nil {
 		return nil, mapBuildRunError(err)
 	}
@@ -54,23 +63,23 @@ func (s *legacyHandlers) BuildProject(ctx context.Context, request gen.BuildProj
 	return gen.BuildProject200JSONResponse(gen.BuildResponse{Tag: tag}), nil
 }
 
-func (s *legacyHandlers) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
+func (h *Handler) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	st, err := s.deps.BuildSvc.Status(ctx, org, request.ProjectName, request.Tag)
+	st, err := h.svc.Status(ctx, org, request.ProjectName, request.Tag)
 	if err != nil {
-		if errors.Is(err, build.ErrBuildNotFound) {
-			return nil, errNotFound("build not found")
+		if errors.Is(err, ErrBuildNotFound) {
+			return nil, apierr.NotFound("build not found")
 		}
-		return nil, errInternal("lookup build")
+		return nil, apierr.Internal("lookup build")
 	}
 	return gen.GetProjectBuild200JSONResponse(toBuildStatus(st)), nil
 }
 
-func (s *legacyHandlers) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
+func (h *Handler) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	list, err := s.deps.BuildSvc.List(ctx, org, request.ProjectName)
+	list, err := h.svc.List(ctx, org, request.ProjectName)
 	if err != nil {
-		return nil, errInternal("list builds")
+		return nil, apierr.Internal("list builds")
 	}
 	return gen.ListProjectBuilds200JSONResponse(toBuildList(list)), nil
 }
@@ -78,55 +87,76 @@ func (s *legacyHandlers) ListProjectBuilds(ctx context.Context, request gen.List
 // GetBuildPreflight computes the build dependency-drawer preflight. A nil
 // service answers 503, mirroring the retired RegisterPreflight nil guard (the
 // surface exists with the feature unwired).
-func (s *legacyHandlers) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
+func (h *Handler) GetBuildPreflight(ctx context.Context, request gen.GetBuildPreflightRequestObject) (gen.GetBuildPreflightResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)
-	if s.deps.PreflightSvc == nil {
-		return nil, errServiceUnavailable("build preflight is not configured")
+	if h.preflight == nil {
+		return nil, apierr.ServiceUnavailable("build preflight is not configured")
 	}
-	pf, err := s.deps.PreflightSvc.Preflight(ctx, org, request.ProjectName)
+	pf, err := h.preflight.Preflight(ctx, org, request.ProjectName)
 	if err != nil {
-		return nil, errInternal("compute build preflight: " + err.Error())
+		return nil, apierr.Internal("compute build preflight: " + err.Error())
 	}
 	return gen.GetBuildPreflight200JSONResponse(toBuildPreflight(pf)), nil
 }
 
-// mapBuildRunError translates build.Run's failures onto the envelope: the
-// already-running sentinel is a 409, and every build.Run *build.EdgeError
-// carries its status, message, and per-file spec-gate details across (a 400
-// with details is the validation_failed dialect).
+// mapBuildRunError translates Run's failures onto the envelope: the
+// already-running sentinel is a 409, and every Run *EdgeError carries its
+// status, message, and per-file spec-gate details across (a 400 with details is
+// the validation_failed dialect).
 func mapBuildRunError(err error) error {
-	if errors.Is(err, build.ErrBuildAlreadyRunning) {
-		return errConflict("a build is already running for this project")
+	if errors.Is(err, ErrBuildAlreadyRunning) {
+		return apierr.Conflict("a build is already running for this project")
 	}
-	var ee *build.EdgeError
+	var ee *EdgeError
 	if !errors.As(err, &ee) {
-		return errInternal("internal error")
+		return apierr.Internal("internal error")
 	}
 	switch ee.Status {
 	case http.StatusBadRequest:
-		return &apiError{http.StatusBadRequest, CodeValidationFailed, ee.Message, ee.Details}
+		return apierr.New(http.StatusBadRequest, "validation_failed", ee.Message, ee.Details)
 	case http.StatusServiceUnavailable:
-		return errServiceUnavailable(ee.Message)
+		return apierr.ServiceUnavailable(ee.Message)
 	case http.StatusBadGateway:
-		return errBadGateway(ee.Message)
+		return apierr.BadGateway(ee.Message)
 	default:
 		return errFromStatus(ee.Status, ee.Message)
 	}
 }
 
+// errFromStatus maps a sentinel-classified HTTP status (e.g. an OpenChoreo
+// pass-through classified by ocerr.Status) onto the envelope, mirroring the
+// edge's retired humakit.ErrorFromStatus ladder — reproduced here so the build
+// slice can map an *EdgeError status without importing the edge.
+func errFromStatus(status int, msg string) error {
+	switch status {
+	case http.StatusBadRequest:
+		return apierr.BadRequest(msg)
+	case http.StatusUnauthorized:
+		return apierr.Unauthorized(msg)
+	case http.StatusForbidden:
+		return apierr.Forbidden(msg)
+	case http.StatusNotFound:
+		return apierr.NotFound(msg)
+	case http.StatusConflict:
+		return apierr.Conflict(msg)
+	default:
+		return apierr.Internal(msg)
+	}
+}
+
 // --- schema <-> feature projections ------------------------------------------
 
-func toBuildInputItems(in []gen.BuildInputItem) []build.BuildInputItem {
+func toBuildInputItems(in []gen.BuildInputItem) []BuildInputItem {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]build.BuildInputItem, 0, len(in))
+	out := make([]BuildInputItem, 0, len(in))
 	for _, it := range in {
-		var values []build.ConfigValue
+		var values []ConfigValue
 		for _, v := range it.Values {
-			values = append(values, build.ConfigValue{Key: v.Key, Value: v.Value})
+			values = append(values, ConfigValue{Key: v.Key, Value: v.Value})
 		}
-		out = append(out, build.BuildInputItem{
+		out = append(out, BuildInputItem{
 			Component:   it.Component,
 			Dependency:  it.Dependency,
 			Kind:        string(it.Kind),
@@ -140,7 +170,7 @@ func toBuildInputItems(in []gen.BuildInputItem) []build.BuildInputItem {
 	return out
 }
 
-func toInputFailures(in []build.InputFailure) []gen.InputFailure {
+func toInputFailures(in []InputFailure) []gen.InputFailure {
 	out := make([]gen.InputFailure, 0, len(in))
 	for _, f := range in {
 		out = append(out, gen.InputFailure{
@@ -153,7 +183,7 @@ func toInputFailures(in []build.InputFailure) []gen.InputFailure {
 	return out
 }
 
-func toBuildStatus(st build.BuildStatus) gen.BuildStatus {
+func toBuildStatus(st BuildStatus) gen.BuildStatus {
 	var tasks []gen.BuildStatusTask
 	for _, t := range st.Tasks {
 		tasks = append(tasks, gen.BuildStatusTask{
@@ -170,7 +200,7 @@ func toBuildStatus(st build.BuildStatus) gen.BuildStatus {
 	}
 }
 
-func toBuildList(l build.BuildList) gen.BuildList {
+func toBuildList(l BuildList) gen.BuildList {
 	// Builds stays non-nil so the JSON body is [] rather than null.
 	builds := make([]gen.BuildSummary, 0, len(l.Builds))
 	for _, b := range l.Builds {
@@ -192,7 +222,7 @@ func toBuildList(l build.BuildList) gen.BuildList {
 	return gen.BuildList{Builds: builds}
 }
 
-func toBuildPreflight(pf build.BuildPreflight) gen.BuildPreflight {
+func toBuildPreflight(pf BuildPreflight) gen.BuildPreflight {
 	// Items stays non-nil so the JSON body is [] rather than null.
 	items := make([]gen.PreflightItem, 0, len(pf.Items))
 	for _, it := range pf.Items {

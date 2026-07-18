@@ -42,6 +42,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
@@ -181,7 +182,18 @@ func taskIssue(number int, component, state string, extra ...string) sourcecontr
 func newRig(t *testing.T, iss *fakeIssues, execs fakeExecs) *componenttest.Harness {
 	t.Helper()
 	reads := task.NewReads(iss, fakeRepos{}, execs, nil, nil)
-	return componenttest.New(t, componenttest.Options{Deps: api.Deps{TaskReads: reads}})
+	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
+		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{TaskReads: reads})),
+	}})
+}
+
+// mustDelivery assembles the delivery domain aggregator for the harness (New
+// never errors today; panic keeps the wiring honest if that changes).
+func mustDelivery(h *deliveryhttpapi.Handlers, err error) *deliveryhttpapi.Handlers {
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 // ---- tests -----------------------------------------------------------------
