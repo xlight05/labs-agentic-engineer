@@ -24,10 +24,10 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // UNIT tier for TraitSyncService.SyncProjectAPITraits + siblingSPAOrigins —
@@ -77,7 +77,7 @@ func ocDeployments(urlsByComponent map[string]string) *mocks.ComponentClientMock
 			}
 			return &gen.DeploymentList{}, nil
 		},
-		UpdateComponentTraitsFunc: func(context.Context, string, string, string, []models.ComponentTrait) error {
+		UpdateComponentTraitsFunc: func(context.Context, string, string, string, []openchoreo.ComponentTrait) error {
 			return nil
 		},
 		UpdateComponentTraitEnvironmentConfigsFunc: func(context.Context, string, string, string, map[string]map[string]interface{}) error {
@@ -222,7 +222,7 @@ func TestSyncProjectAPITraits_PerComponentErrorDoesNotAbort(t *testing.T) {
 		"components/api-b/design.json": serviceToServiceMd("api-b"),
 	}
 	oc := ocDeployments(map[string]string{})
-	oc.UpdateComponentTraitsFunc = func(_ context.Context, _, _, componentName string, _ []models.ComponentTrait) error {
+	oc.UpdateComponentTraitsFunc = func(_ context.Context, _, _, componentName string, _ []openchoreo.ComponentTrait) error {
 		if componentName == "api-a" {
 			return errors.New("oc: transient PATCH failure")
 		}

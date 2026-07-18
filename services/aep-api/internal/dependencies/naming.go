@@ -29,7 +29,7 @@ const (
 	// imposes, so it governs the bound for the OC Resource name below.
 	cnpgMaxClusterName = 50
 	// maxEnvNameLen is the longest environment slug AEP embeds in a render name.
-	// "development" (models.DevEnvironmentName, 11 chars) is the only — and longest
+	// "development" (openchoreo.DevEnvironmentName, 11 chars) is the only — and longest
 	// — environment v1 provisions into; "production"/"staging" are shorter.
 	maxEnvNameLen = 11
 	// ocRenderDecoration is the overhead OpenChoreo adds when it renders a Resource

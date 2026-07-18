@@ -35,7 +35,7 @@ const (
 	// bindingEnv is the single environment runtime-config targets (mirrors
 	// provisioning.defaultEnv). A web-app's platform-resource binding whose
 	// outputs drive the SPA lives in this env.
-	bindingEnv = models.DevEnvironmentName
+	bindingEnv = openchoreo.DevEnvironmentName
 )
 
 // RuntimeConfigService emits the per-web-app `env-config.js` file onto
@@ -148,13 +148,13 @@ func (s *RuntimeConfigService) EmitForComponent(ctx context.Context, orgID, proj
 		)
 		return nil
 	}
-	file := models.WorkflowFileVar{
+	file := openchoreo.WorkflowFileVar{
 		Key:       "env-config.js",
 		MountPath: "/usr/share/nginx/html/",
 		Value:     renderEnvConfigJS(envValues),
 	}
 
-	if err := s.componentClient.UpdateComponentWorkflowFiles(ctx, orgID, projectID, componentName, []models.WorkflowFileVar{file}); err != nil {
+	if err := s.componentClient.UpdateComponentWorkflowFiles(ctx, orgID, projectID, componentName, []openchoreo.WorkflowFileVar{file}); err != nil {
 		return fmt.Errorf("runtime_config: update workflow files: %w", err)
 	}
 

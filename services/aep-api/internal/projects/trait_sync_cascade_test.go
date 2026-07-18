@@ -22,8 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Tests exercising the OC-touching paths of TraitSyncService that don't
@@ -112,7 +112,7 @@ func TestTraitSync_DeleteCascade_EmptyArgsRejected(t *testing.T) {
 // DeleteCascade above. Empty IDs should never trigger OC reads.
 func TestSyncComponentTraits_RejectsEmptyArgs(t *testing.T) {
 	mock := &mocks.ComponentClientMock{
-		UpdateComponentTraitsFunc: func(ctx context.Context, orgName, projectName, componentName string, traits []models.ComponentTrait) error {
+		UpdateComponentTraitsFunc: func(ctx context.Context, orgName, projectName, componentName string, traits []openchoreo.ComponentTrait) error {
 			t.Fatal("UpdateComponentTraits must not be called with empty args")
 			return nil
 		},

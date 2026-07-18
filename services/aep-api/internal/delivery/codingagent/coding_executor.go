@@ -487,7 +487,7 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.Disp
 	// no component-bound external resources).
 	var extResSRs []ExternalResourceSecretInputs
 	if e.runnerSecrets != nil && t.Component != "" {
-		if srs, rerr := e.runnerSecrets.ResolveRunnerSecrets(ctx, t.OrgID, t.ProjectID, t.Component, models.DevEnvironmentName); rerr != nil {
+		if srs, rerr := e.runnerSecrets.ResolveRunnerSecrets(ctx, t.OrgID, t.ProjectID, t.Component, openchoreo.DevEnvironmentName); rerr != nil {
 			slog.WarnContext(ctx, "coding executor: resolve external-resource runner secrets failed — dispatching without", "component", t.Component, "error", rerr)
 		} else {
 			extResSRs = srs

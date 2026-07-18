@@ -29,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 )
 
 func TestConfigService_GetConfig(t *testing.T) {
@@ -90,8 +90,8 @@ func TestConfigService_UpdateConfig_PersistsAndMirrors(t *testing.T) {
 		return nil
 	}}
 	var mirrorOrg, mirrorProj, mirrorComp string
-	var mirrored []models.WorkflowEnvVarRef
-	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(_ context.Context, org, proj, c string, envVars []models.WorkflowEnvVarRef) error {
+	var mirrored []openchoreo.WorkflowEnvVarRef
+	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(_ context.Context, org, proj, c string, envVars []openchoreo.WorkflowEnvVarRef) error {
 		mirrorOrg, mirrorProj, mirrorComp = org, proj, c
 		mirrored = envVars
 		return nil
@@ -123,7 +123,7 @@ func TestConfigService_UpdateConfig_PersistsAndMirrors(t *testing.T) {
 func TestConfigService_UpdateConfig_MirrorFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error { return nil }}
-	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []models.WorkflowEnvVarRef) error {
+	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []openchoreo.WorkflowEnvVarRef) error {
 		return errors.New("no release bindings yet")
 	}}
 	// A mirror failure is logged, not surfaced: the DB write already succeeded.
@@ -148,7 +148,7 @@ func TestConfigService_UpdateConfig_RepoErrorWraps(t *testing.T) {
 	repo := &stubConfigRepo{UpsertFunc: func(context.Context, *ComponentConfig) error {
 		return errors.New("unique violation")
 	}}
-	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []models.WorkflowEnvVarRef) error {
+	comp := &stubComponentSvc{UpdateWorkflowEnvVarsFunc: func(context.Context, string, string, string, []openchoreo.WorkflowEnvVarRef) error {
 		t.Error("mirror must not run when the DB write failed")
 		return nil
 	}}

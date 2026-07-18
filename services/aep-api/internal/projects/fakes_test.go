@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -94,12 +95,12 @@ func (s *stubBuildStager) StageBuildSecret(ctx context.Context, ocOrgID, repoSlu
 // --- ComponentService (the config-mirror seam; only UpdateWorkflowEnvVars) ----
 
 type stubComponentSvc struct {
-	UpdateWorkflowEnvVarsFunc func(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error
+	UpdateWorkflowEnvVarsFunc func(ctx context.Context, orgName, projectName, componentName string, envVars []openchoreo.WorkflowEnvVarRef) error
 }
 
 var _ ComponentService = (*stubComponentSvc)(nil)
 
-func (s *stubComponentSvc) UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error {
+func (s *stubComponentSvc) UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []openchoreo.WorkflowEnvVarRef) error {
 	if s.UpdateWorkflowEnvVarsFunc == nil {
 		panic("stubComponentSvc: UpdateWorkflowEnvVars not set")
 	}
@@ -114,7 +115,7 @@ func (s *stubComponentSvc) GetComponent(context.Context, string, string, string)
 func (s *stubComponentSvc) EnsureComponent(context.Context, string, string, string) error {
 	return nil
 }
-func (s *stubComponentSvc) CreateComponent(context.Context, string, string, *models.CreateComponentRequest) (*gen.Component, error) {
+func (s *stubComponentSvc) CreateComponent(context.Context, string, string, *openchoreo.CreateComponentRequest) (*gen.Component, error) {
 	panic("stubComponentSvc: CreateComponent not expected")
 }
 func (s *stubComponentSvc) ListDeployments(context.Context, string, string, string) (*gen.DeploymentList, error) {

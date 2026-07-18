@@ -22,6 +22,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
@@ -52,9 +53,9 @@ func (ensureRepoSvc) DeleteRepo(context.Context, string, string) error {
 }
 
 func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
-	var captured *models.CreateComponentRequest
+	var captured *openchoreo.CreateComponentRequest
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*gen.Component, error) {
+		CreateComponentFunc: func(_ context.Context, _, _ string, req *openchoreo.CreateComponentRequest) (*gen.Component, error) {
 			captured = req
 			return &gen.Component{Name: req.Name}, nil
 		},
@@ -116,9 +117,9 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 // plain service (which caused shared-host routing and a missing runtime
 // config for the deployed SPA).
 func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
-	var captured *models.CreateComponentRequest
+	var captured *openchoreo.CreateComponentRequest
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(_ context.Context, _, _ string, req *models.CreateComponentRequest) (*gen.Component, error) {
+		CreateComponentFunc: func(_ context.Context, _, _ string, req *openchoreo.CreateComponentRequest) (*gen.Component, error) {
 			captured = req
 			return &gen.Component{Name: req.Name}, nil
 		},
@@ -153,7 +154,7 @@ func TestEnsureComponent_WebAppKind_UsesWebApplicationEntrypoint(t *testing.T) {
 
 func TestEnsureComponent_DesignMissingComponent_Errors(t *testing.T) {
 	oc := &ocmocks.ComponentClientMock{
-		CreateComponentFunc: func(context.Context, string, string, *models.CreateComponentRequest) (*gen.Component, error) {
+		CreateComponentFunc: func(context.Context, string, string, *openchoreo.CreateComponentRequest) (*gen.Component, error) {
 			t.Error("CreateComponent must not be called when the component is absent from the design")
 			return nil, nil
 		},

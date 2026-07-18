@@ -600,11 +600,11 @@ func (f fakeRunReader) ValidationRunByParent(context.Context, string, string, st
 func (f fakeRunReader) DeleteByProject(context.Context, string, string) error { return nil }
 
 type fakeBindingsReader struct {
-	items []models.ReleaseBindingSummary
+	items []openchoreo.ReleaseBindingSummary
 	err   error
 }
 
-func (f fakeBindingsReader) ListProjectReleaseBindings(context.Context, string, string) ([]models.ReleaseBindingSummary, error) {
+func (f fakeBindingsReader) ListProjectReleaseBindings(context.Context, string, string) ([]openchoreo.ReleaseBindingSummary, error) {
 	return f.items, f.err
 }
 
@@ -618,9 +618,9 @@ type statusFixture struct {
 	countErr      error
 	runs          []delivery.DevflowRun
 	runsErr       error
-	bindings      []models.ReleaseBindingSummary
+	bindings      []openchoreo.ReleaseBindingSummary
 	bindingsErr   error
-	validationRun *delivery.DevflowRun           // validation child of the newest dev run (nil = none)
+	validationRun *delivery.DevflowRun         // validation child of the newest dev run (nil = none)
 	validationErr error                        // ValidationRunByParent error
 	execs         delivery.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
 }

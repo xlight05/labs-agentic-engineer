@@ -426,7 +426,7 @@ func APIConfigurationInstanceName(componentName, endpointName string) string {
 // DesiredAPIConfigurationTraitWithIssuers with no issuer pinning and
 // no sibling origins (wildcard CORS). `endpointName` is the design.json
 // workload endpoint name (empty ⇒ the default "http").
-func DesiredAPIConfigurationTrait(componentName, endpointName string, enabled bool) (traits []models.ComponentTrait, configs map[string]map[string]interface{}) {
+func DesiredAPIConfigurationTrait(componentName, endpointName string, enabled bool) (traits []openchoreo.ComponentTrait, configs map[string]map[string]interface{}) {
 	return DesiredAPIConfigurationTraitWithIssuers(componentName, endpointName, enabled, nil, nil)
 }
 
@@ -456,7 +456,7 @@ func DesiredAPIConfigurationTrait(componentName, endpointName string, enabled bo
 // is no longer hardcoded, so a component whose workload names its endpoint
 // something other than "http" still renders (previously deploy rendering failed
 // with `workload.endpoints["http"]: no such key`).
-func DesiredAPIConfigurationTraitWithIssuers(componentName, endpointName string, enabled bool, issuers []string, allowedOrigins []string) (traits []models.ComponentTrait, configs map[string]map[string]interface{}) {
+func DesiredAPIConfigurationTraitWithIssuers(componentName, endpointName string, enabled bool, issuers []string, allowedOrigins []string) (traits []openchoreo.ComponentTrait, configs map[string]map[string]interface{}) {
 	endpointName = strings.TrimSpace(endpointName)
 	if endpointName == "" {
 		endpointName = models.DefaultEndpointName
@@ -469,7 +469,7 @@ func DesiredAPIConfigurationTraitWithIssuers(componentName, endpointName string,
 			inst: nil,
 		}
 	}
-	traits = []models.ComponentTrait{{
+	traits = []openchoreo.ComponentTrait{{
 		InstanceName: inst,
 		Kind:         "ClusterTrait",
 		Name:         "api-configuration",

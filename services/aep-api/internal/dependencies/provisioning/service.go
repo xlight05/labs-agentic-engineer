@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
@@ -31,7 +32,7 @@ import (
 // defaultEnv is the single environment provisioning pins in v1 — the watcher and
 // the declarative-wiring comment both read the `development` binding (upstream
 // parity: the two naming schemes are deliberately identical).
-const defaultEnv = models.DevEnvironmentName
+const defaultEnv = openchoreo.DevEnvironmentName
 
 // Service coordinates dependency provisioning on the aep:provision funnel: it
 // mints gate issues, collects external values, provisions platform resources,

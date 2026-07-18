@@ -33,10 +33,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Stage status vocabularies (the contract enums).
@@ -72,7 +72,7 @@ type devRunRows interface {
 // bindingsReader is the narrow status-read port over OpenChoreo release
 // bindings. openchoreo.ComponentClient satisfies it.
 type bindingsReader interface {
-	ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]models.ReleaseBindingSummary, error)
+	ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]openchoreo.ReleaseBindingSummary, error)
 }
 
 // SetStageSources wires the build/deploy stage inputs at the composition
@@ -95,7 +95,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	var (
 		snap          *spec.StatusSnapshot
 		runs          []delivery.DevflowRun
-		bindings      []models.ReleaseBindingSummary
+		bindings      []openchoreo.ReleaseBindingSummary
 		deployVer     string
 		deployTotal   int64
 		validationRun *delivery.DevflowRun
@@ -211,9 +211,9 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	// counts, deliberately not reconciled.
 	status.Deploy.Version = deployVer
 	status.Deploy.Components.Total = deployTotal
-	var dev []models.ReleaseBindingSummary
+	var dev []openchoreo.ReleaseBindingSummary
 	for _, b := range bindings {
-		if b.Environment == models.DevEnvironmentName && !b.Undeploy {
+		if b.Environment == openchoreo.DevEnvironmentName && !b.Undeploy {
 			dev = append(dev, b)
 		}
 	}
@@ -325,9 +325,9 @@ var bindingFailureReasons = map[string]bool{
 	"ProjectNotFound":             true,
 }
 
-func bindingReady(b models.ReleaseBindingSummary) bool { return b.ReadyStatus == "True" }
+func bindingReady(b openchoreo.ReleaseBindingSummary) bool { return b.ReadyStatus == "True" }
 
-func bindingFailed(b models.ReleaseBindingSummary) bool {
+func bindingFailed(b openchoreo.ReleaseBindingSummary) bool {
 	return !bindingReady(b) && bindingFailureReasons[b.ReadyReason]
 }
 
@@ -335,7 +335,7 @@ func bindingFailed(b models.ReleaseBindingSummary) bool {
 // precedence failed > deploying > deployed; no bindings → none. The design
 // denominator never gates the status (a designed-but-never-built component
 // shows "deployed · 2/3", not forever-"deploying").
-func deployStageStatus(dev []models.ReleaseBindingSummary) string {
+func deployStageStatus(dev []openchoreo.ReleaseBindingSummary) string {
 	if len(dev) == 0 {
 		return deployNone
 	}
@@ -354,7 +354,7 @@ func deployStageStatus(dev []models.ReleaseBindingSummary) string {
 	return deployDeployed
 }
 
-func countReady(dev []models.ReleaseBindingSummary) int {
+func countReady(dev []openchoreo.ReleaseBindingSummary) int {
 	n := 0
 	for _, b := range dev {
 		if bindingReady(b) {

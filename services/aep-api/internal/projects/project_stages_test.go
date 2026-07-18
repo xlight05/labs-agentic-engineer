@@ -25,14 +25,15 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"testing"
 
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 
-func devBinding(name, readyStatus, readyReason string) models.ReleaseBindingSummary {
-	return models.ReleaseBindingSummary{
+func devBinding(name, readyStatus, readyReason string) openchoreo.ReleaseBindingSummary {
+	return openchoreo.ReleaseBindingSummary{
 		ComponentName: name,
 		Environment:   "development",
 		ReadyStatus:   readyStatus,
@@ -64,7 +65,7 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 			{Tag: "v2", Status: delivery.WorkflowStatusRunning, TasksTotal: 5, TasksDone: 2, TasksFailed: 1},
 			{Tag: "v1", Status: delivery.WorkflowStatusCompleted, TasksTotal: 3, TasksDone: 3},
 		},
-		bindings: []models.ReleaseBindingSummary{
+		bindings: []openchoreo.ReleaseBindingSummary{
 			devBinding("api", "True", "Ready"),
 			devBinding("web", "False", "ResourcesProgressing"),
 			{ComponentName: "api", Environment: "production", ReadyStatus: "True", ReadyReason: "Ready"}, // ignored: not dev
@@ -161,14 +162,14 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name       string
-		bindings   []models.ReleaseBindingSummary
+		bindings   []openchoreo.ReleaseBindingSummary
 		wantStatus string
 		wantReady  int64
 	}{
 		{name: "no bindings → none", wantStatus: "none"},
 		{
 			name: "all ready → deployed",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				devBinding("api", "True", "Ready"),
 				devBinding("web", "True", "Ready"),
 			},
@@ -177,7 +178,7 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 		},
 		{
 			name: "any failure reason wins over progress",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				devBinding("api", "True", "Ready"),
 				devBinding("web", "False", "ResourcesProgressing"),
 				devBinding("db", "False", "ResourceApplyFailed"),
@@ -187,21 +188,21 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 		},
 		{
 			name: "unknown not-ready reason → deploying (forgiving default)",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				devBinding("api", "False", "SomeNewReason"),
 			},
 			wantStatus: "deploying",
 		},
 		{
 			name: "absent Ready condition → deploying",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				devBinding("api", "", ""),
 			},
 			wantStatus: "deploying",
 		},
 		{
 			name: "undeploy-state binding excluded from status and counts",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				devBinding("api", "True", "Ready"),
 				{ComponentName: "web", Environment: "development", Undeploy: true, ReadyStatus: "False", ReadyReason: "ResourcesUndeployed"},
 			},
@@ -210,7 +211,7 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 		},
 		{
 			name: "only non-dev bindings → none",
-			bindings: []models.ReleaseBindingSummary{
+			bindings: []openchoreo.ReleaseBindingSummary{
 				{ComponentName: "api", Environment: "production", ReadyStatus: "True", ReadyReason: "Ready"},
 			},
 			wantStatus: "none",
@@ -238,7 +239,7 @@ func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 	fx := statusFixture{
 		runs:     []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusCompleted}},
 		countErr: fmt.Errorf("wrapped: %w", spec.ErrSpecTagNotFound),
-		bindings: []models.ReleaseBindingSummary{devBinding("api", "True", "Ready")},
+		bindings: []openchoreo.ReleaseBindingSummary{devBinding("api", "True", "Ready")},
 	}
 	st := mustStatus(t, fx)
 	if st.Deploy.Version != "v1" || st.Deploy.Status != "deployed" {

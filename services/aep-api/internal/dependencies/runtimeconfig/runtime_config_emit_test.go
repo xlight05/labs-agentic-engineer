@@ -800,7 +800,7 @@ func Test_EmitForComponent(t *testing.T) {
 			"api": "http://api.local/todo",
 			"web": "http://web.local/",
 		})
-		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 			return nil
 		}
 		rc := rcOutputs(authOutputs(), nil)
@@ -857,7 +857,7 @@ func Test_EmitForComponent(t *testing.T) {
 				"components/api/design.json": serviceComponentMd(),
 			}
 			oc := ocResolving(map[string]string{"api": "http://api.local/todo"})
-			oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+			oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 				return nil
 			}
 			svc := NewRuntimeConfigService(oc, nil, storeWith(files))
@@ -874,7 +874,7 @@ func Test_EmitForComponent(t *testing.T) {
 	t.Run("not-ready (unresolved service dep) defers the write", func(t *testing.T) {
 		t.Parallel()
 		oc := ocResolving(map[string]string{})
-		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 			t.Errorf("UpdateComponentWorkflowFiles must NOT be called when not ready")
 			return nil
 		}
@@ -891,7 +891,7 @@ func Test_EmitForComponent(t *testing.T) {
 	t.Run("not-ready (auth outputs unresolved) defers the write", func(t *testing.T) {
 		t.Parallel()
 		oc := ocResolving(map[string]string{"api": "http://api.local", "web": "http://web.local"})
-		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 			t.Errorf("UpdateComponentWorkflowFiles must NOT be called when outputs are unresolved")
 			return nil
 		}
@@ -972,7 +972,7 @@ func Test_EmitForComponent(t *testing.T) {
 	t.Run("UpdateComponentWorkflowFiles error propagates", func(t *testing.T) {
 		t.Parallel()
 		oc := ocResolving(map[string]string{"api": "http://api.local"}) // no PR dep → ready
-		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 			return errors.New("oc write failed")
 		}
 		svc := NewRuntimeConfigService(oc, nil, storeWith(webAndAPI("")))
@@ -1010,7 +1010,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	t.Run("emits each web-app, skips services", func(t *testing.T) {
 		t.Parallel()
 		oc := ocResolving(map[string]string{"api": "http://api.local"})
-		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(context.Context, string, string, string, []openchoreo.WorkflowFileVar) error {
 			return nil
 		}
 		svc := NewRuntimeConfigService(oc, nil, storeWith(twoSPAsOneService))
@@ -1053,7 +1053,7 @@ func Test_EmitForProjectSPAs(t *testing.T) {
 	t.Run("per-SPA emit failure is best-effort: continues and returns nil", func(t *testing.T) {
 		t.Parallel()
 		oc := ocResolving(map[string]string{"api": "http://api.local"})
-		oc.UpdateComponentWorkflowFilesFunc = func(_ context.Context, _, _, componentName string, _ []models.WorkflowFileVar) error {
+		oc.UpdateComponentWorkflowFilesFunc = func(_ context.Context, _, _, componentName string, _ []openchoreo.WorkflowFileVar) error {
 			if componentName == "web1" {
 				return errors.New("oc write failed for web1")
 			}

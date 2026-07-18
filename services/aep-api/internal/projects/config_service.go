@@ -22,7 +22,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 )
 
 type ConfigService interface {
@@ -87,9 +87,9 @@ func (s *configService) UpdateConfig(ctx context.Context, orgID, projectName, co
 	// that haven't been created yet (pre-first-deploy) will pick up the
 	// values the next time this flow runs.
 	if s.componentSvc != nil {
-		wfEnvVars := make([]models.WorkflowEnvVarRef, 0, len(envVars))
+		wfEnvVars := make([]openchoreo.WorkflowEnvVarRef, 0, len(envVars))
 		for _, ev := range envVars {
-			wfEnvVars = append(wfEnvVars, models.WorkflowEnvVarRef{Key: ev.Key, Value: ev.Value})
+			wfEnvVars = append(wfEnvVars, openchoreo.WorkflowEnvVarRef{Key: ev.Key, Value: ev.Value})
 		}
 		if err := s.componentSvc.UpdateWorkflowEnvVars(ctx, orgID, projectName, componentName, wfEnvVars); err != nil {
 			slog.WarnContext(ctx, "mirror env vars onto OC Component failed; DB is updated, next build may still see stale vars",

@@ -44,14 +44,14 @@ import (
 type ComponentService interface {
 	ListComponents(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.ComponentList, error)
 	GetComponent(ctx context.Context, orgName, projectName, componentName string) (*gen.Component, error)
-	CreateComponent(ctx context.Context, orgName, projectName string, req *models.CreateComponentRequest) (*gen.Component, error)
+	CreateComponent(ctx context.Context, orgName, projectName string, req *openchoreo.CreateComponentRequest) (*gen.Component, error)
 	// EnsureComponent idempotently provisions the OpenChoreo Component CR for a
 	// design component (by friendly name), so a merged-PR build has a Component to
 	// build. It is the coding-dispatch pre-flight (tasks-github-native): the CR
 	// must exist by merge/build time or the build fails "Component not found".
 	// Idempotent — CreateComponent is 409-safe, so re-dispatch is a no-op.
 	EnsureComponent(ctx context.Context, orgName, projectName, componentName string) error
-	UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error
+	UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []openchoreo.WorkflowEnvVarRef) error
 
 	// Deploy (read-only — autoDeploy on the Component drives the chain)
 	ListDeployments(ctx context.Context, orgName, projectName, componentName string) (*gen.DeploymentList, error)
@@ -117,7 +117,7 @@ func (s *componentService) GetComponent(ctx context.Context, orgName, projectNam
 	return comp, nil
 }
 
-func (s *componentService) CreateComponent(ctx context.Context, orgName, projectName string, req *models.CreateComponentRequest) (*gen.Component, error) {
+func (s *componentService) CreateComponent(ctx context.Context, orgName, projectName string, req *openchoreo.CreateComponentRequest) (*gen.Component, error) {
 	comp, err := s.client.CreateComponent(ctx, orgName, projectName, req)
 	if err != nil {
 		return nil, err
@@ -173,24 +173,24 @@ func (s *componentService) EnsureComponent(ctx context.Context, orgName, project
 	// repository.secretRef stays empty: build credentials are pre-staged per
 	// WorkflowRun (build-credential-injection.md), so the Component's workflow
 	// param carries no SecretReference.
-	if _, err := s.CreateComponent(ctx, orgName, projectName, &models.CreateComponentRequest{
+	if _, err := s.CreateComponent(ctx, orgName, projectName, &openchoreo.CreateComponentRequest{
 		Name:        k8sName,
 		DisplayName: comp.Name,
 		Description: comp.Name,
 		Type:        ocEntrypoint(comp.ComponentType),
 		AutoBuild:   false,
 		AutoDeploy:  true,
-		Workflow: &models.ComponentWorkflowSpec{
+		Workflow: &openchoreo.ComponentWorkflowSpec{
 			Kind: "ClusterWorkflow",
 			Name: "dockerfile-builder",
-			Parameters: &models.ComponentWorkflowParameters{
-				Repository: &models.WorkflowRepository{
+			Parameters: &openchoreo.ComponentWorkflowParameters{
+				Repository: &openchoreo.WorkflowRepository{
 					URL:       repo.RepoURL,
 					SecretRef: "",
 					AppPath:   comp.AppPath,
-					Revision:  &models.WorkflowRevision{Branch: branch},
+					Revision:  &openchoreo.WorkflowRevision{Branch: branch},
 				},
-				Docker: &models.DockerParameters{Context: dockerContext, FilePath: dockerFilePath},
+				Docker: &openchoreo.DockerParameters{Context: dockerContext, FilePath: dockerFilePath},
 			},
 		},
 		Traits: traits,
@@ -220,7 +220,7 @@ func ocEntrypoint(componentType string) string {
 // exist yet (the user is editing env vars before first deploy) the
 // underlying client returns nil and the caller is expected to retry
 // after the first build has produced a binding.
-func (s *componentService) UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error {
+func (s *componentService) UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []openchoreo.WorkflowEnvVarRef) error {
 	if err := s.client.UpdateComponentWorkflowEnvVars(ctx, orgName, projectName, componentName, envVars); err != nil {
 		return err
 	}

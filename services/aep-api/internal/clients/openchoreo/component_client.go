@@ -25,7 +25,6 @@ import (
 
 	ocgen "github.com/wso2/aep/aep-api/internal/clients/openchoreo/gen"
 	"github.com/wso2/aep/aep-api/internal/gen"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 //go:generate go run github.com/matryer/moq@v0.7.1 -rm -fmt goimports -pkg mocks -out mocks/component_client_mock.go . ComponentClient
@@ -46,7 +45,7 @@ import (
 type ComponentClient interface {
 	ListComponents(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.ComponentList, error)
 	GetComponent(ctx context.Context, orgName, projectName, componentName string) (*gen.Component, error)
-	CreateComponent(ctx context.Context, orgName, projectName string, req *models.CreateComponentRequest) (*gen.Component, error)
+	CreateComponent(ctx context.Context, orgName, projectName string, req *CreateComponentRequest) (*gen.Component, error)
 	// UpdateComponentWorkflowEnvVars writes per-component env vars onto each
 	// of the component's ReleaseBindings at
 	// `spec.workloadOverrides.container.env`. Per-env (one RB per
@@ -57,7 +56,7 @@ type ComponentClient interface {
 	// each is updated independently; if no RBs exist yet (pre-first-deploy)
 	// the call is a soft no-op and the caller is expected to retry once
 	// the first build has produced RBs.
-	UpdateComponentWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error
+	UpdateComponentWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []WorkflowEnvVarRef) error
 
 	// UpdateComponentWorkflowFiles writes per-component literal files onto
 	// each of the component's ReleaseBindings at
@@ -67,7 +66,7 @@ type ComponentClient interface {
 	// mountPath — no rebuild needed. As with UpdateComponentWorkflowEnvVars,
 	// when no ReleaseBindings exist yet the call is a soft no-op and the
 	// caller is expected to retry after the first build produces RBs.
-	UpdateComponentWorkflowFiles(ctx context.Context, orgName, projectName, componentName string, files []models.WorkflowFileVar) error
+	UpdateComponentWorkflowFiles(ctx context.Context, orgName, projectName, componentName string, files []WorkflowFileVar) error
 
 	// DeleteComponent removes the Component CR. OC's controller GCs the
 	// chain (Component → ReleaseBinding → RenderedRelease → Deployment /
@@ -88,7 +87,7 @@ type ComponentClient interface {
 	// Returns ErrComponentNotFound when the Component does not exist (the
 	// caller decides whether to recreate or no-op). Used by trait_sync.go
 	// when a user toggles `exposesAPI.auth` on `design.json` after first deploy.
-	UpdateComponentTraits(ctx context.Context, orgName, projectName, componentName string, traits []models.ComponentTrait) error
+	UpdateComponentTraits(ctx context.Context, orgName, projectName, componentName string, traits []ComponentTrait) error
 
 	// UpdateComponentTraitEnvironmentConfigs writes per-environment trait
 	// configs onto each of the component's ReleaseBindings at
@@ -107,7 +106,7 @@ type ComponentClient interface {
 	// (the API has no project filter; ownership is matched client-side on
 	// spec.owner.projectName), following pagination. Each item carries the
 	// aggregate Ready condition — the project-status deploy stage's source.
-	ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]models.ReleaseBindingSummary, error)
+	ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]ReleaseBindingSummary, error)
 
 	// Build (workflow runs). `runName` is the WorkflowRun metadata.name; if
 	// empty the OC client auto-generates one via NewBuildRunName. Callers
@@ -395,7 +394,7 @@ func (c *componentClient) GetComponent(ctx context.Context, orgName, projectName
 	return &comp, nil
 }
 
-func (c *componentClient) CreateComponent(ctx context.Context, orgName, projectName string, req *models.CreateComponentRequest) (*gen.Component, error) {
+func (c *componentClient) CreateComponent(ctx context.Context, orgName, projectName string, req *CreateComponentRequest) (*gen.Component, error) {
 	resp, err := c.oc.CreateComponentWithResponse(ctx, orgName, buildCreateComponentBody(projectName, req))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create component: %w", err)
@@ -434,7 +433,7 @@ func (c *componentClient) CreateComponent(ctx context.Context, orgName, projectN
 // one), the call is a soft no-op: the caller is expected to retry after
 // a successful deploy. An empty `envVars` slice clears any previously
 // set env block on each binding.
-func (c *componentClient) UpdateComponentWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []models.WorkflowEnvVarRef) error {
+func (c *componentClient) UpdateComponentWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []WorkflowEnvVarRef) error {
 	scopedComp := ScopedComponentName(projectName, componentName)
 	componentQ := ocgen.ComponentQueryParam(scopedComp)
 	listResp, err := c.oc.ListReleaseBindingsWithResponse(ctx, orgName, &ocgen.ListReleaseBindingsParams{
@@ -498,7 +497,7 @@ func (c *componentClient) UpdateComponentWorkflowEnvVars(ctx context.Context, or
 // one), the call is a soft no-op: the caller is expected to retry after
 // a successful deploy. An empty `files` slice clears any previously set
 // files block on each binding.
-func (c *componentClient) UpdateComponentWorkflowFiles(ctx context.Context, orgName, projectName, componentName string, files []models.WorkflowFileVar) error {
+func (c *componentClient) UpdateComponentWorkflowFiles(ctx context.Context, orgName, projectName, componentName string, files []WorkflowFileVar) error {
 	scopedComp := ScopedComponentName(projectName, componentName)
 	componentQ := ocgen.ComponentQueryParam(scopedComp)
 	listResp, err := c.oc.ListReleaseBindingsWithResponse(ctx, orgName, &ocgen.ListReleaseBindingsParams{
@@ -555,7 +554,7 @@ func (c *componentClient) UpdateComponentWorkflowFiles(ctx context.Context, orgN
 // the ocgen.FileVar slice for ReleaseBinding workloadOverrides. An empty
 // `files` returns a pointer to an empty slice so the server-side patch
 // clears the field rather than leaving stale values in place.
-func workflowFileVarsToGen(files []models.WorkflowFileVar) *[]ocgen.FileVar {
+func workflowFileVarsToGen(files []WorkflowFileVar) *[]ocgen.FileVar {
 	out := make([]ocgen.FileVar, 0, len(files))
 	for _, f := range files {
 		v := f.Value
@@ -599,7 +598,7 @@ func (c *componentClient) DeleteComponent(ctx context.Context, orgName, projectN
 // UpdateComponentTraits replaces spec.traits on the named Component. GET-
 // then-PUT to satisfy OC's full-object update semantics. Pass an empty
 // slice to clear traits.
-func (c *componentClient) UpdateComponentTraits(ctx context.Context, orgName, projectName, componentName string, traits []models.ComponentTrait) error {
+func (c *componentClient) UpdateComponentTraits(ctx context.Context, orgName, projectName, componentName string, traits []ComponentTrait) error {
 	scopedComp := ScopedComponentName(projectName, componentName)
 	getResp, err := c.oc.GetComponentWithResponse(ctx, orgName, scopedComp)
 	if err != nil {
@@ -706,7 +705,7 @@ func (c *componentClient) UpdateComponentTraitEnvironmentConfigs(ctx context.Con
 // gen's ComponentSpec.{ComponentType,Owner} are inline anonymous structs;
 // we materialize them with composite literals to stay clear of pointer
 // gymnastics.
-func buildCreateComponentBody(projectName string, req *models.CreateComponentRequest) ocgen.CreateComponentJSONRequestBody {
+func buildCreateComponentBody(projectName string, req *CreateComponentRequest) ocgen.CreateComponentJSONRequestBody {
 	ann := map[string]string{
 		AnnotationKeyDisplayName: req.DisplayName,
 		AnnotationKeyDescription: req.Description,
@@ -775,7 +774,7 @@ func buildCreateComponentBody(projectName string, req *models.CreateComponentReq
 // componentTraitsToGen converts the BFF-internal slice into the gen shape.
 // Returns nil for an empty input so we don't stamp an empty traits array
 // onto Components without API security configured.
-func componentTraitsToGen(traits []models.ComponentTrait) *[]ocgen.ComponentTrait {
+func componentTraitsToGen(traits []ComponentTrait) *[]ocgen.ComponentTrait {
 	if len(traits) == 0 {
 		return nil
 	}
@@ -801,7 +800,7 @@ func componentTraitsToGen(traits []models.ComponentTrait) *[]ocgen.ComponentTrai
 // workflowParametersToMap shapes our typed CreateComponentRequest.Workflow.Parameters
 // into the dynamic `map[string]interface{}` gen uses. Returns nil when no
 // fields are set so we don't leak an empty `parameters` object.
-func workflowParametersToMap(p *models.ComponentWorkflowParameters) map[string]interface{} {
+func workflowParametersToMap(p *ComponentWorkflowParameters) map[string]interface{} {
 	if p == nil {
 		return nil
 	}
@@ -856,7 +855,7 @@ func workflowParametersToMap(p *models.ComponentWorkflowParameters) map[string]i
 // `spec.workloadOverrides.container.env`. An empty `envVars` returns a
 // pointer to an empty slice so the server-side patch clears the field
 // rather than leaving stale values in place.
-func workflowEnvVarRefsToGen(envVars []models.WorkflowEnvVarRef) *[]ocgen.EnvVar {
+func workflowEnvVarRefsToGen(envVars []WorkflowEnvVarRef) *[]ocgen.EnvVar {
 	out := make([]ocgen.EnvVar, 0, len(envVars))
 	for _, ev := range envVars {
 		entry := ocgen.EnvVar{Key: ev.Key}
@@ -909,8 +908,8 @@ func (c *componentClient) ListDeployments(ctx context.Context, orgName, projectN
 
 // ListProjectReleaseBindings lists the org's ReleaseBindings and keeps the
 // project's, following pagination — the status poll's single OC call.
-func (c *componentClient) ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]models.ReleaseBindingSummary, error) {
-	var out []models.ReleaseBindingSummary
+func (c *componentClient) ListProjectReleaseBindings(ctx context.Context, orgName, projectName string) ([]ReleaseBindingSummary, error) {
+	var out []ReleaseBindingSummary
 	params := &ocgen.ListReleaseBindingsParams{}
 	for {
 		resp, err := c.oc.ListReleaseBindingsWithResponse(ctx, orgName, params)
@@ -947,8 +946,8 @@ func (c *componentClient) ListProjectReleaseBindings(ctx context.Context, orgNam
 // releaseBindingSummary extracts the deploy-stage facts: identity, undeploy
 // intent, and the aggregate Ready-typed condition (never the last-array-entry
 // heuristic — condition array order is not guaranteed).
-func releaseBindingSummary(rb ocgen.ReleaseBinding) models.ReleaseBindingSummary {
-	s := models.ReleaseBindingSummary{}
+func releaseBindingSummary(rb ocgen.ReleaseBinding) ReleaseBindingSummary {
+	s := ReleaseBindingSummary{}
 	var projectName, componentName string
 	if rb.Spec != nil {
 		projectName = rb.Spec.Owner.ProjectName
