@@ -405,14 +405,13 @@ func TestGormImportAllowlist(t *testing.T) {
 }
 
 // TestInternalOnlyLayout asserts no Go source lives outside the sanctioned
-// top-level roots: internal/ (everything), cmd/ (mains), skills/ (go:embed
-// must anchor to the source file), and the deliberately-flat models/ shared
-// kernel (its relocation into the domains is the remaining P9 step;
-// repositories/ has already dissolved into each <domain>/repository_*.go).
+// top-level roots: internal/ (everything), cmd/ (mains), and skills/ (go:embed
+// must anchor to the source file). The flat models/ and repositories/ shared
+// kernels are both DISSOLVED — every entity lives in its owning
+// <domain>/entity_*.go and each repository in <domain>/repository_*.go.
 func TestInternalOnlyLayout(t *testing.T) {
 	allowedRoots := map[string]bool{
 		"internal": true, "cmd": true, "skills": true,
-		"models": true,
 	}
 	root := ".." + string(filepath.Separator) + ".." // module root from internal/arch
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

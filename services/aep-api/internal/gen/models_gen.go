@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-
 	"github.com/wso2/aep/aep-api/internal/platform/orgconfig"
 )
 
