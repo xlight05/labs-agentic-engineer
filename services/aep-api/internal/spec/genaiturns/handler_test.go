@@ -34,8 +34,7 @@ import (
 
 // Port of the genai_huma mapper pins onto the strict-server mappers
 // (handlers_genai.go): the status table, the pinned 409 conflict bodies, and
-// the cause-logging guarantees. statusOf lives in
-// handlers_organization_test.go.
+// the cause-logging guarantees. statusOf is defined below.
 
 // TestMapGenAITurnError_Table pins the turn error mapping table — including
 // the 503 arm for an unusable org skills repo and the opaque-500 default. The
