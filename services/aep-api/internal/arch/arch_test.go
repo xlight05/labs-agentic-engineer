@@ -113,11 +113,6 @@ var featureEdgeAllowlist = map[string][]string{
 	// split) — the funnel is reached through the task.Dispatcher consumer port.
 	// (Its artifacts edge became a feature→spec-domain edge in P4.)
 	"task": {},
-	// validation mints the project's aep:validation Task issue on design approval
-	// (validation-phase). It holds NO feature edge: the issue wire types come from
-	// the sourcecontrol domain (P2), and the design-component and criteria-file
-	// reads are consumer-side ports wired at the composition root.
-	"validation": {},
 	"webhook":    {},
 }
 

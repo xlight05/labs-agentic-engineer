@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/feature/validation"
+	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	authn "github.com/wso2/aep/aep-api/internal/platform/auth"
 	"github.com/wso2/aep/aep-api/internal/spec"

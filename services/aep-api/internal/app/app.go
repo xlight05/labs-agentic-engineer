@@ -56,7 +56,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/task"
-	"github.com/wso2/aep/aep-api/internal/feature/validation"
+	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
 	"github.com/wso2/aep/aep-api/internal/ops"
 	opshttpapi "github.com/wso2/aep/aep-api/internal/ops/httpapi"

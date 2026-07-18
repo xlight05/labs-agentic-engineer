@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/feature/validation"
+	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 )
 
 // The v1 mock provider returns a shared admin/admin account marked Mock for any
