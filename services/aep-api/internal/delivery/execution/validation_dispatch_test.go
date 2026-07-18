@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // validationTaskIssue builds a project-scoped aep:validation Task issue
@@ -82,7 +81,7 @@ func TestFunnel_Validation_HeldUntilDepsDeploy(t *testing.T) {
 
 	// Deploy hello-web (a succeeded build derives the component deployed), then
 	// Reevaluate re-gates the queued row and dispatches the validation run.
-	_, dep, _ := store.TryAdmit(ctx, &models.Execution{Repo: "o/r", IssueNumber: 1, Kind: string(taskmeta.KindBuild)})
+	_, dep, _ := store.TryAdmit(ctx, &delivery.Execution{Repo: "o/r", IssueNumber: 1, Kind: string(taskmeta.KindBuild)})
 	_, _ = store.Finish(ctx, dep.ID, string(taskmeta.ExecSucceeded), "")
 
 	if err := f.Reevaluate(ctx); err != nil {

@@ -134,10 +134,10 @@ type fakeRetrier struct {
 	newRun string
 	err    error
 	mu     sync.Mutex
-	got    []*models.Execution
+	got    []*delivery.Execution
 }
 
-func (f *fakeRetrier) RetryAuthFailedBuild(_ context.Context, row *models.Execution) (string, error) {
+func (f *fakeRetrier) RetryAuthFailedBuild(_ context.Context, row *delivery.Execution) (string, error) {
 	f.mu.Lock()
 	f.got = append(f.got, row)
 	f.mu.Unlock()
@@ -153,11 +153,11 @@ func (f *fakeRetrier) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len
 // instead of panicking to keep the fake honest about "not exercised here".
 type fakeExecRepo struct {
 	mu   sync.Mutex
-	rows map[string]*models.Execution
+	rows map[string]*delivery.Execution
 }
 
-func newFakeExecRepo(rows ...*models.Execution) *fakeExecRepo {
-	m := map[string]*models.Execution{}
+func newFakeExecRepo(rows ...*delivery.Execution) *fakeExecRepo {
+	m := map[string]*delivery.Execution{}
 	for _, r := range rows {
 		cp := *r
 		m[r.ID] = &cp
@@ -165,7 +165,7 @@ func newFakeExecRepo(rows ...*models.Execution) *fakeExecRepo {
 	return &fakeExecRepo{rows: m}
 }
 
-func (f *fakeExecRepo) get(id string) *models.Execution {
+func (f *fakeExecRepo) get(id string) *delivery.Execution {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if r := f.rows[id]; r != nil {
@@ -175,10 +175,10 @@ func (f *fakeExecRepo) get(id string) *models.Execution {
 	return nil
 }
 
-func (f *fakeExecRepo) ListActive(context.Context) ([]models.Execution, error) {
+func (f *fakeExecRepo) ListActive(context.Context) ([]delivery.Execution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []models.Execution
+	var out []delivery.Execution
 	for _, r := range f.rows {
 		if taskmeta.ExecutionStatus(r.Status).IsActive() {
 			out = append(out, *r)
@@ -187,7 +187,7 @@ func (f *fakeExecRepo) ListActive(context.Context) ([]models.Execution, error) {
 	return out, nil
 }
 
-func (f *fakeExecRepo) StartWithRun(_ context.Context, id, runName string) (*models.Execution, error) {
+func (f *fakeExecRepo) StartWithRun(_ context.Context, id, runName string) (*delivery.Execution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r := f.rows[id]
@@ -200,7 +200,7 @@ func (f *fakeExecRepo) StartWithRun(_ context.Context, id, runName string) (*mod
 	return &cp, nil
 }
 
-func (f *fakeExecRepo) Finish(_ context.Context, id, status, reason string) (*models.Execution, error) {
+func (f *fakeExecRepo) Finish(_ context.Context, id, status, reason string) (*delivery.Execution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r := f.rows[id]
@@ -213,7 +213,7 @@ func (f *fakeExecRepo) Finish(_ context.Context, id, status, reason string) (*mo
 	return &cp, nil
 }
 
-func (f *fakeExecRepo) NoteBuildRetry(_ context.Context, id, runName, reason string) (*models.Execution, error) {
+func (f *fakeExecRepo) NoteBuildRetry(_ context.Context, id, runName, reason string) (*delivery.Execution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	r := f.rows[id]
@@ -228,28 +228,28 @@ func (f *fakeExecRepo) NoteBuildRetry(_ context.Context, id, runName, reason str
 
 // --- unexercised verbs (present to satisfy the interface) -------------------
 
-func (f *fakeExecRepo) TryAdmit(context.Context, *models.Execution) (bool, *models.Execution, error) {
+func (f *fakeExecRepo) TryAdmit(context.Context, *delivery.Execution) (bool, *delivery.Execution, error) {
 	return false, nil, nil
 }
-func (f *fakeExecRepo) GetByIDScoped(context.Context, string, string) (*models.Execution, error) {
+func (f *fakeExecRepo) GetByIDScoped(context.Context, string, string) (*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) LatestPerKind(context.Context, string, int) (map[string]*models.Execution, error) {
+func (f *fakeExecRepo) LatestPerKind(context.Context, string, int) (map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) LatestPerKindScoped(context.Context, string, string, int) (map[string]*models.Execution, error) {
+func (f *fakeExecRepo) LatestPerKindScoped(context.Context, string, string, int) (map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) LatestPerKindForRepo(context.Context, string) (map[int]map[string]*models.Execution, error) {
+func (f *fakeExecRepo) LatestPerKindForRepo(context.Context, string) (map[int]map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) LatestPerKindForRepoScoped(context.Context, string, string) (map[int]map[string]*models.Execution, error) {
+func (f *fakeExecRepo) LatestPerKindForRepoScoped(context.Context, string, string) (map[int]map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) ListByIssue(context.Context, string, int) ([]models.Execution, error) {
+func (f *fakeExecRepo) ListByIssue(context.Context, string, int) ([]delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecRepo) ListByIssueScoped(context.Context, string, string, int) ([]models.Execution, error) {
+func (f *fakeExecRepo) ListByIssueScoped(context.Context, string, string, int) ([]delivery.Execution, error) {
 	return nil, nil
 }
 func (f *fakeExecRepo) DeleteByProject(context.Context, string, string) error { return nil }

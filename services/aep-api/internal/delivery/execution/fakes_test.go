@@ -25,20 +25,19 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeStore is an in-memory ExecutionStore that reproduces the partial
 // admission-mutex semantics (one active row per (repo, issueNumber, kind)).
 type fakeStore struct {
 	mu   sync.Mutex
-	rows []*models.Execution
+	rows []*delivery.Execution
 	next int
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{} }
 
-func (s *fakeStore) TryAdmit(_ context.Context, e *models.Execution) (bool, *models.Execution, error) {
+func (s *fakeStore) TryAdmit(_ context.Context, e *delivery.Execution) (bool, *delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e.Status == "" {
@@ -71,7 +70,7 @@ func (s *fakeStore) markRunning(id string) {
 	}
 }
 
-func (s *fakeStore) Finish(_ context.Context, id, status, reason string) (*models.Execution, error) {
+func (s *fakeStore) Finish(_ context.Context, id, status, reason string) (*delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.rows {
@@ -85,10 +84,10 @@ func (s *fakeStore) Finish(_ context.Context, id, status, reason string) (*model
 	return nil, nil
 }
 
-func (s *fakeStore) LatestPerKind(_ context.Context, repo string, issueNumber int) (map[string]*models.Execution, error) {
+func (s *fakeStore) LatestPerKind(_ context.Context, repo string, issueNumber int) (map[string]*delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := map[string]*models.Execution{}
+	out := map[string]*delivery.Execution{}
 	for _, r := range s.rows {
 		if r.Repo != repo || r.IssueNumber != issueNumber {
 			continue
@@ -101,17 +100,17 @@ func (s *fakeStore) LatestPerKind(_ context.Context, repo string, issueNumber in
 	return out, nil
 }
 
-func (s *fakeStore) LatestPerKindForRepo(_ context.Context, repo string) (map[int]map[string]*models.Execution, error) {
+func (s *fakeStore) LatestPerKindForRepo(_ context.Context, repo string) (map[int]map[string]*delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := map[int]map[string]*models.Execution{}
+	out := map[int]map[string]*delivery.Execution{}
 	for _, r := range s.rows {
 		if r.Repo != repo {
 			continue
 		}
 		byKind := out[r.IssueNumber]
 		if byKind == nil {
-			byKind = map[string]*models.Execution{}
+			byKind = map[string]*delivery.Execution{}
 			out[r.IssueNumber] = byKind
 		}
 		if cur, ok := byKind[r.Kind]; !ok || r.CreatedAt.After(cur.CreatedAt) {
@@ -122,10 +121,10 @@ func (s *fakeStore) LatestPerKindForRepo(_ context.Context, repo string) (map[in
 	return out, nil
 }
 
-func (s *fakeStore) ListByIssue(_ context.Context, repo string, issueNumber int) ([]models.Execution, error) {
+func (s *fakeStore) ListByIssue(_ context.Context, repo string, issueNumber int) ([]delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []models.Execution
+	var out []delivery.Execution
 	for _, r := range s.rows {
 		if r.Repo == repo && r.IssueNumber == issueNumber {
 			out = append(out, *r)
@@ -134,10 +133,10 @@ func (s *fakeStore) ListByIssue(_ context.Context, repo string, issueNumber int)
 	return out, nil
 }
 
-func (s *fakeStore) ListActive(_ context.Context) ([]models.Execution, error) {
+func (s *fakeStore) ListActive(_ context.Context) ([]delivery.Execution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []models.Execution
+	var out []delivery.Execution
 	for _, r := range s.rows {
 		if taskmeta.ExecutionStatus(r.Status).IsActive() {
 			out = append(out, *r)

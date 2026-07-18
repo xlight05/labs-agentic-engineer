@@ -38,7 +38,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // fakeLookup fences GetByIDScoped to one org — a cross-org read misses
@@ -46,10 +45,10 @@ import (
 // source the stream walks.
 type fakeLookup struct {
 	org string
-	row *models.Execution
+	row *delivery.Execution
 }
 
-func (f fakeLookup) GetByIDScoped(_ context.Context, orgID, id string) (*models.Execution, error) {
+func (f fakeLookup) GetByIDScoped(_ context.Context, orgID, id string) (*delivery.Execution, error) {
 	if orgID != f.org || f.row == nil || f.row.ID != id {
 		return nil, nil
 	}
@@ -71,9 +70,9 @@ func (f fakeStreamTask) TaskSnapshot(_ context.Context, orgID, _ string, _ int) 
 }
 
 // fakeStreamExecs lists a Task's execution rows for the timeline walk.
-type fakeStreamExecs struct{ rows []models.Execution }
+type fakeStreamExecs struct{ rows []delivery.Execution }
 
-func (f fakeStreamExecs) ByIssue(context.Context, string, string, int) ([]models.Execution, error) {
+func (f fakeStreamExecs) ByIssue(context.Context, string, string, int) ([]delivery.Execution, error) {
 	return f.rows, nil
 }
 
@@ -96,9 +95,9 @@ func snapshotJSON(t *testing.T, issue int, derived string) *execution.TaskSnapsh
 // newStreamHarness wires the real TaskStreamService (org-fenced snapshot + one
 // terminal coding execution) behind componenttest. oc nil: a terminal coding
 // execution reports terminal-ness without an OC read.
-func newStreamHarness(t *testing.T, snap *execution.TaskSnapshot, rows []models.Execution) *componenttest.Harness {
+func newStreamHarness(t *testing.T, snap *execution.TaskSnapshot, rows []delivery.Execution) *componenttest.Harness {
 	t.Helper()
-	var lookupRow *models.Execution
+	var lookupRow *delivery.Execution
 	if len(rows) > 0 {
 		lookupRow = &rows[0]
 	}
@@ -131,9 +130,9 @@ const streamPath = "/api/v1/projects/widgets/tasks/7/log"
 // then `done` + `[DONE]`, and the server closes. A settled task is a FINITE
 // stream, so the httptest recorder captures the full body.
 func TestTaskStream_SettledTask_StreamsFullStateThenDone(t *testing.T) {
-	row := models.Execution{ID: "e1", OrgID: "acme", ProjectID: "widgets",
+	row := delivery.Execution{ID: "e1", OrgID: "acme", ProjectID: "widgets",
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecSucceeded)}
-	h := newStreamHarness(t, snapshotJSON(t, 7, "deployed"), []models.Execution{row})
+	h := newStreamHarness(t, snapshotJSON(t, 7, "deployed"), []delivery.Execution{row})
 
 	rec := h.AsOrg("acme").Get(streamPath)
 	if rec.Code != http.StatusOK {
@@ -157,9 +156,9 @@ func TestTaskStream_SettledTask_StreamsFullStateThenDone(t *testing.T) {
 // TestTaskStream_CrossTenant_404: the Task belongs to acme; a caller scoped to
 // evil must 404 (the org fence, not a leak of "exists but forbidden").
 func TestTaskStream_CrossTenant_404(t *testing.T) {
-	row := models.Execution{ID: "e1", OrgID: "acme", ProjectID: "widgets",
+	row := delivery.Execution{ID: "e1", OrgID: "acme", ProjectID: "widgets",
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning)}
-	h := newStreamHarness(t, snapshotJSON(t, 7, "in_progress"), []models.Execution{row})
+	h := newStreamHarness(t, snapshotJSON(t, 7, "in_progress"), []delivery.Execution{row})
 
 	if rec := h.AsOrg("evil").Get(streamPath); rec.Code != http.StatusNotFound {
 		t.Fatalf("cross-tenant stream: code %d, want 404 (%s)", rec.Code, rec.Body.String())

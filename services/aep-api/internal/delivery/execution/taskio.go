@@ -22,7 +22,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Reason sentinels stamped on execution rows. The closed-unmerged sentinel
@@ -45,7 +44,7 @@ const (
 
 // openPRNumber returns the PR number a succeeded coding row claims is open, or
 // 0 when the row is not a succeeded coding row with a pr# reason.
-func openPRNumber(row *models.Execution) int {
+func openPRNumber(row *delivery.Execution) int {
 	if row == nil || row.Kind != string(taskmeta.KindCoding) || row.Status != string(taskmeta.ExecSucceeded) {
 		return 0
 	}
@@ -88,7 +87,7 @@ func factsFromIssue(issue sourcecontrol.IssueInfo, orgID, projectID, repoFullNam
 // deriveStatus fuses a Task's live GitHub facts with its executions into the
 // computed, never-stored status (§4). execs is latest-per-kind; the PR state is
 // reconstructed from the rows (taskmeta.PRStateFromFacts).
-func deriveStatus(f delivery.TaskFacts, execs map[string]*models.Execution) taskmeta.DerivedStatus {
+func deriveStatus(f delivery.TaskFacts, execs map[string]*delivery.Execution) taskmeta.DerivedStatus {
 	facts := delivery.ExecutionFacts(execs)
 	gh := taskmeta.GitHubFacts{
 		IssueOpen:   f.IssueOpen,

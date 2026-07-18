@@ -26,7 +26,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // BuildRetrier re-mints the build clone credential and re-triggers a build at
@@ -34,7 +33,7 @@ import (
 // coding executor satisfies it — wired in only when build-secret staging is
 // configured, so the retry path is inert on public-repo-only deployments.
 type BuildRetrier interface {
-	RetryAuthFailedBuild(ctx context.Context, row *models.Execution) (newRunName string, err error)
+	RetryAuthFailedBuild(ctx context.Context, row *delivery.Execution) (newRunName string, err error)
 }
 
 // ExecWatcher reconciles running execution rows against their OpenChoreo
@@ -164,7 +163,7 @@ func (w *ExecWatcher) Sweep(ctx context.Context) error {
 	return nil
 }
 
-func (w *ExecWatcher) reconcile(ctx context.Context, row *models.Execution, run *gen.WorkflowRun) {
+func (w *ExecWatcher) reconcile(ctx context.Context, row *delivery.Execution, run *gen.WorkflowRun) {
 	succeeded := run.Status == openchoreo.ReasonWorkflowSucceeded
 	switch row.Kind {
 	case string(taskmeta.KindCoding):
@@ -227,7 +226,7 @@ func (w *ExecWatcher) reconcile(ctx context.Context, row *models.Execution, run 
 // attempt count threaded through the reason); budget exhaustion or a non-auth
 // failure Finishes the row failed. Mirrors the legacy build watcher's §9.3 loop,
 // re-keyed to the execution row's reason instead of a BuildAuthRetryCount column.
-func (w *ExecWatcher) reconcileBuildFailure(ctx context.Context, row *models.Execution, run *gen.WorkflowRun) {
+func (w *ExecWatcher) reconcileBuildFailure(ctx context.Context, row *delivery.Execution, run *gen.WorkflowRun) {
 	_, authFailure := classifyBuildRun(run)
 	if !authFailure || w.buildRetrier == nil {
 		if _, err := w.execRows.Finish(ctx, row.ID, string(taskmeta.ExecFailed), workflowReason(run)); err != nil {

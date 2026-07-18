@@ -83,7 +83,7 @@ type executionsByIssueAdapter struct {
 	execs delivery.ExecutionRepository
 }
 
-func (a executionsByIssueAdapter) ByIssue(ctx context.Context, orgID, projectID string, issueNumber int) ([]models.Execution, error) {
+func (a executionsByIssueAdapter) ByIssue(ctx context.Context, orgID, projectID string, issueNumber int) ([]delivery.Execution, error) {
 	full, err := repoFullNameLookup{repos: a.repos}.RepoFullName(ctx, orgID, projectID)
 	if err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func githubBotLogin(appSlug string) string {
 // RunnerAuthorizer's publisher-cc branch (re-keyed from task to execution).
 func executionOrgLookup(db *gorm.DB) func(ctx context.Context, executionID string) (string, error) {
 	return func(ctx context.Context, executionID string) (string, error) {
-		var row models.Execution
+		var row delivery.Execution
 		if err := db.WithContext(ctx).Select("org_id").First(&row, "id = ?", executionID).Error; err != nil {
 			return "", err
 		}

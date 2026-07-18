@@ -19,8 +19,8 @@ package execution
 import (
 	"context"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/ops"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // OpsExecutionReader implements ops.ExecutionReader over the executions store.
@@ -31,7 +31,7 @@ import (
 // prove). Now that delivery owns the Execution store, the delivery domain IS the
 // provider and supplies the port directly — nothing in internal/ops changed, and
 // the root bridge is deleted. The mapping stays the whole job: ops never sees
-// models.Execution, so the global models package can still dissolve (P9) without
+// delivery.Execution, so the global models package can still dissolve (P9) without
 // touching either domain.
 type OpsExecutionReader struct{ execs opsExecutionReads }
 
@@ -39,7 +39,7 @@ type OpsExecutionReader struct{ execs opsExecutionReads }
 // narrowed so this reader names no more of the store than it uses. Satisfied by
 // delivery.ExecutionRepository.
 type opsExecutionReads interface {
-	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)
+	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*delivery.Execution, error)
 }
 
 // NewOpsExecutionReader builds the ops.ExecutionReader over the executions store.

@@ -26,12 +26,12 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // runningBuild seeds a running build row with a given run name + reason.
-func runningBuild(id, runName, reason string) *models.Execution {
-	return &models.Execution{
+func runningBuild(id, runName, reason string) *delivery.Execution {
+	return &delivery.Execution{
 		ID: id, OrgID: "acme", ProjectID: "widgets", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindBuild), Status: string(taskmeta.ExecRunning),
 		Component: "order-service", CommitSHA: "deadbeef", RunName: runName, Reason: reason,
@@ -167,9 +167,9 @@ func TestExecWatcher_BuildSuccess_FinishesAndReevaluates(t *testing.T) {
 // only OpenChoreo WorkflowRuns (`wf-…`) — otherwise it spams "WorkflowRun not
 // found" every tick for the Job rows.
 func TestExecWatcher_SkipsProxyJobRuns(t *testing.T) {
-	caRow := &models.Execution{ID: "j1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
+	caRow := &delivery.Execution{ID: "j1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "ca-abc12345-2601011200"}
-	wfRow := &models.Execution{ID: "w1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 8,
+	wfRow := &delivery.Execution{ID: "w1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 8,
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "wf-xyz"}
 	repo := newFakeExecRepo(caRow, wfRow)
 
@@ -193,7 +193,7 @@ func TestExecWatcher_SkipsProxyJobRuns(t *testing.T) {
 func TestExecWatcher_CodingFailure_FinishesFailed_SuccessRidesPRWebhook(t *testing.T) {
 	// A ClusterWorkflow (`wf-…`) coding run — the ExecWatcher's domain; proxy
 	// `ca-…` runs are the JobWatcher's and are skipped here.
-	coding := &models.Execution{ID: "c1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
+	coding := &delivery.Execution{ID: "c1", OrgID: "acme", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "wf-1"}
 	repo := newFakeExecRepo(coding)
 	failed := &gen.WorkflowRun{Name: "wf-1", Completed: true, Status: openchoreo.ReasonWorkflowFailed}

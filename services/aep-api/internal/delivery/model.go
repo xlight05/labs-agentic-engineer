@@ -20,7 +20,6 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // TaskFacts is a Task's structured truth resolved live from its GitHub issue at
@@ -54,7 +53,7 @@ type TaskFacts struct {
 // MergeSHA is set only for a build Execution (Execution.Kind == build), spawned
 // when a linked PR merges: the commit the build is pinned to (§7).
 type DispatchRequest struct {
-	Execution *models.Execution
+	Execution *Execution
 	Task      TaskFacts
 	MergeSHA  string
 }

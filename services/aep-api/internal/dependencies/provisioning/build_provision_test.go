@@ -23,6 +23,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -383,7 +384,7 @@ func TestProvisionForBuild_EmptyInputsDoesNotMint(t *testing.T) {
 }
 
 // provisionRowFor returns the first provision Execution row for a dep name.
-func provisionRowFor(execs *fakeExecStore, depName string) *models.Execution {
+func provisionRowFor(execs *fakeExecStore, depName string) *delivery.Execution {
 	for _, r := range execs.rows {
 		if r.Kind == string(taskmeta.KindProvision) && r.Component == depName {
 			return r

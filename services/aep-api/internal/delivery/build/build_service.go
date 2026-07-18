@@ -35,7 +35,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // EdgeError is the neutral transport error the build sequence returns for
@@ -283,15 +282,15 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 	// Record the run row NOW so a status GET issued right after this response
 	// never races the workflow's own RecordWorkflowRun activity (both upsert
 	// the same (workflowID, runID) row). Best-effort: the activity re-records.
-	if err := s.store.Record(ctx, &models.DevflowRun{
+	if err := s.store.Record(ctx, &delivery.DevflowRun{
 		WorkflowID: workflowID,
 		RunID:      runID,
-		Kind:       models.WorkflowKindDev,
+		Kind:       delivery.WorkflowKindDev,
 		OrgID:      orgID,
 		ProjectID:  projectID,
 		Tag:        res.Tag,
 		Repo:       repo,
-		Status:     models.WorkflowStatusRunning,
+		Status:     delivery.WorkflowStatusRunning,
 	}); err != nil {
 		slog.WarnContext(ctx, "build: record workflow run failed (activity will re-record)",
 			"workflowId", workflowID, "error", err)

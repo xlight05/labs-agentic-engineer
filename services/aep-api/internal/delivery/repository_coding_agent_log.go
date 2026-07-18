@@ -22,8 +22,6 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // CodingAgentLogRepository is the coding_agent_logs store: the JobWatcher
@@ -37,11 +35,11 @@ import (
 type CodingAgentLogRepository interface {
 	// GetByRun returns the captured log for (executionID, runName), or (nil,
 	// nil) when none has been persisted yet — the pre-capture live-tail window.
-	GetByRun(ctx context.Context, executionID uuid.UUID, runName string) (*models.CodingAgentLog, error)
+	GetByRun(ctx context.Context, executionID uuid.UUID, runName string) (*CodingAgentLog, error)
 
 	// Create persists the final captured log. Idempotency on (task_id, run_name)
 	// is the caller's GetByRun-first guard, mirroring the extracted code.
-	Create(ctx context.Context, row *models.CodingAgentLog) error
+	Create(ctx context.Context, row *CodingAgentLog) error
 }
 
 type codingAgentLogRepository struct {
@@ -53,8 +51,8 @@ func NewCodingAgentLogRepository(db *gorm.DB) CodingAgentLogRepository {
 	return &codingAgentLogRepository{db: db}
 }
 
-func (r *codingAgentLogRepository) GetByRun(ctx context.Context, executionID uuid.UUID, runName string) (*models.CodingAgentLog, error) {
-	var row models.CodingAgentLog
+func (r *codingAgentLogRepository) GetByRun(ctx context.Context, executionID uuid.UUID, runName string) (*CodingAgentLog, error) {
+	var row CodingAgentLog
 	err := r.db.WithContext(ctx).
 		Where("task_id = ? AND run_name = ?", executionID, runName).
 		First(&row).Error
@@ -67,6 +65,6 @@ func (r *codingAgentLogRepository) GetByRun(ctx context.Context, executionID uui
 	return &row, nil
 }
 
-func (r *codingAgentLogRepository) Create(ctx context.Context, row *models.CodingAgentLog) error {
+func (r *codingAgentLogRepository) Create(ctx context.Context, row *CodingAgentLog) error {
 	return r.db.WithContext(ctx).Create(row).Error
 }

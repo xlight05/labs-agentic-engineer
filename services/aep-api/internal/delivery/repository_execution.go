@@ -25,7 +25,6 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // DeployedProjectRef is one (org, project) pair that has at least one Execution
@@ -49,20 +48,20 @@ type ExecutionRepository interface {
 	// on success, or admitted=false and nil when another entrant won the race.
 	// The passed row's Status defaults to queued when empty; on success its ID
 	// (and CreatedAt) are populated.
-	TryAdmit(ctx context.Context, e *models.Execution) (admitted bool, row *models.Execution, err error)
+	TryAdmit(ctx context.Context, e *Execution) (admitted bool, row *Execution, err error)
 
 	// StartWithRun transitions a queued Execution to running, stamps started_at,
 	// and records the dispatched run name (OpenChoreo WorkflowRun) in one guarded
 	// write — the executor's single discipline for run-name persistence
 	// (docs/design/tasks-github-native.md §10.1: no raw-gorm state writes).
 	// Guarded on the queued state, so a double-start returns (nil, nil).
-	StartWithRun(ctx context.Context, id, runName string) (*models.Execution, error)
+	StartWithRun(ctx context.Context, id, runName string) (*Execution, error)
 
 	// Finish transitions an active (queued|running) Execution to a terminal
 	// status, recording reason and ended_at. Guarded on the active state, so
 	// finishing an already-terminal row returns (nil, nil) and never overwrites
 	// a recorded outcome. status should be a terminal taskmeta.ExecutionStatus.
-	Finish(ctx context.Context, id, status, reason string) (*models.Execution, error)
+	Finish(ctx context.Context, id, status, reason string) (*Execution, error)
 
 	// NoteBuildRetry re-points a still-running build Execution at a freshly
 	// re-triggered WorkflowRun and records the retry reason, WITHOUT ending the
@@ -71,37 +70,37 @@ type ExecutionRepository interface {
 	// clone credential, re-triggers the build, and threads the new run name +
 	// retry counter here so the next sweep tracks the retry rather than the dead
 	// original. Guarded on running state (a terminal row is never resurrected).
-	NoteBuildRetry(ctx context.Context, id, runName, reason string) (*models.Execution, error)
+	NoteBuildRetry(ctx context.Context, id, runName, reason string) (*Execution, error)
 
 	// GetByIDScoped returns the Execution only when it belongs to orgID — the
 	// store fence for token-derived org (e.g. the progress endpoint). Returns
 	// (nil, nil) for both "no such id" and "belongs to another org".
-	GetByIDScoped(ctx context.Context, orgID, id string) (*models.Execution, error)
+	GetByIDScoped(ctx context.Context, orgID, id string) (*Execution, error)
 
 	// LatestPerKind returns the most-recent Execution per kind for a Task,
 	// keyed by kind — the join the read path and the funnel gates consume.
-	LatestPerKind(ctx context.Context, repo string, issueNumber int) (map[string]*models.Execution, error)
+	LatestPerKind(ctx context.Context, repo string, issueNumber int) (map[string]*Execution, error)
 	// LatestPerKindScoped is LatestPerKind fenced to orgID.
-	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)
+	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*Execution, error)
 
 	// LatestPerKindForRepo is the batch form of LatestPerKind for one repo:
 	// the most-recent Execution per kind for EVERY Task, keyed by issue number
 	// then kind — one query for the task list and the sweep instead of one per
 	// issue.
-	LatestPerKindForRepo(ctx context.Context, repo string) (map[int]map[string]*models.Execution, error)
+	LatestPerKindForRepo(ctx context.Context, repo string) (map[int]map[string]*Execution, error)
 	// LatestPerKindForRepoScoped is LatestPerKindForRepo fenced to orgID.
-	LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*models.Execution, error)
+	LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*Execution, error)
 
 	// ListByIssue returns every Execution for a Task, oldest first (full history
 	// for the detail page).
-	ListByIssue(ctx context.Context, repo string, issueNumber int) ([]models.Execution, error)
+	ListByIssue(ctx context.Context, repo string, issueNumber int) ([]Execution, error)
 	// ListByIssueScoped is ListByIssue fenced to orgID.
-	ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]models.Execution, error)
+	ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]Execution, error)
 
 	// ListActive returns every active (queued|running) Execution across all
 	// orgs — the reconciliation sweep's input (§5). Intentionally NOT
 	// org-scoped: the sweep spans every org, like RepoRepository.ListAllReady.
-	ListActive(ctx context.Context) ([]models.Execution, error)
+	ListActive(ctx context.Context) ([]Execution, error)
 
 	// DeleteByProject removes every Execution row for a project — the
 	// project-delete orphan purge (executions are platform-owned rows keyed to
@@ -124,7 +123,7 @@ func NewExecutionRepository(db *gorm.DB) ExecutionRepository {
 	return &executionRepository{db: db}
 }
 
-func (r *executionRepository) TryAdmit(ctx context.Context, e *models.Execution) (bool, *models.Execution, error) {
+func (r *executionRepository) TryAdmit(ctx context.Context, e *Execution) (bool, *Execution, error) {
 	if e.Status == "" {
 		e.Status = string(taskmeta.ExecQueued)
 	}
@@ -142,10 +141,10 @@ func (r *executionRepository) TryAdmit(ctx context.Context, e *models.Execution)
 	return true, e, nil
 }
 
-func (r *executionRepository) StartWithRun(ctx context.Context, id, runName string) (*models.Execution, error) {
+func (r *executionRepository) StartWithRun(ctx context.Context, id, runName string) (*Execution, error) {
 	now := time.Now().UTC()
 	res := r.db.WithContext(ctx).
-		Model(&models.Execution{}).
+		Model(&Execution{}).
 		Where("id = ? AND status = ?", id, string(taskmeta.ExecQueued)).
 		Updates(map[string]any{
 			"status":     string(taskmeta.ExecRunning),
@@ -161,10 +160,10 @@ func (r *executionRepository) StartWithRun(ctx context.Context, id, runName stri
 	return r.getByID(ctx, id)
 }
 
-func (r *executionRepository) Finish(ctx context.Context, id, status, reason string) (*models.Execution, error) {
+func (r *executionRepository) Finish(ctx context.Context, id, status, reason string) (*Execution, error) {
 	now := time.Now().UTC()
 	res := r.db.WithContext(ctx).
-		Model(&models.Execution{}).
+		Model(&Execution{}).
 		Where("id = ? AND status IN ?", id, []string{
 			string(taskmeta.ExecQueued), string(taskmeta.ExecRunning),
 		}).
@@ -182,9 +181,9 @@ func (r *executionRepository) Finish(ctx context.Context, id, status, reason str
 	return r.getByID(ctx, id)
 }
 
-func (r *executionRepository) NoteBuildRetry(ctx context.Context, id, runName, reason string) (*models.Execution, error) {
+func (r *executionRepository) NoteBuildRetry(ctx context.Context, id, runName, reason string) (*Execution, error) {
 	res := r.db.WithContext(ctx).
-		Model(&models.Execution{}).
+		Model(&Execution{}).
 		Where("id = ? AND status = ?", id, string(taskmeta.ExecRunning)).
 		Updates(map[string]any{
 			"run_name": runName,
@@ -199,8 +198,8 @@ func (r *executionRepository) NoteBuildRetry(ctx context.Context, id, runName, r
 	return r.getByID(ctx, id)
 }
 
-func (r *executionRepository) GetByIDScoped(ctx context.Context, orgID, id string) (*models.Execution, error) {
-	var e models.Execution
+func (r *executionRepository) GetByIDScoped(ctx context.Context, orgID, id string) (*Execution, error) {
+	var e Execution
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND id = ?", orgID, id).
 		First(&e).Error
@@ -213,11 +212,11 @@ func (r *executionRepository) GetByIDScoped(ctx context.Context, orgID, id strin
 	return &e, nil
 }
 
-func (r *executionRepository) LatestPerKind(ctx context.Context, repo string, issueNumber int) (map[string]*models.Execution, error) {
+func (r *executionRepository) LatestPerKind(ctx context.Context, repo string, issueNumber int) (map[string]*Execution, error) {
 	return r.latestPerKind(ctx, "", repo, issueNumber)
 }
 
-func (r *executionRepository) LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error) {
+func (r *executionRepository) LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*Execution, error) {
 	return r.latestPerKind(ctx, orgID, repo, issueNumber)
 }
 
@@ -225,7 +224,7 @@ func (r *executionRepository) LatestPerKindScoped(ctx context.Context, orgID, re
 // orgID == "" spans all orgs (the funnel/webhook path); a non-empty orgID
 // fences to that org (the read path). Raw SQL keeps the DISTINCT ON explicit
 // rather than relying on gorm's Distinct formatting.
-func (r *executionRepository) latestPerKind(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error) {
+func (r *executionRepository) latestPerKind(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*Execution, error) {
 	sql := `SELECT DISTINCT ON (kind) * FROM executions WHERE repo = ? AND issue_number = ?`
 	args := []any{repo, issueNumber}
 	if orgID != "" {
@@ -234,29 +233,29 @@ func (r *executionRepository) latestPerKind(ctx context.Context, orgID, repo str
 	}
 	sql += ` ORDER BY kind, created_at DESC`
 
-	var rows []models.Execution
+	var rows []Execution
 	if err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make(map[string]*models.Execution, len(rows))
+	out := make(map[string]*Execution, len(rows))
 	for i := range rows {
 		out[rows[i].Kind] = &rows[i]
 	}
 	return out, nil
 }
 
-func (r *executionRepository) LatestPerKindForRepo(ctx context.Context, repo string) (map[int]map[string]*models.Execution, error) {
+func (r *executionRepository) LatestPerKindForRepo(ctx context.Context, repo string) (map[int]map[string]*Execution, error) {
 	return r.latestPerKindForRepo(ctx, "", repo)
 }
 
-func (r *executionRepository) LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*models.Execution, error) {
+func (r *executionRepository) LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*Execution, error) {
 	return r.latestPerKindForRepo(ctx, orgID, repo)
 }
 
 // latestPerKindForRepo is the batch form of latestPerKind: one DISTINCT ON
 // query over (issue_number, kind) for the whole repo, indexed per issue. The
 // same orgID convention applies ("" spans all orgs).
-func (r *executionRepository) latestPerKindForRepo(ctx context.Context, orgID, repo string) (map[int]map[string]*models.Execution, error) {
+func (r *executionRepository) latestPerKindForRepo(ctx context.Context, orgID, repo string) (map[int]map[string]*Execution, error) {
 	sql := `SELECT DISTINCT ON (issue_number, kind) * FROM executions WHERE repo = ?`
 	args := []any{repo}
 	if orgID != "" {
@@ -265,15 +264,15 @@ func (r *executionRepository) latestPerKindForRepo(ctx context.Context, orgID, r
 	}
 	sql += ` ORDER BY issue_number, kind, created_at DESC`
 
-	var rows []models.Execution
+	var rows []Execution
 	if err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := map[int]map[string]*models.Execution{}
+	out := map[int]map[string]*Execution{}
 	for i := range rows {
 		byKind := out[rows[i].IssueNumber]
 		if byKind == nil {
-			byKind = map[string]*models.Execution{}
+			byKind = map[string]*Execution{}
 			out[rows[i].IssueNumber] = byKind
 		}
 		byKind[rows[i].Kind] = &rows[i]
@@ -281,30 +280,30 @@ func (r *executionRepository) latestPerKindForRepo(ctx context.Context, orgID, r
 	return out, nil
 }
 
-func (r *executionRepository) ListByIssue(ctx context.Context, repo string, issueNumber int) ([]models.Execution, error) {
+func (r *executionRepository) ListByIssue(ctx context.Context, repo string, issueNumber int) ([]Execution, error) {
 	return r.listByIssue(ctx, "", repo, issueNumber)
 }
 
-func (r *executionRepository) ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]models.Execution, error) {
+func (r *executionRepository) ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]Execution, error) {
 	return r.listByIssue(ctx, orgID, repo, issueNumber)
 }
 
-func (r *executionRepository) listByIssue(ctx context.Context, orgID, repo string, issueNumber int) ([]models.Execution, error) {
+func (r *executionRepository) listByIssue(ctx context.Context, orgID, repo string, issueNumber int) ([]Execution, error) {
 	q := r.db.WithContext(ctx).
 		Where("repo = ? AND issue_number = ?", repo, issueNumber).
 		Order("created_at ASC")
 	if orgID != "" {
 		q = q.Where("org_id = ?", orgID)
 	}
-	var rows []models.Execution
+	var rows []Execution
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
 }
 
-func (r *executionRepository) ListActive(ctx context.Context) ([]models.Execution, error) {
-	var rows []models.Execution
+func (r *executionRepository) ListActive(ctx context.Context) ([]Execution, error) {
+	var rows []Execution
 	err := r.db.WithContext(ctx).
 		Where("status IN ?", []string{string(taskmeta.ExecQueued), string(taskmeta.ExecRunning)}).
 		Order("created_at ASC").
@@ -318,7 +317,7 @@ func (r *executionRepository) ListActive(ctx context.Context) ([]models.Executio
 func (r *executionRepository) DeleteByProject(ctx context.Context, orgID, projectID string) error {
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
-		Delete(&models.Execution{}).Error
+		Delete(&Execution{}).Error
 }
 
 func (r *executionRepository) DistinctDeployedProjects(ctx context.Context) ([]DeployedProjectRef, error) {
@@ -337,7 +336,7 @@ func (r *executionRepository) DistinctDeployedProjects(ctx context.Context) ([]D
 // facts the taskmeta derive algebra consumes (Derive / PRStateFromFacts). It
 // lives with the executions rows — the shared kernel — so both halves of the
 // Task/Execution split project ONE way without importing each other.
-func ExecutionFacts(execs map[string]*models.Execution) []taskmeta.ExecutionFact {
+func ExecutionFacts(execs map[string]*Execution) []taskmeta.ExecutionFact {
 	out := make([]taskmeta.ExecutionFact, 0, len(execs))
 	for _, e := range execs {
 		if e == nil {
@@ -353,8 +352,8 @@ func ExecutionFacts(execs map[string]*models.Execution) []taskmeta.ExecutionFact
 	return out
 }
 
-func (r *executionRepository) getByID(ctx context.Context, id string) (*models.Execution, error) {
-	var e models.Execution
+func (r *executionRepository) getByID(ctx context.Context, id string) (*Execution, error) {
+	var e Execution
 	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil

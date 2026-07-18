@@ -20,8 +20,6 @@ import (
 	"context"
 	"log/slog"
 	"time"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // signalTimeout bounds a single SignalWorkflow call so a slow Temporal server
@@ -32,7 +30,7 @@ const signalTimeout = 5 * time.Second
 // SignalLookup resolves which running workflow (if any) wants an event.
 // Satisfied by WorkflowRunRepository.
 type SignalLookup interface {
-	RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*models.DevflowRun, error)
+	RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*DevflowRun, error)
 }
 
 // Signaler is the bridge existing webhook handlers and watchers use to feed

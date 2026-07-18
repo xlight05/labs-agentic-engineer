@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -79,7 +78,7 @@ type TaskSnapshotReader interface {
 // so the stream can walk them into one chronological timeline. Wired at the
 // composition root over the executions store + repo lookup.
 type ExecutionHistory interface {
-	ByIssue(ctx context.Context, orgID, projectID string, issueNumber int) ([]models.Execution, error)
+	ByIssue(ctx context.Context, orgID, projectID string, issueNumber int) ([]delivery.Execution, error)
 }
 
 // TaskStreamRepoLookup resolves a project's "owner/name" — the hub key half the
@@ -113,7 +112,7 @@ type streamFrame struct {
 	DerivedStatus string                   `json:"derivedStatus,omitempty"`
 }
 
-// execView projects a models.Execution to the ExecutionView JSON shape the
+// execView projects a delivery.Execution to the ExecutionView JSON shape the
 // console already holds (kept here so execution never imports feature/task).
 type execView struct {
 	ID        string     `json:"id"`
@@ -276,7 +275,7 @@ func (s *TaskStreamService) run(ctx context.Context, w io.Writer, flush func(), 
 // Coding lines advance a ts cursor (incremental); build steps are re-emitted in
 // full each poll, so they are deduped by step+status. A source hiccup degrades
 // to no new lines — never kills the stream.
-func (s *TaskStreamService) emitLines(ctx context.Context, orgID string, e *models.Execution, codingCursor map[string]int64, seenBuildStep map[string]map[string]bool, writeFrame func(*streamFrame) bool) bool {
+func (s *TaskStreamService) emitLines(ctx context.Context, orgID string, e *delivery.Execution, codingCursor map[string]int64, seenBuildStep map[string]map[string]bool, writeFrame func(*streamFrame) bool) bool {
 	if s.progress == nil {
 		return true
 	}
@@ -312,7 +311,7 @@ func (s *TaskStreamService) emitLines(ctx context.Context, orgID string, e *mode
 	return true
 }
 
-func toExecView(e *models.Execution) *execView {
+func toExecView(e *delivery.Execution) *execView {
 	return &execView{
 		ID:        e.ID,
 		Kind:      e.Kind,

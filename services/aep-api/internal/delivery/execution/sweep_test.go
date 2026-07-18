@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 type fakeRepoLister struct{ repos []RepoRef }
@@ -51,7 +51,7 @@ func oneRepo() fakeRepoLister {
 func TestSweep_PRReconcile_HealsClosedIssue(t *testing.T) {
 	store := newFakeStore()
 	// Latest coding succeeded claiming open PR #3; no build yet.
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"3")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
@@ -77,9 +77,9 @@ func TestSweep_PRReconcile_HealsClosedIssue(t *testing.T) {
 func TestSweep_PRReconcile_SettledTaskNoAPICall(t *testing.T) {
 	store := newFakeStore()
 	// Coding succeeded (pr#3), then its build ran (newer row) → already settled.
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"3")
-	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha3"})
+	_, b, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha3"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "closed")})
@@ -113,9 +113,9 @@ func TestSweep_ClearsStaleAttention_WhenHealthy(t *testing.T) {
 	store := newFakeStore()
 	// Deployed: coding succeeded + build succeeded (the earlier failed attempt
 	// that raised the flag is gone — latest per kind is healthy).
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), "")
-	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
+	_, b, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
@@ -129,9 +129,9 @@ func TestSweep_ClearsStaleAttention_WhenHealthy(t *testing.T) {
 
 func TestSweep_KeepsAttention_WhenLatestExecutionFailed(t *testing.T) {
 	store := newFakeStore()
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), "")
-	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
+	_, b, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecFailed), "boom")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelAttention}, "open")})
@@ -145,7 +145,7 @@ func TestSweep_KeepsAttention_WhenLatestExecutionFailed(t *testing.T) {
 
 func TestSweep_SkipsAttentionClear_WhenBlockInvalid(t *testing.T) {
 	store := newFakeStore()
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), "")
 
 	// Task labels present (marker + class + attention) but the body has no valid
@@ -162,7 +162,7 @@ func TestSweep_SkipsAttentionClear_WhenBlockInvalid(t *testing.T) {
 
 func TestSweep_AttentionAbsent_NoGitHubCall(t *testing.T) {
 	store := newFakeStore()
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), "")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")}) // no attention label

@@ -35,6 +35,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/models"
@@ -56,9 +57,9 @@ func BaseModels() []any {
 		&models.WebhookDelivery{},
 		&models.WebhookPayload{},
 		&models.Organization{},
-		&models.Execution{},
+		&delivery.Execution{},
 		&models.AgentTurn{},
-		&models.DevflowRun{},
+		&delivery.DevflowRun{},
 	}
 }
 

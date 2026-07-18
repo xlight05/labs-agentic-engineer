@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // resourceWatchStaleAfter bounds a stuck platform-resource provision run: past
@@ -91,7 +91,7 @@ func (w *ResourceWatcher) Sweep(ctx context.Context) error {
 	return nil
 }
 
-func (w *ResourceWatcher) reconcile(ctx context.Context, row *models.Execution) {
+func (w *ResourceWatcher) reconcile(ctx context.Context, row *delivery.Execution) {
 	// Stale bound: a run that has been running past the stale window is failed
 	// terminally so the gate does not hang forever on a resource that will not
 	// come up.

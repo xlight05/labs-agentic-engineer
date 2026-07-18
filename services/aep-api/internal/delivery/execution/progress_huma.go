@@ -24,7 +24,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/models"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // progressSchemaVersion mirrors the runner/observer progress schema version.
@@ -33,7 +33,7 @@ const progressSchemaVersion = 1
 // ExecutionLookup resolves an execution id within the acting org (the S2S
 // fence). Shared by the execution-keyed internal endpoints.
 type ExecutionLookup interface {
-	GetByIDScoped(ctx context.Context, orgID, id string) (*models.Execution, error)
+	GetByIDScoped(ctx context.Context, orgID, id string) (*delivery.Execution, error)
 }
 
 // ErrExecutionNotFound is returned when an execution id does not resolve within
@@ -52,7 +52,7 @@ type OCProgress interface {
 // (it owns the cluster-gateway-proxy + DB edge); nil leaves the coding branch
 // reporting terminal-ness only.
 type CodingProgress interface {
-	AgentProgress(ctx context.Context, row *models.Execution, sinceMillis int64) (*contracts.ProgressResponse, error)
+	AgentProgress(ctx context.Context, row *delivery.Execution, sinceMillis int64) (*contracts.ProgressResponse, error)
 }
 
 // ProgressService derives one execution's progress lines keyed by execution id:

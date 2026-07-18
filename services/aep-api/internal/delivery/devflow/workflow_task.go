@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -83,14 +82,14 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 
 	fail := func(msg string) (TaskFlowResult, error) {
 		status.Phase, status.Error = delivery.TaskPhaseFailed, msg
-		markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusFailed, msg)
+		markRunStatus(ctx, info.WorkflowExecution.ID, delivery.WorkflowStatusFailed, msg)
 		return TaskFlowResult{Issue: in.Issue, Outcome: delivery.OutcomeFailed, Error: msg}, nil
 	}
 
 	if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).RecordWorkflowRun, RecordWorkflowRunInput{
 		WorkflowID:       info.WorkflowExecution.ID,
 		RunID:            info.WorkflowExecution.RunID,
-		Kind:             models.WorkflowKindTask,
+		Kind:             delivery.WorkflowKindTask,
 		OrgID:            in.OrgID,
 		ProjectID:        in.ProjectID,
 		Tag:              in.Tag,
@@ -137,6 +136,6 @@ func TaskFlowWorkflow(ctx workflow.Context, in TaskFlowInput) (TaskFlowResult, e
 	}
 
 	status.Phase = delivery.TaskPhaseDone
-	markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusCompleted, "")
+	markRunStatus(ctx, info.WorkflowExecution.ID, delivery.WorkflowStatusCompleted, "")
 	return TaskFlowResult{Issue: in.Issue, Outcome: delivery.OutcomeSucceeded}, nil
 }

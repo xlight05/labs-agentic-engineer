@@ -26,7 +26,6 @@ import (
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The dev-workflow I/O vocabulary (DevFlowInput/DevFlowStatus/DevTaskRef/
@@ -54,14 +53,14 @@ func DevFlowWorkflow(ctx workflow.Context, in delivery.DevFlowInput) (delivery.D
 
 	fail := func(msg string) (delivery.DevFlowStatus, error) {
 		status.Phase, status.Error = delivery.DevPhaseFailed, msg
-		markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusFailed, msg)
+		markRunStatus(ctx, info.WorkflowExecution.ID, delivery.WorkflowStatusFailed, msg)
 		return status, nil
 	}
 
 	if err := workflow.ExecuteActivity(withDefaultActivityOpts(ctx), (*Activities).RecordWorkflowRun, RecordWorkflowRunInput{
 		WorkflowID: info.WorkflowExecution.ID,
 		RunID:      info.WorkflowExecution.RunID,
-		Kind:       models.WorkflowKindDev,
+		Kind:       delivery.WorkflowKindDev,
 		OrgID:      in.OrgID,
 		ProjectID:  in.ProjectID,
 		Tag:        in.Tag,
@@ -177,7 +176,7 @@ func DevFlowWorkflow(ctx workflow.Context, in delivery.DevFlowInput) (delivery.D
 		return fail("complete gate rejected: " + d.Note)
 	}
 	status.Phase = delivery.DevPhaseDone
-	markRunStatus(ctx, info.WorkflowExecution.ID, models.WorkflowStatusCompleted, "")
+	markRunStatus(ctx, info.WorkflowExecution.ID, delivery.WorkflowStatusCompleted, "")
 	return status, nil
 }
 

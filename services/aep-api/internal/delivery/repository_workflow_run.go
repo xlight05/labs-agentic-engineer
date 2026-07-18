@@ -22,8 +22,6 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // WorkflowRunRepository is the lookup index for Temporal devflow workflows
@@ -36,7 +34,7 @@ type WorkflowRunRepository interface {
 	// Record upserts the row for a workflow execution (keyed by workflow_id +
 	// run_id). Written from workflow activities, so a workflow retry re-runs it
 	// — the upsert makes that idempotent.
-	Record(ctx context.Context, row *models.DevflowRun) error
+	Record(ctx context.Context, row *DevflowRun) error
 
 	// SetStatus marks the row for workflowID terminal (or running again). reason
 	// is the failure detail for a `failed` status (empty otherwise) — persisted so
@@ -56,26 +54,26 @@ type WorkflowRunRepository interface {
 	// signals — a coding task's row, or the validation-phase orchestrator's
 	// (kind=validation) row for the project's validation issue — or (nil, nil)
 	// when none. The webhook signaler's point lookup.
-	RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*models.DevflowRun, error)
+	RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*DevflowRun, error)
 
 	// RunningDevByProject returns the running dev-kind row for a project, or
 	// (nil, nil) when none. At most one dev workflow runs per project (the
 	// start endpoint enforces it via this lookup).
-	RunningDevByProject(ctx context.Context, orgID, projectID string) (*models.DevflowRun, error)
+	RunningDevByProject(ctx context.Context, orgID, projectID string) (*DevflowRun, error)
 
 	// ValidationRunByParent returns the newest validation-kind row (the
 	// validation-phase orchestrator) spawned by a dev run (matched on
 	// parent_workflow_id), or (nil, nil) when none — the status builder's
 	// cheap read of the project's validation phase state.
-	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*models.DevflowRun, error)
+	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*DevflowRun, error)
 
 	// ListByProject returns a project's rows, newest first, optionally
 	// filtered to one kind ("" = all).
-	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]models.DevflowRun, error)
+	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]DevflowRun, error)
 
 	// GetByWorkflowID returns the row for a workflow ID fenced to orgID, or
 	// (nil, nil) when absent / another org's.
-	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*models.DevflowRun, error)
+	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*DevflowRun, error)
 
 	// DeleteByProject purges a project's rows — the project-delete cascade.
 	// Without it a recreated same-named project resurrects stale runs (and
@@ -90,9 +88,9 @@ func NewWorkflowRunRepository(db *gorm.DB) WorkflowRunRepository {
 	return &workflowRunRepository{db: db}
 }
 
-func (r *workflowRunRepository) Record(ctx context.Context, row *models.DevflowRun) error {
+func (r *workflowRunRepository) Record(ctx context.Context, row *DevflowRun) error {
 	if row.Status == "" {
-		row.Status = models.WorkflowStatusRunning
+		row.Status = WorkflowStatusRunning
 	}
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "workflow_id"}, {Name: "run_id"}},
@@ -110,13 +108,13 @@ func (r *workflowRunRepository) SetStatus(ctx context.Context, workflowID, statu
 	if len(reason) > 2000 {
 		reason = reason[:2000]
 	}
-	return r.db.WithContext(ctx).Model(&models.DevflowRun{}).
+	return r.db.WithContext(ctx).Model(&DevflowRun{}).
 		Where("workflow_id = ?", workflowID).
 		Updates(map[string]any{"status": status, "reason": reason}).Error
 }
 
 func (r *workflowRunRepository) SetTaskCounts(ctx context.Context, workflowID, runID string, total, done, failed int) error {
-	return r.db.WithContext(ctx).Model(&models.DevflowRun{}).
+	return r.db.WithContext(ctx).Model(&DevflowRun{}).
 		Where("workflow_id = ? AND run_id = ?", workflowID, runID).
 		Updates(map[string]any{
 			"tasks_total":  total,
@@ -125,15 +123,15 @@ func (r *workflowRunRepository) SetTaskCounts(ctx context.Context, workflowID, r
 		}).Error
 }
 
-func (r *workflowRunRepository) RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*models.DevflowRun, error) {
-	var row models.DevflowRun
+func (r *workflowRunRepository) RunningTaskByIssue(ctx context.Context, repo string, issueNumber int) (*DevflowRun, error) {
+	var row DevflowRun
 	// kind IN (task, validation): the validation-phase orchestrator owns its
 	// issue's signals the same way a coding task owns its own. Dev rows carry
 	// issue_number 0, so they can never match a webhook lookup.
 	err := r.db.WithContext(ctx).
 		Where("kind IN ? AND repo = ? AND issue_number = ? AND status = ?",
-			[]string{models.WorkflowKindTask, models.WorkflowKindValidation},
-			repo, issueNumber, models.WorkflowStatusRunning).
+			[]string{WorkflowKindTask, WorkflowKindValidation},
+			repo, issueNumber, WorkflowStatusRunning).
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -144,11 +142,11 @@ func (r *workflowRunRepository) RunningTaskByIssue(ctx context.Context, repo str
 	return &row, nil
 }
 
-func (r *workflowRunRepository) RunningDevByProject(ctx context.Context, orgID, projectID string) (*models.DevflowRun, error) {
-	var row models.DevflowRun
+func (r *workflowRunRepository) RunningDevByProject(ctx context.Context, orgID, projectID string) (*DevflowRun, error) {
+	var row DevflowRun
 	err := r.db.WithContext(ctx).
 		Where("kind = ? AND org_id = ? AND project_id = ? AND status = ?",
-			models.WorkflowKindDev, orgID, projectID, models.WorkflowStatusRunning).
+			WorkflowKindDev, orgID, projectID, WorkflowStatusRunning).
 		Order("created_at DESC").
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -160,11 +158,11 @@ func (r *workflowRunRepository) RunningDevByProject(ctx context.Context, orgID, 
 	return &row, nil
 }
 
-func (r *workflowRunRepository) ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*models.DevflowRun, error) {
-	var row models.DevflowRun
+func (r *workflowRunRepository) ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*DevflowRun, error) {
+	var row DevflowRun
 	err := r.db.WithContext(ctx).
 		Where("kind = ? AND org_id = ? AND project_id = ? AND parent_workflow_id = ?",
-			models.WorkflowKindValidation, orgID, projectID, parentWorkflowID).
+			WorkflowKindValidation, orgID, projectID, parentWorkflowID).
 		Order("created_at DESC").
 		First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -176,14 +174,14 @@ func (r *workflowRunRepository) ValidationRunByParent(ctx context.Context, orgID
 	return &row, nil
 }
 
-func (r *workflowRunRepository) ListByProject(ctx context.Context, orgID, projectID, kind string) ([]models.DevflowRun, error) {
+func (r *workflowRunRepository) ListByProject(ctx context.Context, orgID, projectID, kind string) ([]DevflowRun, error) {
 	q := r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
 		Order("created_at DESC")
 	if kind != "" {
 		q = q.Where("kind = ?", kind)
 	}
-	var rows []models.DevflowRun
+	var rows []DevflowRun
 	if err := q.Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -193,11 +191,11 @@ func (r *workflowRunRepository) ListByProject(ctx context.Context, orgID, projec
 func (r *workflowRunRepository) DeleteByProject(ctx context.Context, orgID, projectID string) error {
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
-		Delete(&models.DevflowRun{}).Error
+		Delete(&DevflowRun{}).Error
 }
 
-func (r *workflowRunRepository) GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*models.DevflowRun, error) {
-	var row models.DevflowRun
+func (r *workflowRunRepository) GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*DevflowRun, error) {
+	var row DevflowRun
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND workflow_id = ?", orgID, workflowID).
 		First(&row).Error

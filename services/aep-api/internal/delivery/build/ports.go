@@ -22,7 +22,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/spec"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ErrTemporalUnavailable is the runner's "cannot start/observe workflows right
@@ -68,12 +67,12 @@ type SecretStager interface {
 // upsert the same (workflowID, runID) row). Satisfied by
 // delivery.WorkflowRunRepository.
 type RunStore interface {
-	RunningDevByProject(ctx context.Context, orgID, projectID string) (*models.DevflowRun, error)
-	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*models.DevflowRun, error)
-	Record(ctx context.Context, row *models.DevflowRun) error
+	RunningDevByProject(ctx context.Context, orgID, projectID string) (*delivery.DevflowRun, error)
+	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*delivery.DevflowRun, error)
+	Record(ctx context.Context, row *delivery.DevflowRun) error
 	// ListByProject enumerates a project's run rows newest-first, optionally
 	// filtered to one kind — the builds-history read behind list-project-builds.
-	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]models.DevflowRun, error)
+	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]delivery.DevflowRun, error)
 }
 
 // RepoLookup resolves a project's "owner/name" repo full name. Satisfied by

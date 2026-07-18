@@ -70,29 +70,29 @@ func (f *fakeRunner) BuildStatus(context.Context, string) (delivery.DevFlowStatu
 }
 
 type fakeStore struct {
-	running  *models.DevflowRun
-	row      *models.DevflowRun
-	rows     []models.DevflowRun
+	running  *delivery.DevflowRun
+	row      *delivery.DevflowRun
+	rows     []delivery.DevflowRun
 	listErr  error
-	recorded []*models.DevflowRun
+	recorded []*delivery.DevflowRun
 }
 
-func (f *fakeStore) RunningDevByProject(context.Context, string, string) (*models.DevflowRun, error) {
+func (f *fakeStore) RunningDevByProject(context.Context, string, string) (*delivery.DevflowRun, error) {
 	return f.running, nil
 }
-func (f *fakeStore) GetByWorkflowID(context.Context, string, string) (*models.DevflowRun, error) {
+func (f *fakeStore) GetByWorkflowID(context.Context, string, string) (*delivery.DevflowRun, error) {
 	return f.row, nil
 }
-func (f *fakeStore) Record(_ context.Context, row *models.DevflowRun) error {
+func (f *fakeStore) Record(_ context.Context, row *delivery.DevflowRun) error {
 	f.recorded = append(f.recorded, row)
 	return nil
 }
-func (f *fakeStore) ListByProject(_ context.Context, _, _, kind string) ([]models.DevflowRun, error) {
+func (f *fakeStore) ListByProject(_ context.Context, _, _, kind string) ([]delivery.DevflowRun, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
 	// Mirror the real read: the endpoint asks for dev-kind rows only.
-	out := make([]models.DevflowRun, 0, len(f.rows))
+	out := make([]delivery.DevflowRun, 0, len(f.rows))
 	for _, r := range f.rows {
 		if kind == "" || r.Kind == kind {
 			out = append(out, r)
@@ -228,8 +228,8 @@ func TestBuild_TagsAndStartsWorkflow(t *testing.T) {
 	}
 	row := store.recorded[0]
 	if row.WorkflowID != "devflow-acme-shop-v1" || row.RunID != "run-1" ||
-		row.Kind != models.WorkflowKindDev || row.OrgID != "acme" ||
-		row.Tag != "v1" || row.Status != models.WorkflowStatusRunning {
+		row.Kind != delivery.WorkflowKindDev || row.OrgID != "acme" ||
+		row.Tag != "v1" || row.Status != delivery.WorkflowStatusRunning {
 		t.Errorf("recorded row = %+v", row)
 	}
 }
@@ -283,7 +283,7 @@ func TestBuild_SpecValidationFails_400_NoWorkflow(t *testing.T) {
 func TestBuild_AlreadyRunning_409_TaggerUntouched(t *testing.T) {
 	runner := &fakeRunner{}
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
-	store := &fakeStore{running: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
+	store := &fakeStore{running: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 
 	code, body := postBuild(t, svc, "shop")
@@ -378,7 +378,7 @@ func TestStartProjectBuild_HappyPath_StartsWorkflow(t *testing.T) {
 func TestStartProjectBuild_AlreadyRunning_Nil(t *testing.T) {
 	runner := &fakeRunner{}
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
-	store := &fakeStore{running: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
+	store := &fakeStore{running: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
 	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
 
 	// The trigger is idempotent: a running provider build already satisfies it.
@@ -415,7 +415,7 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 				{Issue: 8, Phase: delivery.TaskPhaseDone, Outcome: delivery.OutcomeSucceeded},
 			},
 		}}
-		store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusRunning}}
+		store := &fakeStore{row: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: delivery.WorkflowStatusRunning}}
 		// The DURABLE source is the lineage-tag read: issues 7 & 8 are stamped
 		// v1 (this build); issue 99 belongs to an older tag and must be excluded.
 		tasks := fakeTasks{views: []delivery.TaskView{
@@ -455,7 +455,7 @@ func TestGetBuild_MapsPhasesAndSourcesTasksFromLineage(t *testing.T) {
 // status — no more empty task list on a completed/archived build.
 func TestGetBuild_QueryFails_StillListsDurableTasks(t *testing.T) {
 	runner := &fakeRunner{statusErr: errors.New("run archived — no live query")}
-	store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusCompleted}}
+	store := &fakeStore{row: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: delivery.WorkflowStatusCompleted}}
 	tasks := fakeTasks{views: []delivery.TaskView{
 		{IssueNumber: 5, Title: "Ship it", Lineage: delivery.Lineage{SpecTag: "v1"}, DerivedStatus: "deployed"},
 		{IssueNumber: 6, Title: "Other build", Lineage: delivery.Lineage{SpecTag: "v2"}, DerivedStatus: "deployed"},
@@ -482,15 +482,15 @@ func TestGetBuild_QueryFails_StillListsDurableTasks(t *testing.T) {
 
 func TestListBuilds_NewestFirstOneEntryPerTag(t *testing.T) {
 	t0 := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
-	store := &fakeStore{rows: []models.DevflowRun{
+	store := &fakeStore{rows: []delivery.DevflowRun{
 		// Newest first, as the repository returns them. v1 appears twice (a
 		// same-tag rebuild writes a second (workflowID, runID) row) — only the
 		// newest run represents the tag.
-		{Kind: models.WorkflowKindDev, Tag: "v2", Status: models.WorkflowStatusRunning,
+		{Kind: delivery.WorkflowKindDev, Tag: "v2", Status: delivery.WorkflowStatusRunning,
 			TasksTotal: 4, TasksDone: 1, TasksFailed: 1, CreatedAt: t0.Add(2 * time.Hour), UpdatedAt: t0.Add(3 * time.Hour)},
-		{Kind: models.WorkflowKindDev, Tag: "v1", Status: models.WorkflowStatusCompleted,
+		{Kind: delivery.WorkflowKindDev, Tag: "v1", Status: delivery.WorkflowStatusCompleted,
 			TasksTotal: 3, TasksDone: 3, CreatedAt: t0.Add(time.Hour), UpdatedAt: t0.Add(90 * time.Minute)},
-		{Kind: models.WorkflowKindDev, Tag: "v1", Status: models.WorkflowStatusFailed,
+		{Kind: delivery.WorkflowKindDev, Tag: "v1", Status: delivery.WorkflowStatusFailed,
 			TasksTotal: 3, TasksDone: 1, TasksFailed: 2, CreatedAt: t0, UpdatedAt: t0.Add(time.Minute)},
 	}}
 	svc := newSvc(&fakeRunner{}, store, fakeRepos{}, &fakeTagger{}, fakeTasks{})
@@ -524,8 +524,8 @@ func TestListBuilds_NewestFirstOneEntryPerTag(t *testing.T) {
 
 func TestListBuilds_ActiveClampedAndEmptyList(t *testing.T) {
 	// A lost total write (done > total) must not render a negative active.
-	store := &fakeStore{rows: []models.DevflowRun{
-		{Kind: models.WorkflowKindDev, Tag: "v1", Status: models.WorkflowStatusRunning, TasksDone: 2},
+	store := &fakeStore{rows: []delivery.DevflowRun{
+		{Kind: delivery.WorkflowKindDev, Tag: "v1", Status: delivery.WorkflowStatusRunning, TasksDone: 2},
 	}}
 	svc := newSvc(&fakeRunner{}, store, fakeRepos{}, &fakeTagger{}, fakeTasks{})
 	code, rawBody := listBuilds(t, svc, "shop")
@@ -573,7 +573,7 @@ func TestGetBuild_UnknownTag_404(t *testing.T) {
 
 func TestGetBuild_QueryFails_FallsBackToRowStatus(t *testing.T) {
 	runner := &fakeRunner{statusErr: errors.New("temporal query failed")}
-	store := &fakeStore{row: &models.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: models.WorkflowStatusFailed}}
+	store := &fakeStore{row: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1", Status: delivery.WorkflowStatusFailed}}
 	svc := newSvc(runner, store, fakeRepos{}, &fakeTagger{}, fakeTasks{})
 
 	code, rawBody := getBuild(t, svc, "shop", "v1")
@@ -581,7 +581,7 @@ func TestGetBuild_QueryFails_FallsBackToRowStatus(t *testing.T) {
 		t.Fatalf("get: got %d body=%s", code, rawBody)
 	}
 	body := decodeBody[gen.BuildStatus](t, rawBody)
-	if body.Status != "failed" || body.WorkflowStatus != models.WorkflowStatusFailed {
+	if body.Status != "failed" || body.WorkflowStatus != delivery.WorkflowStatusFailed {
 		t.Errorf("fallback body = %+v, want failed/failed", body)
 	}
 }
@@ -591,7 +591,7 @@ func TestGetBuild_TitleFetchFailure_Degrades(t *testing.T) {
 		Phase: delivery.DevPhaseExecuting,
 		Tasks: []delivery.DevTaskRef{{Issue: 3, Phase: delivery.TaskPhaseBuilding}},
 	}}
-	store := &fakeStore{row: &models.DevflowRun{Status: models.WorkflowStatusRunning}}
+	store := &fakeStore{row: &delivery.DevflowRun{Status: delivery.WorkflowStatusRunning}}
 	svc := newSvc(runner, store, fakeRepos{}, &fakeTagger{}, fakeTasks{err: errors.New("github down")})
 
 	code, rawBody := getBuild(t, svc, "shop", "v1")

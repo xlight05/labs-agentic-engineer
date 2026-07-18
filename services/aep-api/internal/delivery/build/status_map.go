@@ -19,7 +19,6 @@ package build
 import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Build status enum values (the contract's BuildStatus.status /
@@ -49,9 +48,9 @@ func statusFromPhase(phase string) string {
 // fallback when the live query is unavailable (worker gone, run archived).
 func statusFromRow(rowStatus string) string {
 	switch rowStatus {
-	case models.WorkflowStatusCompleted:
+	case delivery.WorkflowStatusCompleted:
 		return statusCompleted
-	case models.WorkflowStatusFailed, models.WorkflowStatusCanceled:
+	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
 		return statusFailed
 	default: // running
 		return statusInProgress

@@ -119,23 +119,23 @@ func (fakeRepos) GetRepo(context.Context, string, string) (*models.GitRepository
 }
 
 type fakeExecs struct {
-	latest  map[int]map[string]*models.Execution
-	history map[int][]models.Execution
+	latest  map[int]map[string]*delivery.Execution
+	history map[int][]delivery.Execution
 }
 
-func (f fakeExecs) LatestPerKindScoped(_ context.Context, _, _ string, n int) (map[string]*models.Execution, error) {
+func (f fakeExecs) LatestPerKindScoped(_ context.Context, _, _ string, n int) (map[string]*delivery.Execution, error) {
 	if m := f.latest[n]; m != nil {
 		return m, nil
 	}
-	return map[string]*models.Execution{}, nil
+	return map[string]*delivery.Execution{}, nil
 }
-func (f fakeExecs) LatestPerKindForRepoScoped(_ context.Context, _, _ string) (map[int]map[string]*models.Execution, error) {
+func (f fakeExecs) LatestPerKindForRepoScoped(_ context.Context, _, _ string) (map[int]map[string]*delivery.Execution, error) {
 	if f.latest != nil {
 		return f.latest, nil
 	}
-	return map[int]map[string]*models.Execution{}, nil
+	return map[int]map[string]*delivery.Execution{}, nil
 }
-func (f fakeExecs) ListByIssueScoped(_ context.Context, _, _ string, n int) ([]models.Execution, error) {
+func (f fakeExecs) ListByIssueScoped(_ context.Context, _, _ string, n int) ([]delivery.Execution, error) {
 	return f.history[n], nil
 }
 
@@ -203,7 +203,7 @@ func TestList_DerivesStatusShapes(t *testing.T) {
 		taskIssue(1, "user-service", "open"),
 		taskIssue(2, "order-service", "open"),
 	)
-	execs := fakeExecs{latest: map[int]map[string]*models.Execution{
+	execs := fakeExecs{latest: map[int]map[string]*delivery.Execution{
 		1: {string(taskmeta.KindCoding): row("c1", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", -2), string(taskmeta.KindBuild): row("b1", taskmeta.KindBuild, taskmeta.ExecSucceeded, "", -1)},
 		2: {string(taskmeta.KindCoding): row("c2", taskmeta.KindCoding, taskmeta.ExecRunning, "", 0)},
 	}}
@@ -233,8 +233,8 @@ func TestList_DerivesStatusShapes(t *testing.T) {
 func TestGet_IncludesHistory(t *testing.T) {
 	iss := newIssues(taskIssue(5, "order-service", "open"))
 	execs := fakeExecs{
-		latest:  map[int]map[string]*models.Execution{5: {string(taskmeta.KindCoding): row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
-		history: map[int][]models.Execution{5: {*row("a", taskmeta.KindCoding, taskmeta.ExecFailed, "", -1), *row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
+		latest:  map[int]map[string]*delivery.Execution{5: {string(taskmeta.KindCoding): row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
+		history: map[int][]delivery.Execution{5: {*row("a", taskmeta.KindCoding, taskmeta.ExecFailed, "", -1), *row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
 	}
 	h := newRig(t, iss, execs)
 
@@ -336,8 +336,8 @@ func TestTasks_NoAuth_401(t *testing.T) {
 }
 
 // row builds a seeded execution with a creation-time offset (hours).
-func row(id string, kind taskmeta.ExecutionKind, status taskmeta.ExecutionStatus, reason string, hours int) *models.Execution {
-	return &models.Execution{
+func row(id string, kind taskmeta.ExecutionKind, status taskmeta.ExecutionStatus, reason string, hours int) *delivery.Execution {
+	return &delivery.Execution{
 		ID: id, Kind: string(kind), Status: string(status), Reason: reason,
 		CreatedAt: time.Now().Add(time.Duration(hours) * time.Hour),
 	}

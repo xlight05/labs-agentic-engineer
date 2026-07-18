@@ -24,11 +24,10 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
-func newExec(org, repo string, issue int, kind taskmeta.ExecutionKind) *models.Execution {
-	return &models.Execution{
+func newExec(org, repo string, issue int, kind taskmeta.ExecutionKind) *delivery.Execution {
+	return &delivery.Execution{
 		OrgID:       org,
 		ProjectID:   "proj",
 		Repo:        repo,
@@ -106,7 +105,7 @@ func TestExecutionRepository_AdmissionMutex(t *testing.T) {
 	}
 }
 
-func findActiveCoding(t *testing.T, repo delivery.ExecutionRepository, r string, issue int) *models.Execution {
+func findActiveCoding(t *testing.T, repo delivery.ExecutionRepository, r string, issue int) *delivery.Execution {
 	t.Helper()
 	m, err := repo.LatestPerKind(context.Background(), r, issue)
 	if err != nil {

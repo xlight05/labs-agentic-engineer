@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // ---- issue_compose round-trip ----------------------------------------------
@@ -75,10 +74,10 @@ func TestReads_List_DerivesStatusFromExecutions(t *testing.T) {
 
 	execs := newFakeExecReader()
 	// 1: coding succeeded + build succeeded → deployed.
-	execs.put(1, models.Execution{ID: "e1", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now().Add(-2 * time.Hour)})
-	execs.put(1, models.Execution{ID: "e1b", Kind: string(taskmeta.KindBuild), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now().Add(-1 * time.Hour)})
+	execs.put(1, delivery.Execution{ID: "e1", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now().Add(-2 * time.Hour)})
+	execs.put(1, delivery.Execution{ID: "e1b", Kind: string(taskmeta.KindBuild), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now().Add(-1 * time.Hour)})
 	// 2: coding running → in_progress.
-	execs.put(2, models.Execution{ID: "e2", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), CreatedAt: time.Now()})
+	execs.put(2, delivery.Execution{ID: "e2", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), CreatedAt: time.Now()})
 
 	views, err := newReads(issues, execs).List(context.Background(), "org1", "proj1", "open")
 	if err != nil {
@@ -171,8 +170,8 @@ func TestReads_Get_IncludesHistory(t *testing.T) {
 	issues := newFakeIssues()
 	issues.seed(gitrepoIssue(5, "order-service", "design-v1"))
 	execs := newFakeExecReader()
-	execs.put(5, models.Execution{ID: "a", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecFailed), CreatedAt: time.Now().Add(-time.Hour)})
-	execs.put(5, models.Execution{ID: "b", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now()})
+	execs.put(5, delivery.Execution{ID: "a", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecFailed), CreatedAt: time.Now().Add(-time.Hour)})
+	execs.put(5, delivery.Execution{ID: "b", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now()})
 
 	detail, err := newReads(issues, execs).Get(context.Background(), "org1", "proj1", 5)
 	if err != nil {

@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -46,10 +47,10 @@ type IssueClient interface {
 // failed), and list active rows (the readiness watcher's sweep).
 // delivery.ExecutionRepository satisfies it.
 type ExecutionStore interface {
-	TryAdmit(ctx context.Context, e *models.Execution) (admitted bool, row *models.Execution, err error)
-	StartWithRun(ctx context.Context, id, runName string) (*models.Execution, error)
-	Finish(ctx context.Context, id, status, reason string) (*models.Execution, error)
-	ListActive(ctx context.Context) ([]models.Execution, error)
+	TryAdmit(ctx context.Context, e *delivery.Execution) (admitted bool, row *delivery.Execution, err error)
+	StartWithRun(ctx context.Context, id, runName string) (*delivery.Execution, error)
+	Finish(ctx context.Context, id, status, reason string) (*delivery.Execution, error)
+	ListActive(ctx context.Context) ([]delivery.Execution, error)
 }
 
 // Reevaluator releases consumer coding tasks whose provision dependency just

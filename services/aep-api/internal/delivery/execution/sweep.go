@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Sweep is the reconciliation sweep (§5 — a required component, not an
@@ -91,7 +91,7 @@ func (s *Sweep) Run(ctx context.Context) {
 // issues.unlabeled delivery whose sender is the platform bot; the issues.* handler
 // drops self-sender deliveries (echo suppression, §9.2), so there is no loop.
 // execs is the Task's latest-per-kind rows, batch-loaded once per repo by Sweep.
-func (s *Sweep) clearStaleAttention(ctx context.Context, orgID, projectID, repoFullName string, issue sourcecontrol.IssueInfo, execs map[string]*models.Execution) {
+func (s *Sweep) clearStaleAttention(ctx context.Context, orgID, projectID, repoFullName string, issue sourcecontrol.IssueInfo, execs map[string]*delivery.Execution) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask || !labels.Attention {
 		return // not a flagged Task — nothing to clear (no GitHub call)
@@ -112,7 +112,7 @@ func (s *Sweep) clearStaleAttention(ctx context.Context, orgID, projectID, repoF
 // signal the attention-clear keys on. Canceled covers the funnel's
 // missing-class / component-not-in-design / no-executor (ops) cancellations, so
 // those Tasks stay flagged.
-func executionsHealthy(execs map[string]*models.Execution) bool {
+func executionsHealthy(execs map[string]*delivery.Execution) bool {
 	for _, e := range execs {
 		if e == nil {
 			continue

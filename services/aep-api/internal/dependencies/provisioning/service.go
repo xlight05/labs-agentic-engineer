@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -177,8 +178,8 @@ func (s *Service) findProvisionIssue(ctx context.Context, orgID, projectID, depN
 // LatestPerKind(repo, issue) resolves it. Returns (nil, false) when a provision
 // run is already active for this gate (the mutex lost the race) — an idempotent
 // re-provision.
-func (s *Service) admitProvisionRow(ctx context.Context, orgID, projectID, repo, depName string, issueNumber int) (row *models.Execution, admitted bool, err error) {
-	admitted, row, err = s.execs.TryAdmit(ctx, &models.Execution{
+func (s *Service) admitProvisionRow(ctx context.Context, orgID, projectID, repo, depName string, issueNumber int) (row *delivery.Execution, admitted bool, err error) {
+	admitted, row, err = s.execs.TryAdmit(ctx, &delivery.Execution{
 		OrgID:       orgID,
 		ProjectID:   projectID,
 		Repo:        repo,

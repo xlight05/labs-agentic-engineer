@@ -22,14 +22,13 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
-	"github.com/wso2/aep/aep-api/models"
 )
 
-func devRun(org, project, wfID, tag string) *models.DevflowRun {
-	return &models.DevflowRun{
+func devRun(org, project, wfID, tag string) *delivery.DevflowRun {
+	return &delivery.DevflowRun{
 		WorkflowID: wfID,
 		RunID:      wfID + "-run1",
-		Kind:       models.WorkflowKindDev,
+		Kind:       delivery.WorkflowKindDev,
 		OrgID:      org,
 		ProjectID:  project,
 		Tag:        tag,
@@ -100,7 +99,7 @@ func TestWorkflowRunRepository_TaskCounts(t *testing.T) {
 	if err := repo.SetTaskCounts(ctx, row.WorkflowID, rebuild.RunID, 3, 0, 0); err != nil {
 		t.Fatalf("SetTaskCounts rebuild: %v", err)
 	}
-	rows, err := repo.ListByProject(ctx, "orga", "proj", models.WorkflowKindDev)
+	rows, err := repo.ListByProject(ctx, "orga", "proj", delivery.WorkflowKindDev)
 	if err != nil || len(rows) != 2 {
 		t.Fatalf("ListByProject = (%d rows, %v), want 2", len(rows), err)
 	}
@@ -131,14 +130,14 @@ func TestWorkflowRunRepository_ValidationRunByParent(t *testing.T) {
 	}
 	// A coding-task child and the validation-phase orchestrator, both parented
 	// to the dev run.
-	coding := &models.DevflowRun{
+	coding := &delivery.DevflowRun{
 		WorkflowID: "taskflow-orga-proj-5", RunID: "r-coding",
-		Kind: models.WorkflowKindTask, OrgID: "orga", ProjectID: "proj",
+		Kind: delivery.WorkflowKindTask, OrgID: "orga", ProjectID: "proj",
 		Repo: "acme/proj", IssueNumber: 5, ParentWorkflowID: dev.WorkflowID,
 	}
-	validation := &models.DevflowRun{
+	validation := &delivery.DevflowRun{
 		WorkflowID: "validationflow-orga-proj-v1", RunID: "r-validation",
-		Kind:  models.WorkflowKindValidation,
+		Kind:  delivery.WorkflowKindValidation,
 		OrgID: "orga", ProjectID: "proj", Repo: "acme/proj", IssueNumber: 9,
 		ParentWorkflowID: dev.WorkflowID,
 	}
@@ -153,7 +152,7 @@ func TestWorkflowRunRepository_ValidationRunByParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidationRunByParent: %v", err)
 	}
-	if got == nil || got.IssueNumber != 9 || got.Kind != models.WorkflowKindValidation {
+	if got == nil || got.IssueNumber != 9 || got.Kind != delivery.WorkflowKindValidation {
 		t.Fatalf("ValidationRunByParent = %+v, want the validation orchestrator (issue 9)", got)
 	}
 
@@ -183,7 +182,7 @@ func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	if err := repo.Record(ctx, v1); err != nil {
 		t.Fatalf("Record v1: %v", err)
 	}
-	if err := repo.SetStatus(ctx, v1.WorkflowID, models.WorkflowStatusCompleted, ""); err != nil {
+	if err := repo.SetStatus(ctx, v1.WorkflowID, delivery.WorkflowStatusCompleted, ""); err != nil {
 		t.Fatalf("SetStatus v1: %v", err)
 	}
 	// A failed status persists its reason; a completed one leaves it empty.
@@ -191,7 +190,7 @@ func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	if err := repo.Record(ctx, failed); err != nil {
 		t.Fatalf("Record failed: %v", err)
 	}
-	if err := repo.SetStatus(ctx, failed.WorkflowID, models.WorkflowStatusFailed, "provisioning failed: org-service provider not found"); err != nil {
+	if err := repo.SetStatus(ctx, failed.WorkflowID, delivery.WorkflowStatusFailed, "provisioning failed: org-service provider not found"); err != nil {
 		t.Fatalf("SetStatus failed: %v", err)
 	}
 	if got, err := repo.GetByWorkflowID(ctx, "orga", failed.WorkflowID); err != nil {
@@ -203,16 +202,16 @@ func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	if err := repo.Record(ctx, v2); err != nil {
 		t.Fatalf("Record v2: %v", err)
 	}
-	task := &models.DevflowRun{
+	task := &delivery.DevflowRun{
 		WorkflowID: "taskflow-orga-proj-7", RunID: "r1",
-		Kind: models.WorkflowKindTask, OrgID: "orga", ProjectID: "proj",
+		Kind: delivery.WorkflowKindTask, OrgID: "orga", ProjectID: "proj",
 		Repo: "acme/proj", IssueNumber: 7,
 	}
 	if err := repo.Record(ctx, task); err != nil {
 		t.Fatalf("Record task: %v", err)
 	}
 
-	rows, err := repo.ListByProject(ctx, "orga", "proj", models.WorkflowKindDev)
+	rows, err := repo.ListByProject(ctx, "orga", "proj", delivery.WorkflowKindDev)
 	if err != nil {
 		t.Fatalf("ListByProject: %v", err)
 	}
@@ -222,9 +221,9 @@ func TestWorkflowRunRepository_ListByProject(t *testing.T) {
 	if rows[0].Tag != "v2" || rows[1].Tag != "vfail" || rows[2].Tag != "v1" {
 		t.Fatalf("order = [%s, %s, %s], want newest-first [v2, vfail, v1]", rows[0].Tag, rows[1].Tag, rows[2].Tag)
 	}
-	if rows[0].Status != models.WorkflowStatusRunning ||
-		rows[1].Status != models.WorkflowStatusFailed ||
-		rows[2].Status != models.WorkflowStatusCompleted {
+	if rows[0].Status != delivery.WorkflowStatusRunning ||
+		rows[1].Status != delivery.WorkflowStatusFailed ||
+		rows[2].Status != delivery.WorkflowStatusCompleted {
 		t.Fatalf("statuses = [%s, %s, %s], want [running, failed, completed]",
 			rows[0].Status, rows[1].Status, rows[2].Status)
 	}

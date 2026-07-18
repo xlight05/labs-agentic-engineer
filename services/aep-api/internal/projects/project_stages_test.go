@@ -60,9 +60,9 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 			SpecVersion: "v2",
 			SpecDirty:   true,
 		},
-		runs: []models.DevflowRun{
-			{Tag: "v2", Status: models.WorkflowStatusRunning, TasksTotal: 5, TasksDone: 2, TasksFailed: 1},
-			{Tag: "v1", Status: models.WorkflowStatusCompleted, TasksTotal: 3, TasksDone: 3},
+		runs: []delivery.DevflowRun{
+			{Tag: "v2", Status: delivery.WorkflowStatusRunning, TasksTotal: 5, TasksDone: 2, TasksFailed: 1},
+			{Tag: "v1", Status: delivery.WorkflowStatusCompleted, TasksTotal: 3, TasksDone: 3},
 		},
 		bindings: []models.ReleaseBindingSummary{
 			devBinding("api", "True", "Ready"),
@@ -101,7 +101,7 @@ func TestBuildStage_RowMapping(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name       string
-		runs       []models.DevflowRun
+		runs       []delivery.DevflowRun
 		wantVer    string
 		wantStatus string
 		wantActive int64
@@ -109,25 +109,25 @@ func TestBuildStage_RowMapping(t *testing.T) {
 		{name: "no rows → idle", wantStatus: "idle"},
 		{
 			name:       "completed → succeeded, tally frozen",
-			runs:       []models.DevflowRun{{Tag: "v3", Status: models.WorkflowStatusCompleted, TasksTotal: 4, TasksDone: 4}},
+			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusCompleted, TasksTotal: 4, TasksDone: 4}},
 			wantVer:    "v3",
 			wantStatus: "succeeded",
 		},
 		{
 			name:       "failed → failed",
-			runs:       []models.DevflowRun{{Tag: "v3", Status: models.WorkflowStatusFailed, TasksTotal: 2, TasksFailed: 2}},
+			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusFailed, TasksTotal: 2, TasksFailed: 2}},
 			wantVer:    "v3",
 			wantStatus: "failed",
 		},
 		{
 			name:       "canceled → failed",
-			runs:       []models.DevflowRun{{Tag: "v3", Status: models.WorkflowStatusCanceled}},
+			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusCanceled}},
 			wantVer:    "v3",
 			wantStatus: "failed",
 		},
 		{
 			name:       "active clamps at zero when the total write was lost",
-			runs:       []models.DevflowRun{{Tag: "v3", Status: models.WorkflowStatusRunning, TasksDone: 2}},
+			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusRunning, TasksDone: 2}},
 			wantVer:    "v3",
 			wantStatus: "running",
 			wantActive: 0,
@@ -236,7 +236,7 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
-		runs:     []models.DevflowRun{{Tag: "v1", Status: models.WorkflowStatusCompleted}},
+		runs:     []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusCompleted}},
 		countErr: fmt.Errorf("wrapped: %w", spec.ErrSpecTagNotFound),
 		bindings: []models.ReleaseBindingSummary{devBinding("api", "True", "Ready")},
 	}
@@ -255,7 +255,7 @@ func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 func TestDeployStage_VersionlessSkipsDenominator(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
-		runs: []models.DevflowRun{{Tag: "v1", Status: models.WorkflowStatusRunning}},
+		runs: []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusRunning}},
 	}
 	st := mustStatus(t, fx)
 	if st.Deploy.Version != "" {
@@ -276,18 +276,18 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 	// A dev run must exist for the builder to look up its validation child; keep
 	// it running (no completed run) so this test stays about validation, not the
 	// deploy denominator.
-	devRuns := []models.DevflowRun{{Tag: "v1", WorkflowID: "wf-dev", Status: models.WorkflowStatusRunning}}
-	child := func(status string) *models.DevflowRun {
-		return &models.DevflowRun{
-			Kind: models.WorkflowKindValidation,
+	devRuns := []delivery.DevflowRun{{Tag: "v1", WorkflowID: "wf-dev", Status: delivery.WorkflowStatusRunning}}
+	child := func(status string) *delivery.DevflowRun {
+		return &delivery.DevflowRun{
+			Kind: delivery.WorkflowKindValidation,
 			Repo: "o/r", IssueNumber: 9, ParentWorkflowID: "wf-dev", Status: status,
 		}
 	}
 	// A succeeded coding execution stamped with the open PR number (pr#42) is how
 	// the PR link is recovered without a live PR query.
 	prExecs := &fakeExecs{
-		LatestPerKindScopedFunc: func(context.Context, string, string, int) (map[string]*models.Execution, error) {
-			return map[string]*models.Execution{
+		LatestPerKindScopedFunc: func(context.Context, string, string, int) (map[string]*delivery.Execution, error) {
+			return map[string]*delivery.Execution{
 				string(taskmeta.KindCoding): {
 					Kind:   string(taskmeta.KindCoding),
 					Status: string(taskmeta.ExecSucceeded),
@@ -299,7 +299,7 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 
 	cases := []struct {
 		name       string
-		child      *models.DevflowRun
+		child      *delivery.DevflowRun
 		execs      delivery.ExecutionRepository
 		wantStatus string
 		wantURL    string
@@ -307,26 +307,26 @@ func TestDeployStage_ValidationDerivation(t *testing.T) {
 		{name: "no child → none, no link", wantStatus: "none", wantURL: ""},
 		{
 			name:       "running before a PR → running, issue link",
-			child:      child(models.WorkflowStatusRunning),
+			child:      child(delivery.WorkflowStatusRunning),
 			wantStatus: "running",
 			wantURL:    "https://github.com/o/r/issues/9",
 		},
 		{
 			name:       "completed with an open PR → completed, PR link",
-			child:      child(models.WorkflowStatusCompleted),
+			child:      child(delivery.WorkflowStatusCompleted),
 			execs:      prExecs,
 			wantStatus: "completed",
 			wantURL:    "https://github.com/o/r/pull/42",
 		},
 		{
 			name:       "failed → failed, issue link (no succeeded coding row)",
-			child:      child(models.WorkflowStatusFailed),
+			child:      child(delivery.WorkflowStatusFailed),
 			wantStatus: "failed",
 			wantURL:    "https://github.com/o/r/issues/9",
 		},
 		{
 			name:       "canceled → failed",
-			child:      child(models.WorkflowStatusCanceled),
+			child:      child(delivery.WorkflowStatusCanceled),
 			wantStatus: "failed",
 			wantURL:    "https://github.com/o/r/issues/9",
 		},

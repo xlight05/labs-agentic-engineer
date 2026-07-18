@@ -89,7 +89,7 @@ func (s ExecutionStatus) IsActive() bool {
 
 // ExecutionFact is the minimal Execution projection the derived-status algebra
 // consumes (derive.go): kind, status, reason, and creation time for recency.
-// The full persisted row lives in models.Execution; derive stays pure by
+// The full persisted row lives in delivery.Execution; derive stays pure by
 // taking only these facts (delivery.ExecutionFacts is the row projector).
 type ExecutionFact struct {
 	Kind      ExecutionKind

@@ -25,6 +25,7 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
@@ -99,11 +100,11 @@ func (f *fakeIssues) CommentIssue(_ context.Context, _, _ string, number int, bo
 }
 
 type fakeExecStore struct {
-	rows   []*models.Execution
+	rows   []*delivery.Execution
 	nextID int
 }
 
-func (f *fakeExecStore) TryAdmit(_ context.Context, e *models.Execution) (bool, *models.Execution, error) {
+func (f *fakeExecStore) TryAdmit(_ context.Context, e *delivery.Execution) (bool, *delivery.Execution, error) {
 	for _, r := range f.rows {
 		if r.Repo == e.Repo && r.IssueNumber == e.IssueNumber && r.Kind == e.Kind &&
 			taskmeta.ExecutionStatus(r.Status).IsActive() {
@@ -115,7 +116,7 @@ func (f *fakeExecStore) TryAdmit(_ context.Context, e *models.Execution) (bool, 
 	f.rows = append(f.rows, e)
 	return true, e, nil
 }
-func (f *fakeExecStore) StartWithRun(_ context.Context, id, runName string) (*models.Execution, error) {
+func (f *fakeExecStore) StartWithRun(_ context.Context, id, runName string) (*delivery.Execution, error) {
 	for _, r := range f.rows {
 		if r.ID == id {
 			r.Status = string(taskmeta.ExecRunning)
@@ -127,7 +128,7 @@ func (f *fakeExecStore) StartWithRun(_ context.Context, id, runName string) (*mo
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (f *fakeExecStore) Finish(_ context.Context, id, status, reason string) (*models.Execution, error) {
+func (f *fakeExecStore) Finish(_ context.Context, id, status, reason string) (*delivery.Execution, error) {
 	for _, r := range f.rows {
 		if r.ID == id {
 			r.Status = status
@@ -137,8 +138,8 @@ func (f *fakeExecStore) Finish(_ context.Context, id, status, reason string) (*m
 	}
 	return nil, nil
 }
-func (f *fakeExecStore) ListActive(_ context.Context) ([]models.Execution, error) {
-	var out []models.Execution
+func (f *fakeExecStore) ListActive(_ context.Context) ([]delivery.Execution, error) {
+	var out []delivery.Execution
 	for _, r := range f.rows {
 		if taskmeta.ExecutionStatus(r.Status).IsActive() {
 			out = append(out, *r)
@@ -805,8 +806,8 @@ func provisionGateIssue(number int, depName, gateKind string) sourcecontrol.Issu
 	}
 }
 
-func latestProvisionRow(execs *fakeExecStore) *models.Execution {
-	var last *models.Execution
+func latestProvisionRow(execs *fakeExecStore) *delivery.Execution {
+	var last *delivery.Execution
 	for _, r := range execs.rows {
 		if r.Kind == string(taskmeta.KindProvision) {
 			last = r

@@ -54,15 +54,15 @@ func ocWithBuildCapture(cap *buildTrigger) *ocmocks.ComponentClientMock {
 	}
 }
 
-func buildRow(id string) *models.Execution {
-	return &models.Execution{
+func buildRow(id string) *delivery.Execution {
+	return &delivery.Execution{
 		ID: id, OrgID: "acme", ProjectID: "widgets", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindBuild), Status: string(taskmeta.ExecQueued),
 		Component: "order-service", CommitSHA: "deadbeef",
 	}
 }
 
-func buildDispatch(row *models.Execution) delivery.DispatchRequest {
+func buildDispatch(row *delivery.Execution) delivery.DispatchRequest {
 	return delivery.DispatchRequest{
 		Execution: row,
 		Task:      delivery.TaskFacts{OrgID: "acme", ProjectID: "widgets", Component: "order-service"},
@@ -179,10 +179,10 @@ func TestRetryAuthFailedBuild_MissingFacts_Errors(t *testing.T) {
 	e := newBuildExecutor(ocWithBuildCapture(&buildTrigger{}), &models.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo()).
 		WithBuildSecrets(&fakeStager{}, 0)
 
-	if _, err := e.RetryAuthFailedBuild(context.Background(), &models.Execution{ID: "e1", Component: "x"}); err == nil {
+	if _, err := e.RetryAuthFailedBuild(context.Background(), &delivery.Execution{ID: "e1", Component: "x"}); err == nil {
 		t.Error("retry without CommitSHA must error")
 	}
-	if _, err := e.RetryAuthFailedBuild(context.Background(), &models.Execution{ID: "e1", CommitSHA: "sha"}); err == nil {
+	if _, err := e.RetryAuthFailedBuild(context.Background(), &delivery.Execution{ID: "e1", CommitSHA: "sha"}); err == nil {
 		t.Error("retry without Component must error")
 	}
 }

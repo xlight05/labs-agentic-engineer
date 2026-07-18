@@ -24,7 +24,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 func taskIssue(number int, comp string, deps []string, extraLabels []string, state string) sourcecontrol.IssueInfo {
@@ -58,7 +57,7 @@ func newTestFunnel(store *fakeStore, issues *fakeIssues, design map[string]bool,
 func TestFunnel_DepsSatisfied_Dispatches(t *testing.T) {
 	store := newFakeStore()
 	// Dependency #1 (user-service) is deployed: seed a succeeded build row.
-	_, dep, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 1, Kind: string(taskmeta.KindBuild)})
+	_, dep, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 1, Kind: string(taskmeta.KindBuild)})
 	_, _ = store.Finish(context.Background(), dep.ID, string(taskmeta.ExecSucceeded), "")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{
@@ -258,9 +257,9 @@ func TestFunnel_ClosedIssue_NoDispatch(t *testing.T) {
 // build FAILED" state, the state a build retry recovers.
 func seedMergedFailedBuild(store *fakeStore, mergeSHA string) {
 	ctx := context.Background()
-	_, c, _ := store.TryAdmit(ctx, &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
+	_, c, _ := store.TryAdmit(ctx, &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
 	_, _ = store.Finish(ctx, c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"7")
-	_, b, _ := store.TryAdmit(ctx, &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), Component: "order-service", CommitSHA: mergeSHA})
+	_, b, _ := store.TryAdmit(ctx, &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), Component: "order-service", CommitSHA: mergeSHA})
 	_, _ = store.Finish(ctx, b.ID, string(taskmeta.ExecFailed), "build failed")
 }
 
@@ -299,7 +298,7 @@ func TestFunnel_ExecuteOnFailedBuild_RetriesBuildAtSameSHA(t *testing.T) {
 func TestFunnel_ExecuteOnFailedCoding_RetriesCoding(t *testing.T) {
 	store := newFakeStore()
 	// Latest coding FAILED (no merged PR) — retry re-runs coding, unchanged.
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding), Component: "order-service"})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecFailed), "agent crashed")
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, []string{taskmeta.LabelExecute}, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
@@ -337,7 +336,7 @@ func TestFunnel_Reevaluate_ReleasesQueuedBuildWhenUnheld(t *testing.T) {
 	store := newFakeStore()
 	// A queued build retry (as if admitted while held) at sha7; the issue is now
 	// NOT held → Reevaluate must dispatch it.
-	_, _, _ = store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), Component: "order-service", CommitSHA: "sha7"})
+	_, _, _ = store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), Component: "order-service", CommitSHA: "sha7"})
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
 	exec := &fakeExecutor{store: store, startOK: true}
 	f := newTestFunnel(store, issues, map[string]bool{"order-service": true}, exec)

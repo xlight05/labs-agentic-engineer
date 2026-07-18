@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // This file is the strict-server (contract-first) entry surface of the build
@@ -77,7 +76,7 @@ func (s *Service) Status(ctx context.Context, orgID, projectID, tag string) (Bui
 // strict port of the Huma list handler; Builds is always non-nil so the JSON
 // body is [] rather than null.
 func (s *Service) List(ctx context.Context, orgID, projectID string) (BuildList, error) {
-	rows, err := s.store.ListByProject(ctx, orgID, projectID, models.WorkflowKindDev)
+	rows, err := s.store.ListByProject(ctx, orgID, projectID, delivery.WorkflowKindDev)
 	if err != nil {
 		return BuildList{}, fmt.Errorf("list builds: %w", err)
 	}
@@ -104,7 +103,7 @@ func (s *Service) List(ctx context.Context, orgID, projectID string) (BuildList,
 		if active := row.TasksTotal - row.TasksDone - row.TasksFailed; active > 0 {
 			b.Tasks.Active = int64(active)
 		}
-		if row.Status != models.WorkflowStatusRunning {
+		if row.Status != delivery.WorkflowStatusRunning {
 			completed := row.UpdatedAt
 			b.CompletedAt = &completed
 		}

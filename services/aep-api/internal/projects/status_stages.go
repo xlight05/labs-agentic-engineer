@@ -34,6 +34,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -63,8 +64,8 @@ const (
 // status read plus the project-delete purge.
 // delivery.WorkflowRunRepository satisfies it.
 type devRunRows interface {
-	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]models.DevflowRun, error)
-	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*models.DevflowRun, error)
+	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]delivery.DevflowRun, error)
+	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*delivery.DevflowRun, error)
 	DeleteByProject(ctx context.Context, orgID, projectID string) error
 }
 
@@ -93,11 +94,11 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 
 	var (
 		snap          *spec.StatusSnapshot
-		runs          []models.DevflowRun
+		runs          []delivery.DevflowRun
 		bindings      []models.ReleaseBindingSummary
 		deployVer     string
 		deployTotal   int64
-		validationRun *models.DevflowRun
+		validationRun *delivery.DevflowRun
 		validationPR  int
 	)
 	g, gctx := errgroup.WithContext(ctx)
@@ -110,7 +111,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	})
 	g.Go(func() error {
 		var err error
-		if runs, err = s.runReader.ListByProject(gctx, orgName, projectName, models.WorkflowKindDev); err != nil {
+		if runs, err = s.runReader.ListByProject(gctx, orgName, projectName, delivery.WorkflowKindDev); err != nil {
 			return fmt.Errorf("list dev runs: %w", err)
 		}
 		// Validation-run state for the newest dev run — cheap DB reads (no
@@ -142,7 +143,7 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 		// platform last finished building (a running v2 does not unseat a
 		// live v1).
 		for _, r := range runs {
-			if r.Status == models.WorkflowStatusCompleted {
+			if r.Status == delivery.WorkflowStatusCompleted {
 				deployVer = r.Tag
 				break
 			}
@@ -230,14 +231,14 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 // validationStageStatus maps the validation child run's row status onto the
 // deploy.validation enum. No child row → none (not reached, or no acceptance
 // criteria). An unknown non-terminal status reads as running (in flight).
-func validationStageStatus(run *models.DevflowRun) string {
+func validationStageStatus(run *delivery.DevflowRun) string {
 	if run == nil {
 		return validationNone
 	}
 	switch run.Status {
-	case models.WorkflowStatusCompleted:
+	case delivery.WorkflowStatusCompleted:
 		return validationCompleted
-	case models.WorkflowStatusFailed, models.WorkflowStatusCanceled:
+	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
 		return validationFailed
 	default: // running
 		return validationRunning
@@ -247,7 +248,7 @@ func validationStageStatus(run *models.DevflowRun) string {
 // validationURL builds the validation PR link from the repo's clone URL, or the
 // validation issue as a fallback before the PR opens. Empty when there is no
 // validation run or no repo URL to build from.
-func validationURL(repoURL string, run *models.DevflowRun, prNumber int) string {
+func validationURL(repoURL string, run *delivery.DevflowRun, prNumber int) string {
 	if run == nil || repoURL == "" {
 		return ""
 	}
@@ -294,9 +295,9 @@ func applyFlatArtifactFields(status *gen.ProjectStatus, snap *spec.StatusSnapsho
 // buildStageStatus maps a workflow_runs row status onto the BuildStage enum.
 func buildStageStatus(rowStatus string) string {
 	switch rowStatus {
-	case models.WorkflowStatusCompleted:
+	case delivery.WorkflowStatusCompleted:
 		return buildSucceeded
-	case models.WorkflowStatusFailed, models.WorkflowStatusCanceled:
+	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
 		return buildFailed
 	default: // running
 		return buildRunning

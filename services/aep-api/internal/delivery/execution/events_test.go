@@ -25,7 +25,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // reconcile loads the Task's latest-per-kind rows (as the sweep's batch load
@@ -64,7 +63,7 @@ func newEventsWithPR(store *fakeStore, issues *fakeIssues, exec delivery.Executo
 func TestEvents_PROpened_EndsCodingExecution(t *testing.T) {
 	store := newFakeStore()
 	// A running coding execution exists for issue 2.
-	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, row, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	store.markRunning(row.ID)
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
@@ -101,7 +100,7 @@ func TestEvents_PRMerged_SpawnsBuild(t *testing.T) {
 func TestEvents_PRClosedUnmerged_RecordsRejection(t *testing.T) {
 	store := newFakeStore()
 	// A coding execution already succeeded (PR was opened earlier).
-	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, row, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), row.ID, string(taskmeta.ExecSucceeded), "pull request opened")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
@@ -126,7 +125,7 @@ func TestEvents_PRClosedUnmerged_RecordsRejection(t *testing.T) {
 
 func seedOpenPRTask(store *fakeStore, prNumber int) {
 	// A coding execution that succeeded at PR-open, claiming PR #prNumber open.
-	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, row, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), row.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+strconv.Itoa(prNumber))
 }
 
@@ -169,10 +168,10 @@ func TestEvents_ReconcileTaskPR_MissedMerge_SpawnsBuild(t *testing.T) {
 func TestEvents_ReconcileTaskPR_NewMergeWithOlderBuild_Heals(t *testing.T) {
 	store := newFakeStore()
 	// Older failed build from a previous attempt (SHA sha2), created FIRST.
-	_, b1, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha2"})
+	_, b1, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha2"})
 	_, _ = store.Finish(context.Background(), b1.ID, string(taskmeta.ExecFailed), "boom")
 	// The latest coding succeeded claiming open PR #3 — newer than the old build.
-	_, c, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, c, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	_, _ = store.Finish(context.Background(), c.ID, string(taskmeta.ExecSucceeded), reasonPROpenPrefix+"3")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
@@ -213,7 +212,7 @@ func TestEvents_ReconcileTaskPR_NoDivergence_NoWrites(t *testing.T) {
 // (suppressing it would strand the row in_progress forever, mutex held).
 func TestEvents_PROpened_PlatformSenderStillEnds(t *testing.T) {
 	store := newFakeStore()
-	_, row, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
+	_, row, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindCoding)})
 	store.markRunning(row.ID)
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
@@ -254,7 +253,7 @@ func TestEvents_PRMerged_PlatformSenderStillSpawnsBuild(t *testing.T) {
 func TestEvents_PRMerged_ReDeliveryAfterBuild_NoDuplicate(t *testing.T) {
 	store := newFakeStore()
 	// A build already ran to completion for THIS merge (SHA abc123).
-	_, b, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "abc123"})
+	_, b, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "abc123"})
 	_, _ = store.Finish(context.Background(), b.ID, string(taskmeta.ExecSucceeded), "")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})
@@ -279,7 +278,7 @@ func TestEvents_PRMerged_ReDeliveryAfterBuild_NoDuplicate(t *testing.T) {
 func TestEvents_PRMerged_NewMergeAfterFailedBuild_Spawns(t *testing.T) {
 	store := newFakeStore()
 	// Round 1: PR #2 merged at SHA_2, its build FAILED.
-	_, b1, _ := store.TryAdmit(context.Background(), &models.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha2"})
+	_, b1, _ := store.TryAdmit(context.Background(), &delivery.Execution{Repo: "o/r", IssueNumber: 2, Kind: string(taskmeta.KindBuild), CommitSHA: "sha2"})
 	_, _ = store.Finish(context.Background(), b1.ID, string(taskmeta.ExecFailed), "boom")
 
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{taskIssue(2, "order-service", nil, nil, "open")})

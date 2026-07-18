@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -168,7 +167,7 @@ func TestValidationFlowWorkflow_HappyPath(t *testing.T) {
 	require.Equal(t, 99, res.Lanes[0].Issue)
 	require.Equal(t, delivery.OutcomeSucceeded, res.Lanes[0].Outcome)
 	// The phase row: kind=validation, the issue, parented to the DEV run.
-	require.Equal(t, models.WorkflowKindValidation, recorded.Kind)
+	require.Equal(t, delivery.WorkflowKindValidation, recorded.Kind)
 	require.Equal(t, 99, recorded.IssueNumber)
 	require.Equal(t, "devflow-org1-proj1-v1", recorded.ParentWorkflowID)
 }

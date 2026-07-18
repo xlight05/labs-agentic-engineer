@@ -24,7 +24,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // Funnel is THE single dispatch path (§5). Every intent — the aep:execute
@@ -100,7 +99,7 @@ func (f *Funnel) OnExecuteIntent(ctx context.Context, repoFullName string, issue
 		return f.retryBuild(ctx, facts, fb.CommitSHA)
 	}
 
-	row := &models.Execution{
+	row := &delivery.Execution{
 		OrgID:       facts.OrgID,
 		ProjectID:   facts.ProjectID,
 		Repo:        facts.Repo,
@@ -181,7 +180,7 @@ func (f *Funnel) Reevaluate(ctx context.Context) error {
 // it at the stored merge SHA (§7 retry = new row). A build is not blocked by the
 // dependency gate (a merged PR proceeds), but the hold command still applies.
 func (f *Funnel) retryBuild(ctx context.Context, facts delivery.TaskFacts, mergeSHA string) error {
-	row := &models.Execution{
+	row := &delivery.Execution{
 		OrgID:       facts.OrgID,
 		ProjectID:   facts.ProjectID,
 		Repo:        facts.Repo,
@@ -209,7 +208,7 @@ func (f *Funnel) retryBuild(ctx context.Context, facts delivery.TaskFacts, merge
 // executor → cancel + attention; a run error → fail + attention (prefixed with
 // attentionPrefix). Builds carry their pinned merge SHA in the row (coding rows
 // carry none). Shared by retryBuild, Reevaluate, and the gate's dispatch tail.
-func (f *Funnel) dispatch(ctx context.Context, facts delivery.TaskFacts, row *models.Execution, attentionPrefix string) error {
+func (f *Funnel) dispatch(ctx context.Context, facts delivery.TaskFacts, row *delivery.Execution, attentionPrefix string) error {
 	if facts.HoldActive {
 		return nil // queued behind the hold (§4/§5)
 	}
@@ -232,7 +231,7 @@ func (f *Funnel) dispatch(ctx context.Context, facts delivery.TaskFacts, row *mo
 // Execution succeeded (ended at PR-open) AND the latest build failed AND its
 // merge SHA is recorded (needed to re-trigger). Otherwise nil (coding is the
 // retry).
-func failedMergedBuild(execs map[string]*models.Execution) *models.Execution {
+func failedMergedBuild(execs map[string]*delivery.Execution) *delivery.Execution {
 	coding := execs[string(taskmeta.KindCoding)]
 	build := execs[string(taskmeta.KindBuild)]
 	if coding == nil || build == nil {
@@ -251,7 +250,7 @@ func failedMergedBuild(execs map[string]*models.Execution) *models.Execution {
 // either dispatches it, leaves it queued (hold / unsatisfied deps / cycle), or
 // cancels it (invalid class/component/no executor). The authoritative mutex is
 // TryAdmit; gate never double-dispatches because Start is queued-guarded.
-func (f *Funnel) gate(ctx context.Context, facts delivery.TaskFacts, row *models.Execution, view *projectView) error {
+func (f *Funnel) gate(ctx context.Context, facts delivery.TaskFacts, row *delivery.Execution, view *projectView) error {
 	// Class must be exactly one known class.
 	if facts.Class == "" || !facts.Class.Valid() {
 		f.flagAttention(ctx, facts, "This Task has no valid executor-class label (expected exactly one of aep:coding / aep:ops).")

@@ -25,7 +25,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // RegisterFunc is the webhook-router registration seam (the same closure shape
@@ -239,7 +238,7 @@ func (e *Events) spawnBuild(ctx context.Context, repoFullName string, issueNumbe
 		// (validation-phase). Deriving stays at merged with no build Execution.
 		return nil
 	}
-	row := &models.Execution{
+	row := &delivery.Execution{
 		OrgID:       facts.OrgID,
 		ProjectID:   facts.ProjectID,
 		Repo:        facts.Repo,
@@ -295,7 +294,7 @@ func (e *Events) buildExistsForMerge(ctx context.Context, repoFullName string, i
 // build, closed-unmerged records the rejection. A no-divergence PR is a no-op.
 // The Task facts and its latest-per-kind executions are passed in (the sweep
 // already listed the issues and batch-loaded the rows for the whole repo).
-func (e *Events) ReconcileTaskPR(ctx context.Context, orgID, projectID, repoFullName string, issueNumber int, execs map[string]*models.Execution) error {
+func (e *Events) ReconcileTaskPR(ctx context.Context, orgID, projectID, repoFullName string, issueNumber int, execs map[string]*delivery.Execution) error {
 	if e.prs == nil {
 		return nil
 	}
@@ -344,7 +343,7 @@ func (e *Events) recordRejection(ctx context.Context, repo string, issueNumber i
 	if err != nil || !ok {
 		return err
 	}
-	row := &models.Execution{
+	row := &delivery.Execution{
 		OrgID:       facts.OrgID,
 		ProjectID:   facts.ProjectID,
 		Repo:        facts.Repo,

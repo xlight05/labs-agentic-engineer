@@ -21,7 +21,6 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // errNotConfigured is returned by an activity whose adapter was not wired
@@ -93,7 +92,7 @@ type RecordWorkflowRunInput struct {
 // RecordWorkflowRun upserts the workflow_runs row (idempotent on workflow
 // retry). Called as the first activity of every workflow.
 func (a *Activities) RecordWorkflowRun(ctx context.Context, in RecordWorkflowRunInput) error {
-	return a.runs.Record(ctx, &models.DevflowRun{
+	return a.runs.Record(ctx, &delivery.DevflowRun{
 		WorkflowID:       in.WorkflowID,
 		RunID:            in.RunID,
 		Kind:             in.Kind,
@@ -103,7 +102,7 @@ func (a *Activities) RecordWorkflowRun(ctx context.Context, in RecordWorkflowRun
 		Repo:             in.Repo,
 		IssueNumber:      in.IssueNumber,
 		ParentWorkflowID: in.ParentWorkflowID,
-		Status:           models.WorkflowStatusRunning,
+		Status:           delivery.WorkflowStatusRunning,
 	})
 }
 

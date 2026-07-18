@@ -49,7 +49,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 const (
@@ -150,7 +149,7 @@ func NewAgentProgressReader(proxy *clustergatewayproxy.Client, logs delivery.Cod
 // run name, pod not scheduled, container starting, NS unresolved) return an
 // empty, non-final response so the console keeps polling rather than flashing an
 // error. Genuine read/tail failures return an error for the caller to degrade.
-func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *models.Execution, sinceMillis int64) (*contracts.ProgressResponse, error) {
+func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *delivery.Execution, sinceMillis int64) (*contracts.ProgressResponse, error) {
 	resp := &contracts.ProgressResponse{
 		SchemaVersion: progressSchemaVersion,
 		Lines:         []contracts.ProgressEvent{},

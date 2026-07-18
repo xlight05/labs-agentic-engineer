@@ -568,7 +568,7 @@ func (e *CodingExecutor) stageBuildSecret(ctx context.Context, orgID, projectID,
 // git-clone-auth retry the legacy build watcher's RetryAuthFailedBuild provided,
 // re-keyed to the execution row. A staging refusal (org disconnected / repo not
 // in org) aborts the retry — the watcher exhausts the budget instead.
-func (e *CodingExecutor) RetryAuthFailedBuild(ctx context.Context, row *models.Execution) (string, error) {
+func (e *CodingExecutor) RetryAuthFailedBuild(ctx context.Context, row *delivery.Execution) (string, error) {
 	if row == nil {
 		return "", fmt.Errorf("retry-auth-failed: nil execution")
 	}

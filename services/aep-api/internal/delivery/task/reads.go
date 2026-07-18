@@ -25,7 +25,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // The task read DTOs (Lineage, ExecutionView, TaskView, TaskDetail) live in the
@@ -80,7 +79,7 @@ func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag stri
 	execsByIssue, err := r.execs.LatestPerKindForRepoScoped(ctx, orgID, repoFullName)
 	if err != nil {
 		slog.WarnContext(ctx, "reads: load executions failed", "repo", repoFullName, "error", err)
-		execsByIssue = map[int]map[string]*models.Execution{}
+		execsByIssue = map[int]map[string]*delivery.Execution{}
 	}
 
 	out := make([]delivery.TaskView, 0, len(issues))
@@ -274,7 +273,7 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 	execsByIssue, err := r.execs.LatestPerKindForRepoScoped(ctx, orgID, repoFullName)
 	if err != nil {
 		slog.WarnContext(ctx, "reads: load executions failed", "repo", repoFullName, "error", err)
-		execsByIssue = map[int]map[string]*models.Execution{}
+		execsByIssue = map[int]map[string]*delivery.Execution{}
 	}
 
 	views := make([]delivery.TaskView, 0, len(issues))
@@ -322,7 +321,7 @@ func containsIssue(issues []sourcecontrol.IssueInfo, issueNumber int) bool {
 // buildView fuses one live issue with its latest-per-kind executions into a
 // TaskView. ok is false when the issue is not a Task (no marker) — the caller
 // skips it.
-func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[string]*models.Execution) (delivery.TaskView, bool) {
+func buildView(issue sourcecontrol.IssueInfo, latestSpecTag string, execs map[string]*delivery.Execution) (delivery.TaskView, bool) {
 	labels := taskmeta.ParseLabels(issue.Labels)
 	if !labels.IsTask {
 		return delivery.TaskView{}, false
@@ -394,7 +393,7 @@ func computeAttention(labels taskmeta.ParsedLabels, block taskmeta.Block, blockE
 	return flags
 }
 
-func latestViews(execs map[string]*models.Execution) map[string]delivery.ExecutionView {
+func latestViews(execs map[string]*delivery.Execution) map[string]delivery.ExecutionView {
 	out := make(map[string]delivery.ExecutionView, len(execs))
 	for kind, e := range execs {
 		if e == nil {
@@ -405,7 +404,7 @@ func latestViews(execs map[string]*models.Execution) map[string]delivery.Executi
 	return out
 }
 
-func executionView(e *models.Execution) delivery.ExecutionView {
+func executionView(e *delivery.Execution) delivery.ExecutionView {
 	return delivery.ExecutionView{
 		ID:        e.ID,
 		Kind:      e.Kind,

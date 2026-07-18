@@ -25,7 +25,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // TestComputeAttention_CleanTaskIsEmptyNonNilSlice guards the contract that
@@ -79,7 +78,7 @@ func TestReconcileBlocked_UnmetProvisionDepDerivesOnHold(t *testing.T) {
 
 	execs := newFakeExecReader()
 	// A queued coding row: admitted but gated → derives in_progress today.
-	execs.put(10, models.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
+	execs.put(10, delivery.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
 
 	design := fakeDesign{provision: map[string][]string{"order-service": {"payments-db"}}}
 	views, err := newReadsWithDesign(issues, execs, design).List(context.Background(), "org1", "proj1", "open")
@@ -103,9 +102,9 @@ func TestReconcileBlocked_AllDepsDeployedUnchanged(t *testing.T) {
 	issues.seed(provisionGateIssue(20, "payments-db"))
 
 	execs := newFakeExecReader()
-	execs.put(10, models.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
+	execs.put(10, delivery.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
 	// The gate resolved: a succeeded provision execution → derives deployed.
-	execs.put(20, models.Execution{ID: "p20", Kind: string(taskmeta.KindProvision), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now()})
+	execs.put(20, delivery.Execution{ID: "p20", Kind: string(taskmeta.KindProvision), Status: string(taskmeta.ExecSucceeded), CreatedAt: time.Now()})
 
 	design := fakeDesign{provision: map[string][]string{"order-service": {"payments-db"}}}
 	views, err := newReadsWithDesign(issues, execs, design).List(context.Background(), "org1", "proj1", "open")
@@ -129,7 +128,7 @@ func TestReconcileBlocked_RunningCodingNotOverridden(t *testing.T) {
 	issues.seed(provisionGateIssue(20, "payments-db")) // not deployed
 
 	execs := newFakeExecReader()
-	execs.put(10, models.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), CreatedAt: time.Now()})
+	execs.put(10, delivery.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), CreatedAt: time.Now()})
 
 	design := fakeDesign{provision: map[string][]string{"order-service": {"payments-db"}}}
 	views, err := newReadsWithDesign(issues, execs, design).List(context.Background(), "org1", "proj1", "open")
@@ -153,7 +152,7 @@ func TestReconcileBlocked_DepWithNoGateDoesNotBlock(t *testing.T) {
 	issues.seed(gitrepoIssue(10, "order-service", "design-v1")) // no gate issues seeded
 
 	execs := newFakeExecReader()
-	execs.put(10, models.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
+	execs.put(10, delivery.Execution{ID: "c10", Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), CreatedAt: time.Now()})
 
 	design := fakeDesign{
 		orgService: map[string][]string{"order-service": {"catalog-api"}}, // resolved, no gate

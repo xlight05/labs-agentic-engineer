@@ -21,6 +21,7 @@ import (
 	"io"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -95,9 +96,9 @@ type SkillsRepoResolver func(ctx context.Context, orgID string) (*models.GitRepo
 // delivery.ExecutionRepository scoped methods — the shared kernel, not the
 // execution feature, so the §1 package boundary holds.
 type ExecutionReader interface {
-	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*models.Execution, error)
-	LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*models.Execution, error)
-	ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]models.Execution, error)
+	LatestPerKindScoped(ctx context.Context, orgID, repo string, issueNumber int) (map[string]*delivery.Execution, error)
+	LatestPerKindForRepoScoped(ctx context.Context, orgID, repo string) (map[int]map[string]*delivery.Execution, error)
+	ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]delivery.Execution, error)
 }
 
 // DesignReader exposes each component's declared dependencies from the design at

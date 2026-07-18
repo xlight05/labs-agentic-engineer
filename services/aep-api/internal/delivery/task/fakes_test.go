@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -191,17 +192,17 @@ func defaultRepo() *models.GitRepository {
 
 // fakeExecReader serves seeded execution rows.
 type fakeExecReader struct {
-	latest  map[int]map[string]*models.Execution // issueNumber → kind → row
-	history map[int][]models.Execution
+	latest  map[int]map[string]*delivery.Execution // issueNumber → kind → row
+	history map[int][]delivery.Execution
 }
 
 func newFakeExecReader() *fakeExecReader {
-	return &fakeExecReader{latest: map[int]map[string]*models.Execution{}, history: map[int][]models.Execution{}}
+	return &fakeExecReader{latest: map[int]map[string]*delivery.Execution{}, history: map[int][]delivery.Execution{}}
 }
 
-func (f *fakeExecReader) put(number int, e models.Execution) *fakeExecReader {
+func (f *fakeExecReader) put(number int, e delivery.Execution) *fakeExecReader {
 	if f.latest[number] == nil {
-		f.latest[number] = map[string]*models.Execution{}
+		f.latest[number] = map[string]*delivery.Execution{}
 	}
 	cp := e
 	f.latest[number][e.Kind] = &cp
@@ -209,18 +210,18 @@ func (f *fakeExecReader) put(number int, e models.Execution) *fakeExecReader {
 	return f
 }
 
-func (f *fakeExecReader) LatestPerKindScoped(_ context.Context, _, _ string, number int) (map[string]*models.Execution, error) {
+func (f *fakeExecReader) LatestPerKindScoped(_ context.Context, _, _ string, number int) (map[string]*delivery.Execution, error) {
 	if m := f.latest[number]; m != nil {
 		return m, nil
 	}
-	return map[string]*models.Execution{}, nil
+	return map[string]*delivery.Execution{}, nil
 }
 
-func (f *fakeExecReader) LatestPerKindForRepoScoped(_ context.Context, _, _ string) (map[int]map[string]*models.Execution, error) {
+func (f *fakeExecReader) LatestPerKindForRepoScoped(_ context.Context, _, _ string) (map[int]map[string]*delivery.Execution, error) {
 	return f.latest, nil
 }
 
-func (f *fakeExecReader) ListByIssueScoped(_ context.Context, _, _ string, number int) ([]models.Execution, error) {
+func (f *fakeExecReader) ListByIssueScoped(_ context.Context, _, _ string, number int) ([]delivery.Execution, error) {
 	return f.history[number], nil
 }
 

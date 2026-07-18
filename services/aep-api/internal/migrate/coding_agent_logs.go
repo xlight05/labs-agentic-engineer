@@ -30,7 +30,7 @@ import (
 // is an Execution, and component_tasks is DROPPED (tasks_github_native) — so the
 // legacy migration never creates the table and the JobWatcher's final-log
 // persist failed with 42P01. This creates the table keyed to the Execution id
-// (models.CodingAgentLog.TaskID = executions.id — the column keeps the historic
+// (delivery.CodingAgentLog.TaskID = executions.id — the column keeps the historic
 // `task_id` name), FK-cascading on the execution. Runs AFTER `executions` (the
 // FK target) and `tasks_github_native` (which cascade-drops any legacy table).
 func RunCodingAgentLogs(ctx context.Context, db *gorm.DB) error {

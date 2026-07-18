@@ -25,7 +25,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // provisionIssue builds an aep:provision gate issue for a dependency name.
@@ -62,7 +61,7 @@ func newTestFunnelP(store *fakeStore, issues *fakeIssues, names map[string]bool,
 // derives StatusDeployed.
 func markProvisionDeployed(store *fakeStore, issueNumber int, depName string) {
 	ctx := context.Background()
-	_, p, _ := store.TryAdmit(ctx, &models.Execution{
+	_, p, _ := store.TryAdmit(ctx, &delivery.Execution{
 		Repo: "o/r", IssueNumber: issueNumber, Kind: string(taskmeta.KindProvision), Component: depName,
 	})
 	_, _ = store.Finish(ctx, p.ID, string(taskmeta.ExecSucceeded), "")

@@ -41,21 +41,21 @@ const noDispatchPathErr = "no coding-agent dispatch path configured"
 // and k8sJob both unset), plus the coding-dispatch fakes + a scripted ensurer, so
 // runCoding runs the pre-flight and then fails at the dispatch stage with
 // noDispatchPathErr — enough to assert the pre-flight behavior in isolation.
-func codingExecutorFor(t *testing.T, ensurer ComponentEnsurer, oc openchoreo.ComponentClient, row *models.Execution) *CodingExecutor {
+func codingExecutorFor(t *testing.T, ensurer ComponentEnsurer, oc openchoreo.ComponentClient, row *delivery.Execution) *CodingExecutor {
 	t.Helper()
 	e := NewCodingExecutor(oc, fakeRepos{repo: &models.GitRepository{RepoURL: "https://github.com/acme/widgets"}},
 		fakeIdentities{}, nil, fakeTokens{}, newFakeExecRepo(row), "http://git", "http://platform", nil, nil, nil, nil)
 	return e.WithComponentEnsurer(ensurer)
 }
 
-func codingRow(id string) *models.Execution {
-	return &models.Execution{
+func codingRow(id string) *delivery.Execution {
+	return &delivery.Execution{
 		ID: id, OrgID: "acme", ProjectID: "widgets", Repo: "acme/widgets", IssueNumber: 7,
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecQueued), Component: "order-service",
 	}
 }
 
-func codingDispatch(row *models.Execution) delivery.DispatchRequest {
+func codingDispatch(row *delivery.Execution) delivery.DispatchRequest {
 	return delivery.DispatchRequest{
 		Execution: row,
 		Task: delivery.TaskFacts{

@@ -102,7 +102,7 @@ func (f *fakeWebhookSvc) Register(ctx context.Context, orgID, projectID string) 
 // unreachable from the project feature and returns zero.
 type fakeExecs struct {
 	DeleteByProjectFunc     func(ctx context.Context, orgID, projectID string) error
-	LatestPerKindScopedFunc func(ctx context.Context, orgID, repo string, issue int) (map[string]*models.Execution, error)
+	LatestPerKindScopedFunc func(ctx context.Context, orgID, repo string, issue int) (map[string]*delivery.Execution, error)
 	deleteArgs              [2]string
 	deleteCalls             int
 }
@@ -119,43 +119,43 @@ func (f *fakeExecs) DeleteByProject(ctx context.Context, orgID, projectID string
 	}
 	return f.DeleteByProjectFunc(ctx, orgID, projectID)
 }
-func (f *fakeExecs) TryAdmit(context.Context, *models.Execution) (bool, *models.Execution, error) {
+func (f *fakeExecs) TryAdmit(context.Context, *delivery.Execution) (bool, *delivery.Execution, error) {
 	return false, nil, nil
 }
-func (f *fakeExecs) StartWithRun(context.Context, string, string) (*models.Execution, error) {
+func (f *fakeExecs) StartWithRun(context.Context, string, string) (*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) Finish(context.Context, string, string, string) (*models.Execution, error) {
+func (f *fakeExecs) Finish(context.Context, string, string, string) (*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) NoteBuildRetry(context.Context, string, string, string) (*models.Execution, error) {
+func (f *fakeExecs) NoteBuildRetry(context.Context, string, string, string) (*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) GetByIDScoped(context.Context, string, string) (*models.Execution, error) {
+func (f *fakeExecs) GetByIDScoped(context.Context, string, string) (*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) LatestPerKind(context.Context, string, int) (map[string]*models.Execution, error) {
+func (f *fakeExecs) LatestPerKind(context.Context, string, int) (map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) LatestPerKindScoped(ctx context.Context, orgID, repo string, issue int) (map[string]*models.Execution, error) {
+func (f *fakeExecs) LatestPerKindScoped(ctx context.Context, orgID, repo string, issue int) (map[string]*delivery.Execution, error) {
 	if f.LatestPerKindScopedFunc != nil {
 		return f.LatestPerKindScopedFunc(ctx, orgID, repo, issue)
 	}
 	return nil, nil
 }
-func (f *fakeExecs) LatestPerKindForRepo(context.Context, string) (map[int]map[string]*models.Execution, error) {
+func (f *fakeExecs) LatestPerKindForRepo(context.Context, string) (map[int]map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) LatestPerKindForRepoScoped(context.Context, string, string) (map[int]map[string]*models.Execution, error) {
+func (f *fakeExecs) LatestPerKindForRepoScoped(context.Context, string, string) (map[int]map[string]*delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) ListByIssue(context.Context, string, int) ([]models.Execution, error) {
+func (f *fakeExecs) ListByIssue(context.Context, string, int) ([]delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) ListByIssueScoped(context.Context, string, string, int) ([]models.Execution, error) {
+func (f *fakeExecs) ListByIssueScoped(context.Context, string, string, int) ([]delivery.Execution, error) {
 	return nil, nil
 }
-func (f *fakeExecs) ListActive(context.Context) ([]models.Execution, error) { return nil, nil }
+func (f *fakeExecs) ListActive(context.Context) ([]delivery.Execution, error) { return nil, nil }
 
 type fakeSkillsProvisioner struct{ called chan string }
 
@@ -583,17 +583,17 @@ func TestDeleteProject_RepoCleanupFailureIsSwallowed(t *testing.T) {
 // fakeRunReader / fakeBindingsReader fake the stage-source ports
 // (status_stages.go) — the build/deploy inputs of the status poll.
 type fakeRunReader struct {
-	rows          []models.DevflowRun
+	rows          []delivery.DevflowRun
 	err           error
-	validationRun *models.DevflowRun
+	validationRun *delivery.DevflowRun
 	validationErr error
 }
 
-func (f fakeRunReader) ListByProject(context.Context, string, string, string) ([]models.DevflowRun, error) {
+func (f fakeRunReader) ListByProject(context.Context, string, string, string) ([]delivery.DevflowRun, error) {
 	return f.rows, f.err
 }
 
-func (f fakeRunReader) ValidationRunByParent(context.Context, string, string, string) (*models.DevflowRun, error) {
+func (f fakeRunReader) ValidationRunByParent(context.Context, string, string, string) (*delivery.DevflowRun, error) {
 	return f.validationRun, f.validationErr
 }
 
@@ -616,11 +616,11 @@ type statusFixture struct {
 	snapErr       error
 	counts        map[string]int // ComponentCountAtTag fixture, keyed by tag
 	countErr      error
-	runs          []models.DevflowRun
+	runs          []delivery.DevflowRun
 	runsErr       error
 	bindings      []models.ReleaseBindingSummary
 	bindingsErr   error
-	validationRun *models.DevflowRun           // validation child of the newest dev run (nil = none)
+	validationRun *delivery.DevflowRun           // validation child of the newest dev run (nil = none)
 	validationErr error                        // ValidationRunByParent error
 	execs         delivery.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
 }
@@ -707,7 +707,7 @@ func TestGetProjectStatus_StrictSourceFailures(t *testing.T) {
 
 	// The deploy denominator read joins strictly too.
 	cnt := base
-	cnt.runs = []models.DevflowRun{{Tag: "v1", Status: models.WorkflowStatusCompleted}}
+	cnt.runs = []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusCompleted}}
 	cnt.countErr = errors.New("tag missing from mirror")
 	if _, err := cnt.service().GetProjectStatus(context.Background(), "acme", "web"); err == nil {
 		t.Fatal("component-count failure must fail the status read")

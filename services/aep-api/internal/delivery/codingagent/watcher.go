@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
-	"github.com/wso2/aep/aep-api/models"
 )
 
 // finalLogTailBytes caps the captured snapshot size (~3000 lines).
@@ -131,7 +130,7 @@ func (w *JobWatcher) tick(ctx context.Context) {
 	}
 }
 
-func (w *JobWatcher) checkOne(ctx context.Context, row *models.Execution) {
+func (w *JobWatcher) checkOne(ctx context.Context, row *delivery.Execution) {
 	ns, ok := w.resolveNS(ctx, row.OrgID)
 	if !ok {
 		slog.DebugContext(ctx, "codingagent.JobWatcher: NS resolve failed; skip", "execution", row.ID, "org", row.OrgID)
@@ -170,7 +169,7 @@ func (w *JobWatcher) checkOne(ctx context.Context, row *models.Execution) {
 	}
 }
 
-func (w *JobWatcher) finishFailed(ctx context.Context, row *models.Execution, reason string) {
+func (w *JobWatcher) finishFailed(ctx context.Context, row *delivery.Execution, reason string) {
 	if _, err := w.execRows.Finish(ctx, row.ID, string(taskmeta.ExecFailed), reason); err != nil {
 		slog.ErrorContext(ctx, "codingagent.JobWatcher: finish failed", "execution", row.ID, "reason", reason, "error", err)
 		return
@@ -185,7 +184,7 @@ func (w *JobWatcher) finishFailed(ctx context.Context, row *models.Execution, re
 
 // cleanupPerRunExternalSecrets deletes the per-run ExternalSecrets the
 // Dispatcher applied (anthropic + github + optional publisher). Best-effort.
-func (w *JobWatcher) cleanupPerRunExternalSecrets(ctx context.Context, row *models.Execution, ns string) {
+func (w *JobWatcher) cleanupPerRunExternalSecrets(ctx context.Context, row *delivery.Execution, ns string) {
 	if row.RunName == "" {
 		return
 	}
@@ -198,7 +197,7 @@ func (w *JobWatcher) cleanupPerRunExternalSecrets(ctx context.Context, row *mode
 
 // captureFinalLog reads the agent pod's stdout/stderr once and persists it to
 // coding_agent_logs, keyed by the execution id. Idempotent on (task_id,run_name).
-func (w *JobWatcher) captureFinalLog(ctx context.Context, row *models.Execution, ns, phase string) {
+func (w *JobWatcher) captureFinalLog(ctx context.Context, row *delivery.Execution, ns, phase string) {
 	execUUID, err := uuid.Parse(row.ID)
 	if err != nil {
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: invalid execution id", "execution", row.ID, "error", err)
@@ -217,7 +216,7 @@ func (w *JobWatcher) captureFinalLog(ctx context.Context, row *models.Execution,
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: tail failed", "execution", row.ID, "ns", ns, "pod", podName, "error", err)
 		return
 	}
-	if err := w.logs.Create(ctx, &models.CodingAgentLog{
+	if err := w.logs.Create(ctx, &delivery.CodingAgentLog{
 		TaskID:     execUUID,
 		RunName:    row.RunName,
 		FinalPhase: phase,
