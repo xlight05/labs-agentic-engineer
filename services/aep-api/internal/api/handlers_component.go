@@ -21,11 +21,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/platform/ocerr"
 	"github.com/wso2/aep/aep-api/internal/platform/tenant"
 	"github.com/wso2/aep/aep-api/internal/platform/validate"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/models"
 )
 
@@ -100,7 +100,7 @@ func (s *legacyHandlers) GetBuildLogs(ctx context.Context, request gen.GetBuildL
 	}
 	logs, err := s.deps.ComponentSvc.GetBuildLogs(ctx, org, request.ProjectName, request.ComponentName, request.BuildName)
 	if err != nil {
-		if errors.Is(err, component.ErrLogsUnavailable) {
+		if errors.Is(err, projects.ErrLogsUnavailable) {
 			return nil, errServiceUnavailable("build logs service not available")
 		}
 		return nil, mapComponentError(err, "failed to get build logs")
@@ -136,10 +136,10 @@ func (s *legacyHandlers) GetComponentOpenapi(ctx context.Context, request gen.Ge
 	}
 	spec, err := s.deps.ComponentSvc.GetComponentOpenAPI(ctx, org, request.ProjectName, request.ComponentName)
 	if err != nil {
-		if errors.Is(err, component.ErrComponentNotFound) {
+		if errors.Is(err, projects.ErrComponentNotFound) {
 			return nil, errNotFound("no OpenAPI spec for this component")
 		}
-		if errors.Is(err, component.ErrComponentNotService) {
+		if errors.Is(err, projects.ErrComponentNotService) {
 			// Hand the type back (409, contract-declared) so the client can
 			// say "this is a web-app, not a service". The body still carries
 			// componentType. Guard nil: only the concrete service happens to

@@ -19,7 +19,7 @@
 // exists any more), and the purge is org-scoped so a project slug reused across
 // orgs cannot cross-delete. Runs over a real Postgres (dbtest.New; self-skips
 // under -short).
-package project_test
+package projects_test
 
 import (
 	"context"
@@ -27,8 +27,8 @@ import (
 
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -55,7 +55,7 @@ func TestDeleteProject_PurgesExecutions_OrgScoped_DB(t *testing.T) {
 		DeleteProjectFunc: func(context.Context, string, string) error { return nil },
 	}
 	// repoSvc + others nil (skipped); the real executions repo does the purge.
-	svc := project.NewProjectService(oc, nil, nil, nil, execRepo)
+	svc := projects.NewProjectService(oc, nil, nil, nil, execRepo)
 
 	if err := svc.DeleteProject(ctx, "acme", "widgets"); err != nil {
 		t.Fatalf("DeleteProject: %v", err)

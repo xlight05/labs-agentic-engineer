@@ -59,7 +59,11 @@ var featureEdgeAllowlist = map[string][]string{
 	// TaskView), the spec domain (SpecSaveResult/SpecValidationError) and
 	// sourcecontrol — all slice→root or domain→domain edges. Its row is gone
 	// because the feature is gone.)
-	"component": {},
+	//
+	// (component + project MIGRATED to internal/projects in P7 — the Project &
+	// Components domain is a flat-root merge of the two features. Their rows are
+	// gone because the features are gone; projects consumes spec + sourcecontrol
+	// as domain→domain edges, policed by TestDomainsAreFeatureFree instead.)
 	// dependencies is the dependency-management feature: the parent package (MCP
 	// discovery server + endpoints catalog) composes its own resources and
 	// endpoints subpackages (external/platform provisioner cores; the org
@@ -75,7 +79,6 @@ var featureEdgeAllowlist = map[string][]string{
 	// half of the Task/Execution split is now a delivery-domain sub-package, not
 	// a feature. Its row is gone because the feature is gone; the §1 boundary is
 	// re-asserted below as feature/task ⊥ delivery/execution.)
-	"project": {},
 	// provisioning is the dependency-provisioning coordinator (dependency-management
 	// §3.6): it drives the provisioner cores (dependencies/resources); GitHub gate
 	// issues now come from the sourcecontrol domain (P2). Every other collaborator —

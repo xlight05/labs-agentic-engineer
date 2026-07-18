@@ -24,10 +24,9 @@ import (
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
 
-	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
-	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
+	"github.com/wso2/aep/aep-api/internal/projects"
 )
 
 // Deps carries every feature service the strict handlers (handlers_*.go)
@@ -37,9 +36,9 @@ import (
 // services; component tests fill only what the feature under test needs
 // (untouched fields nil-guard or 503 in their handlers).
 type Deps struct {
-	ProjectSvc          *project.Service
-	ComponentSvc        component.ComponentService
-	ConfigSvc           component.ConfigService
+	ProjectSvc          *projects.Service
+	ComponentSvc        projects.ComponentService
+	ConfigSvc           projects.ConfigService
 	ProvisioningSvc     *provisioning.Service
 	ResourceTypeCatalog dependencies.ResourceTypeLister
 	TaskTokens          *auth.TaskTokenManager

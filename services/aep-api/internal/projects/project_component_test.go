@@ -25,7 +25,7 @@
 //
 // External test package: the harness imports api, which imports project — an
 // in-package test file would be an import cycle.
-package project_test
+package projects_test
 
 import (
 	"context"
@@ -40,8 +40,8 @@ import (
 	"github.com/wso2/aep/aep-api/internal/api"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
-	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 )
@@ -76,7 +76,7 @@ func (conflictRepoSvc) DeleteRepo(context.Context, string, string) error {
 func newProjectHarness(t *testing.T) (*componenttest.Harness, *ocmocks.ProjectClientMock) {
 	t.Helper()
 	oc := &ocmocks.ProjectClientMock{}
-	svc := project.NewProjectService(oc, nil, nil, nil, nil)
+	svc := projects.NewProjectService(oc, nil, nil, nil, nil)
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}}), oc
 }
 
@@ -197,7 +197,7 @@ func TestProjectComponent_CreateExplicitRepoNameConflictIs409(t *testing.T) {
 		},
 		DeleteProjectFunc: func(context.Context, string, string) error { return nil },
 	}
-	svc := project.NewProjectService(oc, conflictRepoSvc{}, nil, nil, nil)
+	svc := projects.NewProjectService(oc, conflictRepoSvc{}, nil, nil, nil)
 	h := componenttest.New(t, componenttest.Options{Deps: api.Deps{ProjectSvc: svc}})
 
 	resp := h.AsOrg("acme").Post("/api/v1/projects", `{"name":"gym","repoName":"taken-repo"}`)

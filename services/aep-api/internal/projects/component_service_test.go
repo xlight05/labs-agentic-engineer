@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package component
+package projects
 
 // UNIT tier: the REAL componentService with every
 // out-of-process port mocked/faked — no HTTP, no DB. Proves the service's logic

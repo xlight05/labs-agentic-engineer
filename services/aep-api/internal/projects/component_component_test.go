@@ -48,7 +48,7 @@
 //
 // External test package: the harness imports api, which imports component — an
 // in-package test file would be an import cycle.
-package component_test
+package projects_test
 
 import (
 	"context"
@@ -67,10 +67,10 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/internal/feature/component"
-	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )
@@ -82,7 +82,7 @@ const compProjectPrefix = "/api/v1/projects/web/components"
 type compFakes struct {
 	oc         *ocmocks.ComponentClientMock // component OC client (defaulted when nil)
 	observ     observability.Client         // nil ⇒ build-logs takes the not-configured 503 path
-	store      *spec.ArtifactStore     // for the openapi read; nil is fine unless hit
+	store      *spec.ArtifactStore          // for the openapi read; nil is fine unless hit
 	configRepo repositories.ConfigRepository
 }
 
@@ -95,11 +95,11 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 	if f.oc == nil {
 		f.oc = &ocmocks.ComponentClientMock{}
 	}
-	compSvc := component.NewComponentService(f.oc, f.observ, f.store, nil, nil)
-	var cfgSvc component.ConfigService
+	compSvc := projects.NewComponentService(f.oc, f.observ, f.store, nil, nil)
+	var cfgSvc projects.ConfigService
 	if f.configRepo != nil {
 		// The env-var mirror onto OC is unit-tested; disable it here (nil).
-		cfgSvc = component.NewConfigService(f.configRepo, nil)
+		cfgSvc = projects.NewConfigService(f.configRepo, nil)
 	}
 	return componenttest.New(t, componenttest.Options{Deps: api.Deps{
 		ComponentSvc: compSvc,
@@ -110,7 +110,7 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 // --- golden helpers -----------------------------------------------------------
 
 func goldenPath(name string) string {
-	return filepath.Join("..", "..", "..", "testdata", "harvest", "golden", name)
+	return filepath.Join("..", "..", "testdata", "harvest", "golden", name)
 }
 
 func readGolden(t *testing.T, name string) []byte {

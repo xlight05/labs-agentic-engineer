@@ -17,7 +17,7 @@
 // The #184 stage-aggregate derivation table
 // (docs/design/project-status-stage-aggregates.md §3), pinned row by row
 // against fake poll sources. The fixture lives in project_service_test.go.
-package project
+package projects
 
 import (
 	"context"
@@ -25,8 +25,8 @@ import (
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )

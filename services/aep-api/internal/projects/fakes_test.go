@@ -19,7 +19,7 @@
 // programs are set; the rest panic loudly so an unexpected call fails the test
 // rather than returning a silent zero value. The component tier (external
 // package component_test) carries its own copies — see component_component_test.go.
-package component
+package projects
 
 import (
 	"context"

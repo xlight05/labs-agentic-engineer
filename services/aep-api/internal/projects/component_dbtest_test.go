@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package component
+package projects
 
 // DBTEST tier (skips under -short; `make test-db` runs it): the SQL-shaped
 // behaviors of the component feature driven against a pristine per-test Postgres

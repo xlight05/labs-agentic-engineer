@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package component
+package projects
 
 import (
 	"context"
@@ -130,7 +130,7 @@ func TestSyncProjectAPITraits_ReEmitsEnabledServicesOnly(t *testing.T) {
 	// worker: unprotected service (skipped — ResolveAPISecurityEnabled=false).
 	// web: web-app (skipped — not ComponentType "service").
 	files := map[string]string{
-		spec.DesignRootFile:        traitRootMd(),
+		spec.DesignRootFile:             traitRootMd(),
 		"components/api/design.json":    endUserServiceMd("api"),
 		"components/s2s/design.json":    serviceToServiceMd("s2s"),
 		"components/worker/design.json": plainServiceMd("worker"),
@@ -217,7 +217,7 @@ func TestSyncProjectAPITraits_PerComponentErrorDoesNotAbort(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	files := map[string]string{
-		spec.DesignRootFile:       traitRootMd(),
+		spec.DesignRootFile:            traitRootMd(),
 		"components/api-a/design.json": serviceToServiceMd("api-a"),
 		"components/api-b/design.json": serviceToServiceMd("api-b"),
 	}
@@ -298,7 +298,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("collects each web-app origin, trims path, dedups", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:      traitRootMd(),
+			spec.DesignRootFile:           traitRootMd(),
 			"components/web1/design.json": webAppMd("web1"),
 			"components/web2/design.json": webAppMd("web2"),
 			"components/api/design.json":  endUserServiceMd("api"),
@@ -334,7 +334,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("web-app with no deployment yet contributes nothing", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:          traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -352,7 +352,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("duplicate deployment URLs dedup to one origin", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:          traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -377,7 +377,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("transient ListDeployments error surfaces (no partial allowlist)", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:          traitRootMd(),
 			"components/web/design.json": webAppMd("web"),
 		}
 		design := traitReadDesign(t, files)
@@ -395,7 +395,7 @@ func Test_siblingSPAOrigins(t *testing.T) {
 	t.Run("no web-apps yields empty slice, nil error", func(t *testing.T) {
 		t.Parallel()
 		files := map[string]string{
-			spec.DesignRootFile:     traitRootMd(),
+			spec.DesignRootFile:          traitRootMd(),
 			"components/api/design.json": endUserServiceMd("api"),
 		}
 		design := traitReadDesign(t, files)

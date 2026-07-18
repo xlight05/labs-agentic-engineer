@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package component
+package projects
 
 // UNIT tier: configService with a faked
 // ConfigRepository (and a faked sibling ComponentService for the mirror seam) —

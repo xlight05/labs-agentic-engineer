@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package project
+package projects
 
 // The #184 stage aggregates: one GET /projects/{name}/status cheap enough to
 // poll at 5s serves the whole overview pipeline. Poll-path budget: no GitHub

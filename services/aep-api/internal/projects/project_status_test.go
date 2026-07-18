@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package project
+package projects
 
 import (
 	"testing"

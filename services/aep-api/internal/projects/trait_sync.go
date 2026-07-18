@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package component
+package projects
 
 import (
 	"context"
@@ -24,8 +24,8 @@ import (
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/platform/k8sname"
+	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/models"
 )
 

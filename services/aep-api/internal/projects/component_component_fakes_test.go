@@ -19,7 +19,7 @@
 // the in-package fakes_test.go because the component tier is an external test
 // package (the harness imports api, which imports component — an in-package
 // test file would be an import cycle).
-package component_test
+package projects_test
 
 import (
 	"context"

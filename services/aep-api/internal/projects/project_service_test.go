@@ -23,7 +23,7 @@
 // HTTP contract lives in project_component_test.go; the DeleteProject executions
 // purge over real Postgres lives in project_dbtest_test.go; the
 // applyRepoToProjectStatus repo-lifecycle table lives in project_status_test.go.
-package project
+package projects
 
 import (
 	"context"
@@ -36,9 +36,9 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	ocmocks "github.com/wso2/aep/aep-api/internal/clients/openchoreo/mocks"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	"github.com/wso2/aep/aep-api/internal/spec/artifactstest"
-	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/models"
 	"github.com/wso2/aep/aep-api/repositories"
 )

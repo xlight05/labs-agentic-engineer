@@ -52,11 +52,9 @@ import (
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
-	"github.com/wso2/aep/aep-api/internal/feature/component"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/endpoints"
 	"github.com/wso2/aep/aep-api/internal/feature/dependencies/resources"
-	"github.com/wso2/aep/aep-api/internal/feature/project"
 	"github.com/wso2/aep/aep-api/internal/feature/provisioning"
 	"github.com/wso2/aep/aep-api/internal/feature/runtimeconfig"
 	"github.com/wso2/aep/aep-api/internal/feature/webhook"
@@ -69,6 +67,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/reaper"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
+	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 	schttpapi "github.com/wso2/aep/aep-api/internal/sourcecontrol/httpapi"
@@ -390,7 +389,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Services. componentService is constructed before configService so
 	// configService can call back into it to mirror env-var edits onto
 	// the OC Component's workflow params.
-	projectService := project.NewProjectService(projectClient, repoService, webhookRegService, artifactSvcGit, executionRepo)
+	projectService := projects.NewProjectService(projectClient, repoService, webhookRegService, artifactSvcGit, executionRepo)
 	// Build/deploy stage sources for the status poll (#184): the
 	// workflow_runs index (one row read) + the org-scoped release-binding
 	// list — consumer-side ports wired here so project imports neither.
@@ -403,8 +402,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// (NewBuildCredentialsService always returns a value; its gitSecrets are
 	// nil-safe internally), so the stager is always wired.
 	buildStager := buildSecretStagerAdapter{svc: buildCredService}
-	componentService := component.NewComponentService(componentClient, observClient, artifactStore, repoService, buildStager)
-	configService := component.NewConfigService(configRepo, componentService)
+	componentService := projects.NewComponentService(componentClient, observClient, artifactStore, repoService, buildStager)
+	configService := projects.NewConfigService(configRepo, componentService)
 	designService := spec.NewDesignService(artifactStore, artifactSvcGit)
 
 	// Tasks are GitHub issues (the Task/Execution split, tasks-github-native):
@@ -452,7 +451,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// CreateComponent) and the design-edit path (after
 	// `components/<name>/design.md` PUT). See
 	// docs/design/api-platform-integration.md §6 Phase 2.
-	traitSyncService := component.NewTraitSyncService(componentClient, artifactStore)
+	traitSyncService := projects.NewTraitSyncService(componentClient, artifactStore)
 
 	// Thunder admin client + IDP service. Reads
 	// aep-system-client credentials from env (THUNDER_*) and exposes
