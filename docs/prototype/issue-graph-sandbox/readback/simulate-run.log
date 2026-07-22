@@ -1,0 +1,13 @@
+== before: S2 blocked
+#3 open deps={"blocked_by":1,"blocking":1,"total_blocked_by":1,"total_blocking":1}
+closed #2
+== after closing S1: blocked_by should drop to 0 (open-only), total stays
+#3 open deps={"blocked_by":0,"blocking":1,"total_blocked_by":1,"total_blocking":1}
+#4 open deps={"blocked_by":0,"blocking":1,"total_blocked_by":1,"total_blocking":1}
+closed #3
+closed #4
+== after closing S2+S3:
+#5 open deps={"blocked_by":0,"blocking":0,"total_blocked_by":2,"total_blocking":0}
+closed #5
+== all subs closed — does the parent auto-close? (research says no)
+parent #1 open subs={"completed":4,"percent_completed":100,"total":4}
