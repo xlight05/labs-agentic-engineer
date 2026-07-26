@@ -45,6 +45,33 @@ cd "$(dirname "$0")/.."
 DEADCODE_VERSION="v0.44.0"
 DEADCODE="go run golang.org/x/tools/cmd/deadcode@${DEADCODE_VERSION}"
 
+# deadcode must be BUILT with a Go toolchain >= this module's `go` directive: a
+# binary built with an older toolchain refuses to load packages targeting a
+# newer one ("package requires newer Go version go1.26"). Left to itself,
+# `go run …/deadcode@vX` picks the toolchain from x/tools' OWN go directive and
+# switches DOWN (v0.44.0 → go1.25.12), so with a go 1.26 module EVERY package
+# fails to load. Same failure mode, same remedy as GO_TOOLCHAIN in the root
+# Makefile (which pins the toolchain used to build golangci-lint) — pinning
+# GOTOOLCHAIN to an explicit name disables the switch entirely.
+#
+# The version is derived from go.mod rather than hardcoded so it cannot drift
+# from the module it analyses. An explicit pin is used instead of
+# GOTOOLCHAIN=local because `local` would break a contributor whose installed
+# Go predates the directive, where an explicit name just downloads it — the
+# same auto-download a normal `go build` of this module already performs.
+GO_DIRECTIVE="$(awk '$1 == "go" { print $2; exit }' go.mod)"
+case "$GO_DIRECTIVE" in
+# A two-component directive ("go 1.26") is legal in go.mod but is a language
+# version, not a toolchain name; go1.26.0 is the toolchain that provides it.
+[0-9]*.[0-9]*.[0-9]*) ;;
+[0-9]*.[0-9]*) GO_DIRECTIVE="${GO_DIRECTIVE}.0" ;;
+*)
+	echo "FAIL: could not read the 'go' directive from $(pwd)/go.mod" >&2
+	exit 1
+	;;
+esac
+GO_TOOLCHAIN="go${GO_DIRECTIVE}"
+
 # Test-support packages/files — unreachable by design, never deletion targets.
 EXCLUDE_RE='/mocks/|/artifactstest/|/componenttest/|/dbtest/|/gittest/|/contracttest/|/workspacetest/|_fortest\.go'
 
@@ -70,7 +97,24 @@ has_marker() {
 		}' "$1"
 }
 
-raw="$($DEADCODE ./... 2>/dev/null || true)"
+# Findings go to stdout and do not affect the exit status: deadcode exits 0
+# whether it reports a hundred functions or none. A non-zero exit therefore
+# means the TOOL failed (packages that would not load, a bad flag, a failed
+# module download), which is never a pass. The previous `2>/dev/null || true`
+# converted exactly that into an empty finding set, i.e. a green gate that had
+# analysed nothing.
+# stderr is deliberately left attached to the terminal so a failure can never be
+# reported without the reason for it.
+raw=""
+status=0
+raw="$(GOTOOLCHAIN="$GO_TOOLCHAIN" $DEADCODE ./...)" || status=$?
+if [ "$status" -ne 0 ]; then
+	echo "" >&2
+	echo "FAIL: deadcode did not run (exit ${status}); see the error above." >&2
+	echo "The gate reports nothing rather than passing: an analysis that did not" >&2
+	echo "happen is not a clean one." >&2
+	exit 1
+fi
 
 survivors=""
 while IFS= read -r line; do
@@ -87,7 +131,12 @@ survivors="$(printf '%s' "$survivors" | sed '/^$/d')"
 
 if [ "$mode" = "report" ]; then
 	if [ -z "$survivors" ]; then
-		echo "deadcode: no dead functions (excluding test-support + //deadcode:keep)."
+		# The filtered count is printed even when nothing survives: a clean report
+		# that also says "0 filtered" is the signature of an analysis that never
+		# looked at the tree, and the human auditor should be able to see the
+		# difference without re-running the tool by hand.
+		filtered="$(printf '%s\n' "$raw" | grep -c 'unreachable func' || true)"
+		echo "deadcode: no dead functions (${filtered} finding(s) filtered as test-support / //deadcode:keep)."
 	else
 		count="$(printf '%s\n' "$survivors" | wc -l | tr -d ' ')"
 		echo "deadcode: ${count} unreachable function(s) from cmd/aep-api (tests do not count):"

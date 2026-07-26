@@ -28,5 +28,7 @@
 - API changes are contract-first: edit `packages/contracts/api/`, run `make gen-api`, and let the strict-server compile errors drive the handler updates.
 - Before making changes, think on the code stucture and where does the change belong. 
 - Dead code is gated (`aep-api`): `make -C aep-api deadcode-check` fails on any function unreachable from the `cmd/aep-api` main — tests do **not** count as callers. Keep an intentional test seam or unwired infra with a `//deadcode:keep <reason>` marker; rationale is inline in `aep-api/scripts/deadcode.sh`.
+  The gate pins the Go toolchain to `go.mod`'s `go` directive (an older one cannot load the
+  packages) and hard-fails if `deadcode` itself does not run, so it can never pass by analysing nothing.
 
 
