@@ -47,6 +47,9 @@ type IssueService interface {
 	// EditIssueTitle replaces the issue's title. Used by the plan tap on a
 	// planned-Task rename (updateTask set.title).
 	EditIssueTitle(ctx context.Context, orgID, projectID string, number int, title string) error
+	// SetIssueMilestone assigns an existing issue to a milestone by NUMBER —
+	// adoption moving a bare issue into the deployed version's milestone.
+	SetIssueMilestone(ctx context.Context, orgID, projectID string, number, milestoneNumber int) error
 	// AddLabels adds labels to an existing issue (merges; a present label is a
 	// no-op). Ensures each label exists in the repo first. Used by the platform
 	// to stamp aep:status/* and aep:attention projections.
@@ -82,8 +85,9 @@ type IssueService interface {
 	// ListMilestoneIssues returns a milestone's issues, filtered by state and
 	// label — the version ledger's read. Excludes pull requests.
 	ListMilestoneIssues(ctx context.Context, orgID, projectID string, filter MilestoneIssuesFilter) ([]IssueInfo, error)
-	// MilestoneIssueCounts returns a milestone's open gate-issue and open total
-	// issue counts — the run supervisor's dispatch predicate.
+	// MilestoneIssueCounts returns a milestone's open-issue populations — gates,
+	// working set and total — in ONE call, the run supervisor's dispatch
+	// predicate input.
 	MilestoneIssueCounts(ctx context.Context, orgID, projectID string, number int) (*MilestoneIssueCounts, error)
 }
 
@@ -310,6 +314,17 @@ func (s *issueService) EditIssueTitle(ctx context.Context, orgID, projectID stri
 		return err
 	}
 	return s.github.EditIssueTitle(ctx, owner, repoName, cred, number, title)
+}
+
+func (s *issueService) SetIssueMilestone(ctx context.Context, orgID, projectID string, number, milestoneNumber int) error {
+	if milestoneNumber <= 0 {
+		return fmt.Errorf("milestone number is required")
+	}
+	owner, repoName, cred, err := s.resolveRepoAndCredential(ctx, orgID, projectID)
+	if err != nil {
+		return err
+	}
+	return s.github.SetIssueMilestone(ctx, owner, repoName, cred, number, milestoneNumber)
 }
 
 func (s *issueService) AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error {

@@ -394,6 +394,15 @@ func (c *Client) EditIssueTitle(ctx context.Context, owner, repo string, cred se
 	return c.doJSON(ctx, http.MethodPatch, url, "issue title edit", cred, map[string]string{"title": title}, nil, http.StatusOK)
 }
 
+// SetIssueMilestone assigns an existing issue to a milestone via
+// PATCH /issues/{number}. The value is the milestone NUMBER — GitHub answers
+// 422 to a title here, and the number is the only stable key anyway. Used by
+// adoption, which moves a bare issue into the deployed version's milestone.
+func (c *Client) SetIssueMilestone(ctx context.Context, owner, repo string, cred secrets.Credential, number, milestoneNumber int) error {
+	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d", owner, repo, number)
+	return c.doJSON(ctx, http.MethodPatch, url, "issue milestone set", cred, map[string]int{"milestone": milestoneNumber}, nil, http.StatusOK)
+}
+
 // GetPullRequest returns the live state of a pull request (GET /pulls/{n}) — the
 // sweep's PR-state reconciliation input (docs/design/tasks-github-native.md §5:
 // PR state is native GitHub truth healed by the sweep when a webhook is missed).

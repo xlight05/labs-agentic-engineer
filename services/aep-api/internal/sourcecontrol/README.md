@@ -51,6 +51,11 @@ and installation lifecycle.*
   title uniqueness case-sensitively while filtering on it case-insensitively, so the adapter enforces
   case-insensitive uniqueness at create and callers key on the number. Issue counts come from the
   GraphQL predicate; a milestone's `open_issues` counts pull requests and is never read.
+- **`MilestoneIssueCounts` is ONE call, and its exclusions are computed in ONE place.** The dispatch
+  predicate runs at every cycle boundary, so the gate, working-set and overlap populations ride a
+  single aliased GraphQL query; label intersections are expressible because `labels:` is AND-semantics.
+  Callers read the working set through `OpenNonGateWork()` and never subtract fields themselves — the
+  label kinds are not assumed disjoint, and the overlap arithmetic must not be duplicated.
 - Ports here are **nil-tolerant**: an unwired service answers 503, never panics — the component harness
   wires only the feature under test, and `edge`'s `sourceControlOrEmpty` preserves that for an unwired
   domain.

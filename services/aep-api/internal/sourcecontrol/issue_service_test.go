@@ -234,6 +234,39 @@ func TestEditIssueBody_PatchesBody(t *testing.T) {
 	}
 }
 
+// TestSetIssueMilestone_PatchesTheNumber pins adoption's write: the milestone
+// travels as a NUMBER (GitHub 422s a title here, and the number is the only
+// stable key), on the ordinary issue PATCH route.
+func TestSetIssueMilestone_PatchesTheNumber(t *testing.T) {
+	t.Parallel()
+	stub := gittest.NewStub(t)
+	stub.On(http.MethodPatch, "/repos/acme/widgets/issues/7", http.StatusOK, `{}`)
+	svc := newIssueSvcOnStub(t, stub)
+
+	if err := svc.SetIssueMilestone(testContext(), "org1", "proj1", 7, 3); err != nil {
+		t.Fatalf("SetIssueMilestone: %v", err)
+	}
+	req := onlyRequest(t, stub.Requests(), http.MethodPatch, "/repos/acme/widgets/issues/7")
+	var b struct{ Milestone int }
+	decodeBody(t, req.Body, &b)
+	if b.Milestone != 3 {
+		t.Fatalf("milestone = %d, want 3", b.Milestone)
+	}
+}
+
+func TestSetIssueMilestone_NumberRequired(t *testing.T) {
+	t.Parallel()
+	stub := gittest.NewStub(t)
+	svc := newIssueSvcOnStub(t, stub)
+
+	if err := svc.SetIssueMilestone(testContext(), "org1", "proj1", 7, 0); err == nil {
+		t.Fatal("a zero milestone number must be refused before any request")
+	}
+	if len(stub.Requests()) != 0 {
+		t.Fatalf("nothing must be sent, got %v", stub.Requests())
+	}
+}
+
 func TestParseOwnerRepo(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

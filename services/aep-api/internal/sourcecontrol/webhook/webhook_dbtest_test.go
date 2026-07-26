@@ -241,6 +241,9 @@ func (f *fakeIssueSvc) EditIssueBody(context.Context, string, string, int, strin
 func (f *fakeIssueSvc) EditIssueTitle(context.Context, string, string, int, string) error {
 	panic("fakeIssueSvc: EditIssueTitle not expected")
 }
+func (f *fakeIssueSvc) SetIssueMilestone(context.Context, string, string, int, int) error {
+	panic("fakeIssueSvc: SetIssueMilestone not expected")
+}
 func (f *fakeIssueSvc) AddLabels(context.Context, string, string, int, []string) error {
 	panic("fakeIssueSvc: AddLabels not expected")
 }

@@ -82,20 +82,31 @@ func (f *fakeOrgLookup) OrgIDByRepoFullName(_ context.Context, fullName string) 
 }
 
 // receiverHarness assembles the real receiver exactly as production wires it,
-// with the two external seams (secrets, routing lookup) faked and a
-// recordingHandler registered for "push" so dispatch is observable.
+// with the two external seams (secrets, routing lookup) faked and one
+// recordingHandler registered for every repository-routed event so dispatch is
+// observable.
 type receiverHarness struct {
 	db      *gorm.DB
 	ctrl    WebhookController
 	handler *recordingHandler
 }
 
+// repoRoutedEvents are the events extractRoutingKey resolves through
+// repository.full_name. The harness registers the recorder for all of them —
+// "push" alone would leave the two the delivery domain actually reacts to
+// (pull_request, issues) untested end to end through the receiver, and a
+// missing row in extractRoutingKey's switch 200-noops silently rather than
+// failing.
+var repoRoutedEvents = []string{"push", "pull_request", "issues"}
+
 func newReceiverHarness(t *testing.T) *receiverHarness {
 	t.Helper()
 	db := dbtest.New(t)
 	handler := &recordingHandler{}
 	router := NewRouter()
-	router.Register("push", "", handler)
+	for _, event := range repoRoutedEvents {
+		router.Register(event, "", handler)
+	}
 	lookup := &fakeOrgLookup{repos: map[string]string{"acme/web": "org-acme"}}
 	ctrl := NewWebhookController(
 		NewVerifier(newStaticProvider(receiverSecret)),
@@ -164,6 +175,44 @@ func TestReceiver_ValidSignature_DispatchesAndAcks200(t *testing.T) {
 	}
 	if row.ProcessedAt == nil {
 		t.Fatal("a successful dispatch must mark the delivery processed")
+	}
+}
+
+// TestReceiver_PullRequestAndIssuesRouteToHandlers pins the two events the
+// delivery domain's handlers hang off, end to end through the receiver: both
+// resolve their org through repository.full_name, both dispatch with the
+// payload's action parsed out. Without this, a row dropped from
+// extractRoutingKey's switch would 200-noop in production and no test would
+// notice.
+func TestReceiver_PullRequestAndIssuesRouteToHandlers(t *testing.T) {
+	t.Parallel()
+	h := newReceiverHarness(t)
+
+	bodies := map[string][]byte{
+		"pull_request": []byte(`{"action":"opened","repository":{"full_name":"acme/web"},` +
+			`"pull_request":{"number":42,"draft":false,"head":{"ref":"aep/m7-c1"}}}`),
+		"issues": []byte(`{"action":"milestoned","repository":{"full_name":"acme/web"},` +
+			`"issue":{"number":12},"milestone":{"number":7,"title":"v7"}}`),
+	}
+	for i, event := range []string{"pull_request", "issues"} {
+		body := bodies[event]
+		rec := h.post(t, fmt.Sprintf("delivery-%s", event), event, sign(receiverSecret, body), body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s must ack 200, got %d (%s)", event, rec.Code, rec.Body)
+		}
+		if len(h.handler.calls) != i+1 {
+			t.Fatalf("%s must dispatch, got %d calls", event, len(h.handler.calls))
+		}
+		got := h.handler.calls[i]
+		if got.event != event {
+			t.Fatalf("dispatched event = %q, want %q", got.event, event)
+		}
+	}
+	if action := h.handler.calls[0].action; action != "opened" {
+		t.Fatalf("pull_request action = %q, want opened", action)
+	}
+	if action := h.handler.calls[1].action; action != "milestoned" {
+		t.Fatalf("issues action = %q, want milestoned", action)
 	}
 }
 

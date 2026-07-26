@@ -285,34 +285,54 @@ func (c *Client) ListMilestoneIssues(ctx context.Context, owner, repo string, cr
 	}
 }
 
-// milestoneIssueCountsQuery is the dispatch predicate: the two OPEN-issue
-// counts of one milestone in a single round trip. milestone.issues is a
+// milestoneIssueCountsQuery is the dispatch predicate: every OPEN-issue
+// population of one milestone in a single round trip. milestone.issues is a
 // pure-issue connection (pull requests hang off milestone.pullRequests), which
 // is what makes the counts trustworthy where REST's open_issues is not. first:1
 // keeps the payload minimal — only totalCount is read.
+//
+// One call is load-bearing: this runs at every cycle boundary, and fanning the
+// populations out into a query per label would multiply the rate-limit cost of
+// the loop's hottest read. It stays one call because GraphQL's labels: argument
+// is AND-semantics, so each intersection is just another alias on the same
+// milestone selection.
+//
+// The work aliases are the working set and its exclusions, counted separately
+// rather than assumed disjoint — a gate that also carries "aep" is a shape the
+// label vocabulary permits, and only the overlaps make the subtraction exact.
+// The label literals mirror internal/delivery's vocabulary; they are spelled
+// here because the host adapter may not import a domain.
 const milestoneIssueCountsQuery = `query($owner: String!, $repo: String!, $m: Int!) {
   repository(owner: $owner, name: $repo) {
     milestone(number: $m) {
-      provision: issues(states: [OPEN], labels: ["aep:provision"], first: 1) { totalCount }
-      allOpen:   issues(states: [OPEN], first: 1) { totalCount }
+      provision:   issues(states: [OPEN], labels: ["aep:provision"], first: 1) { totalCount }
+      allOpen:     issues(states: [OPEN], first: 1) { totalCount }
+      work:        issues(states: [OPEN], labels: ["aep"], first: 1) { totalCount }
+      workGate:    issues(states: [OPEN], labels: ["aep", "aep:provision"], first: 1) { totalCount }
+      workVal:     issues(states: [OPEN], labels: ["aep", "aep:validation"], first: 1) { totalCount }
+      workGateVal: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1) { totalCount }
     }
   }
 }`
 
-// MilestoneIssueCounts returns a milestone's open gate-issue and open total
-// issue counts — the run supervisor's dispatch predicate input (dispatch iff
-// no gate is open and something is left to do). Returns ErrMilestoneNotFound
-// when the repo has no milestone with that number.
+// MilestoneIssueCounts returns a milestone's open-issue populations — the run
+// supervisor's dispatch predicate input (dispatch iff no gate is open and the
+// working set is non-empty; see sourcecontrol.MilestoneIssueCounts, which owns
+// the arithmetic). Returns ErrMilestoneNotFound when the repo has no milestone
+// with that number.
 func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*sourcecontrol.MilestoneIssueCounts, error) {
+	type countAlias struct {
+		TotalCount int `json:"totalCount"`
+	}
 	var data struct {
 		Repository *struct {
 			Milestone *struct {
-				Provision struct {
-					TotalCount int `json:"totalCount"`
-				} `json:"provision"`
-				AllOpen struct {
-					TotalCount int `json:"totalCount"`
-				} `json:"allOpen"`
+				Provision   countAlias `json:"provision"`
+				AllOpen     countAlias `json:"allOpen"`
+				Work        countAlias `json:"work"`
+				WorkGate    countAlias `json:"workGate"`
+				WorkVal     countAlias `json:"workVal"`
+				WorkGateVal countAlias `json:"workGateVal"`
 			} `json:"milestone"`
 		} `json:"repository"`
 	}
@@ -323,8 +343,13 @@ func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, c
 	if data.Repository == nil || data.Repository.Milestone == nil {
 		return nil, sourcecontrol.ErrMilestoneNotFound
 	}
+	ms := data.Repository.Milestone
 	return &sourcecontrol.MilestoneIssueCounts{
-		OpenProvision: data.Repository.Milestone.Provision.TotalCount,
-		OpenTotal:     data.Repository.Milestone.AllOpen.TotalCount,
+		OpenProvision:          ms.Provision.TotalCount,
+		OpenTotal:              ms.AllOpen.TotalCount,
+		OpenWork:               ms.Work.TotalCount,
+		OpenWorkGate:           ms.WorkGate.TotalCount,
+		OpenWorkValidation:     ms.WorkVal.TotalCount,
+		OpenWorkGateValidation: ms.WorkGateVal.TotalCount,
 	}, nil
 }

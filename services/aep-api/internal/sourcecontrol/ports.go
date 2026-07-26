@@ -91,6 +91,10 @@ type IssueOps interface {
 	// the slice are removed). Used by block-repair projection when the full set
 	// must be authoritative.
 	SetIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error
+	// SetIssueMilestone assigns an existing issue to a milestone by NUMBER
+	// (PATCH /issues/{number}). Adoption's write: a bare issue handed to the
+	// coding agent joins the deployed version's milestone.
+	SetIssueMilestone(ctx context.Context, owner, repo string, cred secrets.Credential, number, milestoneNumber int) error
 	// GetPullRequest returns a pull request's live state (open/closed + merged +
 	// merge SHA) for the sweep's PR-state reconciliation (§5).
 	GetPullRequest(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*PullRequestState, error)
@@ -120,9 +124,10 @@ type IssueOps interface {
 	// ListMilestoneIssues returns a milestone's issues, filtered by state and
 	// label. Addressed by milestone NUMBER. Pull requests are excluded.
 	ListMilestoneIssues(ctx context.Context, owner, repo string, cred secrets.Credential, filter MilestoneIssuesFilter) ([]IssueInfo, error)
-	// MilestoneIssueCounts returns a milestone's open gate-issue and open total
-	// issue counts — the run supervisor's dispatch predicate. Returns
-	// ErrMilestoneNotFound when no milestone carries that number.
+	// MilestoneIssueCounts returns a milestone's open-issue populations — gates,
+	// working set and total — in ONE call, the run supervisor's dispatch
+	// predicate input. Returns ErrMilestoneNotFound when no milestone carries
+	// that number.
 	MilestoneIssueCounts(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*MilestoneIssueCounts, error)
 }
 

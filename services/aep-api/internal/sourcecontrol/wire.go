@@ -120,15 +120,63 @@ type MilestoneIssuesFilter struct {
 }
 
 // MilestoneIssueCounts is the run supervisor's dispatch predicate input: the
-// number of OPEN issues on a milestone carrying the gate label, and the number
-// of OPEN issues on it in total. Dispatch iff OpenProvision == 0 && OpenTotal > 0.
+// OPEN-issue populations of one milestone, gathered in a single host round trip
+// so the per-cycle-boundary predicate stays one call.
+//
+// A milestone holds three populations, told apart by label: agent work ("aep"),
+// dispatch gates ("aep:provision") and ledger-only human issues (no "aep"). The
+// run's WORKING SET is the first minus the gates and minus the validation issue
+// — read it through OpenNonGateWork, never by subtracting fields by hand.
+//
+// The label kinds are NOT assumed disjoint: a gate may also carry "aep". Every
+// overlap is therefore counted on its own so the working set comes out right
+// either way. The fields are raw populations; OpenNonGateWork owns the only
+// arithmetic over them.
 //
 // These are issue counts, never pull-request counts — the reason the predicate
 // is a GraphQL query over milestone.issues rather than the REST milestone's
 // open_issues field, which counts PRs too.
 type MilestoneIssueCounts struct {
+	// OpenProvision is every open gate, whether or not it also carries "aep".
+	// One open gate holds the next dispatch.
 	OpenProvision int
-	OpenTotal     int
+	// OpenTotal is every open issue in the milestone, ledger included. It says
+	// whether the milestone is finished, not whether it is workable.
+	OpenTotal int
+	// OpenWork is every open "aep" issue — the working set before exclusions.
+	OpenWork int
+	// OpenWorkGate is the "aep" ∩ "aep:provision" overlap.
+	OpenWorkGate int
+	// OpenWorkValidation is the "aep" ∩ "aep:validation" overlap: the validation
+	// issue is the validation cycle's, never a coding cycle's.
+	OpenWorkValidation int
+	// OpenWorkGateValidation is the "aep" ∩ "aep:provision" ∩ "aep:validation"
+	// overlap. Nonsensical in practice, but counting it is what makes
+	// OpenNonGateWork exact inclusion-exclusion rather than a guess that a
+	// doubly-labelled issue cannot exist.
+	OpenWorkGateValidation int
+}
+
+// OpenNonGateWork is the size of the run's working set: open, "aep"-labelled,
+// not a gate, not the validation issue. It is the ONE place the exclusions are
+// computed, so the dispatch predicate and any later settle check cannot drift
+// apart on what "work" means.
+//
+// Inclusion-exclusion over the overlaps, which is why it is exact even when an
+// issue carries several label kinds at once. Nil-tolerant: an unknown milestone
+// has no work.
+func (c *MilestoneIssueCounts) OpenNonGateWork() int {
+	if c == nil {
+		return 0
+	}
+	n := c.OpenWork - c.OpenWorkGate - c.OpenWorkValidation + c.OpenWorkGateValidation
+	if n < 0 {
+		// Unreachable against a consistent host: the overlaps are subsets of
+		// OpenWork. Clamped anyway so a host that answers inconsistently degrades
+		// to "nothing to work" instead of inventing a negative working set.
+		return 0
+	}
+	return n
 }
 
 // IssueResult is the issue metadata returned after creation. Deduped reports
