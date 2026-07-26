@@ -10,25 +10,31 @@ executions store and the Temporal dev/task/validation workflows.**
 flowchart LR
   API(["/api/v1"]) --> HTTP
   INT(["/internal/v1"]) -.-> VAL
+  GH[["GitHub webhooks"]] --> EVENT
   subgraph delivery
     HTTP["httpapi — build · task · execution handlers"]
     subgraph ROOT["root (shared kernel — types + ports + Temporal infra, no gorm)"]
       K1["Executor · DispatchRequest · TaskFacts · TaskStreamHub"]
       K2["Runtime · Signaler · signals · workflow I/O vocab (DevFlowInput/Status, DevPhase*…)"]
       K3["read DTOs — TaskView · ExecutionView · Lineage · TaskDetail"]
+      K4["milestone model — labels · run signals · BuildTerminalObserver"]
     end
     BUILD["build (buildpipe)"] --> ROOT
     TASK["task (taskflow)"] --> ROOT
     EXEC["execution — funnel/registry/sweep/TaskStreamService"] --> ROOT
+    EVENT["eventcore — merge policy · build fan-out · issue minting · sweep"] --> ROOT
     CODE["codingagent"] --> ROOT
     DEV["devflow — Temporal workflows/activities/worker"] --> ROOT
     VAL["validation — S2S context/credentials"] --> ROOT
     HTTP --> BUILD & TASK & EXEC
+    CODE -.->|BuildTerminalObserver| EVENT
   end
   EXEC --> EXECS[("executions · workflow_runs")]
+  EVENT --> RUNS[("milestone_runs · run_cycles")]
   DEV --> TMPRL[["Temporal"]]
   BUILD -->|SpecTagger · SaveSpec| SPEC[[spec]]
   BUILD -->|repo full-name| SC[[sourcecontrol]]
+  EVENT -->|issues · merges · builds| SC
   CODE -->|org keys · git tokens| SEC[[platform/secrets]]
   EXEC -->|ExecutionReader| OPS[[ops]]
 ```
@@ -48,6 +54,7 @@ and every former feature→feature edge becomes a legal slice→root type refere
 | `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, dev-workflow start/status, builds history, dep-drawer preflight | `Runtime`, the workflow I/O vocab, `TaskView` (via `TaskReader` port) |
 | `task` (taskflow) | GitHub-native Task Commands/Reads/Plan + list/get/promote handlers | the read DTOs; reaches the funnel via the `Dispatcher` port |
 | `execution` | the ONE funnel (admit/finish/reevaluate), registry, sweep, `TaskStreamService`, `OpsExecutionReader` | `Executor`/`DispatchRequest`/`TaskFacts`, `Signaler`, `TaskStreamHub` |
+| `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals) and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
 | `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler` |
 | `devflow` | the Temporal dev/task/validation workflows, activities, worker | `Runtime`, `Signaler`, the workflow I/O vocab |
 | `validation` | the two S2S validation runner callbacks (context / test-credentials) | — (no cross-edges; least entangled) |
@@ -66,11 +73,18 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | `RepoLookup` (`owner/name`) | needs | `sourcecontrol` — repo full-name resolution |
 | org-credential reads · `AnthropicKeyResolver` | needs | `platform/secrets` / P3a org repositories — coding-agent runner secrets |
 | `ExecutionReader` (`ops.ExecutionFact`) | offers | `ops` — latest-execution-per-kind correlation (`execution.OpsExecutionReader`, P6-retired the app bridge) |
+| `BuildTerminalObserver` (root) | offers | the OpenChoreo watcher → the event plane: a settled build reported outwards, so watcher and event plane stay peer sub-packages |
+| `RunSignaler` · `RunStarter` | needs | `eventcore` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps the event plane free of a workflow engine |
+| `BuildTrigger` (trigger at commit + list a component's runs) | needs | `clients/openchoreo` — the fan-out, and the run list the re-trigger budget is derived from |
+| `IssueClient` (mint · milestone membership · milestone counts · assign) · `PRReader` · `PRMerger` | needs | `sourcecontrol` — every GitHub write the event plane makes, on the org's own credential |
 | `ValidationContext` · `ValidationCredentials` | offers | the S2S runner callbacks (`/internal/v1`, via the internalServer — not the public edge) |
 
 ## Owns
 - The **executions** write-API (admit/finish/reevaluate through the funnel) and **workflow_runs**; the
   Temporal `Runtime`, `Signaler`, and the dev/task/validation workflows.
+- The **event plane** (`eventcore`): the platform's whole reaction to a pull request, a milestone-matched
+  issue and a build terminal. It merges, mints and signals — the supervisor decides. Its three GitHub
+  effects are a squash-merge, an issue in a milestone, and a build pinned to a merge SHA.
 - The **milestone run** store: a run row per (org, project, milestone) — origin, small state, terminal
   reason, budget counters, validation verdict — and one **cycle record per dispatch** under it (kind,
   attempts, Job ref, branch, PR number, merge SHA). The milestone **number** is the key; the title is kept
@@ -97,6 +111,23 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   so a duplicate webhook or signal is a no-op rather than a rewrite of a recorded outcome.
 - **One funnel door.** Every Execution (coding, build, validation, provisioning) is admitted/finished/
   reevaluated through `execution`'s funnel — the single place org-fencing, dedup, and dep-gating live.
+- **Every event-plane handler keys off a milestone run row.** It resolves the run first — by the agent's
+  `aep/m<milestone#>-…` branch, by the milestone a payload embeds, by the cycle that landed a commit, or
+  (for incidents and adoption) by the deployed version's run — and returns having written nothing when
+  there is none. That gate is what keeps the plane's authority scoped to work the platform started, and
+  what lets it share the `pull_request` and `issues` routing keys with other handlers without racing them.
+- **The event plane imports no workflow engine.** It detects, mints and signals; the supervisor decides.
+  The dependency direction is enforced as a package boundary — the supervisor is reachable only through
+  the `RunSignaler`/`RunStarter` ports, so no loop decision can be smuggled into a webhook handler.
+- **Echo suppression is `issues.*`-only.** Every label, comment and milestone assignment the platform
+  writes fires an `issues.*` delivery straight back, so those handlers drop self-sender deliveries. It is
+  deliberately NOT applied to `pull_request.*`: in App mode the coding runner opens its PR as the same
+  `<slug>[bot]` login, and suppressing that would strand the run waiting for a PR that already exists.
+- **Handlers are idempotent, without a seen-it table.** A redelivered webhook re-runs the handler, so
+  merging re-reads the live PR first, minting passes a `DedupeKey`, and triggering a build counts the
+  WorkflowRuns OpenChoreo already holds for `(component, commit)` — the same count that enforces the
+  one-automatic-re-trigger budget, so idempotency and the budget can never disagree. Per-component build
+  state is derived from OpenChoreo on read, never stored, which is why a counter column would be wrong.
 - **The kernel names no feature.** The root holds only types/ports/Temporal infra; it never imports a
   sub-package (`root ⊥ slice`), and the domain never imports `internal/feature/*`.
 - **`Signaler` stays a nil-safe concrete type**, not an interface — its nil-safety (no-op when Temporal is

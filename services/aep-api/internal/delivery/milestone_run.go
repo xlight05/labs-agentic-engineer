@@ -153,8 +153,6 @@ func (MilestoneRun) TableName() string { return "milestone_runs" }
 // never resurrected: every guarded transition in MilestoneRunRepository is
 // fenced on the state NOT being terminal, and the spec-run mutex only counts
 // non-terminal rows.
-//
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func IsTerminalRunState(state string) bool {
 	switch state {
 	case RunStateSucceeded, RunStateFailed, RunStateCancelled:

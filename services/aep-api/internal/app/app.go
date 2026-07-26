@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
 	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
+	"github.com/wso2/aep/aep-api/internal/delivery/eventcore"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
@@ -119,6 +120,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	configRepo := projects.NewConfigRepository(db)
 	repoRepo := sourcecontrol.NewRepoRepository(db)
 	workflowRunRepo := delivery.NewWorkflowRunRepository(db)
+	milestoneRunRepo := delivery.NewMilestoneRunRepository(db)
+	runCycleRepo := delivery.NewRunCycleRepository(db)
 	orgRepo := organization.NewOrganizationRepository(db)
 	orgCredRepo := organization.NewOrgCredentialRepository(db)
 	orgAnthropicRepo := organization.NewOrgAnthropicRepository(db)
@@ -630,6 +633,29 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		// without a human. Off by default — it auto-deploys unreviewed code.
 		WithAutoMerge(cfg.AutoMergeCodingPRs, repoLocator{db: db}, issueService)
 	execEvents.RegisterHandlers(registerWebhook)
+	// The event plane: the milestone-run half of webhook handling. Its handlers
+	// share the pull_request and issues routing keys with the ones above (the
+	// router runs every handler registered for a key), and they stay inert by
+	// construction — each resolves a milestone RUN ROW first and returns without
+	// a write when there is none. Nothing creates run rows until the plan path
+	// mints them, so this is wired, exercised by its tests, and does nothing in
+	// production until the milestone model is switched on.
+	eventPlane := eventcore.New(eventcore.Ports{
+		Runs:     eventcoreRuns{runs: milestoneRunRepo},
+		Cycles:   eventcoreCycles{cycles: runCycleRepo},
+		Issues:   issueService,
+		PRs:      issueService,
+		Merger:   issueService,
+		Repos:    repoLocator{db: db},
+		Design:   designComponents{store: artifactStore},
+		Builds:   eventcoreBuilds{oc: componentClient, repos: repoRepo, stager: buildStager},
+		Signaler: noRunSupervisor{},
+		Starter:  noRunSupervisor{},
+		// Echo suppression (issues.* only) uses the same platform identity the
+		// task handlers do.
+		PlatformSender: platformSender,
+	})
+	eventPlane.RegisterHandlers(registerWebhook)
 	webhook.RegisterInstallationHandlers(webhookRouter, credService, issueService, trashWorkspaceOrg)
 	webhookCtrl := webhook.NewWebhookController(webhookVerifier, deliveryStore, webhookRouter, routingLookup, routingCache)
 
@@ -637,9 +663,14 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// disaster recovery, §5) + the exec watcher (OC WorkflowRun → execution-row
 	// outcomes; build success re-evaluates the funnel).
 	sweep := execution.NewSweep(funnel, execEvents, executionRepo, repoLister{repos: repoRepo}, issueService, 0)
+	eventPlaneSweep := eventcore.NewSweep(eventPlane, eventcoreRepoLister{repos: repoRepo}, 0)
 	execWatcher := codingagent.NewExecWatcher(componentClient, executionRepo, funnel, asServiceIdentity, 0).
 		WithWorkflowSignaler(devflowSignaler).
-		WithTaskNotifier(taskStreamHub)
+		WithTaskNotifier(taskStreamHub).
+		// Build terminals reach the milestone-run loop through the root observer
+		// port — the watcher stays with the executor whose classification helpers
+		// it shares, and reports outwards rather than importing a peer.
+		WithBuildObserver(eventPlane)
 	// A build that fails at git-clone-auth within budget is re-minted + re-tried
 	// (§7): the build-secret stager is always wired, so the retrier is too.
 	execWatcher.WithBuildRetrier(codingExecutor, codingExecutor.AuthRetryBudget())
@@ -1061,6 +1092,11 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// are unchanged.
 	watchers := []Watcher{
 		sweep,
+		// The event plane's reconcile backstop: a milestone with open work and no
+		// live run gets one. It heals a webhook GitHub never delivered and the
+		// adoption-versus-settle race, and walks only milestones the platform has
+		// run — so it, too, is inert until run rows exist.
+		eventPlaneSweep,
 		execWatcher,
 		// Resource-readiness watcher: turns platform-resource bindings going Ready
 		// into provision-Execution terminals + gate-issue closes, releasing gated

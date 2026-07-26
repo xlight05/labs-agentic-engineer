@@ -74,13 +74,10 @@ type RunCycleRepository interface {
 type runCycleRepository struct{ db *gorm.DB }
 
 // NewRunCycleRepository wires the gorm-backed repository.
-//
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func NewRunCycleRepository(db *gorm.DB) RunCycleRepository {
 	return &runCycleRepository{db: db}
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) Append(ctx context.Context, cycle *RunCycle) error {
 	switch cycle.Kind {
 	case CycleKindCoding, CycleKindConflict, CycleKindFix, CycleKindValidation:
@@ -93,7 +90,6 @@ func (r *runCycleRepository) Append(ctx context.Context, cycle *RunCycle) error 
 	return r.db.WithContext(ctx).Create(cycle).Error
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) NoteDispatch(ctx context.Context, id, jobRef string) (*RunCycle, error) {
 	return r.updateOpen(ctx, id, map[string]any{
 		"attempts": gorm.Expr("attempts + 1"),
@@ -101,7 +97,6 @@ func (r *runCycleRepository) NoteDispatch(ctx context.Context, id, jobRef string
 	})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) NotePullRequest(ctx context.Context, id, branch string, prNumber int) (*RunCycle, error) {
 	return r.updateOpen(ctx, id, map[string]any{
 		"branch":    branch,
@@ -109,7 +104,6 @@ func (r *runCycleRepository) NotePullRequest(ctx context.Context, id, branch str
 	})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) Finish(ctx context.Context, id, mergeSHA string) (*RunCycle, error) {
 	return r.updateOpen(ctx, id, map[string]any{
 		"merge_sha": mergeSHA,
@@ -117,7 +111,6 @@ func (r *runCycleRepository) Finish(ctx context.Context, id, mergeSHA string) (*
 	})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) Latest(ctx context.Context, orgID, runID string) (*RunCycle, error) {
 	var row RunCycle
 	err := r.db.WithContext(ctx).
@@ -133,7 +126,6 @@ func (r *runCycleRepository) Latest(ctx context.Context, orgID, runID string) (*
 	return &row, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) ListByRun(ctx context.Context, orgID, runID string) ([]RunCycle, error) {
 	var rows []RunCycle
 	err := r.db.WithContext(ctx).
@@ -146,7 +138,6 @@ func (r *runCycleRepository) ListByRun(ctx context.Context, orgID, runID string)
 	return rows, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) DeleteByProject(ctx context.Context, orgID, projectID string) error {
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
@@ -157,8 +148,6 @@ func (r *runCycleRepository) DeleteByProject(ctx context.Context, orgID, project
 // re-reads it. It is the ONE place the "a closed cycle is never rewritten"
 // fence lives, so every mutator inherits it — and the (nil, nil) no-op contract
 // on RowsAffected == 0.
-//
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) updateOpen(ctx context.Context, id string, updates map[string]any) (*RunCycle, error) {
 	res := r.db.WithContext(ctx).
 		Model(&RunCycle{}).
@@ -173,7 +162,6 @@ func (r *runCycleRepository) updateOpen(ctx context.Context, id string, updates 
 	return r.getByID(ctx, id)
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *runCycleRepository) getByID(ctx context.Context, id string) (*RunCycle, error) {
 	var row RunCycle
 	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error

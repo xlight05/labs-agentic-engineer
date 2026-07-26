@@ -1,0 +1,418 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package eventcore
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+)
+
+// In-memory stand-ins for the ports, holding the same RULES the real providers
+// hold rather than canned answers — a fake that cannot reproduce the rule
+// cannot fail the way production does. The three that matter:
+//
+//   - fakeRuns derives "live" from the state, so a terminal run is invisible
+//     exactly as it is in the repository;
+//   - fakeBuilds REMEMBERS what it triggered, so the re-trigger budget is
+//     counted against a growing run list just as it is against OpenChoreo;
+//   - fakeIssues dedupes on an open issue with the same key, which is the
+//     issue service's real contract and the thing minting's idempotency rests
+//     on.
+
+const (
+	testOrg     = "org1"
+	testProject = "proj1"
+	testRepo    = "acme/widgets"
+)
+
+// ---- runs -----------------------------------------------------------------
+
+type fakeRuns struct {
+	mu    sync.Mutex
+	rows  []delivery.MilestoneRun
+	bumps []delivery.RunBudget
+	err   error
+}
+
+func newFakeRuns(rows ...delivery.MilestoneRun) *fakeRuns { return &fakeRuns{rows: rows} }
+
+// aRun builds a live spec run over a milestone.
+func aRun(id string, milestone int, state string) delivery.MilestoneRun {
+	return delivery.MilestoneRun{
+		ID: id, OrgID: testOrg, ProjectID: testProject,
+		MilestoneNumber: milestone, MilestoneTitle: fmt.Sprintf("v%d", milestone),
+		Origin: delivery.RunOriginSpecBuild, State: state,
+		CycleCeiling: delivery.RunDefaultCycleCeiling,
+	}
+}
+
+func (f *fakeRuns) LiveRunForMilestone(_ context.Context, _, _ string, milestone int) (*delivery.MilestoneRun, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.rows {
+		if f.rows[i].MilestoneNumber == milestone && !delivery.IsTerminalRunState(f.rows[i].State) {
+			return &f.rows[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeRuns) LiveRunsForProject(context.Context, string, string) ([]delivery.MilestoneRun, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []delivery.MilestoneRun
+	for i := range f.rows {
+		if !delivery.IsTerminalRunState(f.rows[i].State) {
+			out = append(out, f.rows[i])
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeRuns) DeployedMilestoneRun(context.Context, string, string) (*delivery.MilestoneRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.rows {
+		if f.rows[i].Origin == delivery.RunOriginSpecBuild && f.rows[i].State == delivery.RunStateSucceeded {
+			return &f.rows[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeRuns) KnownMilestones(context.Context, string, string) ([]MilestoneRef, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	seen := map[int]bool{}
+	var out []MilestoneRef
+	for i := range f.rows {
+		if seen[f.rows[i].MilestoneNumber] {
+			continue
+		}
+		seen[f.rows[i].MilestoneNumber] = true
+		out = append(out, MilestoneRef{Number: f.rows[i].MilestoneNumber, Title: f.rows[i].MilestoneTitle})
+	}
+	return out, nil
+}
+
+func (f *fakeRuns) BumpBudget(_ context.Context, _ string, counter delivery.RunBudget) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bumps = append(f.bumps, counter)
+	return nil
+}
+
+// ---- cycles ---------------------------------------------------------------
+
+type fakeCycles struct {
+	mu      sync.Mutex
+	latest  *delivery.RunCycle
+	notedPR []string
+	closed  []string
+}
+
+func newFakeCycles(cycle *delivery.RunCycle) *fakeCycles { return &fakeCycles{latest: cycle} }
+
+func aCycle(id, runID string) *delivery.RunCycle {
+	return &delivery.RunCycle{ID: id, OrgID: testOrg, ProjectID: testProject, RunID: runID, Kind: delivery.CycleKindCoding}
+}
+
+func (f *fakeCycles) Latest(context.Context, string, string) (*delivery.RunCycle, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.latest, nil
+}
+
+func (f *fakeCycles) NotePullRequest(_ context.Context, id, branch string, prNumber int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.notedPR = append(f.notedPR, fmt.Sprintf("%s:%s:%d", id, branch, prNumber))
+	if f.latest != nil && f.latest.ID == id && f.latest.EndedAt == nil {
+		f.latest.Branch, f.latest.PRNumber = branch, prNumber
+	}
+	return nil
+}
+
+func (f *fakeCycles) FinishCycle(_ context.Context, id, mergeSHA string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = append(f.closed, fmt.Sprintf("%s:%s", id, mergeSHA))
+	if f.latest != nil && f.latest.ID == id && f.latest.EndedAt == nil {
+		now := time.Now().UTC()
+		f.latest.MergeSHA, f.latest.EndedAt = mergeSHA, &now
+	}
+	return nil
+}
+
+// ---- issues ---------------------------------------------------------------
+
+type fakeIssues struct {
+	mu sync.Mutex
+	// byMilestone is the milestone's open issues, keyed by milestone number.
+	byMilestone map[int][]sourcecontrol.IssueInfo
+	counts      map[int]*sourcecontrol.MilestoneIssueCounts
+	created     []sourcecontrol.CreateIssueRequest
+	assigned    []string
+	next        int
+}
+
+func newFakeIssues() *fakeIssues {
+	return &fakeIssues{
+		byMilestone: map[int][]sourcecontrol.IssueInfo{},
+		counts:      map[int]*sourcecontrol.MilestoneIssueCounts{},
+		next:        100,
+	}
+}
+
+// withWork puts open agent-work issues in a milestone.
+func (f *fakeIssues) withWork(milestone int, numbers ...int) *fakeIssues {
+	for _, n := range numbers {
+		f.byMilestone[milestone] = append(f.byMilestone[milestone], sourcecontrol.IssueInfo{
+			Number: n, State: "open", Labels: []string{delivery.LabelAgentWork},
+		})
+	}
+	return f
+}
+
+// withCounts gives a milestone its open-issue populations: gates, working set
+// ("aep", non-gate, non-validation) and grand total. work and total are stated
+// separately on purpose — the gap between them is the ledger, the population
+// the dispatch predicate must ignore.
+func (f *fakeIssues) withCounts(milestone, provision, work, total int) *fakeIssues {
+	f.counts[milestone] = &sourcecontrol.MilestoneIssueCounts{
+		OpenProvision: provision,
+		OpenWork:      work,
+		OpenTotal:     total,
+	}
+	return f
+}
+
+// CreateIssue reproduces the issue service's dedupe contract: a non-empty
+// DedupeKey matching an OPEN issue already minted returns that issue instead
+// of filing a second one.
+func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if req.DedupeKey != "" {
+		for i, prior := range f.created {
+			if prior.DedupeKey == req.DedupeKey {
+				return &sourcecontrol.IssueResult{Number: 100 + i + 1, Deduped: true}, nil
+			}
+		}
+	}
+	f.created = append(f.created, req)
+	f.next++
+	return &sourcecontrol.IssueResult{Number: f.next}, nil
+}
+
+func (f *fakeIssues) ListMilestoneIssues(_ context.Context, _, _ string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byMilestone[filter.Number], nil
+}
+
+func (f *fakeIssues) MilestoneIssueCounts(_ context.Context, _, _ string, number int) (*sourcecontrol.MilestoneIssueCounts, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.counts[number]; ok {
+		return c, nil
+	}
+	return &sourcecontrol.MilestoneIssueCounts{}, nil
+}
+
+func (f *fakeIssues) SetIssueMilestone(_ context.Context, _, _ string, number, milestoneNumber int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.assigned = append(f.assigned, fmt.Sprintf("%d->%d", number, milestoneNumber))
+	return nil
+}
+
+func (f *fakeIssues) titles() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.created))
+	for _, c := range f.created {
+		out = append(out, c.Title)
+	}
+	return out
+}
+
+// ---- pull requests --------------------------------------------------------
+
+type fakePRs struct {
+	mu     sync.Mutex
+	states []*sourcecontrol.PullRequestState // consumed one per call, last repeats
+	calls  int
+	files  []string
+	err    error
+}
+
+func openPR() *sourcecontrol.PullRequestState { return &sourcecontrol.PullRequestState{State: "open"} }
+func mergedPR(sha string) *sourcecontrol.PullRequestState {
+	return &sourcecontrol.PullRequestState{State: "closed", Merged: true, MergeCommitSHA: sha}
+}
+
+func (f *fakePRs) GetPullRequestState(context.Context, string, string, int) (*sourcecontrol.PullRequestState, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.states) == 0 {
+		return openPR(), nil
+	}
+	i := f.calls
+	if i >= len(f.states) {
+		i = len(f.states) - 1
+	}
+	f.calls++
+	return f.states[i], nil
+}
+
+func (f *fakePRs) ListPullRequestFiles(context.Context, string, string, int) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.files, nil
+}
+
+type fakeMerger struct {
+	mu     sync.Mutex
+	merged []int
+	err    error
+}
+
+func (f *fakeMerger) MergePullRequest(_ context.Context, _, _ string, number int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.merged = append(f.merged, number)
+	return nil
+}
+
+// ---- repos / design -------------------------------------------------------
+
+type fakeRepoLookup struct{ err error }
+
+func (f fakeRepoLookup) ByFullName(_ context.Context, fullName string) (string, string, error) {
+	if f.err != nil {
+		return "", "", f.err
+	}
+	if fullName != testRepo {
+		return "", "", fmt.Errorf("repo %s not found", fullName)
+	}
+	return testOrg, testProject, nil
+}
+
+type fakeDesign struct{ paths map[string]string }
+
+func (f fakeDesign) ComponentPaths(context.Context, string, string) (map[string]string, error) {
+	return f.paths, nil
+}
+
+type fakeRepoLister struct{ repos []RepoRef }
+
+func (f fakeRepoLister) ListAll(context.Context) ([]RepoRef, error) { return f.repos, nil }
+
+// ---- builds ---------------------------------------------------------------
+
+// fakeBuilds models OpenChoreo closely enough for the budget to be real: a
+// trigger APPENDS a run, so the next attempt count reflects it.
+type fakeBuilds struct {
+	mu        sync.Mutex
+	runs      map[string][]BuildRun
+	triggered []string
+	err       error
+}
+
+func newFakeBuilds() *fakeBuilds { return &fakeBuilds{runs: map[string][]BuildRun{}} }
+
+func (f *fakeBuilds) TriggerBuildAtCommit(_ context.Context, _, _, component, _, runName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return f.err
+	}
+	f.triggered = append(f.triggered, runName)
+	f.runs[component] = append(f.runs[component], BuildRun{Name: runName, Status: "Running"})
+	return nil
+}
+
+func (f *fakeBuilds) ListBuildRuns(_ context.Context, _, _, component string) ([]BuildRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.runs[component], nil
+}
+
+func (f *fakeBuilds) triggeredFor(component string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, name := range f.triggered {
+		if strings.Contains(name, component) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// ---- supervisor -----------------------------------------------------------
+
+type fakeSupervisor struct {
+	mu      sync.Mutex
+	signals []delivery.RunSignal
+	started []StartRunRequest
+}
+
+func (f *fakeSupervisor) SignalRun(_ context.Context, _ *delivery.MilestoneRun, _ string, payload delivery.RunSignal) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signals = append(f.signals, payload)
+	return nil
+}
+
+func (f *fakeSupervisor) StartRun(_ context.Context, req StartRunRequest) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.started = append(f.started, req)
+	return nil
+}
+
+func (f *fakeSupervisor) named(name string) []delivery.RunSignal {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []delivery.RunSignal
+	for _, s := range f.signals {
+		if s.Signal == name {
+			out = append(out, s)
+		}
+	}
+	return out
+}

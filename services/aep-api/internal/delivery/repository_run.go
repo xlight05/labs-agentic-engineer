@@ -134,13 +134,10 @@ type MilestoneRunRepository interface {
 type milestoneRunRepository struct{ db *gorm.DB }
 
 // NewMilestoneRunRepository wires the gorm-backed repository.
-//
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func NewMilestoneRunRepository(db *gorm.DB) MilestoneRunRepository {
 	return &milestoneRunRepository{db: db}
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) TryAdmit(ctx context.Context, run *MilestoneRun) (bool, *MilestoneRun, error) {
 	// Validate the origin rather than trusting it: the mutex is a partial index
 	// keyed on origin = 'spec-build', so a typo'd origin would silently escape
@@ -170,7 +167,6 @@ func (r *milestoneRunRepository) TryAdmit(ctx context.Context, run *MilestoneRun
 	return true, run, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) ActiveSpecRunByProject(ctx context.Context, orgID, projectID string) (*MilestoneRun, error) {
 	var row MilestoneRun
 	err := r.db.WithContext(ctx).
@@ -187,7 +183,6 @@ func (r *milestoneRunRepository) ActiveSpecRunByProject(ctx context.Context, org
 	return &row, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) SetState(ctx context.Context, id, state string) (*MilestoneRun, error) {
 	if state != RunStateWaiting && state != RunStateRunning {
 		return nil, fmt.Errorf("milestone run: SetState takes a non-terminal state, got %q (use Settle)", state)
@@ -201,7 +196,6 @@ func (r *milestoneRunRepository) SetState(ctx context.Context, id, state string)
 	return r.updateNonTerminal(ctx, id, updates)
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) Settle(ctx context.Context, id, state, terminalReason string) (*MilestoneRun, error) {
 	if !IsTerminalRunState(state) {
 		return nil, fmt.Errorf("milestone run: Settle takes a terminal state, got %q (use SetState)", state)
@@ -216,7 +210,6 @@ func (r *milestoneRunRepository) Settle(ctx context.Context, id, state, terminal
 	})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) BumpBudget(ctx context.Context, id string, counter RunBudget) (*MilestoneRun, error) {
 	if !runBudgetColumns[counter] {
 		return nil, fmt.Errorf("milestone run: unknown budget counter %q", counter)
@@ -227,7 +220,6 @@ func (r *milestoneRunRepository) BumpBudget(ctx context.Context, id string, coun
 	})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) SetValidationVerdict(ctx context.Context, id, verdict string) (*MilestoneRun, error) {
 	switch verdict {
 	case ValidationVerdictPassed, ValidationVerdictFailed, ValidationVerdictSkipped:
@@ -237,7 +229,6 @@ func (r *milestoneRunRepository) SetValidationVerdict(ctx context.Context, id, v
 	return r.updateNonTerminal(ctx, id, map[string]any{"validation_verdict": verdict})
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) GetByIDScoped(ctx context.Context, orgID, id string) (*MilestoneRun, error) {
 	var row MilestoneRun
 	err := r.db.WithContext(ctx).
@@ -252,7 +243,6 @@ func (r *milestoneRunRepository) GetByIDScoped(ctx context.Context, orgID, id st
 	return &row, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) ListByProject(ctx context.Context, orgID, projectID string) ([]MilestoneRun, error) {
 	var rows []MilestoneRun
 	err := r.db.WithContext(ctx).
@@ -265,7 +255,6 @@ func (r *milestoneRunRepository) ListByProject(ctx context.Context, orgID, proje
 	return rows, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) ListByMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) ([]MilestoneRun, error) {
 	var rows []MilestoneRun
 	err := r.db.WithContext(ctx).
@@ -278,7 +267,6 @@ func (r *milestoneRunRepository) ListByMilestone(ctx context.Context, orgID, pro
 	return rows, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) MilestoneNumberForTag(ctx context.Context, orgID, projectID, tag string) (int, bool, error) {
 	var row MilestoneRun
 	err := r.db.WithContext(ctx).
@@ -295,7 +283,6 @@ func (r *milestoneRunRepository) MilestoneNumberForTag(ctx context.Context, orgI
 	return row.MilestoneNumber, true, nil
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) DeleteByProject(ctx context.Context, orgID, projectID string) error {
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
@@ -306,8 +293,6 @@ func (r *milestoneRunRepository) DeleteByProject(ctx context.Context, orgID, pro
 // re-reads it. It is the ONE place the "terminal rows are never resurrected"
 // fence is written, so every mutator inherits it — and the (nil, nil) no-op
 // contract on RowsAffected == 0.
-//
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) updateNonTerminal(ctx context.Context, id string, updates map[string]any) (*MilestoneRun, error) {
 	res := r.db.WithContext(ctx).
 		Model(&MilestoneRun{}).
@@ -322,7 +307,6 @@ func (r *milestoneRunRepository) updateNonTerminal(ctx context.Context, id strin
 	return r.getByID(ctx, id)
 }
 
-//deadcode:keep phase-A: wired by the run supervisor (phase D) — remove then
 func (r *milestoneRunRepository) getByID(ctx context.Context, id string) (*MilestoneRun, error) {
 	var row MilestoneRun
 	err := r.db.WithContext(ctx).First(&row, "id = ?", id).Error

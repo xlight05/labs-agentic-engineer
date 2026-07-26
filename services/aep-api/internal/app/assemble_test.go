@@ -50,8 +50,8 @@ func TestAssemble_MinimalConfigBuildsTheGraph(t *testing.T) {
 	if app.Handler == nil {
 		t.Fatal("assembled app has a nil Handler")
 	}
-	if len(app.Watchers) != 7 {
-		t.Fatalf("minimal watcher count = %d, want 7 (the unconditional watchers)", len(app.Watchers))
+	if len(app.Watchers) != 8 {
+		t.Fatalf("minimal watcher count = %d, want 8 (the unconditional watchers)", len(app.Watchers))
 	}
 	for i, w := range app.Watchers {
 		if w == nil {
@@ -62,24 +62,25 @@ func TestAssemble_MinimalConfigBuildsTheGraph(t *testing.T) {
 
 // TestAssemble_WatcherRegistration pins the two conditional watchers: the
 // JobWatcher rides on CLUSTER_GATEWAY_PROXY_URL, and the devflow worker rides on
-// TEMPORAL_HOSTPORT. The base is 7.
+// TEMPORAL_HOSTPORT. The base is 8 — the event plane's reconcile sweep is
+// unconditional, like the execution sweep it sits beside.
 func TestAssemble_WatcherRegistration(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*config.Config)
 		want   int
 	}{
-		{"base", func(*config.Config) {}, 7},
+		{"base", func(*config.Config) {}, 8},
 		{"+cluster-gateway-proxy adds JobWatcher", func(c *config.Config) {
 			c.ClusterGatewayProxyURL = "http://cgw"
-		}, 8},
+		}, 9},
 		{"+temporal adds the devflow worker", func(c *config.Config) {
 			c.Temporal.HostPort = "temporal:7233"
-		}, 8},
+		}, 9},
 		{"+both", func(c *config.Config) {
 			c.ClusterGatewayProxyURL = "http://cgw"
 			c.Temporal.HostPort = "temporal:7233"
-		}, 9},
+		}, 10},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

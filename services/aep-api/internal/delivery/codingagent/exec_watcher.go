@@ -64,6 +64,13 @@ type ExecWatcher struct {
 	// provisioning feature can grant pending cross-project access (nil → skipped).
 	deployObserver DeployObserver
 
+	// buildObserver receives every BUILD terminal this watcher settles, through
+	// the root port. It is how the event plane learns a build finished without
+	// either package importing the other: this watcher stays here (it shares
+	// the run-classification helpers with the executor next to it) and reports
+	// outwards. Nil-safe.
+	buildObserver delivery.BuildTerminalObserver
+
 	// signaler feeds build + deploy terminals to a waiting devflow TaskFlow
 	// workflow. Nil-safe: a nil signaler is a no-op, so the watcher behaves
 	// exactly as before when no workflow is driving.
@@ -77,6 +84,14 @@ type ExecWatcher struct {
 // reach a waiting TaskFlow workflow. Optional. Returns the receiver.
 func (w *ExecWatcher) WithWorkflowSignaler(s *delivery.Signaler) *ExecWatcher {
 	w.signaler = s
+	return w
+}
+
+// WithBuildObserver wires the build-terminal observer (the event plane) so a
+// component's build outcome reaches the milestone-run loop. Optional —
+// nil-safe. Returns the receiver.
+func (w *ExecWatcher) WithBuildObserver(o delivery.BuildTerminalObserver) *ExecWatcher {
+	w.buildObserver = o
 	return w
 }
 
@@ -215,6 +230,7 @@ func (w *ExecWatcher) reconcile(ctx context.Context, row *delivery.Execution, ru
 				Phase:       delivery.PhaseSucceeded,
 			})
 			w.notifier.Notify(row.Repo, row.IssueNumber)
+			w.notifyBuildTerminal(ctx, row, true, "")
 			return
 		}
 		w.reconcileBuildFailure(ctx, row, run)
@@ -236,6 +252,7 @@ func (w *ExecWatcher) reconcileBuildFailure(ctx context.Context, row *delivery.E
 			ExecutionID: row.ID, Phase: delivery.PhaseFailed, Message: workflowReason(run),
 		})
 		w.notifier.Notify(row.Repo, row.IssueNumber)
+		w.notifyBuildTerminal(ctx, row, false, workflowReason(run))
 		return
 	}
 	attempt := parseBuildAuthRetryAttempt(row.Reason)
@@ -249,6 +266,7 @@ func (w *ExecWatcher) reconcileBuildFailure(ctx context.Context, row *delivery.E
 			ExecutionID: row.ID, Phase: delivery.PhaseFailed, Message: buildAuthRetryExceededReason,
 		})
 		w.notifier.Notify(row.Repo, row.IssueNumber)
+		w.notifyBuildTerminal(ctx, row, false, buildAuthRetryExceededReason)
 		return
 	}
 	newRun, err := w.buildRetrier.RetryAuthFailedBuild(ctx, row)
@@ -266,6 +284,33 @@ func (w *ExecWatcher) reconcileBuildFailure(ctx context.Context, row *delivery.E
 		return
 	}
 	slog.InfoContext(ctx, "exec watcher: re-minted + re-triggered build after git-auth failure", "execution", row.ID, "newRun", newRun, "attempt", attempt+1)
+}
+
+// notifyBuildTerminal reports a settled BUILD to the event plane through the
+// root port. Best-effort: the observer's job is to advance a milestone run,
+// and a run that misses one terminal re-derives from OpenChoreo at its next
+// cycle boundary — whereas an error propagated here would abort the rest of
+// the watcher's sweep over unrelated executions.
+//
+// Only builds are reported. A coding terminal is the runner's business and
+// reaches the loop as a pull request.
+func (w *ExecWatcher) notifyBuildTerminal(ctx context.Context, row *delivery.Execution, succeeded bool, reason string) {
+	if w.buildObserver == nil {
+		return
+	}
+	err := w.buildObserver.OnBuildTerminal(ctx, delivery.BuildTerminal{
+		OrgID:     row.OrgID,
+		ProjectID: row.ProjectID,
+		Component: row.Component,
+		CommitSHA: row.CommitSHA,
+		RunName:   row.RunName,
+		Succeeded: succeeded,
+		Reason:    reason,
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "exec watcher: build-terminal observer failed",
+			"execution", row.ID, "component", row.Component, "error", err)
+	}
 }
 
 // workflowReason returns a short reason string for a terminal WorkflowRun.

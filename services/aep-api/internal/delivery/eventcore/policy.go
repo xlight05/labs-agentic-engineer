@@ -1,0 +1,171 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package eventcore
+
+import (
+	"sort"
+	"strings"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
+)
+
+// This file holds the event plane's three DECISIONS as pure functions over
+// facts: may this pull request merge, which components does this diff touch,
+// and may this run dispatch. They are separated from the handlers that fetch
+// the facts so each can be read, argued with and tested on its own — the merge
+// policy in particular, because it is the seam review logic arrives behind.
+
+// mergeDecision is the auto-merge policy seam's verdict. Reason is written for
+// a log line and for whoever later replaces this policy; Matched lists the
+// milestone issues the pull request claims, which is the evidence the verdict
+// rests on.
+type mergeDecision struct {
+	Merge   bool
+	Reason  string
+	Matched []int
+}
+
+// decideAutoMerge IS the merge policy: a pull request whose Resolves list
+// references at least one agent-work issue in the run's milestone squash-merges.
+//
+// There is deliberately no other verification. The agent runs the build gate
+// inside its own pod before it ever opens the pull request — every Dockerfile
+// under a touched App Path must build to completion — and that is the sole
+// quality gate by design. The platform re-running a build to decide whether to
+// merge would gate the merge on the same thing the merge exists to trigger.
+//
+// What the predicate DOES buy is scope: a pull request that claims nothing in
+// this milestone is not this run's work and is left alone for a human. Review
+// logic (approvals, checks, a human gate) arrives later BEHIND this function —
+// it is one named decision over facts precisely so that swapping it is a local
+// change with a local test, not a rewrite of the handler.
+func decideAutoMerge(resolves []int, milestoneIssues []sourcecontrol.IssueInfo) mergeDecision {
+	if len(resolves) == 0 {
+		return mergeDecision{Reason: "pull request resolves no issue"}
+	}
+	work := make(map[int]bool, len(milestoneIssues))
+	for _, iss := range milestoneIssues {
+		if delivery.HasLabel(iss.Labels, delivery.LabelAgentWork) {
+			work[iss.Number] = true
+		}
+	}
+	var matched []int
+	for _, n := range resolves {
+		if work[n] {
+			matched = append(matched, n)
+		}
+	}
+	if len(matched) == 0 {
+		return mergeDecision{Reason: "no resolved issue is agent work in this milestone"}
+	}
+	return mergeDecision{Merge: true, Reason: "resolves agent work in the run's milestone", Matched: matched}
+}
+
+// pathDiff is the outcome of matching a merged pull request's changed files
+// against the design's App Paths: the components to build, and the files that
+// belong to no component.
+type pathDiff struct {
+	Components []string
+	Unmatched  []string
+}
+
+// diffComponents maps changed files onto components by App Path prefix.
+//
+// It is generic over who authored the pull request — the merge, not the
+// authorship, is what makes a component stale. Unmatched files are returned
+// rather than dropped so the caller can WARN about them: a path outside every
+// App Path is either a repo-root concern (docs, CI) or a design that has
+// drifted from the tree, and silently ignoring the second is how a component
+// stops being rebuilt without anybody noticing.
+//
+// Components are returned in a stable order so a fan-out is reproducible.
+func diffComponents(files []string, appPaths map[string]string) pathDiff {
+	var out pathDiff
+	if len(files) == 0 {
+		return out
+	}
+	claimed := make(map[string]bool, len(files))
+	for name, appPath := range appPaths {
+		hit := false
+		for _, f := range files {
+			if fileUnder(f, appPath) {
+				claimed[f] = true
+				hit = true
+			}
+		}
+		if hit {
+			out.Components = append(out.Components, name)
+		}
+	}
+	sort.Strings(out.Components)
+	for _, f := range files {
+		if !claimed[f] {
+			out.Unmatched = append(out.Unmatched, f)
+		}
+	}
+	return out
+}
+
+// fileUnder reports whether a changed file lives under a component's App Path.
+// An empty App Path means the component builds from the repo root, so every
+// change is its change.
+func fileUnder(file, appPath string) bool {
+	clean := strings.TrimPrefix(strings.TrimSpace(appPath), "./")
+	clean = strings.Trim(clean, "/")
+	if clean == "" {
+		return true
+	}
+	return file == clean || strings.HasPrefix(file, clean+"/")
+}
+
+// dispatchable is the dispatch predicate: no gate is open in the milestone and
+// its working set is non-empty.
+//
+// It reads the ONE GraphQL call behind MilestoneIssueCounts rather than a
+// milestone's open_issues field, which counts pull requests and would keep a
+// finished run "workable" for as long as one of its PRs stayed open.
+//
+// The second clause is the WORKING SET, not "some issue is open": a milestone
+// holding only ledger issues (human-filed, unadopted, no "aep" label) has
+// nothing to work, and declaring it workable would wake a run whose first act
+// is to find an empty working set. The exclusions live on the counts type so
+// this predicate and any settle check agree on what work is.
+func dispatchable(counts *sourcecontrol.MilestoneIssueCounts) bool {
+	if counts == nil {
+		return false
+	}
+	return counts.OpenProvision == 0 && counts.OpenNonGateWork() > 0
+}
+
+// attemptsFor counts how many of a component's WorkflowRuns belong to one
+// (component, commit) pair — the automatic re-trigger budget, derived from
+// OpenChoreo instead of stored.
+//
+// Deriving it is what keeps the budget honest under every restart, replay and
+// redelivery: the runs ARE the attempts. A counter column would have to be
+// incremented by exactly the code paths that create runs, and a redelivered
+// webhook or a crashed handler would desynchronise it from the cluster.
+func attemptsFor(runs []BuildRun, prefix string) int {
+	n := 0
+	for _, r := range runs {
+		if strings.HasPrefix(strings.ToLower(r.Name), prefix) {
+			n++
+		}
+	}
+	return n
+}

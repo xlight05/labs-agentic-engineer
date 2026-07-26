@@ -1,0 +1,456 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package eventcore
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol/webhook"
+)
+
+// WEBHOOK TIER — the primary one. Synthetic GitHub payloads go through the
+// REAL router, dispatched by event name exactly as the receiver does it, so
+// each test exercises the registration keys as well as the handler. Every row
+// of the routing table is covered here or in builds_test.go.
+//
+// The payload literals carry only the fields the handlers read, plus the two
+// the pipeline needs (repository.full_name for routing, action for dispatch).
+// That is deliberate: a payload copied from GitHub would hide which fields the
+// code actually depends on.
+
+const platformBot = "aep-platform[bot]"
+
+type harness struct {
+	events *Events
+	router *webhook.Router
+	runs   *fakeRuns
+	cycles *fakeCycles
+	issues *fakeIssues
+	prs    *fakePRs
+	merger *fakeMerger
+	builds *fakeBuilds
+	sup    *fakeSupervisor
+}
+
+// newHarness wires the event plane onto a real router. rows seeds the run
+// store — pass none for the inertness case (which is production today).
+func newHarness(t *testing.T, rows ...delivery.MilestoneRun) *harness {
+	t.Helper()
+	h := &harness{
+		runs:   newFakeRuns(rows...),
+		cycles: newFakeCycles(nil),
+		issues: newFakeIssues(),
+		prs:    &fakePRs{},
+		merger: &fakeMerger{},
+		builds: newFakeBuilds(),
+		sup:    &fakeSupervisor{},
+	}
+	h.events = New(Ports{
+		Runs:           h.runs,
+		Cycles:         h.cycles,
+		Issues:         h.issues,
+		PRs:            h.prs,
+		Merger:         h.merger,
+		Repos:          fakeRepoLookup{},
+		Design:         fakeDesign{paths: map[string]string{"order-service": "services/order", "web": "apps/web"}},
+		Builds:         h.builds,
+		Signaler:       h.sup,
+		Starter:        h.sup,
+		PlatformSender: platformBot,
+	})
+	h.router = webhook.NewRouter()
+	h.events.RegisterHandlers(func(event, action string, fn func(ctx context.Context, event, action string, payload []byte) error) {
+		h.router.Register(event, action, webhook.EventHandlerFunc(fn))
+	})
+	return h
+}
+
+// deliver drives one synthetic delivery through the real router.
+func (h *harness) deliver(t *testing.T, event string, payload []byte) error {
+	t.Helper()
+	return h.router.Dispatch(context.Background(), event, payload)
+}
+
+func prBody(action, branch, body string, number int, draft, merged bool, mergeSHA string) []byte {
+	return []byte(fmt.Sprintf(`{
+	  "action": %q,
+	  "pull_request": {"number": %d, "draft": %t, "merged": %t, "state": "open",
+	                   "body": %q, "merge_commit_sha": %q, "head": {"ref": %q}},
+	  "repository": {"full_name": %q}
+	}`, action, number, draft, merged, body, mergeSHA, branch, testRepo))
+}
+
+func issueBody(action string, issue, milestone int, label, sender string, topLevelMilestone bool) []byte {
+	ms := "null"
+	top := ""
+	if milestone > 0 {
+		ms = fmt.Sprintf(`{"number": %d, "title": "v%d"}`, milestone, milestone)
+		if topLevelMilestone {
+			top = fmt.Sprintf(`"milestone": {"number": %d, "title": "v%d"},`, milestone, milestone)
+			ms = "null" // demilestoned: the issue no longer carries it
+		}
+	}
+	return []byte(fmt.Sprintf(`{
+	  "action": %q,
+	  %s
+	  "issue": {"number": %d, "state": "open", "title": "a task", "milestone": %s},
+	  "label": {"name": %q},
+	  "repository": {"full_name": %q},
+	  "sender": {"login": %q}
+	}`, action, top, issue, ms, label, testRepo, sender))
+}
+
+// ---- §8 row 1: auto-merge policy seam -------------------------------------
+
+func TestPullRequestOpened_MergesWhenItResolvesMilestoneWork(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.issues.withWork(7, 12, 13)
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #12\nResolves #13", 42, false, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.merger.merged) != 1 || h.merger.merged[0] != 42 {
+		t.Fatalf("the PR must be squash-merged exactly once, got %v", h.merger.merged)
+	}
+	// The cycle learns branch + PR from the webhook — the platform never
+	// dictates branch identity.
+	if len(h.cycles.notedPR) != 1 || h.cycles.notedPR[0] != "cycle-1:aep/m7-c1:42" {
+		t.Fatalf("the cycle must learn branch + PR, got %v", h.cycles.notedPR)
+	}
+}
+
+func TestPullRequestSynchronize_RetriesTheMergeAfterARebase(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withWork(7, 12)
+
+	if err := h.deliver(t, "pull_request", prBody("synchronize", "aep/m7-c1", "Resolves #12", 42, false, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.merger.merged) != 1 {
+		t.Fatalf("a push to the PR branch must re-run the merge policy, got %v", h.merger.merged)
+	}
+}
+
+func TestPullRequestDraft_IsNeverMerged(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withWork(7, 12)
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #12", 42, true, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.merger.merged) != 0 {
+		t.Fatalf("a draft is the agent saying it is not finished; got merges %v", h.merger.merged)
+	}
+}
+
+func TestPullRequestOpened_DeclinedWhenItResolvesNothingInTheMilestone(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withWork(7, 12) // the PR claims #99, which is not milestone work
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #99", 42, false, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.merger.merged) != 0 {
+		t.Fatalf("a PR claiming nothing in this milestone must be left for a human, got %v", h.merger.merged)
+	}
+}
+
+// TestPullRequestOpened_IdempotentUnderRedelivery is the redelivery property:
+// GitHub re-runs a delivery whose handler failed, and the second pass must not
+// merge again. The ground-truth read is what stops it.
+func TestPullRequestOpened_IdempotentUnderRedelivery(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withWork(7, 12)
+	// First read: open. Every read after the merge: merged — as GitHub answers.
+	h.prs.states = append(h.prs.states, openPR(), mergedPR("abc123def456"))
+
+	payload := prBody("opened", "aep/m7-c1", "Resolves #12", 42, false, false, "")
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("first dispatch: %v", err)
+	}
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("redelivery: %v", err)
+	}
+	if len(h.merger.merged) != 1 {
+		t.Fatalf("a redelivered pull_request must merge once in total, got %v", h.merger.merged)
+	}
+}
+
+// ---- §8 row 3: un-mergeable → conflict issue ------------------------------
+
+func TestPullRequestOpened_MergeRefusedOnOpenPR_MintsOneConflictIssue(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withWork(7, 12)
+	h.merger.err = errors.New("github merge failed (status 405): Pull Request is not mergeable")
+
+	payload := prBody("opened", "aep/m7-c1", "Resolves #12", 42, false, false, "")
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	// Redelivery must not file a second one (the DedupeKey is per pull request).
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("redelivery: %v", err)
+	}
+	titles := h.issues.titles()
+	if len(titles) != 1 || titles[0] != "Resolve the merge conflict on pull request #42" {
+		t.Fatalf("exactly one conflict issue naming the PR must be minted, got %v", titles)
+	}
+	if got := h.issues.created[0].Body; !strings.Contains(got, "#42") || !strings.Contains(got, "aep/m7-c1") {
+		t.Fatalf("the conflict issue must name the PR and its branch (the agent's rebase target), got:\n%s", got)
+	}
+	if sigs := h.sup.named(delivery.SigRunConflict); len(sigs) != 2 || sigs[0].PRNumber != 42 {
+		// One signal per delivery is correct — signalling is cheap and the
+		// supervisor is idempotent; what must not double is the ISSUE.
+		t.Fatalf("the supervisor must be told about the conflict, got %+v", sigs)
+	}
+}
+
+// ---- §8 row 2: merged → path-diff fan-out ---------------------------------
+
+func TestPullRequestMerged_BuildsEveryTouchedComponentAtTheMergeSHA(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.prs.files = []string{"services/order/main.go", "apps/web/src/app.tsx", "README.md"}
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if got := len(h.builds.triggered); got != 2 {
+		t.Fatalf("both touched components must build (README.md matches none), got %v", h.builds.triggered)
+	}
+	for _, component := range []string{"order-service", "web"} {
+		names := h.builds.triggeredFor(component)
+		if len(names) != 1 || names[0] != buildRunName(testProject, component, "abc123def456789", 1) {
+			t.Fatalf("component %s must have exactly one attempt-1 run pinned to the merge SHA, got %v", component, names)
+		}
+	}
+	// The cycle closes with the merge SHA and the supervisor is told.
+	if len(h.cycles.closed) != 1 || h.cycles.closed[0] != "cycle-1:abc123def456789" {
+		t.Fatalf("the cycle must close with the merge SHA, got %v", h.cycles.closed)
+	}
+	if sigs := h.sup.named(delivery.SigRunPRMerged); len(sigs) != 1 || sigs[0].MergeSHA != "abc123def456789" {
+		t.Fatalf("the supervisor must be told the PR merged, got %+v", sigs)
+	}
+}
+
+func TestPullRequestMerged_IdempotentUnderRedelivery(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.prs.files = []string{"services/order/main.go"}
+
+	payload := prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123def456789")
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("first dispatch: %v", err)
+	}
+	if err := h.deliver(t, "pull_request", payload); err != nil {
+		t.Fatalf("redelivery: %v", err)
+	}
+	if got := h.builds.triggeredFor("order-service"); len(got) != 1 {
+		t.Fatalf("a redelivered merge must trigger one build in total, got %v", got)
+	}
+}
+
+// TestPullRequestMerged_HumanBranchStillBuilds proves the fan-out is generic:
+// a pull request that followed none of the agent's branch conventions still
+// belongs to the live spec run and still rebuilds what it touched.
+func TestPullRequestMerged_HumanBranchStillBuilds(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.prs.files = []string{"services/order/main.go"}
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "hotfix/typo", "", 43, false, true, "feedfacefeed")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if got := h.builds.triggeredFor("order-service"); len(got) != 1 {
+		t.Fatalf("a human PR merged during a run must rebuild what it touched, got %v", got)
+	}
+	// …but it is not the cycle's work: the agent's open cycle keeps its own
+	// branch and PR, and does not close on somebody else's merge.
+	if len(h.cycles.notedPR) != 0 || len(h.cycles.closed) != 0 {
+		t.Fatalf("a human PR must not write the agent's cycle record, got %v / %v", h.cycles.notedPR, h.cycles.closed)
+	}
+}
+
+// ---- §8 row 5: milestone-matched issues → predicate re-evaluation ---------
+
+func TestIssues_PredicateTrue_SignalsWorkable(t *testing.T) {
+	for _, action := range []string{"closed", "reopened", "labeled", "unlabeled", "milestoned", "demilestoned"} {
+		t.Run(action, func(t *testing.T) {
+			h := newHarness(t, aRun("run-1", 7, delivery.RunStateWaiting))
+			h.issues.withCounts(7, 0, 3, 3)
+			// milestoned/demilestoned carry the milestone at TOP LEVEL — the only
+			// place a demilestone names the milestone the issue just left.
+			topLevel := action == "milestoned" || action == "demilestoned"
+
+			if err := h.deliver(t, "issues", issueBody(action, 12, 7, "aep", "someone", topLevel)); err != nil {
+				t.Fatalf("dispatch: %v", err)
+			}
+			if sigs := h.sup.named(delivery.SigRunWorkable); len(sigs) != 1 || sigs[0].MilestoneNumber != 7 {
+				t.Fatalf("issues.%s on a milestone with work must wake the waiting run, got %+v", action, sigs)
+			}
+		})
+	}
+}
+
+func TestIssues_OpenGateHoldsDispatch(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateWaiting))
+	h.issues.withCounts(7, 1, 2, 3) // a provision gate is open
+
+	if err := h.deliver(t, "issues", issueBody("closed", 12, 7, "aep", "someone", false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if sigs := h.sup.named(delivery.SigRunWorkable); len(sigs) != 0 {
+		t.Fatalf("an open gate must hold dispatch, got %+v", sigs)
+	}
+}
+
+func TestIssues_RunningRunIsNotWokenMidCycle(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.issues.withCounts(7, 0, 3, 3)
+
+	if err := h.deliver(t, "issues", issueBody("labeled", 12, 7, "aep", "someone", false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if sigs := h.sup.named(delivery.SigRunWorkable); len(sigs) != 0 {
+		t.Fatalf("a running run re-reads its milestone at the cycle boundary; got %+v", sigs)
+	}
+}
+
+func TestIssues_EchoFromThePlatformIsDropped(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateWaiting))
+	h.issues.withCounts(7, 0, 3, 3)
+
+	if err := h.deliver(t, "issues", issueBody("labeled", 12, 7, "aep", platformBot, false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if sigs := h.sup.named(delivery.SigRunWorkable); len(sigs) != 0 {
+		t.Fatalf("the platform's own label write must not re-enter as an event, got %+v", sigs)
+	}
+}
+
+// ---- §8 row 6: adoption ---------------------------------------------------
+
+func TestAdoption_BareIssueJoinsTheDeployedVersionAndStartsAnIncidentRun(t *testing.T) {
+	deployed := aRun("run-old", 5, delivery.RunStateSucceeded)
+	h := newHarness(t, deployed)
+
+	if err := h.deliver(t, "issues", issueBody("labeled", 31, 0, delivery.LabelAdopt, "human", false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.issues.assigned) != 1 || h.issues.assigned[0] != "31->5" {
+		t.Fatalf("a bare adopted issue must join the deployed version's milestone, got %v", h.issues.assigned)
+	}
+	if len(h.sup.started) != 1 || h.sup.started[0].Origin != delivery.RunOriginIncidentAdoption ||
+		h.sup.started[0].MilestoneNumber != 5 {
+		t.Fatalf("an incident run must start over the deployed milestone, got %+v", h.sup.started)
+	}
+}
+
+func TestAdoption_ExistingMilestoneIsRespected(t *testing.T) {
+	h := newHarness(t, aRun("run-old", 5, delivery.RunStateSucceeded))
+
+	if err := h.deliver(t, "issues", issueBody("labeled", 31, 9, delivery.LabelAdopt, "human", false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.issues.assigned) != 0 {
+		t.Fatalf("an issue that already has a milestone keeps it, got %v", h.issues.assigned)
+	}
+	if len(h.sup.started) != 1 || h.sup.started[0].MilestoneNumber != 9 {
+		t.Fatalf("the run must start over the issue's own milestone, got %+v", h.sup.started)
+	}
+}
+
+func TestAdoption_IntoALiveRunIsANoOp(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+
+	if err := h.deliver(t, "issues", issueBody("labeled", 31, 7, delivery.LabelAdopt, "human", false)); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.sup.started) != 0 {
+		t.Fatalf("a second run on one milestone would put two agents on one branch, got %+v", h.sup.started)
+	}
+}
+
+func TestAdoption_NeverDeployedProjectRefusesClearly(t *testing.T) {
+	h := newHarness(t) // no runs at all
+
+	err := h.events.AdoptIssue(context.Background(), testOrg, testProject, AdoptTarget{Number: 31})
+	if !errors.Is(err, ErrNoDeployedMilestone) {
+		t.Fatalf("adoption without a deployed version must refuse with the actionable error, got %v", err)
+	}
+	if len(h.issues.assigned) != 0 || len(h.sup.started) != 0 {
+		t.Fatal("a refused adoption must write nothing")
+	}
+}
+
+// ---- the inertness gate ---------------------------------------------------
+
+// TestNoRunRow_EveryHandlerIsInert is the safety property that lets this
+// package land wired while the legacy pull_request handlers are still
+// registered on the same keys. With no milestone run rows — production, today
+// — every handler returns having touched nothing.
+func TestNoRunRow_EveryHandlerIsInert(t *testing.T) {
+	h := newHarness(t) // no run rows
+
+	deliveries := []struct {
+		event   string
+		payload []byte
+	}{
+		{"pull_request", prBody("opened", "aep/m7-c1", "Resolves #12", 42, false, false, "")},
+		{"pull_request", prBody("synchronize", "aep/m7-c1", "Resolves #12", 42, false, false, "")},
+		{"pull_request", prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123")},
+		{"issues", issueBody("closed", 12, 7, "aep", "human", false)},
+		{"issues", issueBody("milestoned", 12, 7, "aep", "human", true)},
+		{"issues", issueBody("labeled", 12, 0, delivery.LabelAdopt, "human", false)},
+	}
+	for _, d := range deliveries {
+		if err := h.deliver(t, d.event, d.payload); err != nil {
+			t.Fatalf("%s must not error with no run row: %v", d.event, err)
+		}
+	}
+	// A build terminal too — the other detection route into this package.
+	if err := h.events.OnBuildTerminal(context.Background(), delivery.BuildTerminal{
+		OrgID: testOrg, ProjectID: testProject, Component: "order-service", CommitSHA: "abc123", Succeeded: false,
+	}); err != nil {
+		t.Fatalf("build terminal must not error with no run row: %v", err)
+	}
+
+	if len(h.merger.merged) != 0 {
+		t.Errorf("no run row must mean no merge, got %v", h.merger.merged)
+	}
+	if len(h.issues.created) != 0 {
+		t.Errorf("no run row must mean no issue minted, got %v", h.issues.titles())
+	}
+	if len(h.issues.assigned) != 0 {
+		t.Errorf("no run row must mean no milestone assignment, got %v", h.issues.assigned)
+	}
+	if len(h.builds.triggered) != 0 {
+		t.Errorf("no run row must mean no build, got %v", h.builds.triggered)
+	}
+	if len(h.sup.signals) != 0 || len(h.sup.started) != 0 {
+		t.Errorf("no run row must mean nothing signalled or started, got %+v / %+v", h.sup.signals, h.sup.started)
+	}
+	if len(h.cycles.notedPR) != 0 || len(h.cycles.closed) != 0 {
+		t.Errorf("no run row must mean no cycle write, got %v / %v", h.cycles.notedPR, h.cycles.closed)
+	}
+}
