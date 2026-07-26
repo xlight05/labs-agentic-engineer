@@ -108,6 +108,16 @@ type issueService struct {
 	// map stays bounded by concurrent dedup creates rather than growing once per
 	// distinct repo this long-lived process has ever served.
 	createLocks keyedMutex
+	// ensuredLabels memoises the (repo, label, colour) triples this process has
+	// already created, so a batch that stamps the SAME label on every issue
+	// pays for it once instead of once per issue.
+	//
+	// It is a rate-limit property, not an optimisation: a plan mints N issues
+	// all labelled `aep` against a budget of 80 content-generating requests per
+	// minute, and without the memo that batch costs 2N requests rather than N.
+	// Skipping a repeat is safe because label creation is monotone — nothing in
+	// the platform deletes a label — and a process restart re-ensures anyway.
+	ensuredLabels sync.Map // "owner/repo\x00name\x00color" → struct{}
 }
 
 // keyedMutex is a per-key mutex pool that deletes a key's entry once no
@@ -200,17 +210,30 @@ func (s *issueService) CreateIssue(ctx context.Context, orgID, projectID string,
 
 	// Ensure all requested labels exist in the repo before creating the issue.
 	// GitHub silently drops labels that don't exist, so we create them up-front.
-	for _, label := range req.Labels {
-		color := labelColor(label)
-		if ensureErr := s.github.EnsureLabel(ctx, owner, repoName, cred, label, color); ensureErr != nil {
-			// Non-fatal: log and continue; the issue will be created without the missing label.
-			slog.WarnContext(ctx, "ensure github label failed", "label", label, "error", ensureErr)
-		}
-	}
+	s.ensureLabels(ctx, owner, repoName, cred, req.Labels)
 
 	// GitHub Projects v2 is dropped (tasks-github-native §4): no lazy board
 	// create/link/add on issue creation. Tasks are plain GitHub issues.
 	return s.github.CreateIssue(ctx, owner, repoName, cred, req)
+}
+
+// ensureLabels pre-creates every label that this process has not already
+// created on this repo, because GitHub silently DROPS labels that do not exist.
+// A failure is non-fatal and unmemoised: the issue lands without that label and
+// the next call tries again.
+func (s *issueService) ensureLabels(ctx context.Context, owner, repoName string, cred secrets.Credential, labels []string) {
+	for _, label := range labels {
+		color := labelColor(label)
+		key := owner + "/" + repoName + "\x00" + label + "\x00" + color
+		if _, done := s.ensuredLabels.Load(key); done {
+			continue
+		}
+		if ensureErr := s.github.EnsureLabel(ctx, owner, repoName, cred, label, color); ensureErr != nil {
+			slog.WarnContext(ctx, "ensure github label failed", "label", label, "error", ensureErr)
+			continue
+		}
+		s.ensuredLabels.Store(key, struct{}{})
+	}
 }
 
 // lockRepoCreates acquires the per-repo creation lock and returns its release
@@ -336,11 +359,7 @@ func (s *issueService) AddLabels(ctx context.Context, orgID, projectID string, n
 		return err
 	}
 	// Ensure each label exists first — GitHub silently drops unknown labels.
-	for _, label := range labels {
-		if ensureErr := s.github.EnsureLabel(ctx, owner, repoName, cred, label, labelColor(label)); ensureErr != nil {
-			slog.WarnContext(ctx, "ensure github label failed", "label", label, "error", ensureErr)
-		}
-	}
+	s.ensureLabels(ctx, owner, repoName, cred, labels)
 	return s.github.AddIssueLabels(ctx, owner, repoName, cred, number, labels)
 }
 
@@ -357,11 +376,7 @@ func (s *issueService) SetLabels(ctx context.Context, orgID, projectID string, n
 	if err != nil {
 		return err
 	}
-	for _, label := range labels {
-		if ensureErr := s.github.EnsureLabel(ctx, owner, repoName, cred, label, labelColor(label)); ensureErr != nil {
-			slog.WarnContext(ctx, "ensure github label failed", "label", label, "error", ensureErr)
-		}
-	}
+	s.ensureLabels(ctx, owner, repoName, cred, labels)
 	return s.github.SetIssueLabels(ctx, owner, repoName, cred, number, labels)
 }
 
