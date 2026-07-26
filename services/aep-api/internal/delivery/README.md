@@ -71,14 +71,30 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 ## Owns
 - The **executions** write-API (admit/finish/reevaluate through the funnel) and **workflow_runs**; the
   Temporal `Runtime`, `Signaler`, and the dev/task/validation workflows.
-- **Persistence**: the `executions` / `workflow_runs` / `coding_agent_logs` gorm and their entities live in
-  this domain — `repository_execution.go` · `repository_workflow_run.go` · `repository_coding_agent_log.go`
-  over the `execution.go` / `workflow_run.go` / `coding_agent_log.go` entities — as single write-authority.
+- The **milestone run** store: a run row per (org, project, milestone) — origin, small state, terminal
+  reason, budget counters, validation verdict — and one **cycle record per dispatch** under it (kind,
+  attempts, Job ref, branch, PR number, merge SHA). The milestone **number** is the key; the title is kept
+  only as the `v<N>` tag a `?tag=` query resolves through. Loop position is read from the latest cycle, and
+  per-component build/deploy status is derived from OpenChoreo on read — neither is stored.
+- **Persistence**: every gorm in this domain sits at the ROOT (the fence `TestGormFencedToDomainRepository`
+  draws), as single write-authority — `repository_execution.go` · `repository_workflow_run.go` ·
+  `repository_coding_agent_log.go` · `repository_run.go` · `repository_cycle.go` over the `execution.go` /
+  `workflow_run.go` / `coding_agent_log.go` / `milestone_run.go` / `run_cycle.go` entities. Their tables are
+  `executions` · `workflow_runs` · `coding_agent_logs` · `milestone_runs` · `run_cycles`.
 
 ## Invariants — don't break
 - **`task ⊥ execution`.** The GitHub-facing half (`task`) and the platform-owned half (`execution`) are
   peer sub-packages that never import each other; `task` reaches the funnel only through the root
   `Dispatcher` port. `TestTaskExecutionSplit` + `slice ⊥ sibling` both enforce it.
+- **One active spec run per project.** At most one non-terminal (`waiting`/`running`) `spec-build` milestone
+  run exists per (org, project) — a partial unique index (`ux_milestone_runs_spec_active`, created by the
+  `milestone_runs` migration; AutoMigrate cannot express one) that admission hits with
+  `INSERT … ON CONFLICT DO NOTHING`, so the invariant holds under concurrency and not merely under the
+  endpoint's pre-check. `incident-adoption` runs sit deliberately outside the index and execute
+  concurrently on their own milestones.
+- **Settled rows are never resurrected.** Every run and cycle mutator is a guarded update — fenced on the
+  run not being terminal, or the cycle not being closed — and returns `(nil, nil)` when it changes no row,
+  so a duplicate webhook or signal is a no-op rather than a rewrite of a recorded outcome.
 - **One funnel door.** Every Execution (coding, build, validation, provisioning) is admitted/finished/
   reevaluated through `execution`'s funnel — the single place org-fencing, dedup, and dep-gating live.
 - **The kernel names no feature.** The root holds only types/ports/Temporal infra; it never imports a

@@ -63,6 +63,8 @@ func BaseModels() []any {
 		&spec.AgentTurn{},
 		&delivery.DevflowRun{},
 		&projects.ActivityEvent{},
+		&delivery.MilestoneRun{},
+		&delivery.RunCycle{},
 	}
 }
 
@@ -137,6 +139,11 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		// (issues #154, #155, BE handshake #156). One idempotent CREATE TABLE
 		// + its (org_id, created_at) list index.
 		ctxStep("phase10_rca_agent_reports", RunPhase10RcaAgentReports),
+		// milestone_runs (AutoMigrated from the model) gains the spec-run mutex:
+		// a partial unique index admitting one non-terminal spec-build run per
+		// (org, project). Fresh schema — nothing to backfill from the legacy
+		// executions/workflow_runs tables.
+		ctxStep("milestone_runs", RunMilestoneRuns),
 	}
 }
 
