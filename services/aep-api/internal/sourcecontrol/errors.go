@@ -42,6 +42,11 @@ var (
 	// number exists on the repo (the host answered 404). Callers map it to
 	// their own not-found (e.g. task.ErrTaskNotFound → 404).
 	ErrIssueNotFound = errors.New("issue not found")
+	// ErrMilestoneNotFound is returned by the milestone reads when no milestone
+	// with the given number exists on the repo — a run row pinned to a
+	// milestone somebody deleted on GitHub. Distinguishes that recoverable
+	// state from a transport failure.
+	ErrMilestoneNotFound = errors.New("milestone not found")
 
 	// ErrTagAlreadyExists — Workspace.Tag (taken name / rejected push)
 	// returns it so the save flow recomputes the next tag.

@@ -27,6 +27,19 @@ package gittest
 // path 404s (so a caller's own not-found handling is exercised). Every request
 // — registered or not — is recorded for assertion via Requests(). Routing is on
 // r.URL.Path; query strings are ignored for matching but captured in the record.
+//
+// Three registration forms, narrowest first:
+//
+//   - On(method, path, status, body) — one fixed reply, forever.
+//   - OnSequence(method, path, responses...) — a scripted reply per call, for
+//     flows where one route must answer differently before and after a side
+//     effect (a create-then-recover retry hits the same list endpoint twice).
+//   - OnFunc(method, path, handler) — an arbitrary handler, for replies that
+//     depend on the request itself (paginated pages keyed on ?page=, or the
+//     single POST /graphql route serving several distinct operations).
+//
+// A later registration for a route replaces the earlier one whichever form is
+// used.
 
 import (
 	"io"
@@ -85,9 +98,52 @@ func NewStub(t *testing.T) *Stub {
 // On registers a fixed status+body for an exact method+path. A later On for the
 // same route replaces the earlier one.
 func (s *Stub) On(method, path string, status int, body string) {
+	s.OnFunc(method, path, writeJSON(status, body))
+}
+
+// OnFunc registers an arbitrary handler for an exact method+path, replacing any
+// earlier registration for that route. Use it when the reply depends on the
+// request — pagination keyed on ?page=, or the single POST /graphql route whose
+// operations are distinguishable only by body.
+func (s *Stub) OnFunc(method, path string, handler http.HandlerFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.routes[method+" "+path] = func(w http.ResponseWriter, _ *http.Request) {
+	s.routes[method+" "+path] = handler
+}
+
+// Response is one scripted reply in an OnSequence script.
+type Response struct {
+	Status int
+	Body   string
+}
+
+// OnSequence scripts successive replies for an exact method+path: the Nth call
+// gets responses[N-1], and every call past the end repeats the last response.
+// This is what On cannot express — a route whose answer changes because an
+// intervening call had a side effect (list-empty → create-conflicts →
+// list-now-populated recovery). Panics when the script is empty, which is
+// always a test bug.
+func (s *Stub) OnSequence(method, path string, responses ...Response) {
+	if len(responses) == 0 {
+		panic("gittest: OnSequence needs at least one response")
+	}
+	var mu sync.Mutex
+	calls := 0
+	s.OnFunc(method, path, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		i := calls
+		if i >= len(responses) {
+			i = len(responses) - 1
+		}
+		calls++
+		mu.Unlock()
+		writeJSON(responses[i].Status, responses[i].Body)(w, r)
+	})
+}
+
+// writeJSON is the fixed-reply handler shared by On and OnSequence.
+func writeJSON(status int, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, body)

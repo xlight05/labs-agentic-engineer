@@ -16,18 +16,19 @@
 
 package sourcecontrol_test
 
-// Shared fakes for the gitrepo unit tier. Fakes sit only at the two real edges
-// of these services — the credential seam (secrets.Resolver / Credential)
-// and the persistence seam (sourcecontrol.RepoRepository). The git-exec paths
-// run against a real gittest.Remote, and the GitHub HTTP paths run through the
-// REAL clients/github client pointed at gittest fakes (WithAPIBase /
-// WithGraphQLEndpoint). No service or client is mocked.
+// Shared fakes for the sourcecontrol unit tier. Fakes sit only at the two real
+// edges of these services — the credential seam (secrets.Resolver /
+// Credential) and the persistence seam (sourcecontrol.RepoRepository). The
+// git-exec paths run against a real gittest.Remote, and the GitHub HTTP paths
+// run through the REAL githubhost client pointed at a gittest.Stub (WithAPIBase
+// for REST, WithGraphQLEndpoint for the milestone predicate). No service or
+// client is mocked.
 //
-// These tests live in the external gitrepo_test package (not white-box
-// gitrepo): they construct the real client from clients/github, which imports
-// gitrepo, so a white-box test would form an import cycle. Unexported-helper
-// tests (detectDefaultBranch, slugifyProjectName, normalizeAppPath) stay
-// white-box in repo_internal_test.go / issue_body_test.go.
+// These tests live in the external sourcecontrol_test package (not white-box
+// sourcecontrol): they construct the real client from githubhost, which imports
+// sourcecontrol, so a white-box test would form an import cycle.
+// Unexported-helper tests (detectDefaultBranch, slugifyProjectName) stay
+// white-box in repo_internal_test.go.
 
 import (
 	"context"

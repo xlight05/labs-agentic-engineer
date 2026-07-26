@@ -25,9 +25,9 @@
 //   - NewRemote(t): a bare repo in t.TempDir() acting as a file:// origin
 //     (clone/fetch/push work unchanged; GIT_ASKPASS never fires on file
 //     remotes). Seed/Tag/read helpers arrange and assert via git plumbing.
-//   - NewStub(t): a route-registry httptest fake for the plain JSON endpoints
-//     (repos/issues/webhooks/GraphQL) where a git-backed fake would be
-//     over-engineering.
+//   - NewStub(t): a route-registry httptest fake for the JSON endpoints —
+//     repos, issues, milestones, webhooks, and the single POST /graphql
+//     endpoint — where a git-backed fake would be over-engineering.
 //
 // Hermeticity: every git subprocess runs with GIT_CONFIG_GLOBAL/SYSTEM pointed
 // at os.DevNull and a fixed identity supplied via env, so a run depends on

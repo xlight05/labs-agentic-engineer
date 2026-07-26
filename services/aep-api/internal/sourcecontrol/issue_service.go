@@ -67,6 +67,24 @@ type IssueService interface {
 	// request — the path-based build trigger's input for mapping a merged PR's
 	// diff onto the components whose source it touched.
 	ListPullRequestFiles(ctx context.Context, orgID, projectID string, number int) ([]string, error)
+
+	// The milestone surface — one spec version's delivery increment and ledger.
+	// Implementations in milestone_ops.go.
+
+	// CreateMilestone creates the version's milestone idempotently, returning
+	// its number and whether this call minted it.
+	CreateMilestone(ctx context.Context, orgID, projectID string, req CreateMilestoneRequest) (*MilestoneResult, error)
+	// CloseMilestone closes a milestone at settle. Display only.
+	CloseMilestone(ctx context.Context, orgID, projectID string, number int) error
+	// ListMilestones returns the project's milestones in the given state
+	// ("open" | "closed" | "all"; empty ⇒ "all").
+	ListMilestones(ctx context.Context, orgID, projectID, state string) ([]Milestone, error)
+	// ListMilestoneIssues returns a milestone's issues, filtered by state and
+	// label — the version ledger's read. Excludes pull requests.
+	ListMilestoneIssues(ctx context.Context, orgID, projectID string, filter MilestoneIssuesFilter) ([]IssueInfo, error)
+	// MilestoneIssueCounts returns a milestone's open gate-issue and open total
+	// issue counts — the run supervisor's dispatch predicate.
+	MilestoneIssueCounts(ctx context.Context, orgID, projectID string, number int) (*MilestoneIssueCounts, error)
 }
 
 type issueService struct {
@@ -403,10 +421,22 @@ func ParseOwnerRepo(cloneURL string) (owner, repo string, err error) {
 
 // labelColor returns a hex color (without #) for well-known AEP labels,
 // falling back to a neutral grey for anything else (e.g. phase-N labels).
+//
+// Every label in the platform's vocabulary belongs here: the create / add / set
+// paths pre-create each label through EnsureLabel before use because GitHub
+// silently DROPS labels that do not exist, so an unlisted label still lands —
+// just in the default grey. A missing entry is a colour bug, never a
+// correctness one.
 func labelColor(name string) string {
 	switch name {
 	case "aep":
-		return "0075ca" // blue
+		return "0075ca" // blue — agent work
+	case "aep:provision":
+		return "d93f0b" // red-orange — a gate holding dispatch
+	case "aep:validation":
+		return "0e8a16" // green — the validation cycle
+	case "aep:codingagent":
+		return "5319e7" // violet — the GitHub-side adoption trigger
 	case "implementation":
 		return "7057ff" // purple
 	case "pending":

@@ -27,10 +27,11 @@ import (
 	githubclient "github.com/wso2/aep/aep-api/internal/sourcecontrol/githubhost"
 )
 
-// newIssueSvcOnStub wires a REAL issueService (and REAL REST client) at the
-// stub. The repo resolves (org1, proj1) → github.com/acme/widgets, so every
-// GitHub call lands under /repos/acme/widgets on the stub. Tasks are plain
-// GitHub issues now (Projects v2 dropped) — no board ops on creation.
+// newIssueSvcOnStub wires a REAL issueService (and REAL client) at the stub.
+// The repo resolves (org1, proj1) → github.com/acme/widgets, so every REST call
+// lands under /repos/acme/widgets on the stub; GraphQL lands on the single
+// POST /graphql route. Tasks are plain GitHub issues now (Projects v2 dropped)
+// — no board ops on creation.
 func newIssueSvcOnStub(t *testing.T, stub *gittest.Stub) sourcecontrol.IssueService {
 	t.Helper()
 	repo := newFakeRepoRepo()
@@ -38,7 +39,11 @@ func newIssueSvcOnStub(t *testing.T, stub *gittest.Stub) sourcecontrol.IssueServ
 		OrgID: "org1", ProjectID: "proj1",
 		RepoURL: "https://github.com/acme/widgets",
 	})
-	return sourcecontrol.NewIssueService(repo, githubclient.NewClient(githubclient.WithAPIBase(stub.URL)), fakeResolver{})
+	client := githubclient.NewClient(
+		githubclient.WithAPIBase(stub.URL),
+		githubclient.WithGraphQLEndpoint(stub.URL+"/graphql"),
+	)
+	return sourcecontrol.NewIssueService(repo, client, fakeResolver{})
 }
 
 func TestCreateIssue_SendsTitleBodyLabelsAndParsesResult(t *testing.T) {

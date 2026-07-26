@@ -17,11 +17,13 @@
 // Package github is the GitHub implementation of gitrepo's provider ports.
 //
 // A single *Client satisfies sourcecontrol.Host — the REST surface (repo / issue /
-// pull-request / webhook / app-installation) in client.go. The git-object
-// (Git-Data) surface is gone: all repo content reads/writes run on the
-// disk-backed Workspace engine (internal/platform/gitfs).
+// milestone / pull-request / webhook / app-installation) in client.go and
+// milestones.go. The git-object (Git-Data) surface is gone: all repo content
+// reads/writes run on the disk-backed Workspace engine (internal/platform/gitfs).
 // GitHub Projects v2 is dropped (tasks-github-native §4): Tasks are plain
-// GitHub issues, so there is no GraphQL board surface.
+// GitHub issues, so there is no board surface. GraphQL (graphql.go) survives
+// only for the milestone dispatch predicate, which REST cannot answer in one
+// call — REST vs GraphQL never leaks past the port either way.
 //
 // This is the only place in the codebase that builds Authorization: Bearer
 // headers (authHeaders / the App-JWT and pat paths). Selected by GIT_PROVIDER
@@ -51,6 +53,11 @@ type Client struct {
 	// apiBase is the GitHub REST API root, default "https://api.github.com".
 	// Overridable only via WithAPIBase (a test seam).
 	apiBase string
+	// graphqlEndpoint is the GitHub GraphQL (v4) endpoint, default
+	// "https://api.github.com/graphql" — a separate host path, not derivable
+	// from apiBase. Overridable only via WithGraphQLEndpoint (a test seam).
+	// See graphql.go.
+	graphqlEndpoint string
 }
 
 // Option configures the client at construction. Production wiring passes no
@@ -69,8 +76,9 @@ func WithAPIBase(base string) Option {
 // NewClient builds the GitHub host client. Production wiring passes no options.
 func NewClient(opts ...Option) sourcecontrol.Host {
 	c := &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		apiBase:    "https://api.github.com",
+		httpClient:      &http.Client{Timeout: 30 * time.Second},
+		apiBase:         "https://api.github.com",
+		graphqlEndpoint: defaultGraphQLEndpoint,
 	}
 	for _, o := range opts {
 		o(c)

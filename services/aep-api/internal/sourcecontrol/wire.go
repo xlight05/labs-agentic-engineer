@@ -19,6 +19,7 @@ package sourcecontrol
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
 )
@@ -57,11 +58,77 @@ type CreateOrgRepoRequest struct {
 // callers that may fire concurrently for one incident (e.g. the OpenChoreo
 // SRE/RCA handoff, one run per alert rule) — they pass a stable key like
 // `sre-rca/<component>` so only the first run files an issue.
+// This struct is marshalled straight onto the wire by the host adapter, so
+// every field but DedupeKey is a GitHub field.
 type CreateIssueRequest struct {
-	Title     string   `json:"title"`
-	Body      string   `json:"body"`
-	Labels    []string `json:"labels,omitempty"`
-	DedupeKey string   `json:"dedupeKey,omitempty"`
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Labels []string `json:"labels,omitempty"`
+	// Milestone assigns the issue to a milestone at creation time — one call
+	// instead of create-then-patch, which is what keeps a plan's API cost at
+	// 1+N. It is the milestone NUMBER; GitHub answers 422 to a title here. Nil
+	// leaves the issue unassigned.
+	Milestone *int   `json:"milestone,omitempty"`
+	DedupeKey string `json:"dedupeKey,omitempty"`
+}
+
+// ----- Milestones -----
+
+// A milestone is one spec version's delivery increment and ledger: the tag's
+// issues (implementation, gate, validation, incident) join it over time.
+//
+// Number is the only stable key — titles are freely renamable, and while
+// create-uniqueness is case-SENSITIVE the issues-list title filter is
+// case-INSENSITIVE, so a case-twin pair would silently merge. Platform code
+// therefore resolves by number and never matches on title.
+
+// CreateMilestoneRequest maps to the fields we send to
+// POST /repos/{owner}/{repo}/milestones.
+type CreateMilestoneRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+}
+
+// MilestoneResult is the outcome of a milestone create. Created reports whether
+// this call minted the milestone; false means one with that title already
+// existed (found by the case-insensitive pre-check, or recovered from GitHub's
+// 422 already_exists) and Number refers to it. Either way the caller holds a
+// usable number, which makes creation idempotent.
+type MilestoneResult struct {
+	Number  int
+	Created bool
+}
+
+// Milestone is the subset of a GitHub milestone the platform reads. State is
+// "open" | "closed" — display only: platform logic never branches on it, and
+// closed milestones still accept new issues.
+type Milestone struct {
+	Number      int
+	Title       string
+	State       string
+	Description string
+	NodeID      string
+}
+
+// MilestoneIssuesFilter narrows a milestone's issue list.
+// State is "open" | "closed" | "all" (empty ⇒ the host default, "open").
+// Labels is AND-semantics — an issue must carry all of them.
+type MilestoneIssuesFilter struct {
+	Number int
+	State  string
+	Labels []string
+}
+
+// MilestoneIssueCounts is the run supervisor's dispatch predicate input: the
+// number of OPEN issues on a milestone carrying the gate label, and the number
+// of OPEN issues on it in total. Dispatch iff OpenProvision == 0 && OpenTotal > 0.
+//
+// These are issue counts, never pull-request counts — the reason the predicate
+// is a GraphQL query over milestone.issues rather than the REST milestone's
+// open_issues field, which counts PRs too.
+type MilestoneIssueCounts struct {
+	OpenProvision int
+	OpenTotal     int
 }
 
 // IssueResult is the issue metadata returned after creation. Deduped reports
@@ -167,6 +234,56 @@ func IsHTTPStatus(err error, code int) bool {
 	var he *HTTPStatusError
 	if errors.As(err, &he) {
 		return he.StatusCode == code
+	}
+	return false
+}
+
+// GraphQLError carries the errors[] array of a GraphQL response. GraphQL
+// answers 200 with a populated errors[] rather than an HTTP status, so this is
+// the GraphQL analogue of HTTPStatusError: the whole array is preserved (not
+// flattened to a first message) because the machine-readable Type is what
+// callers branch on — NOT_FOUND for a stale milestone number is recoverable,
+// RATE_LIMITED is retryable, anything else is a bug.
+type GraphQLError struct {
+	Errors []GraphQLErrorDetail
+	// Query is the operation that failed, for debug logging at the call site.
+	Query string
+}
+
+// GraphQLErrorDetail is one entry of a GraphQL response's errors[]. Path is the
+// response path the error applies to; its elements are field names or list
+// indices, hence any.
+type GraphQLErrorDetail struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Path    []any  `json:"path"`
+}
+
+func (e *GraphQLError) Error() string {
+	msgs := make([]string, 0, len(e.Errors))
+	for _, d := range e.Errors {
+		if d.Type != "" {
+			msgs = append(msgs, d.Type+": "+d.Message)
+			continue
+		}
+		msgs = append(msgs, d.Message)
+	}
+	return "github graphql error: " + strings.Join(msgs, "; ")
+}
+
+// IsGraphQLType reports true when err is a GraphQLError carrying at least one
+// error of the given machine-readable type (e.g. "NOT_FOUND", "RATE_LIMITED").
+//
+//deadcode:keep phase-A: wired by the milestone plan path (phase C) — remove then
+func IsGraphQLType(err error, typ string) bool {
+	var ge *GraphQLError
+	if !errors.As(err, &ge) {
+		return false
+	}
+	for _, d := range ge.Errors {
+		if d.Type == typ {
+			return true
+		}
 	}
 	return false
 }

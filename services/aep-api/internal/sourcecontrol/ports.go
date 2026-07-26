@@ -54,7 +54,9 @@ type RepoAdmin interface {
 	CreateOrgRepo(ctx context.Context, cred secrets.Credential, req CreateOrgRepoRequest) (cloneURL string, err error)
 }
 
-// IssueOps is the issue surface (create / list / close / comment / labels).
+// IssueOps is the issue surface (create / list / close / comment / labels) plus
+// the pull-request and milestone ops that are issue-shaped on the host side —
+// GitHub serves pull requests and milestone membership through the issues API.
 // Consumed by issueService.
 type IssueOps interface {
 	CreateIssue(ctx context.Context, owner, repo string, cred secrets.Credential, req CreateIssueRequest) (*IssueResult, error)
@@ -101,6 +103,27 @@ type IssueOps interface {
 	// request. The path-based build trigger maps these onto the components whose
 	// source they touched so a merged PR rebuilds every affected component.
 	ListPullRequestFiles(ctx context.Context, owner, repo string, cred secrets.Credential, number int) ([]string, error)
+
+	// CreateMilestone creates a milestone and returns its number, minting it or
+	// adopting an existing one with that title. Implementations MUST be
+	// idempotent and MUST enforce case-insensitive title uniqueness: the host's
+	// own uniqueness check is case-sensitive while its title filters are not,
+	// so a case-twin pair would silently merge on every subsequent read.
+	CreateMilestone(ctx context.Context, owner, repo string, cred secrets.Credential, req CreateMilestoneRequest) (*MilestoneResult, error)
+	// CloseMilestone closes a milestone. Display only — member issues are
+	// untouched, and a closed milestone still accepts new ones.
+	CloseMilestone(ctx context.Context, owner, repo string, cred secrets.Credential, number int) error
+	// ListMilestones returns every milestone in the given state
+	// ("open" | "closed" | "all"; empty ⇒ "all"). The list must be complete,
+	// not a first page — CreateMilestone's uniqueness pre-check reads it.
+	ListMilestones(ctx context.Context, owner, repo string, cred secrets.Credential, state string) ([]Milestone, error)
+	// ListMilestoneIssues returns a milestone's issues, filtered by state and
+	// label. Addressed by milestone NUMBER. Pull requests are excluded.
+	ListMilestoneIssues(ctx context.Context, owner, repo string, cred secrets.Credential, filter MilestoneIssuesFilter) ([]IssueInfo, error)
+	// MilestoneIssueCounts returns a milestone's open gate-issue and open total
+	// issue counts — the run supervisor's dispatch predicate. Returns
+	// ErrMilestoneNotFound when no milestone carries that number.
+	MilestoneIssueCounts(ctx context.Context, owner, repo string, cred secrets.Credential, number int) (*MilestoneIssueCounts, error)
 }
 
 // WebhookOps is the repo-webhook surface. Consumed by webhookService.
