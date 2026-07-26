@@ -139,8 +139,16 @@ func TestProvision_SeedsFlatLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(skills) != 11 {
-		t.Fatalf("seeded catalog size = %d, want 11", len(skills))
+	// A freshly provisioned org's catalog is exactly the embedded library —
+	// nothing else has been added yet. Derived from loadLibrary over the same
+	// tree the seed read from, so this never needs bumping when a skill is
+	// added to or removed from skills/.
+	embedded, err := loadLibrary(testLibraryFS(t))
+	if err != nil {
+		t.Fatalf("loadLibrary: %v", err)
+	}
+	if len(skills) != len(embedded) {
+		t.Fatalf("seeded catalog size = %d, want %d (embedded library size)", len(skills), len(embedded))
 	}
 
 	paths := lsTree(t, c, "org1")
@@ -223,10 +231,16 @@ func TestReconcile_MigratesLegacyRepo(t *testing.T) {
 	for _, sk := range skills {
 		byName[sk.Name] = sk
 	}
-	// The full embedded library is back (11) plus the preserved custom skill,
-	// minus nothing — react-webapp is user-owned now. retired is purged.
-	if len(skills) != 12 {
-		t.Fatalf("catalog size after migration = %d, want 12: %+v", len(skills), skillKeysOf(byName))
+	// The full embedded library is back plus the preserved custom skill
+	// ("mine"), minus nothing — react-webapp is user-owned now. retired is
+	// purged. Derived from loadLibrary rather than a literal so this never
+	// needs bumping when a skill is added to or removed from skills/.
+	embedded, err := loadLibrary(testLibraryFS(t))
+	if err != nil {
+		t.Fatalf("loadLibrary: %v", err)
+	}
+	if want := len(embedded) + 1; len(skills) != want {
+		t.Fatalf("catalog size after migration = %d, want %d: %+v", len(skills), want, skillKeysOf(byName))
 	}
 	if _, ok := byName["retired"]; ok {
 		t.Fatalf("retired legacy builtin must be purged")

@@ -192,7 +192,7 @@ func TestSkillsComponent_PlatformSkillsReadOnlySurface(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 
-	// Listed, editable=false, all five present.
+	// Listed, editable=false, every embedded platform skill present.
 	resp := h.AsOrg("acme").Get(base)
 	if resp.Code != 200 {
 		t.Fatalf("list: want 200, got %d body=%s", resp.Code, resp.Body.String())
@@ -212,8 +212,10 @@ func TestSkillsComponent_PlatformSkillsReadOnlySurface(t *testing.T) {
 			}
 		}
 	}
-	if platform != 7 {
-		t.Fatalf("want 7 platform skills in the list, got %d: %s", platform, resp.Body.String())
+	// Derived from the real embedded library (not a literal) so this never
+	// needs bumping when a skill is added to or removed from skills/.
+	if want := spec.EmbeddedLibraryCount(t, spec.SkillKindPlatform); platform != want {
+		t.Fatalf("want %d platform skills in the list, got %d: %s", want, platform, resp.Body.String())
 	}
 
 	// Resolvable read-only…

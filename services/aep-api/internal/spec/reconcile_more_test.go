@@ -24,6 +24,7 @@ package spec
 
 import (
 	"context"
+	"io/fs"
 	"testing"
 	"testing/fstest"
 )
@@ -214,22 +215,31 @@ func TestEnsureProvisioned_Guards(t *testing.T) {
 }
 
 // The unified embedded library: every skill vendored from repo-root skills/
-// loads with its kind read from frontmatter — platform for the 7 generation
+// loads with its kind read from frontmatter — platform for the 8 generation
 // skills (stamped metadata.aep.kind: platform), org for the 4 unmarked stack
 // skills (absent → org). One loader, one source tree.
 func TestLoadEmbeddedLibrary(t *testing.T) {
 	t.Parallel()
-	got, err := loadLibrary(testLibraryFS(t))
+	fsys := testLibraryFS(t)
+	got, err := loadLibrary(fsys)
 	if err != nil {
 		t.Fatalf("loadEmbeddedLibrary: %v", err)
 	}
 	by := nameSet(got)
-	if len(got) != 11 {
-		t.Fatalf("library size = %d, want 11: %v", len(got), skillKeysOf(by))
+	// Every top-level dir under skills/ is presently a well-formed skill, so
+	// the loader must carry all of them through. Derived from the tree itself
+	// (not a hardcoded literal) so this never needs bumping when a skill is
+	// added to or removed from skills/.
+	dirs, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		t.Fatalf("read skills dir: %v", err)
+	}
+	if len(got) != len(dirs) {
+		t.Fatalf("library size = %d, want %d (dirs in skills/): %v", len(got), len(dirs), skillKeysOf(by))
 	}
 	wantKinds := map[string]string{
 		"api-management": "org", "go": "org", "react-webapp": "org", "thunder-authentication": "org",
-		"cell-architecture-dsl": "platform", "excalidraw-wireframes": "platform",
+		"cell-architecture-dsl": "platform", "excalidraw-wireframes": "platform", "grilling": "platform",
 		"high-level-architecture": "platform", "openapi-conventions": "platform",
 		"task-breakdown": "platform", "task-planning": "platform", "validation-criteria": "platform",
 	}

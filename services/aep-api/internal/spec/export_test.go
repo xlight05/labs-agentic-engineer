@@ -79,6 +79,30 @@ func NewComponentStoreWithLibrary(t *testing.T, library fs.FS) *ComponentStore {
 	return &ComponentStore{Svc: svc, host: host}
 }
 
+// EmbeddedLibraryCount returns the number of skills of the given kind (e.g.
+// SkillKindPlatform) in the real embedded library (repo-root skills/, via
+// loadLibrary), for external test packages (spec_test) that assert against
+// the catalog's kind composition without hardcoding a literal that rots every
+// time a skill is added to or removed from skills/. kind == "" counts every
+// embedded skill regardless of kind.
+func EmbeddedLibraryCount(t *testing.T, kind string) int {
+	t.Helper()
+	skills, err := loadLibrary(testLibraryFS(t))
+	if err != nil {
+		t.Fatalf("loadLibrary: %v", err)
+	}
+	if kind == "" {
+		return len(skills)
+	}
+	n := 0
+	for _, sk := range skills {
+		if sk.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
+
 // DriftOrg rewrites an org-kind skill's SKILL.md directly on the org's ORIGIN
 // (advancing main), so a subsequent read/UpdatesAvailable sees a repo copy
 // whose content differs from the embedded copy — the state that drives the "updates available"
