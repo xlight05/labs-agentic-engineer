@@ -26,8 +26,11 @@ compile error, not a runtime surprise.
 - Each service **owns** the OpenAPI it produces, stored under
   `packages/contracts/<service>/openapi.yaml`.
 - Internal events are JSON Schema under `packages/contracts/events/`.
-- Generated clients/servers are produced into gitignored `generated/` / `*.gen.go`
-  as a build/dev prestep — never hand-edited.
+- Generated clients/servers are never hand-edited. Whether they are committed
+  differs by consumer: aep-api's contract codegen (`internal/gen/`, `internal/igen/`)
+  and the OpenChoreo client are **committed**, with `make gen-api-check` as the CI
+  freshness gate; the console's `apps/console/src/generated/` is gitignored and
+  regenerated as a build prestep.
 
 ## Codegen pipeline
 

@@ -18,9 +18,10 @@ The coding agent **researches the provider's contract freely from the web**.
 runner pod) let it read the API/SDK's own docs and specs at build time. For a
 `rest-api` external, `specPath` may be **a URL** (recorded as-is — not
 fetched-and-stored) **or** a user-provided committed spec file; either way it is
-a *source-of-truth hint*, not a cage — the dispatch tells the agent to use it
-where it applies and research the provider's docs for anything it does not
-cover. The design-time store-and-restrict machinery is retired (the schema
+a *source-of-truth hint*, not a cage — the `aep` skill and the resolved-
+dependencies comment tell the agent to use it where it applies and research
+the provider's docs for anything it does not cover. The design-time
+store-and-restrict machinery is retired (the schema
 fields `specUrl`, `sources`, and `candidates[].docsUrl` are removed; the
 derived-state resolution of ADR-0003 stands, with `needs-spec` still gating a
 `rest-api` that has neither a URL nor a file).
