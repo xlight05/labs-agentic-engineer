@@ -112,7 +112,11 @@ type Milestone struct {
 
 // MilestoneIssuesFilter narrows a milestone's issue list.
 // State is "open" | "closed" | "all" (empty ⇒ the host default, "open").
-// Labels is AND-semantics — an issue must carry all of them.
+//
+// Labels is AND-semantics — an issue must carry all of them. That is the REST
+// endpoint behind this call. It does NOT generalise: the GraphQL query behind
+// MilestoneIssueCounts filters on labels too, and there the argument is a
+// UNION. Adding a label here narrows; adding one there widens.
 type MilestoneIssuesFilter struct {
 	Number int
 	State  string
@@ -128,10 +132,12 @@ type MilestoneIssuesFilter struct {
 // run's WORKING SET is the first minus the gates and minus the validation issue
 // — read it through OpenNonGateWork, never by subtracting fields by hand.
 //
-// The label kinds are NOT assumed disjoint: a gate may also carry "aep". Every
-// overlap is therefore counted on its own so the working set comes out right
-// either way. The fields are raw populations; OpenNonGateWork owns the only
-// arithmetic over them.
+// The label kinds are NOT assumed disjoint: a gate may also carry "aep". The
+// populations are therefore expressed as UNIONS, because the host's labels:
+// argument is a union filter — an issue matches when it carries ANY of the
+// listed labels, not all of them. A union filter cannot express an
+// intersection, so the working set is taken as a set DIFFERENCE of two unions
+// instead, which needs no intersection term at all.
 //
 // These are issue counts, never pull-request counts — the reason the predicate
 // is a GraphQL query over milestone.issues rather than the REST milestone's
@@ -143,18 +149,13 @@ type MilestoneIssueCounts struct {
 	// OpenTotal is every open issue in the milestone, ledger included. It says
 	// whether the milestone is finished, not whether it is workable.
 	OpenTotal int
-	// OpenWork is every open "aep" issue — the working set before exclusions.
-	OpenWork int
-	// OpenWorkGate is the "aep" ∩ "aep:provision" overlap.
-	OpenWorkGate int
-	// OpenWorkValidation is the "aep" ∩ "aep:validation" overlap: the validation
-	// issue is the validation cycle's, never a coding cycle's.
-	OpenWorkValidation int
-	// OpenWorkGateValidation is the "aep" ∩ "aep:provision" ∩ "aep:validation"
-	// overlap. Nonsensical in practice, but counting it is what makes
-	// OpenNonGateWork exact inclusion-exclusion rather than a guess that a
-	// doubly-labelled issue cannot exist.
-	OpenWorkGateValidation int
+	// OpenWorkOrExcluded is |"aep" ∪ "aep:provision" ∪ "aep:validation"|: every
+	// open issue that is agent work or an exclusion from it.
+	OpenWorkOrExcluded int
+	// OpenExcluded is |"aep:provision" ∪ "aep:validation"|: the exclusions on
+	// their own. Gates are never a coding cycle's work, and the validation issue
+	// is the validation cycle's.
+	OpenExcluded int
 }
 
 // OpenNonGateWork is the size of the run's working set: open, "aep"-labelled,
@@ -162,18 +163,20 @@ type MilestoneIssueCounts struct {
 // computed, so the dispatch predicate and any later settle check cannot drift
 // apart on what "work" means.
 //
-// Inclusion-exclusion over the overlaps, which is why it is exact even when an
-// issue carries several label kinds at once. Nil-tolerant: an unknown milestone
-// has no work.
+// The set difference (A ∪ E) \ E, which is exactly the "aep" issues carrying
+// neither exclusion label — exact even when an issue carries several label
+// kinds at once, and without needing an intersection the host cannot count.
+// Nil-tolerant: an unknown milestone has no work.
 func (c *MilestoneIssueCounts) OpenNonGateWork() int {
 	if c == nil {
 		return 0
 	}
-	n := c.OpenWork - c.OpenWorkGate - c.OpenWorkValidation + c.OpenWorkGateValidation
+	n := c.OpenWorkOrExcluded - c.OpenExcluded
 	if n < 0 {
-		// Unreachable against a consistent host: the overlaps are subsets of
-		// OpenWork. Clamped anyway so a host that answers inconsistently degrades
-		// to "nothing to work" instead of inventing a negative working set.
+		// Unreachable against a consistent host: OpenExcluded counts a subset of
+		// what OpenWorkOrExcluded counts. Clamped anyway so a host that answers
+		// inconsistently degrades to "nothing to work" instead of inventing a
+		// negative working set.
 		return 0
 	}
 	return n

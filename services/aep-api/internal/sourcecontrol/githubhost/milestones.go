@@ -240,6 +240,9 @@ func (c *Client) ListMilestoneIssues(ctx context.Context, owner, repo string, cr
 	}
 	if len(filter.Labels) > 0 {
 		// Comma-joined = AND semantics; escaped because label names are free text.
+		// NOTE the asymmetry with GraphQL, whose labels: argument over the same
+		// resource is a UNION (see milestoneIssueCountsQuery). REST narrows as you
+		// add labels, GraphQL widens — do not carry an assumption between them.
 		query.Set("labels", strings.Join(filter.Labels, ","))
 	}
 
@@ -293,24 +296,26 @@ func (c *Client) ListMilestoneIssues(ctx context.Context, owner, repo string, cr
 //
 // One call is load-bearing: this runs at every cycle boundary, and fanning the
 // populations out into a query per label would multiply the rate-limit cost of
-// the loop's hottest read. It stays one call because GraphQL's labels: argument
-// is AND-semantics, so each intersection is just another alias on the same
-// milestone selection.
+// the loop's hottest read.
 //
-// The work aliases are the working set and its exclusions, counted separately
-// rather than assumed disjoint — a gate that also carries "aep" is a shape the
-// label vocabulary permits, and only the overlaps make the subtraction exact.
-// The label literals mirror internal/delivery's vocabulary; they are spelled
-// here because the host adapter may not import a domain.
+// The labels: argument is a UNION filter — an issue matches when it carries ANY
+// of the listed labels. It cannot express an intersection, so the aliases here
+// are unions and the working set is their DIFFERENCE:
+//
+//	|"aep" ∪ exclusions| - |exclusions| = the "aep" issues carrying neither
+//
+// which is exact without an intersection term, and stays one round trip. Do not
+// "fix" an alias by listing several labels expecting an AND — that widens the
+// population and silently empties the working set. The label literals mirror
+// internal/delivery's vocabulary; they are spelled here because the host adapter
+// may not import a domain.
 const milestoneIssueCountsQuery = `query($owner: String!, $repo: String!, $m: Int!) {
   repository(owner: $owner, name: $repo) {
     milestone(number: $m) {
-      provision:   issues(states: [OPEN], labels: ["aep:provision"], first: 1) { totalCount }
-      allOpen:     issues(states: [OPEN], first: 1) { totalCount }
-      work:        issues(states: [OPEN], labels: ["aep"], first: 1) { totalCount }
-      workGate:    issues(states: [OPEN], labels: ["aep", "aep:provision"], first: 1) { totalCount }
-      workVal:     issues(states: [OPEN], labels: ["aep", "aep:validation"], first: 1) { totalCount }
-      workGateVal: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1) { totalCount }
+      provision:      issues(states: [OPEN], labels: ["aep:provision"], first: 1) { totalCount }
+      allOpen:        issues(states: [OPEN], first: 1) { totalCount }
+      workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1) { totalCount }
+      excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation"], first: 1) { totalCount }
     }
   }
 }`
@@ -327,12 +332,10 @@ func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, c
 	var data struct {
 		Repository *struct {
 			Milestone *struct {
-				Provision   countAlias `json:"provision"`
-				AllOpen     countAlias `json:"allOpen"`
-				Work        countAlias `json:"work"`
-				WorkGate    countAlias `json:"workGate"`
-				WorkVal     countAlias `json:"workVal"`
-				WorkGateVal countAlias `json:"workGateVal"`
+				Provision      countAlias `json:"provision"`
+				AllOpen        countAlias `json:"allOpen"`
+				WorkOrExcluded countAlias `json:"workOrExcluded"`
+				Excluded       countAlias `json:"excluded"`
 			} `json:"milestone"`
 		} `json:"repository"`
 	}
@@ -345,11 +348,9 @@ func (c *Client) MilestoneIssueCounts(ctx context.Context, owner, repo string, c
 	}
 	ms := data.Repository.Milestone
 	return &sourcecontrol.MilestoneIssueCounts{
-		OpenProvision:          ms.Provision.TotalCount,
-		OpenTotal:              ms.AllOpen.TotalCount,
-		OpenWork:               ms.Work.TotalCount,
-		OpenWorkGate:           ms.WorkGate.TotalCount,
-		OpenWorkValidation:     ms.WorkVal.TotalCount,
-		OpenWorkGateValidation: ms.WorkGateVal.TotalCount,
+		OpenProvision:      ms.Provision.TotalCount,
+		OpenTotal:          ms.AllOpen.TotalCount,
+		OpenWorkOrExcluded: ms.WorkOrExcluded.TotalCount,
+		OpenExcluded:       ms.Excluded.TotalCount,
 	}, nil
 }

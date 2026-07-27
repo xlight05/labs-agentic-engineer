@@ -204,13 +204,63 @@ func (f *fakeIssues) withWork(milestone int, numbers ...int) *fakeIssues {
 // ("aep", non-gate, non-validation) and grand total. work and total are stated
 // separately on purpose — the gap between them is the ledger, the population
 // the dispatch predicate must ignore.
+//
+// The numbers are a DESCRIPTION of the milestone, not the counts themselves:
+// they are turned into labelled issues and then counted the way the host counts
+// them. A fake that let a test state the counts directly is what let the
+// dispatch predicate ship with the wrong arithmetic.
 func (f *fakeIssues) withCounts(milestone, provision, work, total int) *fakeIssues {
-	f.counts[milestone] = &sourcecontrol.MilestoneIssueCounts{
-		OpenProvision: provision,
-		OpenWork:      work,
-		OpenTotal:     total,
+	ledger := total - provision - work
+	if ledger < 0 {
+		panic(fmt.Sprintf("fakeIssues.withCounts: total %d is smaller than %d gates plus %d work",
+			total, provision, work))
 	}
+	labels := make([][]string, 0, total)
+	for range provision {
+		labels = append(labels, []string{delivery.LabelProvisionGate})
+	}
+	for range work {
+		labels = append(labels, []string{delivery.LabelAgentWork})
+	}
+	for range ledger {
+		labels = append(labels, nil) // human-filed: no "aep", never worked
+	}
+	f.counts[milestone] = hostCounts(labels...)
 	return f
+}
+
+// hostCounts answers a milestone's open-issue populations the way the REAL host
+// does, given each open issue's labels.
+//
+// The one rule it exists to hold: GitHub GraphQL's `labels:` argument is a
+// UNION filter — an issue matches when it carries ANY of the listed labels. It
+// is NOT an intersection (that is the REST `?labels=a,b` parameter, a different
+// API over the same resource). A fake that modelled it as an intersection is
+// precisely why a working set computed by inclusion-exclusion over label
+// overlaps passed its tests and then read every real milestone as empty.
+//
+// Anything that wants a milestone's counts in this package goes through here,
+// so no test can state a population the host could not produce.
+func hostCounts(issues ...[]string) *sourcecontrol.MilestoneIssueCounts {
+	anyOf := func(want ...string) int {
+		n := 0
+		for _, have := range issues {
+			for _, w := range want {
+				if delivery.HasLabel(have, w) {
+					n++
+					break
+				}
+			}
+		}
+		return n
+	}
+	return &sourcecontrol.MilestoneIssueCounts{
+		OpenProvision: anyOf(delivery.LabelProvisionGate),
+		OpenWorkOrExcluded: anyOf(delivery.LabelAgentWork,
+			delivery.LabelProvisionGate, delivery.LabelValidationWork),
+		OpenExcluded: anyOf(delivery.LabelProvisionGate, delivery.LabelValidationWork),
+		OpenTotal:    len(issues),
+	}
 }
 
 // CreateIssue reproduces the issue service's dedupe contract: a non-empty
@@ -231,10 +281,36 @@ func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontr
 	return &sourcecontrol.IssueResult{Number: f.next}, nil
 }
 
+// ListMilestoneIssues narrows the way the REST endpoint behind it does: its
+// `?labels=a,b` parameter is AND — an issue must carry ALL of them.
+//
+// Note the ASYMMETRY with MilestoneIssueCounts below, whose GraphQL `labels:`
+// argument over the same resource is a UNION. Two APIs, two rules; carrying one
+// across to the other is the bug this fake pair exists to keep honest.
 func (f *fakeIssues) ListMilestoneIssues(_ context.Context, _, _ string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.byMilestone[filter.Number], nil
+	var out []sourcecontrol.IssueInfo
+	for _, issue := range f.byMilestone[filter.Number] {
+		if filter.State != "" && filter.State != "all" && !strings.EqualFold(issue.State, filter.State) {
+			continue
+		}
+		if !hasAllLabels(issue.Labels, filter.Labels) {
+			continue
+		}
+		out = append(out, issue)
+	}
+	return out, nil
+}
+
+// hasAllLabels is the REST filter's AND rule.
+func hasAllLabels(have, want []string) bool {
+	for _, w := range want {
+		if !delivery.HasLabel(have, w) {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *fakeIssues) MilestoneIssueCounts(_ context.Context, _, _ string, number int) (*sourcecontrol.MilestoneIssueCounts, error) {
@@ -418,15 +494,25 @@ func (f *fakeSupervisor) named(name string) []delivery.RunSignal {
 }
 
 // fakeComponents records the pre-build component ensures the fan-out runs, and
-// can be scripted to refuse one.
+// can be scripted to refuse one. EnsureComponent is called once per component
+// from fanOutBuilds' per-component goroutine, so the recorded state needs the
+// same mutex discipline as every other fake in this file. Assertions on
+// `ensured` still read the field directly (matching fakeBuilds.triggered and
+// friends elsewhere in this file) because fanOutBuilds' wg.Wait happens-before
+// any test observes the result — the mutex is here to serialise the
+// goroutines against EACH OTHER, not against the test.
 type fakeComponents struct {
+	mu      sync.Mutex
 	ensured []string
 	failFor string
 }
 
 func (f *fakeComponents) EnsureComponent(_ context.Context, _, _, component string) error {
+	f.mu.Lock()
 	f.ensured = append(f.ensured, component)
-	if component == f.failFor {
+	fail := component == f.failFor
+	f.mu.Unlock()
+	if fail {
 		return fmt.Errorf("design has no component %q", component)
 	}
 	return nil

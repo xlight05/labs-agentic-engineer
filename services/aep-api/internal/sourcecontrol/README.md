@@ -52,10 +52,16 @@ and installation lifecycle.*
   case-insensitive uniqueness at create and callers key on the number. Issue counts come from the
   GraphQL predicate; a milestone's `open_issues` counts pull requests and is never read.
 - **`MilestoneIssueCounts` is ONE call, and its exclusions are computed in ONE place.** The dispatch
-  predicate runs at every cycle boundary, so the gate, working-set and overlap populations ride a
-  single aliased GraphQL query; label intersections are expressible because `labels:` is AND-semantics.
-  Callers read the working set through `OpenNonGateWork()` and never subtract fields themselves — the
-  label kinds are not assumed disjoint, and the overlap arithmetic must not be duplicated.
+  predicate runs at every cycle boundary, so the gate and working-set populations ride a single
+  aliased GraphQL query. GraphQL's `labels:` argument is a **UNION** — an issue matches when it
+  carries ANY listed label — so an intersection is NOT expressible and the working set is taken as a
+  DIFFERENCE of two unions instead: `|aep ∪ exclusions| − |exclusions|`. Callers read it through
+  `OpenNonGateWork()` and never subtract fields themselves; the label kinds are not assumed disjoint,
+  and the arithmetic must not be duplicated.
+- **REST narrows on labels, GraphQL widens.** `ListMilestoneIssues`' REST `?labels=a,b` is AND (an
+  issue must carry all of them); the GraphQL `labels:` above is OR. Two APIs over one resource, two
+  rules — carrying an assumption from one to the other silently empties the working set, and the
+  fakes on both sides model their own rule so a test cannot hide it.
 - Ports here are **nil-tolerant**: an unwired service answers 503, never panics — the component harness
   wires only the feature under test, and `edge`'s `sourceControlOrEmpty` preserves that for an unwired
   domain.

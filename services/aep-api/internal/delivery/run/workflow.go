@@ -171,12 +171,11 @@ func (l *loop) run(ctx workflow.Context) (RunResult, error) {
 		if !Dispatchable(snap) {
 			// An open gate is a deliberate human brake. Park in the unbounded wait
 			// — cancel is its only expiry — and re-derive when anything happens.
-			if err := l.setState(ctx, delivery.RunStateWaiting); err != nil {
-				return l.result(), err
+			cancelled, perr := l.park(ctx)
+			if perr != nil {
+				return l.result(), perr
 			}
-			l.st.Phase = delivery.RunPhaseWaiting
-			l.st.CycleKind = ""
-			if l.await(ctx) {
+			if cancelled {
 				return l.settle(ctx, delivery.RunStateCancelled, "")
 			}
 			continue
@@ -205,7 +204,8 @@ func (l *loop) run(ctx workflow.Context) (RunResult, error) {
 // onEmptyWorkingSet decides what an exhausted milestone means. Four different
 // things, in this order:
 //
-//  1. Nothing was ever dispatched — the version planned no work. Succeeded.
+//  1. Nothing has EVER been dispatched — there is no increment to call
+//     delivered, so the run waits rather than settling. See below.
 //  2. The last cycle ended badly and NOTHING came back to recover it. The
 //     recovery issue the event plane should have minted is not there, so the
 //     run cannot proceed and fails naming the budget that ran out.
@@ -213,13 +213,38 @@ func (l *loop) run(ctx workflow.Context) (RunResult, error) {
 //     issue and work it with a fresh dispatch of the same loop.
 //  4. Otherwise the version is delivered.
 //
-// It returns settled=false only for the one case that continues: a validation
-// cycle that passed, after which the boundary is re-entered so anything adopted
-// while validation ran is picked up.
+// Case 1 is the one that must NOT settle. "Empty working set" means delivered
+// only in contrast to work this run actually did; with zero cycles behind it
+// the same reading is indistinguishable from a milestone whose issues have not
+// been minted yet — the plan path admits the run row BEFORE its planning turn
+// (so the spec mutex is armed across it), so a poll can legitimately land in
+// that window and see nothing. Settling there closes a version nobody built.
+// §7's wait is unbounded and cancel is its only expiry, so the run parks and
+// re-derives on every `issues` webhook and at the poll backstop.
+//
+// What ends such a run, then: work arriving (it dispatches), a human cancelling
+// (§7's only expiry), or — when the planning turn itself failed and no issue is
+// ever coming — the PLAN PATH settling the row it armed with
+// RunReasonPlanFailed. Those two cannot race: the plan path starts the
+// supervisor only after planning returns, so a run that failed to plan has no
+// workflow behind it, and a workflow that exists is past planning. The
+// repository's non-terminal guard on Settle is the backstop if that ordering
+// ever changes — the first settle wins, and this loop never issues one here.
+//
+// It returns settled=false for the two cases that continue: the zero-cycle wait
+// above, and a validation cycle that passed — after which the boundary is
+// re-entered so anything adopted while validation ran is picked up.
 func (l *loop) onEmptyWorkingSet(ctx workflow.Context) (settled bool, res RunResult, err error) {
 	if l.st.CyclesTotal == 0 {
-		res, err = l.settle(ctx, delivery.RunStateSucceeded, "")
-		return true, res, err
+		cancelled, perr := l.park(ctx)
+		if perr != nil {
+			return true, l.result(), perr
+		}
+		if cancelled {
+			res, err = l.settle(ctx, delivery.RunStateCancelled, "")
+			return true, res, err
+		}
+		return false, RunResult{}, nil
 	}
 	switch l.lastResult {
 	case cycleRed:
@@ -337,6 +362,22 @@ func (l *loop) result() RunResult {
 		ValidationVerdict: l.st.ValidationVerdict,
 		Cycles:            l.st.CyclesTotal,
 	}
+}
+
+// park puts the run into the WAITING state — row and live status together —
+// and blocks there until something worth re-deriving happens. It returns true
+// only for cancel.
+//
+// Both of the loop's holds go through it, because they are the same state seen
+// from two sides: a gate holding the next dispatch, and a milestone that has
+// not produced any work yet. Neither is a run that is finished.
+func (l *loop) park(ctx workflow.Context) (cancelled bool, err error) {
+	if serr := l.setState(ctx, delivery.RunStateWaiting); serr != nil {
+		return false, serr
+	}
+	l.st.Phase = delivery.RunPhaseWaiting
+	l.st.CycleKind = ""
+	return l.await(ctx), nil
 }
 
 // await parks the run in the unbounded wait. It returns true only for cancel —

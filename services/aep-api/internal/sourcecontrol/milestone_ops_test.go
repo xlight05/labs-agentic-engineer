@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -267,10 +268,10 @@ func TestListMilestoneIssues_NumberRequired(t *testing.T) {
 // predicate: ONE GraphQL round trip carrying every aliased population, and
 // never a read of the REST milestone's PR-contaminated open_issues.
 //
-// The label intersections are the point. GraphQL's labels: argument is
-// AND-semantics, which is what lets the working set and its exclusions ride
-// the same milestone selection instead of a query per label — and the
-// per-cycle-boundary predicate must stay one call.
+// The label UNIONS are the point. The labels: argument matches an issue
+// carrying ANY of the listed labels, so the working set rides one milestone
+// selection as a difference of two unions rather than a query per label — and
+// the per-cycle-boundary predicate must stay one call.
 func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	t.Parallel()
 	stub := gittest.NewStub(t)
@@ -278,10 +279,8 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 		`{"data":{"repository":{"milestone":{
 			"provision":{"totalCount":1},
 			"allOpen":{"totalCount":9},
-			"work":{"totalCount":5},
-			"workGate":{"totalCount":1},
-			"workVal":{"totalCount":1},
-			"workGateVal":{"totalCount":0}
+			"workOrExcluded":{"totalCount":5},
+			"excluded":{"totalCount":2}
 		}}}}`)
 	svc := newIssueSvcOnStub(t, stub)
 
@@ -291,12 +290,13 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	}
 	want := sourcecontrol.MilestoneIssueCounts{
 		OpenProvision: 1, OpenTotal: 9,
-		OpenWork: 5, OpenWorkGate: 1, OpenWorkValidation: 1, OpenWorkGateValidation: 0,
+		OpenWorkOrExcluded: 5, OpenExcluded: 2,
 	}
 	if *counts != want {
 		t.Fatalf("counts = %+v, want %+v", *counts, want)
 	}
-	// 5 "aep" issues, of which one is a gate and one is the validation issue.
+	// 5 issues are work-or-excluded, of which 2 are exclusions (a gate and the
+	// validation issue), leaving 3 workable.
 	if got := counts.OpenNonGateWork(); got != 3 {
 		t.Fatalf("OpenNonGateWork = %d, want 3", got)
 	}
@@ -315,12 +315,10 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 		t.Fatalf("variables = %+v, want {acme widgets 9}", payload.Variables)
 	}
 	for _, want := range []string{
-		`provision:   issues(states: [OPEN], labels: ["aep:provision"], first: 1)`,
-		`allOpen:     issues(states: [OPEN], first: 1)`,
-		`work:        issues(states: [OPEN], labels: ["aep"], first: 1)`,
-		`workGate:    issues(states: [OPEN], labels: ["aep", "aep:provision"], first: 1)`,
-		`workVal:     issues(states: [OPEN], labels: ["aep", "aep:validation"], first: 1)`,
-		`workGateVal: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1)`,
+		`provision:      issues(states: [OPEN], labels: ["aep:provision"], first: 1)`,
+		`allOpen:        issues(states: [OPEN], first: 1)`,
+		`workOrExcluded: issues(states: [OPEN], labels: ["aep", "aep:provision", "aep:validation"], first: 1)`,
+		`excluded:       issues(states: [OPEN], labels: ["aep:provision", "aep:validation"], first: 1)`,
 		"milestone(number: $m)",
 	} {
 		if !strings.Contains(payload.Query, want) {
@@ -330,58 +328,137 @@ func TestMilestoneIssueCounts_SendsAliasedQueryAndParsesCounts(t *testing.T) {
 	if strings.Contains(payload.Query, "open_issues") || strings.Contains(payload.Query, "openIssueCount") {
 		t.Fatalf("query reads a PR-contaminated count:\n%s", payload.Query)
 	}
+	// Exactly four aliased populations. A fifth would mean somebody re-added an
+	// INTERSECTION alias — the "aep" ∩ gate overlap the old inclusion-exclusion
+	// arithmetic needed. The argument cannot express an intersection, so such an
+	// alias is a WIDER union wearing an overlap's name, and it silently empties
+	// the working set.
+	if got := strings.Count(payload.Query, "issues(states: [OPEN]"); got != 4 {
+		t.Fatalf("query has %d aliased populations, want exactly 4:\n%s", got, payload.Query)
+	}
 	if req.Header.Get("Authorization") != "Bearer test-token" {
 		t.Fatalf("graphql Authorization = %q, want the credential's bearer token", req.Header.Get("Authorization"))
 	}
 }
 
+// The label vocabulary, spelled here rather than imported: `sourcecontrol` is
+// below `delivery` and must not depend on it. The literals are the same ones
+// milestoneIssueCountsQuery embeds, which is the coupling under test.
+const (
+	labelWork  = "aep"
+	labelGate  = "aep:provision"
+	labelValid = "aep:validation"
+)
+
+// hostCounts answers the populations the REAL host would report for a milestone
+// holding these open issues.
+//
+// It exists because the shipped arithmetic was wrong for exactly one reason: a
+// belief that GraphQL's `labels:` argument intersects. It UNIONS — an issue
+// matches when it carries ANY listed label. (The AND-semantics filter is the
+// REST `?labels=a,b` parameter, a different API over the same resource.) Every
+// case below is therefore stated as issues-and-labels and counted through this
+// function, so no case can assert against a population GitHub cannot produce.
+func hostCounts(issues ...[]string) *sourcecontrol.MilestoneIssueCounts {
+	anyOf := func(want ...string) int {
+		n := 0
+		for _, have := range issues {
+			for _, w := range want {
+				if slices.Contains(have, w) {
+					n++
+					break
+				}
+			}
+		}
+		return n
+	}
+	return &sourcecontrol.MilestoneIssueCounts{
+		OpenProvision:      anyOf(labelGate),
+		OpenWorkOrExcluded: anyOf(labelWork, labelGate, labelValid),
+		OpenExcluded:       anyOf(labelGate, labelValid),
+		OpenTotal:          len(issues),
+	}
+}
+
 // TestMilestoneIssueCounts_WorkingSetArithmetic pins the ONE place the working
-// set is computed. The exclusions are inclusion-exclusion over the overlap
-// counts, so an issue carrying several label kinds is subtracted exactly once —
-// the label kinds are not assumed disjoint, because nothing on GitHub stops a
-// gate from also carrying the agent-work label.
+// set is computed, over the populations a UNION-filtering host actually
+// returns. It is the difference of two unions, so an issue carrying several
+// label kinds is excluded exactly once — the label kinds are not assumed
+// disjoint, because nothing on GitHub stops a gate from also carrying the
+// agent-work label.
 func TestMilestoneIssueCounts_WorkingSetArithmetic(t *testing.T) {
 	t.Parallel()
+	var (
+		task   = []string{labelWork}
+		gate   = []string{labelGate}
+		valid  = []string{labelWork, labelValid}
+		ledger = []string(nil)
+	)
 	cases := []struct {
 		name   string
 		counts *sourcecontrol.MilestoneIssueCounts
 		want   int
 	}{
-		{
-			"a milestone of plain agent work",
-			&sourcecontrol.MilestoneIssueCounts{OpenWork: 3, OpenTotal: 3},
-			3,
-		},
+		{"a milestone of plain agent work", hostCounts(task, task, task), 3},
 		{
 			// Human-filed issues with no "aep" label are the milestone's LEDGER:
 			// they inflate the total and are never work.
 			"ledger issues are not work",
-			&sourcecontrol.MilestoneIssueCounts{OpenWork: 0, OpenTotal: 4},
-			0,
+			hostCounts(ledger, ledger, ledger, ledger), 0,
+		},
+		{
+			// THE LIVE FAILURE, exactly as it stood: one coding task alongside one
+			// provision gate. The gate is excluded; the task is NOT. Read as an
+			// empty working set, the run settles a version nobody built.
+			"a gate alongside real work leaves the work visible",
+			hostCounts(task, gate), 1,
 		},
 		{
 			"gates and the validation issue come out of the working set",
-			&sourcecontrol.MilestoneIssueCounts{OpenWork: 5, OpenWorkGate: 1, OpenWorkValidation: 1, OpenTotal: 7},
-			3,
+			hostCounts(task, task, task, gate, valid, ledger, ledger), 3,
 		},
 		{
-			// Subtracted by both exclusion terms; the triple-overlap term adds it
-			// back exactly once.
+			// One issue carrying BOTH exclusion labels is one member of the
+			// exclusion union, so it comes out exactly once.
 			"an issue in both exclusions is not subtracted twice",
-			&sourcecontrol.MilestoneIssueCounts{OpenWork: 2, OpenWorkGate: 1, OpenWorkValidation: 1, OpenWorkGateValidation: 1, OpenTotal: 2},
-			1,
+			hostCounts(task, []string{labelWork, labelGate, labelValid}), 1,
 		},
 		{
+			// Not producible by hostCounts, and that is the point: the clamp guards
+			// against a host that answers inconsistently, not against a milestone.
 			"an inconsistent host cannot produce negative work",
-			&sourcecontrol.MilestoneIssueCounts{OpenWork: 0, OpenWorkGate: 2},
+			&sourcecontrol.MilestoneIssueCounts{OpenWorkOrExcluded: 0, OpenExcluded: 2},
 			0,
 		},
 		{"an unknown milestone has no work", nil, 0},
 	}
 	for _, c := range cases {
 		if got := c.counts.OpenNonGateWork(); got != c.want {
-			t.Errorf("OpenNonGateWork(%s) = %d, want %d", c.name, got, c.want)
+			t.Errorf("OpenNonGateWork(%s) = %d, want %d (counts %+v)", c.name, got, c.want, c.counts)
 		}
+	}
+}
+
+// TestMilestoneIssueCounts_AGateHoldsWorkItDoesNotErase is the live regression
+// in one assertion pair: the working set of a freshly planned milestone is ONE
+// task whether or not its provision gate is still open. The gate holds the
+// dispatch (the predicate's other clause, in `delivery`); it must never make
+// the milestone read as empty, because empty is what closes the version.
+func TestMilestoneIssueCounts_AGateHoldsWorkItDoesNotErase(t *testing.T) {
+	t.Parallel()
+	gated := hostCounts([]string{labelWork}, []string{labelGate})
+	if got := gated.OpenNonGateWork(); got != 1 {
+		t.Fatalf("working set behind an open gate = %d, want 1 (counts %+v)", got, gated)
+	}
+	if gated.OpenProvision != 1 {
+		t.Fatalf("gates = %d, want 1", gated.OpenProvision)
+	}
+	released := hostCounts([]string{labelWork})
+	if got := released.OpenNonGateWork(); got != 1 {
+		t.Fatalf("working set after the gate closed = %d, want 1 (counts %+v)", got, released)
+	}
+	if released.OpenProvision != 0 {
+		t.Fatalf("gates after the gate closed = %d, want 0", released.OpenProvision)
 	}
 }
 

@@ -195,6 +195,16 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   milestones still accept new issues, and a failed or cancelled increment leaves its milestone OPEN
   because the way forward from it is more work in the same version. A stray gate never blocks settle:
   gates hold dispatch, and with an empty working set they hold nothing.
+- **A run that has never dispatched does not settle on an empty working set — it waits.** "Nothing
+  left to do" means DELIVERED only in contrast to work the run actually did; with zero cycles behind
+  it the same reading is indistinguishable from a milestone whose issues have not been minted yet,
+  because the version is claimed before it is planned (above) and a poll can land inside that window.
+  So the run parks in the unbounded wait and re-derives on every `issues` webhook and at the poll
+  backstop. Three things end it: work arriving, a human cancelling, or — when the planning turn itself
+  failed and no issue is ever coming — the plan path settling the row it armed with `plan-failed`.
+  Those two writers cannot race: the plan path starts the supervisor only after planning returns, so a
+  run that failed to plan has no workflow behind it, and the repository's non-terminal guard on
+  `Settle` is the backstop if that ordering ever changes.
 - **One task queue, one worker.** `run.WorkerWatcher` owns it: a task queue must be served by ONE worker
   that knows every workflow on it, and the run supervisor is the only workflow left. Two workers polling
   one queue with disjoint registrations would fail whichever tasks each picked up by accident.

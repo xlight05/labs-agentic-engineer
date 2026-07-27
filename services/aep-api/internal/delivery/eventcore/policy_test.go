@@ -104,59 +104,98 @@ func TestDecideAutoMerge(t *testing.T) {
 }
 
 // TestDispatchable pins the predicate against the populations a milestone can
-// actually hold. The cases that matter are the ones where "some issue is open"
-// and "there is work to do" part company: a ledger-only milestone, a milestone
-// whose only open work is the validation issue, and a gate that also carries
-// the agent-work label.
+// actually hold. Every case is stated as the milestone's OPEN ISSUES and their
+// labels, and turned into counts by hostCounts — the union filter the real host
+// applies. Stating counts directly is how a predicate that reads every real
+// milestone as empty passes its own tests.
+//
+// The cases that matter are the ones where "some issue is open" and "there is
+// work to do" part company: a ledger-only milestone, a milestone whose only
+// open work is the validation issue, and a gate that also carries the
+// agent-work label.
 func TestDispatchable(t *testing.T) {
+	var (
+		task     = []string{delivery.LabelAgentWork}
+		gate     = []string{delivery.LabelProvisionGate}
+		valid    = []string{delivery.LabelAgentWork, delivery.LabelValidationWork}
+		ledger   = []string(nil)
+		workGate = []string{delivery.LabelAgentWork, delivery.LabelProvisionGate}
+	)
 	cases := []struct {
 		name   string
 		counts *sourcecontrol.MilestoneIssueCounts
 		want   bool
 	}{
-		{
-			"one open task, no gate",
-			&sourcecontrol.MilestoneIssueCounts{OpenProvision: 0, OpenWork: 1, OpenTotal: 1},
-			true,
-		},
+		{"one open task, no gate", hostCounts(task), true},
 		{
 			// The regression this predicate exists to prevent: human-filed issues
 			// with no "aep" label are the milestone's LEDGER. They are never worked,
 			// so a milestone holding nothing else has an empty working set.
 			"only ledger issues are open",
-			&sourcecontrol.MilestoneIssueCounts{OpenProvision: 0, OpenWork: 0, OpenTotal: 4},
-			false,
+			hostCounts(ledger, ledger, ledger, ledger), false,
 		},
 		{
 			// The validation issue belongs to the run's validation cycle, not to a
 			// coding cycle, so it is not work a dispatch can pick up.
-			"only the validation issue is open",
-			&sourcecontrol.MilestoneIssueCounts{OpenProvision: 0, OpenWork: 1, OpenWorkValidation: 1, OpenTotal: 1},
-			false,
+			"only the validation issue is open", hostCounts(valid), false,
+		},
+		{
+			// THE LIVE FAILURE. One planned task alongside one provision gate: the
+			// gate holds dispatch, but the task is real work and the milestone is
+			// NOT empty. Read as empty, the run settles a version nobody built.
+			"a gate alongside one real task holds dispatch",
+			hostCounts(task, gate), false,
+		},
+		{
+			// …and the moment the gate closes, that same task is dispatchable. This
+			// is the pair that catches an arithmetic which always answers zero.
+			"the gate closes and the task is dispatchable",
+			hostCounts(task), true,
 		},
 		{
 			"an open gate holds dispatch even with work waiting",
-			&sourcecontrol.MilestoneIssueCounts{OpenProvision: 1, OpenWork: 3, OpenTotal: 4},
-			false,
+			hostCounts(task, task, task, gate), false,
 		},
 		{
 			// A gate carrying "aep" too: the gate clause already holds dispatch, and
 			// the gate must not be double-counted into the working set either.
-			"a gate that also carries the work label",
-			&sourcecontrol.MilestoneIssueCounts{OpenProvision: 1, OpenWork: 1, OpenWorkGate: 1, OpenTotal: 1},
-			false,
+			"a gate that also carries the work label", hostCounts(workGate), false,
 		},
-		{
-			"everything closed",
-			&sourcecontrol.MilestoneIssueCounts{},
-			false,
-		},
+		{"everything closed", hostCounts(), false},
 		{"unknown milestone", nil, false},
 	}
 	for _, c := range cases {
 		if got := dispatchable(c.counts); got != c.want {
-			t.Errorf("dispatchable(%s) = %v, want %v", c.name, got, c.want)
+			t.Errorf("dispatchable(%s) = %v, want %v (counts %+v)", c.name, got, c.want, c.counts)
 		}
+	}
+}
+
+// TestDispatchable_TheGateIsTheOnlyThingHolding is the live failure told as the
+// sequence it actually was: a freshly planned milestone holds one coding task
+// and one provision gate, and the ONLY reason it may not dispatch is the gate.
+// Its working set is one issue throughout — before the gate resolves and after.
+func TestDispatchable_TheGateIsTheOnlyThingHolding(t *testing.T) {
+	gated := hostCounts(
+		[]string{delivery.LabelAgentWork},     // the planned task
+		[]string{delivery.LabelProvisionGate}, // the dependency gate
+	)
+	if got, want := gated.OpenNonGateWork(), 1; got != want {
+		t.Fatalf("working set behind the gate = %d, want %d (counts %+v)", got, want, gated)
+	}
+	if gated.OpenProvision != 1 {
+		t.Fatalf("gates = %d, want 1", gated.OpenProvision)
+	}
+	if dispatchable(gated) {
+		t.Fatal("an open gate must hold the dispatch")
+	}
+
+	released := hostCounts([]string{delivery.LabelAgentWork})
+	if got, want := released.OpenNonGateWork(), 1; got != want {
+		t.Fatalf("working set after the gate closed = %d, want %d", got, want)
+	}
+	if !dispatchable(released) {
+		t.Fatal("the closed gate must release the task the milestone was holding")
 	}
 }
 

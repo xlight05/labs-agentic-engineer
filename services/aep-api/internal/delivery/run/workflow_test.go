@@ -252,6 +252,23 @@ func (h *harness) dispatchCount() int {
 	return len(h.dispatches)
 }
 
+// closedCount is the milestone-close tally, read safely. Tests that assert
+// after the workflow completed read h.closed directly; a test that asserts
+// MID-RUN, from a delayed callback, races the activity goroutine and must not.
+func (h *harness) closedCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.closed
+}
+
+// settledState is the run row's terminal state so far, read safely, for the
+// same mid-run reason. Empty means nothing has settled the run.
+func (h *harness) settledState() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.settle.State
+}
+
 // assertSettled checks the run's terminal write and the workflow result agree —
 // the row is what the console reads, the result is what Temporal records, and a
 // run that disagreed with itself would be unexplainable.
@@ -650,19 +667,67 @@ func TestQueryRunStatus(t *testing.T) {
 	require.Equal(t, delivery.RunStateSucceeded, res.State)
 }
 
-// TestEmptyMilestone_SettlesWithoutDispatching: a version whose plan produced no
-// work is delivered, not failed — and it never dispatches an agent at a
-// milestone with nothing in it.
-func TestEmptyMilestone_SettlesWithoutDispatching(t *testing.T) {
+// TestZeroCycleRun_WaitsForWorkInsteadOfSettling is the regression for a run
+// that closed its version having never dispatched anything.
+//
+// The plan path admits the run row BEFORE its planning turn, so the supervisor
+// can legitimately poll a milestone whose issues have not been minted yet. An
+// empty working set at that moment means "not planned yet", not "delivered" —
+// the run must park in §7's unbounded wait, and the work that arrives
+// afterwards must still be worked.
+func TestZeroCycleRun_WaitsForWorkInsteadOfSettling(t *testing.T) {
 	h := newHarness(t)
-	h.milestoneIs(MilestoneSnapshot{})
+	h.milestoneIs(
+		MilestoneSnapshot{},                  // the planning turn has not minted its issues yet
+		MilestoneSnapshot{Work: 1, Total: 1}, // they land
+		MilestoneSnapshot{},                  // and the cycle delivers them
+	)
+
+	var waiting delivery.RunStatus
+	var closedWhileWaiting, dispatchedWhileWaiting int
+	var settledWhileWaiting string
+	h.env.RegisterDelayedCallback(func() {
+		resp, err := h.env.QueryWorkflow(delivery.QueryRunStatus)
+		require.NoError(t, err)
+		require.NoError(t, resp.Get(&waiting))
+		closedWhileWaiting, dispatchedWhileWaiting = h.closedCount(), h.dispatchCount()
+		settledWhileWaiting = h.settledState()
+		h.env.SignalWorkflow(delivery.SigRunWorkable, delivery.RunSignal{Signal: delivery.SigRunWorkable})
+	}, time.Second)
+	h.signal(delivery.SigRunPRMerged, 2*time.Second)
 
 	h.run(delivery.RunOriginSpecBuild, 0)
 	res := h.result(t)
 
+	require.Equal(t, delivery.RunStateWaiting, waiting.State,
+		"a run that has never dispatched must park on an empty working set, not settle")
+	require.Equal(t, delivery.RunPhaseWaiting, waiting.Phase)
+	require.Equal(t, "", settledWhileWaiting, "nothing may write the run's outcome while it waits")
+	require.Equal(t, 0, closedWhileWaiting, "the version's milestone must still be open")
+	require.Equal(t, 0, dispatchedWhileWaiting)
+
+	// The work that arrived later is picked up by the very next boundary.
 	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
+	require.Equal(t, []string{delivery.CycleKindCoding}, h.dispatchKinds())
+	require.Equal(t, 1, res.Cycles)
+	require.Equal(t, 1, h.closed, "the milestone closes only once the run delivered something")
+}
+
+// TestZeroCycleRun_WaitsUntilCancelled is the other half of the same rule: the
+// wait is UNBOUNDED. A milestone that never receives work is not a delivered
+// version, however many poll backstops pass — only a human cancelling ends it,
+// and a cancelled increment keeps its milestone open.
+func TestZeroCycleRun_WaitsUntilCancelled(t *testing.T) {
+	h := newHarness(t)
+	h.milestoneIs(MilestoneSnapshot{})
+	h.signal(delivery.SigRunCancel, time.Hour) // several poll backstops later
+
+	h.run(delivery.RunOriginSpecBuild, 0)
+	res := h.result(t)
+
+	h.assertSettled(t, res, delivery.RunStateCancelled, "")
 	require.Equal(t, 0, h.dispatchCount())
-	require.Equal(t, delivery.ValidationVerdictSkipped, res.ValidationVerdict)
+	require.Equal(t, 0, h.closed, "a run that delivered nothing must not close the version")
 }
 
 // dedupeStates collapses repeated run-state writes so a test can assert the
