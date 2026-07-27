@@ -19,6 +19,10 @@
 export const buildKeys = {
   all: (projectName: string) =>
     ["projects", "detail", projectName, "builds"] as const,
+  /** The version ledger — one row per built spec version tag. */
   list: (projectName: string) =>
     [...buildKeys.all(projectName), "list"] as const,
+  /** One version's whole run story: its milestone runs and their cycles. */
+  runs: (projectName: string, tag: string) =>
+    [...buildKeys.all(projectName), "runs", tag] as const,
 };

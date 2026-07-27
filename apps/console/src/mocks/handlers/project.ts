@@ -5,6 +5,7 @@ import { http, HttpResponse, type JsonBodyType } from "msw";
 import {
   componentDeployments,
   componentOpenApi,
+  projectBuildRuns,
   projectBuilds,
   projectComponents,
   projectSectionError,
@@ -24,6 +25,11 @@ import {
   streamFrames,
   taskDetailOf,
 } from "../fixtures/task-log";
+import {
+  isTerminalRunState,
+  runCycleLines,
+  runHeartbeatLine,
+} from "../fixtures/run-progress";
 import { projectUsage } from "../fixtures/usage";
 
 function scenario(): ProjectScenario {
@@ -77,9 +83,90 @@ export const projectHandlers = [
         : projectTasks[s],
     );
   }),
-  // Builds page (#185): the per-tag build history.
+  // Builds page: the version ledger (also feeds the overview's version menu).
   http.get("*/api/v1/projects/:projectName/builds", () =>
     respond((s) => projectBuilds[s]),
+  ),
+  // …and one version's whole run story: run rows + cycle records, DB-only.
+  http.get("*/api/v1/projects/:projectName/builds/:tag/runs", ({ params }) =>
+    respond((s) => ({ ...projectBuildRuns[s], tag: String(params.tag) })),
+  ),
+  // Cancel: 202 means the SIGNAL was sent — the run row flips to `cancelled`
+  // when the supervisor acts on it, which is why there is no body to return.
+  http.post("*/api/v1/projects/:projectName/runs/:runId/cancel", () => {
+    if (scenario() === "error") {
+      return HttpResponse.json(projectSectionError, { status: 503 });
+    }
+    return new HttpResponse(null, { status: 202 });
+  }),
+  // The run feed: ONE SSE stream for the whole run, frames grouped by cycle.
+  // ONLY a terminal run settles it — a live run's stream stays open, which is
+  // the property the console's reconnect logic is written against.
+  http.get(
+    "*/api/v1/projects/:projectName/runs/:runId/progress",
+    ({ request }) => {
+      const s = scenario();
+      if (s === "error") {
+        return HttpResponse.json(projectSectionError, { status: 500 });
+      }
+      const runs = projectBuildRuns[s].runs;
+      const run = runs[0];
+      const encoder = new TextEncoder();
+      let timer: ReturnType<typeof setInterval> | undefined;
+
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const send = (data: string) =>
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          const delay = (ms: number) =>
+            new Promise((resolve) => setTimeout(resolve, ms));
+
+          let seq = 0;
+          for (const [i, cycle] of (run?.cycles ?? []).entries()) {
+            if (request.signal.aborted) return controller.close();
+            send(JSON.stringify({ type: "cycle", cycle }));
+            for (const line of runCycleLines(cycle, i, seq)) {
+              if (request.signal.aborted) return controller.close();
+              send(JSON.stringify({ type: "line", line }));
+              seq = (line.seq ?? seq) + 1;
+              await delay(120);
+            }
+          }
+          if (!run || isTerminalRunState(run.state)) {
+            send(JSON.stringify({ type: "done", state: run?.state ?? "succeeded" }));
+            send("[DONE]");
+            controller.close();
+            return;
+          }
+          // Live run: heartbeat lines on the newest cycle until disconnect.
+          const last = run.cycles[run.cycles.length - 1];
+          let tick = 1;
+          timer = setInterval(() => {
+            if (request.signal.aborted || !last) {
+              clearInterval(timer);
+              controller.close();
+              return;
+            }
+            send(
+              JSON.stringify({
+                type: "line",
+                line: runHeartbeatLine(last, run.cycles.length - 1, seq++, tick++),
+              }),
+            );
+          }, 4000);
+        },
+        cancel() {
+          if (timer) clearInterval(timer);
+        },
+      });
+
+      return new HttpResponse(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+        },
+      });
+    },
   ),
   // Cost visibility (#245): per-phase actual usage.
   http.get("*/api/v1/projects/:projectName/usage", () =>

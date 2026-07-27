@@ -49,10 +49,33 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 /**
- * One console line per TimelineEvent, formatted by kind (#173 decisions:
- * flat log; execution attempts are divider lines, not UI sections).
+ * The runner's progress envelope, minus whatever the transport attributes it
+ * to. TimelineEvent (per-execution, task log) and RunProgressLine (per-cycle,
+ * run feed) are the same envelope carried by two streams and differ only in
+ * their attribution fields, so the formatter below is written against the
+ * envelope and both streams feed it.
  */
-export function formatLine(e: TimelineEvent): { text: string; tone: string } {
+export interface AgentLogLine {
+  kind: string;
+  phase?: string;
+  tool?: string;
+  summary?: string;
+  command?: string;
+  step?: string;
+  sha?: string;
+  files?: number;
+  branch?: string;
+  status?: string;
+  error?: string;
+  level?: string;
+  message?: string;
+}
+
+/**
+ * One console line per log line, formatted by kind (#173 decisions: flat log;
+ * attempts are divider lines, not UI sections).
+ */
+export function formatLine(e: AgentLogLine): { text: string; tone: string } {
   switch (e.kind) {
     case "phase": {
       const label =

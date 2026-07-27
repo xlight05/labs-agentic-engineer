@@ -1722,10 +1722,12 @@ paths:
           description: Error
       security:
       - userJWT: []
-      summary: List a project's Tasks (live GitHub issues), optionally scoped to one spec/build
-        version tag by milestone membership. Provision gates and the aep:validation Task are
-        excluded — they are phases of the run, surfaced on the version's run story; get-task still
-        serves them by number.
+      summary: List a project's issues (live from GitHub), optionally scoped to one spec/build version
+        tag by milestone membership. Every row carries the label-derived `executorClass` the console
+        sections on — agent work, a dispatch gate, or a bare human ledger issue. The aep:validation
+        issue is excluded (it is a phase of the run, surfaced with the run's verdict on the deployment
+        surface); get-task still serves it by number. Ledger issues have no label to query by, so they
+        are only discoverable through milestone membership and appear only on a `tag`-scoped read.
       tags:
       - Tasks
   /projects/{projectName}/tasks/{issueNumber}:
@@ -2575,8 +2577,11 @@ components:
       type: object
     BuildStage:
       additionalProperties: false
-      description: Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task
-        counts, so the overview needs no list-tasks read.
+      description: Build-stage aggregate on ProjectStatus (#184) — the version the newest milestone run
+        is working, and how that run is doing. Deliberately count-free - the only honest source of a
+        per-version task tally is the version's milestone on GitHub, and this endpoint is polled at 5s.
+        The console renders counts from the list-tasks response it already holds, on the surface that
+        already pays for it.
       properties:
         status:
           description: idle (never built), running, failed, succeeded
@@ -2587,35 +2592,12 @@ components:
           - succeeded
           type: string
           x-go-type: string
-        tasks:
-          additionalProperties: false
-          description: Task counts bucketed from derivedStatus.
-          properties:
-            active:
-              format: int64
-              type: integer
-            done:
-              format: int64
-              type: integer
-            failed:
-              format: int64
-              type: integer
-            total:
-              format: int64
-              type: integer
-          required:
-          - total
-          - done
-          - failed
-          - active
-          type: object
         version:
           description: Spec tag the current/last build built; "" if never built.
           type: string
       required:
       - version
       - status
-      - tasks
       type: object
     BuildRunList:
       additionalProperties: false
@@ -3169,27 +3151,17 @@ components:
           x-go-type: string
         validation:
           description: >-
-            Coarse validation-task run state for the latest build: none (not
-            reached, or no acceptance criteria), running, completed (ran to
-            completion; the pass/fail verdict lives in the report), failed
-            (the validation run failed mechanically).
+            Coarse validation state of the newest milestone run, folded from
+            that run's verdict: none (the run never reached validation, had no
+            acceptance criteria, or skipped it), running, completed (the
+            verdict is `passed`), failed. The verdict itself, the report path
+            and the per-cycle detail behind it live on the version's run story
+            (list-build-runs) — this field is only the overview's coarse chip.
           enum:
           - none
           - running
           - completed
           - failed
-          type: string
-        validationIssue:
-          description: >-
-            Issue number of the project's validation task; absent when there is
-            no validation run. The console uses it to open the internal
-            validation log page (get-task / stream-task-log accept it).
-          format: int64
-          type: integer
-        validationUrl:
-          description: >-
-            Link to the associated validation PR (the validation issue as a
-            fallback before a PR exists); "" when there is no validation.
           type: string
         version:
           description: Spec tag live in dev; "" if nothing deployed.
@@ -4440,6 +4412,19 @@ components:
             $ref: '#/components/schemas/ExecutionView'
           type: object
         executorClass:
+          description: >-
+            Label-derived kind of the issue, and the only classification the
+            platform makes of one: `coding` for agent work (the `aep` label),
+            `provision` for a dispatch gate (`aep:provision`), `validation` for
+            the run's validation issue, `ledger` for a bare human issue that
+            joined the milestone carrying none of them. Nothing here is parsed
+            out of the body — issue bodies are prose the platform writes for
+            the agent and never reads back.
+          enum:
+          - coding
+          - provision
+          - validation
+          - ledger
           type: string
         hold:
           type: boolean
@@ -4468,6 +4453,7 @@ components:
       - issueNumber
       - title
       - issueUrl
+      - executorClass
       - dependsOn
       - lineage
       - derivedStatus
@@ -4536,6 +4522,19 @@ components:
             $ref: '#/components/schemas/ExecutionView'
           type: object
         executorClass:
+          description: >-
+            Label-derived kind of the issue, and the only classification the
+            platform makes of one: `coding` for agent work (the `aep` label),
+            `provision` for a dispatch gate (`aep:provision`), `validation` for
+            the run's validation issue, `ledger` for a bare human issue that
+            joined the milestone carrying none of them. Nothing here is parsed
+            out of the body — issue bodies are prose the platform writes for
+            the agent and never reads back.
+          enum:
+          - coding
+          - provision
+          - validation
+          - ledger
           type: string
         hold:
           type: boolean
@@ -4566,6 +4565,7 @@ components:
       - issueNumber
       - title
       - issueUrl
+      - executorClass
       - dependsOn
       - lineage
       - derivedStatus

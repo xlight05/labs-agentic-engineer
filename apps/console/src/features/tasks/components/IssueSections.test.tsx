@@ -1,0 +1,184 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+// @vitest-environment jsdom
+
+import { render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { components } from "../../../generated/aep-api";
+
+type TaskView = components["schemas"]["TaskView"];
+
+// Router stubbed to plain anchors — no RouterProvider needed. createLink is
+// what the gate banner's deep link uses, so it has to survive the stub.
+vi.mock("@tanstack/react-router", () => ({
+  createLink: (Component: React.ElementType) =>
+    ({
+      to,
+      params,
+      search,
+      children,
+      ...rest
+    }: {
+      to: string;
+      params?: Record<string, string>;
+      search?: Record<string, string>;
+      children?: React.ReactNode;
+    }) => {
+      const path = Object.entries(params ?? {}).reduce(
+        (acc, [k, v]) => acc.replace(`$${k}`, v),
+        to,
+      );
+      const query = new URLSearchParams(search ?? {}).toString();
+      return (
+        <Component {...rest} component="a" href={query ? `${path}?${query}` : path}>
+          {children}
+        </Component>
+      );
+    },
+}));
+
+let mockIssues: TaskView[] = [];
+const refetch = vi.fn();
+vi.mock("../api/queries", () => ({
+  useAllTasks: () => ({
+    data: mockIssues,
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch,
+  }),
+}));
+
+import { IssueSections } from "./IssueSections";
+
+function issue(
+  issueNumber: number,
+  title: string,
+  executorClass: string,
+  derivedStatus: "pending" | "merged" = "pending",
+): TaskView {
+  return {
+    issueNumber,
+    title,
+    issueUrl: `https://github.com/o/r/issues/${issueNumber}`,
+    executorClass: executorClass as TaskView["executorClass"],
+    derivedStatus,
+    dependsOn: null,
+    attention: null,
+    executions: {},
+    hold: false,
+    lineage: { specTag: "v1" },
+  };
+}
+
+afterEach(() => {
+  mockIssues = [];
+});
+
+function renderSections(live = false) {
+  render(<IssueSections projectName="acme" tag="v1" live={live} />);
+}
+
+describe("IssueSections", () => {
+  it("renders agent work as rows carrying DURABLE facts only", () => {
+    mockIssues = [
+      issue(2, "Implement the shortener API", "coding"),
+      issue(3, "Add the redirect handler", "coding", "merged"),
+    ];
+    renderSections();
+
+    expect(screen.getByText("Implement the shortener API")).toBeInTheDocument();
+    // GitHub state, and nothing inferred about what an agent is doing now.
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    // The only affordance is the issue itself.
+    expect(
+      screen.getByRole("link", { name: "GitHub issue #2" }),
+    ).toHaveAttribute("href", "https://github.com/o/r/issues/2");
+  });
+
+  it("renders an OPEN gate as a hold banner, not as a row", () => {
+    mockIssues = [
+      issue(1, "Provide configuration: url-shortener-db", "provision"),
+      issue(2, "Implement the shortener API", "coding"),
+    ];
+    renderSections();
+
+    expect(screen.getByText(/A connection is unresolved/)).toBeInTheDocument();
+    expect(screen.getByText(/Remaining tasks are held/)).toBeInTheDocument();
+    // The dependency is named on the banner…
+    expect(screen.getByText("url-shortener-db")).toBeInTheDocument();
+    // …and the gate's title never appears as an issue row.
+    expect(
+      screen.queryByText("Provide configuration: url-shortener-db"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("deep-links the banner to the spec view's connection drawer", () => {
+    mockIssues = [issue(1, "Provide configuration: db", "provision")];
+    renderSections();
+
+    expect(
+      screen.getByRole("link", { name: /Resolve connections/ }),
+    ).toHaveAttribute("href", "/projects/acme/spec?connections=open");
+  });
+
+  it("shows no banner once every gate is resolved", () => {
+    mockIssues = [
+      issue(1, "Provide configuration: db", "provision", "merged"),
+      issue(2, "Implement the shortener API", "coding"),
+    ];
+    renderSections();
+    expect(screen.queryByText(/unresolved/)).not.toBeInTheDocument();
+  });
+
+  it("puts bare human issues in their own Ledger section", () => {
+    mockIssues = [
+      issue(2, "Implement the shortener API", "coding"),
+      issue(7, "Login is slow", "ledger"),
+    ];
+    renderSections();
+
+    expect(screen.getByText("Ledger")).toBeInTheDocument();
+    expect(screen.getByText(/Never worked and never/)).toBeInTheDocument();
+    expect(screen.getByText("Login is slow")).toBeInTheDocument();
+  });
+
+  it("omits the Ledger section entirely when there is nothing in it", () => {
+    mockIssues = [issue(2, "Implement the shortener API", "coding")];
+    renderSections();
+    expect(screen.queryByText("Ledger")).not.toBeInTheDocument();
+  });
+
+  it("counts each section beside its title", () => {
+    mockIssues = [
+      issue(2, "One", "coding"),
+      issue(3, "Two", "coding"),
+      issue(7, "Ledger one", "ledger"),
+    ];
+    renderSections();
+    const issuesHeading = screen.getByText("Issues").parentElement;
+    expect(within(issuesHeading as HTMLElement).getByText("2")).toBeInTheDocument();
+  });
+
+  it("says the plan has not landed yet when a version has no work", () => {
+    renderSections();
+    expect(screen.getByText(/No issues for v1 yet/)).toBeInTheDocument();
+  });
+});

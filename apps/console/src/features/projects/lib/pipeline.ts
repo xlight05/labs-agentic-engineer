@@ -33,8 +33,6 @@ export interface StageView {
   tone: StageTone;
   /** Spec stage only: render the Generate-spec CTA instead of a state. */
   cta?: boolean;
-  /** Build stage only: failed-task count, called out in red when > 0. */
-  failed?: number;
 }
 
 export function specStageView(status: ProjectStatus): StageView {
@@ -45,31 +43,20 @@ export function specStageView(status: ProjectStatus): StageView {
   return { version, line: "published", tone: "success" };
 }
 
+// The build stage is COUNT-FREE. A per-version task tally can only come from
+// the version's milestone on GitHub, and this aggregate is polled at 5s, so the
+// status read does not carry one — the Builds page renders counts from the
+// issue list it already pays for. What the overview says instead is what the
+// version's run is doing, which is a run row and costs nothing.
 export function buildStageView(status: ProjectStatus): StageView {
-  const { version, status: state, tasks } = status.build;
-  const progress = `${tasks.done}/${tasks.total} done`;
+  const { version, status: state } = status.build;
   switch (state) {
     case "running":
-      // total is written once the plan step finishes, so a running build
-      // with no tasks is still planning — say so instead of "0/0 done".
-      if (tasks.total === 0) {
-        return { version, line: "building · generating tasks", tone: "info" };
-      }
-      return {
-        version,
-        line: `building · ${progress}`,
-        tone: "info",
-        failed: tasks.failed,
-      };
+      return { version, line: "building", tone: "info" };
     case "failed":
-      return {
-        version,
-        line: `build failed · ${progress}`,
-        tone: "error",
-        failed: tasks.failed,
-      };
+      return { version, line: "build failed", tone: "error" };
     case "succeeded":
-      return { version, line: `built · ${progress}`, tone: "success" };
+      return { version, line: "built", tone: "success" };
     default:
       return { version: "", line: "waiting on spec", tone: "ghost" };
   }
@@ -111,7 +98,12 @@ export function deployStageView(status: ProjectStatus): StageView {
 
 // validationView maps the coarse deploy.validation state to a label + tone,
 // shared by the overview deploy line (suffix) and the deployments board chip.
-// null = nothing to show (no validation reached, or no acceptance criteria).
+// null = nothing to show (validation never reached, skipped, or no criteria).
+//
+// The state is folded from the RUN's verdict — the verdict is a run property,
+// and the run rows are where the platform keeps it — so unlike the old
+// task-derived state these labels can name the outcome instead of naming the
+// artifact the user would have to open to find it out.
 export function validationView(
   validation: string,
 ): { label: string; tone: StageTone } | null {
@@ -119,10 +111,7 @@ export function validationView(
     case "running":
       return { label: "validating", tone: "info" };
     case "completed":
-      // "completed" means the run finished — the pass/fail verdict lives in
-      // the report (behind the PR), so the label makes no claim about the
-      // outcome and instead names what the chip opens.
-      return { label: "validation report", tone: "info" };
+      return { label: "validation passed", tone: "success" };
     case "failed":
       return { label: "validation failed", tone: "error" };
     default: // "none" | "" | unknown

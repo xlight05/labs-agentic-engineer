@@ -19,17 +19,32 @@
 import { useQuery } from "@tanstack/react-query";
 import { client } from "../../../api/client";
 import { taskKeys } from "./keys";
-import { isActiveStatus } from "./status";
 import { apiErrorMessage } from "../../../api/errors";
 
-// Poll while any task is non-terminal, stop once everything settles (#173
-// decisions). 5s: the list is where the user watches chips go green.
+// This read is GitHub-backed, so it is priced differently from the DB-only run
+// reads: it polls ONLY while a run is live, and the caller says when that is.
+// An idle project must cost zero GitHub calls.
 const TASKS_POLL_MS = 5_000;
 
-// The task list (state=all — a merged PR auto-closes the task's GitHub
-// issue, so `open` would hide Done and build-failed tasks). `tag` scopes the
-// read to one build's lineage (aep:spec/<tag>, #185); omitted = all versions.
-export function useAllTasks(projectName: string, tag?: string) {
+/**
+ * A version's issues, live from GitHub (state=all — a merged PR auto-closes
+ * its issue, so `open` would hide everything that landed).
+ *
+ * `tag` scopes the read to one version by MILESTONE MEMBERSHIP; it is also
+ * what makes bare ledger issues visible, since they carry no label to query
+ * on. Omitted = every version's agent work and gates, ledger excluded.
+ *
+ * `live` is the run state, passed down: the run row is the page's single
+ * liveness driver now, so this list no longer decides for itself whether to
+ * keep polling by inspecting a task's derivedStatus — after the flip that
+ * only says whether a GitHub issue is open.
+ */
+export function useAllTasks(
+  projectName: string,
+  tag?: string,
+  opts: { live?: boolean } = {},
+) {
+  const { live = false } = opts;
   return useQuery({
     queryKey: taskKeys.list(projectName, tag),
     queryFn: async () => {
@@ -47,13 +62,7 @@ export function useAllTasks(projectName: string, tag?: string) {
       }
       return data ?? [];
     },
-    refetchInterval: (query) => {
-      const tasks = query.state.data;
-      if (!tasks) return TASKS_POLL_MS; // no data yet (or errored) — keep trying
-      return tasks.some((t) => isActiveStatus(t.derivedStatus))
-        ? TASKS_POLL_MS
-        : false;
-    },
+    refetchInterval: live ? TASKS_POLL_MS : false,
   });
 }
 

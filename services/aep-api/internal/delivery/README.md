@@ -255,8 +255,14 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   every cycle boundary open), dispatches one cycle at it with `AEP_TASK_KIND=validation`, and reads the
   committed report back as the run's VERDICT. The acceptance oracle
   `specs/validation/validation-criteria.json` is read-only input authored in the design phase (spec domain).
-- **Task LIST reads exclude the validation issue** (`task/reads.go` `ListByTag`, the read-model boundary):
-  it is a phase of the run, not an implementation task. Its verdict rides `deploy.validation` on the
-  project status and the version's run story; `get-task` and `stream-task-log` still serve it by issue
-  number.
+- **The list read returns three populations, and hides one** (`task/reads.go` `ListByTag`, the read-model
+  boundary). Every row carries the label-derived `executorClass` the console sections on: `coding` (agent
+  work), `provision` (a dispatch gate, which the console renders as a hold banner rather than a row), and
+  `ledger` — a bare human issue that joined the milestone carrying none of the platform's labels. The
+  **validation issue is always hidden**: it is a phase of the run, not an implementation task, and its
+  verdict rides `deploy.validation` on the project status and the version's run story. `get-task` and
+  `stream-task-log` still serve it by issue number.
+  A LEDGER issue is returned by the milestone-scoped read and only by it — the untagged read is two label
+  queries, and a ledger issue is defined by carrying no label to query on. Milestone membership is the only
+  handle there is.
 - Platform-wide rules (tenant gate, secrets fence, persistence-in-domain) → [../../README.md](../../README.md).

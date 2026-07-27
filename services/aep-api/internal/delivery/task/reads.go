@@ -74,6 +74,14 @@ func NewReads(issues IssueClient, repos RepoResolver, execs ExecutionReader, run
 // The validation issue is excluded at this boundary, as it always was: it is a
 // phase of the run, not an implementation Task, and it surfaces on the
 // deployment surface with the run's verdict.
+//
+// Bare LEDGER issues — human-filed issues that joined the milestone carrying
+// none of the platform's labels — are returned by the tag-scoped read and only
+// by it. They are never worked and never stall settle (§7), but they are part
+// of the version's ledger and the console sections them apart from agent work.
+// The untagged read cannot see them: it is two label queries, and a ledger
+// issue is defined by carrying no label to query on. Milestone membership is
+// the only handle there is.
 func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]delivery.TaskView, error) {
 	_, owner, name, err := resolveProjectRepo(ctx, r.repos, orgID, projectID)
 	if err != nil {
@@ -99,7 +107,7 @@ func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag stri
 		if !matchesState(issue.State, state) {
 			continue
 		}
-		view, ok := buildView(issue, specTag, execsByIssue[issue.Number])
+		view, ok := buildView(issue, specTag, execsByIssue[issue.Number], tag != "")
 		if !ok {
 			continue
 		}
@@ -196,14 +204,17 @@ func (r *Reads) allVersionIssues(ctx context.Context, orgID, projectID string) (
 }
 
 // buildView projects one live issue onto a TaskView. ok is false when the issue
-// is not part of a Task population — a ledger-only human issue, or the
-// validation issue, which the list hides.
-func buildView(issue sourcecontrol.IssueInfo, specTag string, execs map[string]*delivery.Execution) (delivery.TaskView, bool) {
+// is not part of the requested population: the validation issue is always
+// hidden, and a bare ledger issue is included only when the caller scoped the
+// read to one milestone, which is the only way a ledger issue is discoverable
+// at all.
+func buildView(issue sourcecontrol.IssueInfo, specTag string, execs map[string]*delivery.Execution, milestoneScoped bool) (delivery.TaskView, bool) {
 	if delivery.HasLabel(issue.Labels, delivery.LabelValidationWork) {
 		return delivery.TaskView{}, false
 	}
 	if !delivery.HasLabel(issue.Labels, delivery.LabelAgentWork) &&
-		!delivery.HasLabel(issue.Labels, delivery.LabelProvisionGate) {
+		!delivery.HasLabel(issue.Labels, delivery.LabelProvisionGate) &&
+		!milestoneScoped {
 		return delivery.TaskView{}, false
 	}
 	view := bareView(issue, specTag)
@@ -232,16 +243,19 @@ func bareView(issue sourcecontrol.IssueInfo, specTag string) delivery.TaskView {
 	}
 }
 
-// taskKind is the label-derived kind chip: a dispatch gate, the validation
-// issue, or ordinary agent work.
+// taskKind is the label-derived kind chip, and the only classification the
+// platform makes of an issue: a dispatch gate, the validation issue, agent
+// work, or a bare human issue that carries none of those labels — the ledger.
 func taskKind(labels []string) string {
 	switch {
 	case delivery.HasLabel(labels, delivery.LabelProvisionGate):
 		return "provision"
 	case delivery.HasLabel(labels, delivery.LabelValidationWork):
 		return "validation"
-	default:
+	case delivery.HasLabel(labels, delivery.LabelAgentWork):
 		return "coding"
+	default:
+		return "ledger"
 	}
 }
 

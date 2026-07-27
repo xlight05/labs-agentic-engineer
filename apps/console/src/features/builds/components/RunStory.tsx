@@ -1,0 +1,206 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Divider,
+  Stack,
+  Typography,
+} from "@wso2/oxygen-ui";
+import { ScrollText, X } from "@wso2/oxygen-ui-icons-react";
+import { StatusChip } from "../../../components/StatusChip";
+import type { components } from "../../../generated/aep-api";
+import { useCancelRun } from "../api/queries";
+import {
+  budgetCounters,
+  isTerminalRun,
+  runOriginLabel,
+  runStateChip,
+  terminalReasonText,
+  validationVerdictChip,
+} from "../lib/runView";
+import { CycleTimeline } from "./CycleTimeline";
+import { RunFeed } from "./RunFeed";
+
+type MilestoneRunView = components["schemas"]["MilestoneRunView"];
+
+function when(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleString(undefined, {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
+
+// The budget counters as a quiet row of label/value pairs. An exhausted counter
+// turns red — it is usually the counter that explains the terminal reason
+// printed right above it.
+function Budgets({ run }: { run: MilestoneRunView }) {
+  return (
+    <Stack
+      direction="row"
+      spacing={3}
+      sx={{ flexWrap: "wrap", rowGap: 1, mt: 0.5 }}
+    >
+      {budgetCounters(run.budgets).map((counter) => (
+        <Box key={counter.label}>
+          <Typography variant="caption" color="text.secondary" display="block">
+            {counter.label}
+          </Typography>
+          <Typography
+            variant="body2"
+            color={counter.exhausted ? "error.main" : "text.primary"}
+            sx={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}
+          >
+            {counter.text}
+          </Typography>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+/**
+ * One run of the version's milestone loop, told in full: state, budgets, the
+ * cycle timeline, and the per-cycle agent feed behind a toggle.
+ *
+ * Cancel is PROMINENT on a waiting run and nowhere else: `waiting` is written
+ * only when a run actually parks (a gate holds it), and cancel is the only
+ * expiry that unbounded wait has. On a running run cancel is still available,
+ * just not shouted.
+ */
+export function RunStory({
+  projectName,
+  tag,
+  run,
+  defaultFeedOpen,
+}: {
+  projectName: string;
+  tag: string;
+  run: MilestoneRunView;
+  /** Open the feed on mount — the live run the user navigated here to watch. */
+  defaultFeedOpen: boolean;
+}) {
+  const [feedOpen, setFeedOpen] = useState(defaultFeedOpen);
+  const cancel = useCancelRun(projectName, tag);
+  const chip = runStateChip(run);
+  const terminal = isTerminalRun(run.state);
+  const waiting = run.state === "waiting";
+  const verdict = validationVerdictChip(run.validation);
+  const reason = terminalReasonText(run.terminalReason ?? "");
+  const started = when(run.startedAt ?? run.createdAt);
+  const ended = when(run.endedAt);
+
+  return (
+    <Card variant="outlined" sx={{ bgcolor: "action.hover" }}>
+      <CardContent sx={{ "&:last-child": { pb: 2.5 } }}>
+        <Stack
+          direction="row"
+          spacing={1.5}
+          sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 1 }}
+        >
+          <Typography variant="h6">{run.milestoneTitle}</Typography>
+          <StatusChip label={chip.label} tone={chip.tone} appearance="soft" dot />
+          <StatusChip
+            label={runOriginLabel(run.origin)}
+            tone="neutral"
+            appearance="soft"
+          />
+          {verdict && (
+            <StatusChip label={verdict.label} tone={verdict.tone} appearance="soft" />
+          )}
+          <Typography variant="body2" color="text.secondary">
+            {started ? `Started ${started}` : ""}
+            {ended ? ` · ended ${ended}` : ""}
+          </Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<ScrollText size={16} />}
+            onClick={() => setFeedOpen((open) => !open)}
+          >
+            {feedOpen ? "Hide feed" : "Show feed"}
+          </Button>
+          {!terminal && (
+            // Prominent on a parked run — that is the state cancel exists for.
+            <Button
+              size="small"
+              color={waiting ? "warning" : "inherit"}
+              variant={waiting ? "contained" : "outlined"}
+              startIcon={<X size={16} />}
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate(run.id)}
+            >
+              {cancel.isPending ? "Cancelling…" : "Cancel run"}
+            </Button>
+          )}
+        </Stack>
+
+        {waiting && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            This run is parked. Its wait is unbounded — cancel is the only
+            expiry, and cancelling abandons the increment: the way forward is
+            the next build.
+          </Alert>
+        )}
+
+        {cancel.isError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {cancel.error instanceof Error
+              ? cancel.error.message
+              : "Failed to cancel the run"}
+            . Nothing was cancelled — you can retry.
+          </Alert>
+        )}
+
+        {reason && (
+          <Typography
+            variant="body2"
+            color={run.state === "succeeded" ? "text.secondary" : "error.main"}
+            sx={{ mt: 2 }}
+          >
+            {reason}
+          </Typography>
+        )}
+
+        <Budgets run={run} />
+
+        <Divider sx={{ my: 2 }} />
+        <CycleTimeline cycles={run.cycles} />
+
+        {feedOpen && (
+          <>
+            <Divider sx={{ my: 2 }} />
+            <RunFeed projectName={projectName} runId={run.id} />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

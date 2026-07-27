@@ -183,22 +183,22 @@ func (e ProgressEventEmitter) Valid() bool {
 
 // Defines values for RunCycleViewKind.
 const (
-	Coding     RunCycleViewKind = "coding"
-	Conflict   RunCycleViewKind = "conflict"
-	Fix        RunCycleViewKind = "fix"
-	Validation RunCycleViewKind = "validation"
+	RunCycleViewKindCoding     RunCycleViewKind = "coding"
+	RunCycleViewKindConflict   RunCycleViewKind = "conflict"
+	RunCycleViewKindFix        RunCycleViewKind = "fix"
+	RunCycleViewKindValidation RunCycleViewKind = "validation"
 )
 
 // Valid indicates whether the value is a known member of the RunCycleViewKind enum.
 func (e RunCycleViewKind) Valid() bool {
 	switch e {
-	case Coding:
+	case RunCycleViewKindCoding:
 		return true
-	case Conflict:
+	case RunCycleViewKindConflict:
 		return true
-	case Fix:
+	case RunCycleViewKindFix:
 		return true
-	case Validation:
+	case RunCycleViewKindValidation:
 		return true
 	default:
 		return false
@@ -265,6 +265,30 @@ func (e RunValidationVerdict) Valid() bool {
 	}
 }
 
+// Defines values for TaskDetailExecutorClass.
+const (
+	TaskDetailExecutorClassCoding     TaskDetailExecutorClass = "coding"
+	TaskDetailExecutorClassLedger     TaskDetailExecutorClass = "ledger"
+	TaskDetailExecutorClassProvision  TaskDetailExecutorClass = "provision"
+	TaskDetailExecutorClassValidation TaskDetailExecutorClass = "validation"
+)
+
+// Valid indicates whether the value is a known member of the TaskDetailExecutorClass enum.
+func (e TaskDetailExecutorClass) Valid() bool {
+	switch e {
+	case TaskDetailExecutorClassCoding:
+		return true
+	case TaskDetailExecutorClassLedger:
+		return true
+	case TaskDetailExecutorClassProvision:
+		return true
+	case TaskDetailExecutorClassValidation:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskStreamEventType.
 const (
 	TaskStreamEventTypeDone      TaskStreamEventType = "done"
@@ -283,6 +307,30 @@ func (e TaskStreamEventType) Valid() bool {
 	case TaskStreamEventTypeLine:
 		return true
 	case TaskStreamEventTypeTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskViewExecutorClass.
+const (
+	Coding     TaskViewExecutorClass = "coding"
+	Ledger     TaskViewExecutorClass = "ledger"
+	Provision  TaskViewExecutorClass = "provision"
+	Validation TaskViewExecutorClass = "validation"
+)
+
+// Valid indicates whether the value is a known member of the TaskViewExecutorClass enum.
+func (e TaskViewExecutorClass) Valid() bool {
+	switch e {
+	case Coding:
+		return true
+	case Ledger:
+		return true
+	case Provision:
+		return true
+	case Validation:
 		return true
 	default:
 		return false
@@ -498,18 +546,10 @@ type BuildRunList struct {
 	Tag  string             `json:"tag"`
 }
 
-// BuildStage Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task counts, so the overview needs no list-tasks read.
+// BuildStage Build-stage aggregate on ProjectStatus (#184) — the version the newest milestone run is working, and how that run is doing. Deliberately count-free - the only honest source of a per-version task tally is the version's milestone on GitHub, and this endpoint is polled at 5s. The console renders counts from the list-tasks response it already holds, on the surface that already pays for it.
 type BuildStage struct {
 	// Status idle (never built), running, failed, succeeded
 	Status string `json:"status"`
-
-	// Tasks Task counts bucketed from derivedStatus.
-	Tasks struct {
-		Active int64 `json:"active"`
-		Done   int64 `json:"done"`
-		Failed int64 `json:"failed"`
-		Total  int64 `json:"total"`
-	} `json:"tasks"`
 
 	// Version Spec tag the current/last build built; "" if never built.
 	Version string `json:"version"`
@@ -715,20 +755,14 @@ type DeployStage struct {
 	} `json:"components"`
 	Status string `json:"status"`
 
-	// Validation Coarse validation-task run state for the latest build: none (not reached, or no acceptance criteria), running, completed (ran to completion; the pass/fail verdict lives in the report), failed (the validation run failed mechanically).
+	// Validation Coarse validation state of the newest milestone run, folded from that run's verdict: none (the run never reached validation, had no acceptance criteria, or skipped it), running, completed (the verdict is `passed`), failed. The verdict itself, the report path and the per-cycle detail behind it live on the version's run story (list-build-runs) — this field is only the overview's coarse chip.
 	Validation DeployStageValidation `json:"validation"`
-
-	// ValidationIssue Issue number of the project's validation task; absent when there is no validation run. The console uses it to open the internal validation log page (get-task / stream-task-log accept it).
-	ValidationIssue int64 `json:"validationIssue,omitempty"`
-
-	// ValidationURL Link to the associated validation PR (the validation issue as a fallback before a PR exists); "" when there is no validation.
-	ValidationURL string `json:"validationUrl,omitempty"`
 
 	// Version Spec tag live in dev; "" if nothing deployed.
 	Version string `json:"version"`
 }
 
-// DeployStageValidation Coarse validation-task run state for the latest build: none (not reached, or no acceptance criteria), running, completed (ran to completion; the pass/fail verdict lives in the report), failed (the validation run failed mechanically).
+// DeployStageValidation Coarse validation state of the newest milestone run, folded from that run's verdict: none (the run never reached validation, had no acceptance criteria, or skipped it), running, completed (the verdict is `passed`), failed. The verdict itself, the report path and the per-cycle detail behind it live on the version's run story (list-build-runs) — this field is only the overview's coarse chip.
 type DeployStageValidation string
 
 // Deployment defines model for Deployment.
@@ -994,7 +1028,7 @@ type ProjectList struct {
 
 // ProjectStatus Computed SDLC phase and artifact states.
 type ProjectStatus struct {
-	// Build Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task counts, so the overview needs no list-tasks read.
+	// Build Build-stage aggregate on ProjectStatus (#184) — the version the newest milestone run is working, and how that run is doing. Deliberately count-free - the only honest source of a per-version task tally is the version's milestone on GitHub, and this endpoint is polled at 5s. The console renders counts from the list-tasks response it already holds, on the surface that already pays for it.
 	Build BuildStage `json:"build"`
 
 	// Deploy Deploy-stage aggregate on ProjectStatus (#184) — what's live in dev and rollout progress.
@@ -1301,19 +1335,24 @@ type TaskDetail struct {
 	DerivedStatus    string                   `json:"derivedStatus"`
 	ExecutionHistory []ExecutionView          `json:"executionHistory"`
 	Executions       map[string]ExecutionView `json:"executions"`
-	ExecutorClass    string                   `json:"executorClass,omitempty"`
-	Hold             bool                     `json:"hold"`
-	IssueNumber      int64                    `json:"issueNumber"`
-	IssueURL         string                   `json:"issueUrl"`
-	Lineage          Lineage                  `json:"lineage"`
-	Operation        string                   `json:"operation,omitempty"`
-	Origin           string                   `json:"origin,omitempty"`
+
+	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+	ExecutorClass TaskDetailExecutorClass `json:"executorClass"`
+	Hold          bool                    `json:"hold"`
+	IssueNumber   int64                   `json:"issueNumber"`
+	IssueURL      string                  `json:"issueUrl"`
+	Lineage       Lineage                 `json:"lineage"`
+	Operation     string                  `json:"operation,omitempty"`
+	Origin        string                  `json:"origin,omitempty"`
 
 	// PrURL Link to the task's pull request, recovered from the succeeded coding execution's "pr#N" reason; absent before a PR opens.
 	PrURL     string `json:"prUrl,omitempty"`
 	Rationale string `json:"rationale,omitempty"`
 	Title     string `json:"title"`
 }
+
+// TaskDetailExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+type TaskDetailExecutorClass string
 
 // TaskStreamEvent One SSE frame on the task-log stream. `type` discriminates the payload: `task` carries the full TaskView (client upserts by issue), `execution` one ExecutionView (client upserts by id), `line` one TimelineEvent (client appends, deduped by executionId+seq), and `done` the settled derivedStatus (the server then closes the stream).
 type TaskStreamEvent struct {
@@ -1341,13 +1380,15 @@ type TaskView struct {
 	DependsOn     []string                 `json:"dependsOn"`
 	DerivedStatus string                   `json:"derivedStatus"`
 	Executions    map[string]ExecutionView `json:"executions"`
-	ExecutorClass string                   `json:"executorClass,omitempty"`
-	Hold          bool                     `json:"hold"`
-	IssueNumber   int64                    `json:"issueNumber"`
-	IssueURL      string                   `json:"issueUrl"`
-	Lineage       Lineage                  `json:"lineage"`
-	Operation     string                   `json:"operation,omitempty"`
-	Origin        string                   `json:"origin,omitempty"`
+
+	// ExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+	ExecutorClass TaskViewExecutorClass `json:"executorClass"`
+	Hold          bool                  `json:"hold"`
+	IssueNumber   int64                 `json:"issueNumber"`
+	IssueURL      string                `json:"issueUrl"`
+	Lineage       Lineage               `json:"lineage"`
+	Operation     string                `json:"operation,omitempty"`
+	Origin        string                `json:"origin,omitempty"`
 
 	// PrURL Link to the task's pull request, recovered from the succeeded coding execution's "pr#N" reason; absent before a PR opens.
 	PrURL     string `json:"prUrl,omitempty"`
@@ -1357,6 +1398,9 @@ type TaskView struct {
 	// Usage Actual token usage for one unit of agent work or an aggregate (#245). Tokens + model are the persisted truth; costUsd is derived at read time from the configured model rates (ADR-0011) and null when no rate is configured for the model.
 	Usage Usage `json:"usage,omitempty"`
 }
+
+// TaskViewExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
+type TaskViewExecutorClass string
 
 // TimelineEvent A unified-timeline entry: today's ProgressEvent (phase | tool_use | git_commit | git_push | gh_action | build_step | log | result) plus its attribution — which execution attempt it came from. This is the per-row shape the console renders; the FE groups rows by executionId/kind.
 type TimelineEvent struct {

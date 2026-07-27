@@ -18,42 +18,29 @@
 
 import type { StatusTone } from "../../../components/StatusChip";
 
-// The four chip states of the task list (#173 decisions): the user watches
-// chips go green; failures must stand out (humans intervene on failure).
-// An unknown derivedStatus renders red with its raw value so nothing hides.
+// An issue row shows DURABLE FACTS ONLY: what GitHub holds about the issue.
+// Mid-run liveness lives on the run's cycle timeline and its feed, never on a
+// row — a row that animates while the platform has learned nothing new is a
+// lie, and the platform learns issue facts only when GitHub tells it.
+//
+// So `derivedStatus` is a two-value vocabulary now: the issue is open, or it is
+// closed. (It keeps two members of the retired ten-value set rather than
+// inventing new strings, because it crosses an untyped contract field.) Closed
+// reads "Done" because closing is what a merged PR does — close-at-merge is
+// landed-on-main.
 export interface TaskChip {
   label: string;
   tone: StatusTone;
 }
 
 const CHIP_BY_STATUS: Record<string, TaskChip> = {
-  pending: { label: "Pending", tone: "neutral" },
-  on_hold: { label: "On hold", tone: "warning" },
-  in_progress: { label: "Ongoing", tone: "info" },
-  ready_for_review: { label: "Ongoing", tone: "info" },
-  merged: { label: "Ongoing", tone: "info" },
-  building: { label: "Ongoing", tone: "info" },
-  deployed: { label: "Done", tone: "success" },
-  failed: { label: "Failed", tone: "error" },
-  rejected: { label: "Failed", tone: "error" },
-  abandoned: { label: "Failed", tone: "error" },
+  pending: { label: "Open", tone: "neutral" },
+  merged: { label: "Done", tone: "success" },
 };
 
-export function taskChip(derivedStatus: string): TaskChip {
-  return CHIP_BY_STATUS[derivedStatus] ?? { label: derivedStatus, tone: "error" };
-}
-
-// Non-terminal statuses: while any task is in one of these, the list keeps
-// polling; once everything settles, polling stops (#173 decisions).
-const ACTIVE_STATUSES = new Set([
-  "pending",
-  "on_hold",
-  "in_progress",
-  "ready_for_review",
-  "merged",
-  "building",
-]);
-
-export function isActiveStatus(derivedStatus: string): boolean {
-  return ACTIVE_STATUSES.has(derivedStatus);
+/** An unknown status renders red with its raw value so nothing hides. */
+export function issueStateChip(derivedStatus: string): TaskChip {
+  return (
+    CHIP_BY_STATUS[derivedStatus] ?? { label: derivedStatus, tone: "error" }
+  );
 }

@@ -22,6 +22,10 @@ import { validationKeys } from "./keys";
 
 // The two files the Validation page joins, both read at HEAD via the Files API
 // (report.json is reachable through the read-only allow-list on read-file).
+//
+// The report's path is also carried on the RUN (RunValidation.reportPath), which
+// is authoritative — the runner writes the path it actually committed. This
+// constant is the fallback for a run that recorded no path.
 export const CRITERIA_PATH = "specs/validation/validation-criteria.json";
 export const REPORT_PATH = "tests/validation/report.json";
 
@@ -53,11 +57,17 @@ export function useValidationCriteria(
   return useValidationFile(projectName, CRITERIA_PATH, version, enabled);
 }
 
-/** The runner's run report (tests/validation/report.json). */
+/** The runner's run report, at the path the run recorded (or the default). */
 export function useValidationReport(
   projectName: string,
   version: string,
   enabled: boolean,
+  reportPath?: string,
 ) {
-  return useValidationFile(projectName, REPORT_PATH, version, enabled);
+  return useValidationFile(
+    projectName,
+    reportPath || REPORT_PATH,
+    version,
+    enabled,
+  );
 }

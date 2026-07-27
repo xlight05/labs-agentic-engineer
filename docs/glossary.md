@@ -262,16 +262,67 @@ exact registered name. Values are per-project, per-environment; secret values
 live in OpenBao via SM-API (`extres-<name>-<env>` entities) and reach pods
 through ResourceReleaseBinding → ExternalSecret → env.
 
-### Gates and typed tasks
-`config-collection` and `resource-provisioning` SYSTEM rows gate component
-tasks (three `depends_on_*` JSONB columns). Completion is contract-event
-driven; a deploy cascades dispatch of held siblings. Recovery for a stuck
-provision is drawer re-provision (SYSTEM tasks are not retryable via the
-coding-agent path).
-
 ### Proceed-gate
 `design/save` refuses (409) while any dependency is unresolved, naming the
 component, dependency, and reason.
+
+---
+
+## Milestone execution
+
+> The decision and its costs:
+> [ADR-0011](decisions/ADR-0011-milestone-is-the-unit-of-execution.md). The
+> mechanism: `services/aep-api/internal/delivery/README.md`.
+
+### Milestone
+The GitHub milestone titled after a `v<N>` spec tag. It **is** the version:
+the delivery increment and the version's ledger both. Its **number** is the
+platform key everywhere — titles are renamable, and GitHub's title filters are
+case-insensitive while its create-uniqueness is not, so a `?tag=` query
+resolves number-through-run-rows and never matches a title.
+
+### Milestone run
+One supervised pass over one milestone — the platform's single dispatch door.
+Origin is `spec-build` or `incident-adoption`; state is
+`waiting | running | succeeded | failed | cancelled`. A milestone sees
+**sequential** runs across its life, so the workflow id is reused.
+
+### Cycle
+One dispatch within a run: `coding | conflict | fix | validation`. The cycle
+record is where branch, PR number and merge SHA live, all **learned from
+webhooks** — the agent derives its own branch identity, so the platform is
+never told at dispatch. The run's loop POSITION is read from its latest cycle;
+it is never stored as a phase enum, because fix and conflict cycles re-enter
+earlier phases.
+
+### Working set
+Open, `aep`-labelled issues in the milestone, excluding `aep:provision` gates
+and the `aep:validation` issue. A run settles when it is empty and validation
+has a verdict.
+
+### Dispatch gate
+An `aep:provision` issue. Never agent work — a **dispatch hold**: while one is
+open the run dispatches nothing, and a hand-filed one mid-run is a deliberate
+human brake. Gates are minted and resolved by `dependencies/provisioning`, and
+carry no `aep` label so they cannot hold the settle predicate open.
+
+### Ledger issue
+A bare human issue that joined a milestone carrying none of the platform's
+labels. Part of the version's record; never worked, never stalling settle.
+Labelling one `aep:codingagent` **adopts** it into the next cycle.
+
+### Terminal reason
+Why a non-succeeded run stopped. Each value names exactly ONE failure class —
+`redispatch-budget`, `build-retrigger-budget`, `fix-chain-budget`,
+`conflict-budget`, `no-progress`, `cycle-ceiling`, `validation-failed` — so a
+reason is an explanation rather than a label. A run that settles for anything
+outside this list is a bug in the loop, not a new state.
+
+### Supersede
+What the next build does to the previous version: close `v<N>`'s still-open
+issues with a `Superseded by v<N+1>` comment, then the milestone, then plan
+`v<N+1>` fresh from the new spec. It is also what keeps the reconcile sweep
+sound — a superseded milestone holds no open `aep` issue.
 
 ## aep-api platform concepts
 

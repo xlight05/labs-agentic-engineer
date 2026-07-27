@@ -120,7 +120,9 @@ point at enforcement, they don't restate it.
 - A domain root never imports its own slices; a slice never imports a sibling →
   `TestDomainRootNeverImportsItsSlices` · `TestSliceNeverImportsSibling`
 - HTTP aggregators declare no methods → `TestAggregatorsDeclareNoMethods`
-- delivery's `task ⊥ execution` split → `TestTaskExecutionSplit`
+- delivery's `task ⊥ run` split — dispatch has exactly one door →
+  `TestTaskRunSplit`
+- the machine-block encoding stays a pure domain leaf → `TestTaskmetaIsPure`
 - The legacy flat layout is gone; all seven domains landed → `TestFlatPackagesDeleted` ·
   `TestAllDomainsLanded`
 - Secret-backend SDKs are fenced to `platform/secrets` → `TestImportFences`
@@ -146,6 +148,7 @@ point at enforcement, they don't restate it.
 - A domain's boundaries, ports, and local invariants → its README (table above).
 - Why a structural rule exists / how it's enforced → the named test in `internal/arch`,
   or the package's `doc.go`.
-- Subsystem designs → [`docs/design/`](../../docs/design/); decisions →
-  [`docs/decisions/`](../../docs/decisions/) (this ladder is
+- Decisions → [`docs/decisions/`](../../docs/decisions/) (this ladder is
   [ADR-0008](../../docs/decisions/ADR-0008-architecture-in-readme-ladder.md)).
+- Why delivery executes a version as one milestone run, and what that costs →
+  [ADR-0011](../../docs/decisions/ADR-0011-milestone-is-the-unit-of-execution.md).

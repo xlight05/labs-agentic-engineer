@@ -16,20 +16,34 @@
  * under the License.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { client } from "../../../api/client";
-import { buildKeys } from "./keys";
 import { apiErrorMessage } from "../../../api/errors";
+import { buildKeys } from "./keys";
+import { versionIsLive } from "../lib/runView";
 
-// Same cadence as the task list: the builds page is where the user watches a
-// running build move; a settled history doesn't need refreshing.
-const BUILDS_POLL_MS = 5_000;
+// Both reads below are DB-only on the server (run rows and cycle records fed by
+// webhooks — no GitHub, no cluster), which is what makes a 5s poll affordable.
+// The GitHub-backed issue read is priced separately and polls only while a run
+// is live; see useAllTasks.
+const RUNS_POLL_MS = 5_000;
 
-// The project's builds, newest first — one entry per built spec version tag
-// (#185). Polls while any build is still moving, stops once all are terminal.
-export function useBuilds(projectName: string) {
+/**
+ * The version ledger, newest first — one row per built spec version tag.
+ *
+ * Two consumers with different appetites, hence the options:
+ *   - the Builds page fetches it always and polls while a version is moving;
+ *   - the overview's version dropdown fetches it ON DEMAND and never polls, so
+ *     an idle overview costs nothing at all.
+ */
+export function useBuilds(
+  projectName: string,
+  opts: { enabled?: boolean; poll?: boolean } = {},
+) {
+  const { enabled = true, poll = true } = opts;
   return useQuery({
     queryKey: buildKeys.list(projectName),
+    enabled,
     queryFn: async () => {
       const { data, error } = await client.GET(
         "/projects/{projectName}/builds",
@@ -41,13 +55,73 @@ export function useBuilds(projectName: string) {
       return data.builds ?? [];
     },
     refetchInterval: (query) => {
+      if (!poll) return false;
       const builds = query.state.data;
-      if (!builds) return BUILDS_POLL_MS; // no data yet (or errored) — keep trying
+      if (!builds) return RUNS_POLL_MS; // no data yet (or errored) — keep trying
       return builds.some(
         (b) => b.status === "in_progress" || b.status === "started",
       )
-        ? BUILDS_POLL_MS
+        ? RUNS_POLL_MS
         : false;
+    },
+  });
+}
+
+/**
+ * One version's whole run story: every milestone run that has worked it,
+ * newest first, each with its cycle records in dispatch order.
+ *
+ * This query is the Builds page's liveness driver. Polling stops the moment the
+ * newest run is terminal — the old poll-stop read task derivedStatus, which
+ * after the flip only says whether a GitHub issue is open.
+ */
+export function useBuildRuns(projectName: string, tag: string | undefined) {
+  return useQuery({
+    queryKey: buildKeys.runs(projectName, tag ?? ""),
+    enabled: Boolean(tag),
+    queryFn: async () => {
+      const { data, error } = await client.GET(
+        "/projects/{projectName}/builds/{tag}/runs",
+        { params: { path: { projectName, tag: tag ?? "" } } },
+      );
+      if (error || data === undefined) {
+        throw new Error(apiErrorMessage(error, "Failed to load the version's runs"));
+      }
+      return data;
+    },
+    refetchInterval: (query) => {
+      const list = query.state.data;
+      if (!list) return RUNS_POLL_MS; // no data yet (or errored) — keep trying
+      return versionIsLive(list.runs) ? RUNS_POLL_MS : false;
+    },
+  });
+}
+
+/**
+ * Cancel a milestone run — abandoning the increment. Cancel is the only expiry
+ * the run's unbounded wait state has.
+ *
+ * 202 only means the signal was sent; the run row flips to `cancelled` when the
+ * supervisor acts on it, so success invalidates rather than writes optimistically.
+ * No retry (a failed write is surfaced, never silently repeated): a 503 here
+ * means the workflow engine is unreachable and NOTHING was cancelled.
+ */
+export function useCancelRun(projectName: string, tag: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const { error } = await client.POST(
+        "/projects/{projectName}/runs/{runId}/cancel",
+        { params: { path: { projectName, runId } } },
+      );
+      if (error) {
+        throw new Error(apiErrorMessage(error, "Failed to cancel the run"));
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: buildKeys.runs(projectName, tag ?? ""),
+      });
     },
   });
 }

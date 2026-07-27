@@ -28,29 +28,28 @@ import {
 } from "@wso2/oxygen-ui";
 import { Boxes } from "@wso2/oxygen-ui-icons-react";
 import { EmptyState } from "../../../components/EmptyState";
-import { StatusChip } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
-import { componentStatus } from "../lib/projectActivity";
 import { ComponentOpenApiDialog } from "./ComponentOpenApiDialog";
 
 type Component = components["schemas"]["Component"];
-type TaskView = components["schemas"]["TaskView"];
 
 // The component type is OpenChoreo's own ComponentType name, end-to-end.
 const isWebApp = (c: Component) => c.type === "web-application";
 
-// Component cards: one compact single-row card per component — avatar, name +
-// description, and a build-status chip rolled up from the component's tasks.
-// Services open their OpenAPI contract on click (JWT-guarded, so via the
-// authenticated dialog, not a raw link).
+// Component cards: one compact single-row card per component — avatar, name and
+// description. Services open their OpenAPI contract on click (JWT-guarded, so
+// via the authenticated dialog, not a raw link).
+//
+// Deliberately state-free. A component's build state used to be rolled up from
+// its tasks, but an issue no longer names a component — issue bodies are prose
+// the platform writes and never reads back — so the roll-up had no input left.
+// What is running lives on the deployments board, which reads the cluster.
 export function ComponentsList({
   projectName,
   items,
-  tasks,
 }: {
   projectName: string;
   items: Component[];
-  tasks: TaskView[];
 }) {
   const [contractComponent, setContractComponent] = useState<string | null>(
     null,
@@ -71,7 +70,6 @@ export function ComponentsList({
     <>
       <Stack spacing={1.5}>
         {items.map((c) => {
-          const st = componentStatus(c.name, tasks);
           const initial = ((c.displayName ?? c.name).trim()[0] ?? "C").toUpperCase();
           const openable = !isWebApp(c);
           const card = (
@@ -115,7 +113,6 @@ export function ComponentsList({
                       {c.description ?? "—"}
                     </Typography>
                   </Box>
-                  <StatusChip label={st.label} tone={st.tone} appearance="soft" dot />
                 </Stack>
               </CardContent>
             </Card>

@@ -46,7 +46,7 @@ at design save (before the tag-cut), any `service` component that declares a
 dependency on a resource type carrying the `aep.wso2.com/role: end-user-auth`
 marker — `thunder-app` is the first and, at the time of writing, only such
 type — gets this value stamped automatically
-(`services/aep-api/internal/feature/design/derive_auth.go`; see ADR-0007 for
+(`services/aep-api/internal/spec/derive_auth.go`; see ADR-0007 for
 why this keys on the marker rather than the `thunder-app` name itself). An
 explicit `exposesAPI.auth: service-required` on such a component is a
 self-contradiction — the dependency says the API sits behind end-user

@@ -23,14 +23,13 @@ import {
   Button,
   CircularProgress,
   Stack,
-  Tooltip,
   Typography,
 } from "@wso2/oxygen-ui";
 import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../../components/PageHeader";
 import { StatusChip } from "../../../components/StatusChip";
 import { useTask } from "../api/queries";
-import { taskChip } from "../api/status";
+import { issueStateChip } from "../api/status";
 import { useTaskLog } from "../hooks/useTaskLog";
 import { GitHubIssueLink } from "./GitHubIssueLink";
 import { TaskLogView } from "./TaskLogView";
@@ -57,9 +56,15 @@ function useSecondsSince(resetKey: string, active: boolean): number {
 
 const EXEC_ACTIVE = new Set(["queued", "running"]);
 
-// The per-task console (#173): slim header (title, status chip, GitHub
-// icon-link) over the flat streaming log. get-task provides the initial
-// state; the SSE stream owns everything after that.
+// The per-ISSUE console: slim header (title, status chip, GitHub icon-link)
+// over the flat streaming log. get-task provides the initial state; the SSE
+// stream owns everything after that.
+//
+// Reached by URL, not from a row. The version's story — cycles, budgets, the
+// per-cycle agent feed — is the Builds page, because after the flip an agent
+// works a whole milestone rather than one issue and its log belongs to a CYCLE,
+// not to an issue. What still has a per-issue log is an issue the PLATFORM ran
+// something for: a provisioning gate. This page is that view.
 export function TaskPage({
   projectName,
   issueNumber,
@@ -121,15 +126,9 @@ export function TaskPage({
   // The stream's view of the task is fresher than the initial fetch.
   const derivedStatus =
     log.settledStatus ?? log.task?.derivedStatus ?? detail.data.derivedStatus;
-  const chip = taskChip(derivedStatus);
+  const chip = issueStateChip(derivedStatus);
   const title = log.task?.title ?? detail.data.title;
   const issueUrl = log.task?.issueUrl ?? detail.data.issueUrl;
-  // TaskDetail (the get-task response) doesn't carry blockedBy — only the
-  // stream's TaskView does — so this is populated once the SSE stream has
-  // upserted a task frame, and simply absent before that (fine: the info
-  // icon + tooltip is optional decoration, not load-bearing).
-  const blockedBy = log.task?.blockedBy;
-
   let tail: string | undefined;
   if (log.phase === "reconnecting") {
     tail = "· connection lost — reconnecting…";
@@ -162,17 +161,7 @@ export function TaskPage({
               #{issueNumber}
             </Typography>
             <span>{title}</span>
-            {derivedStatus === "on_hold" && blockedBy?.length ? (
-              <Tooltip title={`Waiting for ${blockedBy.join(", ")}`}>
-                {/* Box holds the ref Tooltip needs; hovering the pill shows
-                    the reason. */}
-                <Box sx={{ display: "inline-flex" }}>
-                  <StatusChip label={chip.label} tone={chip.tone} appearance="soft" />
-                </Box>
-              </Tooltip>
-            ) : (
-              <StatusChip label={chip.label} tone={chip.tone} appearance="soft" />
-            )}
+            <StatusChip label={chip.label} tone={chip.tone} appearance="soft" />
           </Stack>
         }
         backTo={backTo}

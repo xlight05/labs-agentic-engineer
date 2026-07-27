@@ -42,7 +42,7 @@ Ownership is split cleanly by who authors what:
   a cluster install (a CRT manifest) plus a skill; it is never an aep-api code
   change or a platform release.
 - **aep-api** reads markers generically through one shared definition
-  (`services/aep-api/internal/feature/dependencies/resources/markers.go`) and
+  (`services/aep-api/internal/dependencies/markers.go`) and
   branches only on marker values, never on a type's name. The same marker
   extraction and the same catalog fetch serve auth derivation, the
   consumer-URL patch, and skill attachment.
@@ -57,7 +57,7 @@ Ownership is split cleanly by who authors what:
 SPA runtime config is fully generic. For a `web-app`, every `platform-resource`
 dependency's resolved binding outputs are emitted into `window._env_` as
 `<UPPER_SNAKE(depName)>_<UPPER_SNAKE(outputName)>`, via the single shared
-helper `resources.EnvVarName` — the exact convention `wiring.go` already uses
+helper `dependencies.EnvVarName` — the exact convention `wiring.go` already uses
 to inject the same outputs as pod env vars for services, guarded by a
 cross-package test so the two paths can never drift apart. There are no
 `THUNDER_*` keys and no platform-emitted URL keys: the SPA computes
@@ -140,6 +140,4 @@ annotation above).
   no such ceiling and reuses the naming scheme service-side env injection
   already relies on.
 
-See ADR-0006 for why end-user auth is a `platform-resource` dependency at all,
-and `learning/thunder-resource/PLAN-generalization.md` for the task-by-task
-implementation record this ADR documents the outcome of.
+See ADR-0006 for why end-user auth is a `platform-resource` dependency at all.

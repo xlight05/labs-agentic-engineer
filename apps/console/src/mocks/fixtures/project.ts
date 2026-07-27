@@ -7,6 +7,8 @@ type ComponentOpenAPI = components["schemas"]["ComponentOpenAPI"];
 type TaskView = components["schemas"]["TaskView"];
 type TagList = components["schemas"]["TagList"];
 type BuildList = components["schemas"]["BuildList"];
+type BuildRunList = components["schemas"]["BuildRunList"];
+type MilestoneRunView = components["schemas"]["MilestoneRunView"];
 type DeploymentList = components["schemas"]["DeploymentList"];
 type FileMeta = components["schemas"]["FileMeta"];
 type FileContent = components["schemas"]["FileContent"];
@@ -38,11 +40,7 @@ type BuildStage = components["schemas"]["BuildStage"];
 type DeployStage = components["schemas"]["DeployStage"];
 
 const noSpec: SpecStage = { exists: false, version: "", dirty: false, design: false };
-const idleBuild: BuildStage = {
-  version: "",
-  status: "idle",
-  tasks: { total: 0, done: 0, failed: 0, active: 0 },
-};
+const idleBuild: BuildStage = { version: "", status: "idle" };
 const noDeploy: DeployStage = {
   version: "",
   status: "none",
@@ -111,7 +109,6 @@ export const projectStatuses: Record<
     build: {
       version: "v1",
       status: "running",
-      tasks: { total: 4, done: 0, failed: 1, active: 3 },
     },
     deploy: noDeploy,
   },
@@ -129,7 +126,6 @@ export const projectStatuses: Record<
     build: {
       version: "v1",
       status: "succeeded",
-      tasks: { total: 4, done: 4, failed: 0, active: 0 },
     },
     deploy: {
       version: "v1",
@@ -152,15 +148,12 @@ export const projectStatuses: Record<
     build: {
       version: "v1",
       status: "succeeded",
-      tasks: { total: 4, done: 4, failed: 0, active: 0 },
     },
     deploy: {
       version: "v1",
       status: "deployed",
       components: { total: 3, ready: 3 },
       validation: "completed",
-      validationIssue: 30,
-      validationUrl: `${REPO_URL}/pull/42`,
     },
   },
   // v1 build done but the dev deployment failed.
@@ -177,7 +170,6 @@ export const projectStatuses: Record<
     build: {
       version: "v1",
       status: "succeeded",
-      tasks: { total: 4, done: 4, failed: 0, active: 0 },
     },
     deploy: {
       version: "v1",
@@ -407,12 +399,15 @@ export const projectComponents: Record<
   "repo-error": emptyComponents,
 };
 
-// Tasks backing list-tasks — the tasks page (#173); the overview no longer
-// reads them (#183: counts ride on ProjectStatus.build.tasks).
+// Issues backing list-tasks. `derivedStatus` is the whole vocabulary the
+// platform has after the flip: the GitHub issue is open (pending) or closed
+// (merged). `executorClass` is the label-derived kind the Builds page sections
+// on — agent work, a dispatch gate, or a bare human ledger issue.
 function task(
   issueNumber: number,
   title: string,
-  derivedStatus: string,
+  derivedStatus: "pending" | "merged",
+  executorClass: "coding" | "provision" | "ledger" = "coding",
   component?: string,
 ): TaskView {
   const usage = taskUsage[issueNumber];
@@ -420,9 +415,9 @@ function task(
     issueNumber,
     title,
     derivedStatus,
+    executorClass,
     issueUrl: `${BOARD_URL}/${issueNumber}`,
     ...(component !== undefined && { component }),
-    // Pending tasks (no execution yet) carry no usage — exercises the "—" cell (#245).
     ...(usage !== undefined && { usage }),
     attention: null,
     dependsOn: null,
@@ -432,27 +427,33 @@ function task(
   };
 }
 
-// No validation task here: list-tasks returns implementation tasks only (the
-// backend excludes the aep:validation Task — its status rides
-// deploy.validation on the deployments board).
+// No validation issue here: list-tasks hides it — it is a phase of the run and
+// surfaces with the run's verdict on the deployment surface.
 const buildingTasks: TaskView[] = [
-  task(12, "Checkout flow with cart persistence", "pending", "storefront"),
-  task(10, "Product catalog CRUD endpoints", "in_progress", "catalog-api"),
-  task(9, "Scaffold storefront app shell", "merged", "storefront"),
-  task(11, "Orders service payment integration", "failed", "orders-api"),
+  // An open dispatch gate: the Builds page renders this as a hold banner, not
+  // as a row, and while it is open the run dispatches nothing.
+  task(8, "Provide configuration: payments-provider", "pending", "provision"),
+  task(12, "Checkout flow with cart persistence", "pending", "coding", "storefront"),
+  task(10, "Product catalog CRUD endpoints", "pending", "coding", "catalog-api"),
+  task(9, "Scaffold storefront app shell", "merged", "coding", "storefront"),
+  task(11, "Orders service payment integration", "pending", "coding", "orders-api"),
+  // Filed by a human against this version: ledger only, never worked.
+  task(21, "Checkout is slow on mobile", "pending", "ledger"),
 ];
 
 const doneTasks: TaskView[] = buildingTasks.map((t) => ({
   ...t,
-  derivedStatus: "deployed",
+  // The gate resolved and every task landed; the ledger issue is still open,
+  // because a ledger issue never stalls settle.
+  derivedStatus: t.executorClass === "ledger" ? "pending" : "merged",
 }));
 
-// The project's ONE validation task (issue 30, deploy.validationIssue in the
-// deployed scenario): kept OUT of projectTasks — list-tasks never returns it —
-// but get-task and the log stream still serve it, which is what the
-// deployments board's validation chip deep-links to.
+// The version's ONE validation issue: kept OUT of projectTasks — list-tasks
+// hides it — but get-task still serves it by number. Its verdict is a RUN
+// property and lives on the run rows, which is where the deployment surface
+// reads it.
 export const validationTask: TaskView = {
-  ...task(30, "Validate deployed system against acceptance criteria", "deployed"),
+  ...task(30, "Validate deployed system against acceptance criteria", "merged"),
   executorClass: "validation",
   prUrl: `${REPO_URL}/pull/42`,
 };
@@ -495,6 +496,113 @@ const completedV1Build: BuildList = {
       completedAt: "2026-07-10T10:03:00Z",
     },
   ],
+};
+
+// Milestone runs backing list-build-runs — the version's whole story: run rows
+// and their cycle records, DB-only on the server. Branch, PR number and merge
+// SHA are LEARNED FROM WEBHOOKS, so the in-flight cycle carries none of them.
+function milestoneRun(over: Partial<MilestoneRunView> = {}): MilestoneRunView {
+  return {
+    id: "run-v1-1",
+    milestoneNumber: 1,
+    milestoneTitle: "v1",
+    origin: "spec-build",
+    state: "running",
+    budgets: {
+      cyclesTotal: 2,
+      cycleCeiling: 8,
+      fixCycles: 1,
+      conflictCycles: 0,
+      buildRetriggers: 1,
+    },
+    validation: {},
+    cycles: [
+      {
+        id: "cycle-1",
+        kind: "coding",
+        attempts: 1,
+        branch: "aep/m1-c1",
+        prNumber: 3,
+        mergeSha: "dcb1edc5fe0417b2",
+        createdAt: "2026-07-10T09:14:00Z",
+        endedAt: "2026-07-10T09:41:00Z",
+      },
+      {
+        id: "cycle-2",
+        kind: "fix",
+        attempts: 2,
+        createdAt: "2026-07-10T09:45:00Z",
+      },
+    ],
+    createdAt: "2026-07-10T09:12:00Z",
+    startedAt: "2026-07-10T09:13:00Z",
+    ...over,
+  };
+}
+
+const noRuns: BuildRunList = { tag: "v1", milestoneNumber: 1, runs: [] };
+const liveRun: BuildRunList = {
+  tag: "v1",
+  milestoneNumber: 1,
+  runs: [milestoneRun()],
+};
+// A parked run: the state cancel exists for, so the mock can show the banner.
+const waitingRun: BuildRunList = {
+  tag: "v1",
+  milestoneNumber: 1,
+  runs: [milestoneRun({ state: "waiting" })],
+};
+const settledRun: BuildRunList = {
+  tag: "v1",
+  milestoneNumber: 1,
+  runs: [
+    milestoneRun({
+      state: "succeeded",
+      endedAt: "2026-07-10T10:03:00Z",
+      validation: {
+        verdict: "passed",
+        reportPath: "tests/validation/report.json",
+      },
+      cycles: [
+        {
+          id: "cycle-1",
+          kind: "coding",
+          attempts: 1,
+          branch: "aep/m1-c1",
+          prNumber: 3,
+          mergeSha: "dcb1edc5fe0417b2",
+          createdAt: "2026-07-10T09:14:00Z",
+          endedAt: "2026-07-10T09:41:00Z",
+        },
+        {
+          id: "cycle-2",
+          kind: "validation",
+          attempts: 1,
+          branch: "aep/m1-c2",
+          prNumber: 4,
+          mergeSha: "7ab41c90ee31d5f0",
+          createdAt: "2026-07-10T09:45:00Z",
+          endedAt: "2026-07-10T10:02:00Z",
+        },
+      ],
+    }),
+  ],
+};
+
+export const projectBuildRuns: Record<
+  Exclude<ProjectScenario, "error">,
+  BuildRunList
+> = {
+  fresh: noRuns,
+  spec: noRuns,
+  "spec-failed": noRuns,
+  // A gate is open in the `building` scenario's issue list, so its run is
+  // parked — which is exactly when the hold banner and cancel both matter.
+  building: waitingRun,
+  deploying: liveRun,
+  deployed: settledRun,
+  "deploy-failed": settledRun,
+  "repo-error": noRuns,
 };
 
 export const projectBuilds: Record<

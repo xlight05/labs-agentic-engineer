@@ -33,7 +33,6 @@ import { Link } from "@tanstack/react-router";
 import { PageHeader } from "../../../components/PageHeader";
 import { SectionTitle } from "../../../components/SectionTitle";
 import { StatusChip } from "../../../components/StatusChip";
-import { useAllTasks } from "../../tasks/api/queries";
 import { useProject, useProjectComponents, useProjectStatus } from "../api/queries";
 import { phaseChip } from "../lib/phaseChip";
 import { RecentActivity } from "./RecentActivity";
@@ -65,7 +64,6 @@ export function ProjectOverview({ projectName }: { projectName: string }) {
   const project = useProject(projectName);
   const status = useProjectStatus(projectName);
   const componentsQuery = useProjectComponents(projectName);
-  const tasks = useAllTasks(projectName);
 
   const buildState = status.data?.build.status;
   const deployState = status.data?.deploy.status;
@@ -173,7 +171,6 @@ export function ProjectOverview({ projectName }: { projectName: string }) {
               <ComponentsList
                 projectName={projectName}
                 items={componentsQuery.data.items ?? []}
-                tasks={tasks.data ?? []}
               />
             )}
           </Grid>

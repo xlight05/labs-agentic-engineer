@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Generated cross-service contracts. Holds the committed aep-api public OpenAPI spec (api/v1/openapi.yaml); regenerate via `make gen`. Also the hand-written shared phase prompts (prompts/).",
+  "description": "Hand-authored cross-service contracts, and the source of truth they are generated FROM: the aep-api public and internal OpenAPI specs (api/v1, api/internal/v1) plus the shared phase prompts (prompts/). Edit the spec, then run `make gen-api` in services/aep-api and `make gen` at the root to regenerate the server interface and the TS clients — never the other way round.",
   "exports": {
     "./prompts": "./prompts/index.ts"
   },

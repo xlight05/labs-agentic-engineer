@@ -68,9 +68,10 @@ delivery's kernel: shared behaviour belongs in the root the slices import.
   bindings — with no GitHub API, Temporal query, or origin fetch. Any source failure fails the whole read
   (the console keeps last-good); the one carve-out: a deploy tag missing from the local mirror degrades to
   a 0 denominator, not a 500.
-- **The build stage carries NO task counts.** Their only honest source is the version's milestone on
-  GitHub, and a 5s poll may not spend GitHub rate — so the tally is zero here and the console renders
-  counts from the list-tasks response it already holds.
+- **The build stage carries NO task counts** — not zeroed ones, none at all. Their only honest source is
+  the version's milestone on GitHub, and a 5s poll may not spend GitHub rate, so the field is absent from
+  the contract rather than present and always zero; the console renders counts from the list-tasks
+  response it already holds, on the surface that already pays for it.
 - **A validation failure is attributed to validation, not the build.** A run whose terminal reason is
   `validation-failed` reports the Build stage `succeeded` and the failure rides `deploy.validation =
   failed`: every coding cycle landed. The carve-out keys on the run's own terminal reason, which names

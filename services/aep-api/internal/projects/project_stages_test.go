@@ -91,12 +91,9 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 	if st.Build.Version != "v2" || st.Build.Status != "running" {
 		t.Errorf("build = %s/%s, want v2/running", st.Build.Version, st.Build.Status)
 	}
-	// The task tally is deliberately zero: its only honest source is GitHub, and
-	// this endpoint is polled at 5s. The console renders counts from the
-	// list-tasks response it already holds.
-	if st.Build.Tasks.Total != 0 || st.Build.Tasks.Done != 0 || st.Build.Tasks.Failed != 0 || st.Build.Tasks.Active != 0 {
-		t.Errorf("build tasks = %+v, want an all-zero tally (no GitHub in the poll path)", st.Build.Tasks)
-	}
+	// There is no task tally on this aggregate at all: its only honest source is
+	// GitHub, and this endpoint is polled at 5s. The console renders counts from
+	// the list-tasks response it already holds.
 
 	if st.Deploy.Version != "v1" {
 		t.Errorf("deploy version = %q, want v1 (newest SUCCEEDED run, not the running v2)", st.Deploy.Version)
@@ -375,7 +372,7 @@ func TestRepoNotReady_ZeroValueStages(t *testing.T) {
 	if st.Spec != (gen.SpecStage{}) {
 		t.Errorf("spec = %+v, want zero-valued", st.Spec)
 	}
-	if st.Build.Status != "idle" || st.Build.Version != "" || st.Build.Tasks.Total != 0 {
+	if st.Build.Status != "idle" || st.Build.Version != "" {
 		t.Errorf("build = %+v, want idle zero-valued", st.Build)
 	}
 	if st.Deploy.Status != "none" || st.Deploy.Version != "" || st.Deploy.Components.Total != 0 {

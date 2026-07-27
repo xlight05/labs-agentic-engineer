@@ -181,9 +181,11 @@ export function SpecView({ projectName }: { projectName: string }) {
   // CTA) and, more durably, by an agent peer streaming design.cell into the
   // room. In either case the Architecture (cell-diagram) tab is where the user
   // wants to be, so we auto-select it.
-  const generate = (
-    useSearch({ strict: false }) as { generate?: "requirements" | "design" }
-  ).generate;
+  const search = useSearch({ strict: false }) as {
+    generate?: "requirements" | "design";
+    connections?: "open";
+  };
+  const generate = search.generate;
   const agentInRoom = collab.peers.some((p) => p.kind === "agent");
   const hasDesignCell = files.some((f) => f.path === DESIGN_CELL_PATH);
 
@@ -193,6 +195,24 @@ export function SpecView({ projectName }: { projectName: string }) {
   useEffect(() => {
     if (generate === "design") setSelection({ kind: "cell-diagram" });
   }, [generate]);
+
+  // `?connections=open` — the Builds page's gate hold banner deep-links here
+  // because the connection drawer is where a held dependency is supplied. The
+  // drawer needs the preflight items, which are otherwise only fetched by a
+  // Build click, so this arrival fetches them itself before opening.
+  const connectionsParam = search.connections;
+  useEffect(() => {
+    if (connectionsParam !== "open") return;
+    let cancelled = false;
+    void preflightRef.current.refetch().then(({ data }) => {
+      if (cancelled) return;
+      setPreflightItems(data?.items ?? []);
+      setDependencyDrawerOpen(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionsParam]);
 
   // An architectural chat change updates design.cell (targeted editFile
   // patches, or a removeFile + streamed addFile for a restructure). Navigate

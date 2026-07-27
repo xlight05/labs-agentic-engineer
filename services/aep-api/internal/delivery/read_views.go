@@ -77,7 +77,7 @@ type TaskView struct {
 	// PRURL links the task's pull request, recovered from the succeeded coding
 	// Execution's "pr#N" reason (no live PR query); empty before a PR opens.
 	PRURL         string                   `json:"prUrl,omitempty"`
-	ExecutorClass string                   `json:"executorClass,omitempty"`
+	ExecutorClass string                   `json:"executorClass"`
 	Origin        string                   `json:"origin,omitempty"`
 	Component     string                   `json:"component,omitempty"`
 	Operation     string                   `json:"operation,omitempty"`

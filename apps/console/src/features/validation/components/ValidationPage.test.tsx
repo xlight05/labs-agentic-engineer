@@ -20,6 +20,10 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { components } from "../../../generated/aep-api";
+
+type MilestoneRunView = components["schemas"]["MilestoneRunView"];
+type RunValidation = components["schemas"]["RunValidation"];
 
 // Router replaced so the PageHeader back-link renders as a plain anchor — no
 // RouterProvider needed (mirrors DeploymentsPage.test.tsx / NotFound.test.tsx).
@@ -27,36 +31,50 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
 }));
 
-// The live log is rendered by the pure TaskLogView fed from the useTaskLog SSE
-// hook. Both are out of scope here: stub TaskLogView to a marker so we can
-// assert which lifecycle states show the log vs. the report, and make
-// useTaskLog inert so no stream opens.
-vi.mock("../../tasks/components/TaskLogView", () => ({
-  TaskLogView: () => <div data-testid="log-view">log view</div>,
-}));
-vi.mock("../../tasks/hooks/useTaskLog", () => ({
-  useTaskLog: () => ({
-    lines: [],
-    phase: "live",
-    executions: [],
-    settledStatus: undefined,
-    task: undefined,
-  }),
+// The live log is the RUN feed filtered to the validation cycle, and it opens
+// an SSE stream. Stub it to a marker so we can assert which lifecycle states
+// show the log vs. the report, without a stream.
+vi.mock("../../builds/components/RunFeed", () => ({
+  RunFeed: ({ cycleKinds }: { cycleKinds?: readonly string[] }) => (
+    <div data-testid="run-feed">{(cycleKinds ?? []).join(",")}</div>
+  ),
 }));
 
-// get-task feeds only the header issue/PR links here.
-vi.mock("../../tasks/api/queries", () => ({
-  useTask: () => ({
-    data: {
-      issueUrl: "https://github.com/acme/demo/issues/30",
-      prUrl: "https://github.com/acme/demo/pull/42",
-    },
-  }),
-}));
-
-// Controllable status + file queries (no QueryClientProvider / MSW).
+// Controllable status + runs + file queries (no QueryClientProvider / MSW).
 let mockValidation = "none";
-let mockIssue: number | undefined;
+let mockRun: MilestoneRunView | undefined;
+
+function run(over: {
+  validation?: RunValidation;
+  cycles?: MilestoneRunView["cycles"];
+}): MilestoneRunView {
+  return {
+    id: "run-1",
+    milestoneNumber: 1,
+    milestoneTitle: "v1",
+    origin: "spec-build",
+    state: "succeeded",
+    budgets: {
+      cyclesTotal: 2,
+      cycleCeiling: 8,
+      fixCycles: 0,
+      conflictCycles: 0,
+      buildRetriggers: 0,
+    },
+    validation: over.validation ?? {},
+    cycles: over.cycles ?? [],
+    createdAt: "2026-07-10T09:00:00Z",
+  };
+}
+
+const validationCycle = {
+  id: "cycle-2",
+  kind: "validation" as const,
+  attempts: 1,
+  prNumber: 42,
+  createdAt: "2026-07-10T10:00:00Z",
+};
+
 const mockCriteria = {
   isPending: false,
   isError: false,
@@ -79,12 +97,19 @@ vi.mock("../../projects/api/queries", () => ({
     error: null,
     refetch: vi.fn(),
     data: {
-      deploy: {
-        version: "v1",
-        validation: mockValidation,
-        ...(mockIssue ? { validationIssue: mockIssue } : {}),
-      },
+      repoUrl: "https://github.com/acme/demo",
+      deploy: { version: "v1", validation: mockValidation },
     },
+  }),
+}));
+
+vi.mock("../../builds/api/queries", () => ({
+  useBuildRuns: () => ({
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    data: { tag: "v1", milestoneNumber: 1, runs: mockRun ? [mockRun] : [] },
   }),
 }));
 
@@ -135,7 +160,7 @@ function renderPage(view: "logs" | undefined, onViewChange = vi.fn()) {
 
 afterEach(() => {
   mockValidation = "none";
-  mockIssue = undefined;
+  mockRun = undefined;
   mockCriteria.isPending = false;
   mockCriteria.isError = false;
   mockCriteria.data = undefined;
@@ -144,36 +169,60 @@ afterEach(() => {
 });
 
 describe("ValidationPage lifecycle", () => {
-  it("shows an empty state when nothing has run", () => {
-    mockValidation = "none";
+  it("shows an empty state when the version's run never reached validation", () => {
+    mockRun = run({});
     renderPage(undefined);
     expect(screen.getByText(/No validation has run yet/)).toBeInTheDocument();
-    expect(screen.queryByTestId("log-view")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-feed")).not.toBeInTheDocument();
   });
 
-  it("shows the inline log box while a run is in progress", () => {
+  it("shows an empty state when the version has no run rows at all", () => {
+    renderPage(undefined);
+    expect(screen.getByText(/No validation has run yet/)).toBeInTheDocument();
+  });
+
+  it("shows the validation cycle's feed while the run is validating", () => {
     mockValidation = "running";
-    mockIssue = 30;
+    mockRun = run({ cycles: [validationCycle] });
     renderPage(undefined);
-    expect(screen.getByTestId("log-view")).toBeInTheDocument();
+    // The feed streams the WHOLE run; the page filters it to the one phase it
+    // owns, so a coding cycle's output never leaks onto the validation page.
+    expect(screen.getByTestId("run-feed")).toHaveTextContent("validation");
   });
 
-  it("shows the inline log box for a mechanically failed run", () => {
+  it("shows the feed for a run whose validation failed", () => {
     mockValidation = "failed";
-    mockIssue = 30;
-    renderPage(undefined);
-    expect(screen.getByTestId("log-view")).toBeInTheDocument();
+    mockRun = run({
+      validation: { verdict: "failed" },
+      cycles: [validationCycle],
+    });
+    mockCriteria.data = { content: CRITERIA };
+    renderPage("logs");
+    expect(screen.getByTestId("run-feed")).toHaveTextContent("validation");
+    // A failed verdict still committed a report, so the toggle back exists.
+    expect(screen.getByRole("button", { name: /View report/ })).toBeTruthy();
+    expect(screen.getByText("Validation failed")).toBeInTheDocument();
   });
 
-  it("renders the joined report when a run completed", () => {
+  it("says so, and shows nothing else, when the run SKIPPED validation", () => {
+    mockRun = run({ validation: { verdict: "skipped" } });
+    renderPage(undefined);
+    expect(screen.getByText(/was not validated/)).toBeInTheDocument();
+    expect(screen.queryByTestId("run-feed")).not.toBeInTheDocument();
+  });
+
+  it("renders the joined report on a passed verdict", () => {
     mockValidation = "completed";
-    mockIssue = 30;
+    mockRun = run({
+      validation: { verdict: "passed", reportPath: "tests/validation/report.json" },
+      cycles: [validationCycle],
+    });
     mockCriteria.data = { content: CRITERIA };
     mockReport.data = { content: REPORT };
     renderPage(undefined);
 
     // The report, not the log.
-    expect(screen.queryByTestId("log-view")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("run-feed")).not.toBeInTheDocument();
     expect(screen.getByText("Shoppers can search the catalog.")).toBeInTheDocument();
     // Per-criterion state chips from the join.
     expect(screen.getByText("Passed")).toBeInTheDocument();
@@ -185,9 +234,36 @@ describe("ValidationPage lifecycle", () => {
     ).toBeInTheDocument();
   });
 
+  it("stamps the run's verdict on the header, not the coarse lifecycle", () => {
+    mockValidation = "completed";
+    mockRun = run({
+      validation: { verdict: "passed" },
+      cycles: [validationCycle],
+    });
+    mockCriteria.data = { content: CRITERIA };
+    renderPage(undefined);
+    expect(screen.getByText("Validation passed")).toBeInTheDocument();
+  });
+
+  it("links the validation cycle's PR, learned from the cycle record", () => {
+    mockValidation = "completed";
+    mockRun = run({
+      validation: { verdict: "passed" },
+      cycles: [validationCycle],
+    });
+    mockCriteria.data = { content: CRITERIA };
+    renderPage(undefined);
+    expect(
+      screen.getByRole("link", { name: /Validation pull request/ }),
+    ).toHaveAttribute("href", "https://github.com/acme/demo/pull/42");
+  });
+
   it("toggles to the log view via the View logs button", () => {
     mockValidation = "completed";
-    mockIssue = 30;
+    mockRun = run({
+      validation: { verdict: "passed" },
+      cycles: [validationCycle],
+    });
     mockCriteria.data = { content: CRITERIA };
     mockReport.data = { content: REPORT };
     const onViewChange = renderPage(undefined);
@@ -196,21 +272,27 @@ describe("ValidationPage lifecycle", () => {
     expect(onViewChange).toHaveBeenCalledWith("logs");
   });
 
-  it("shows the log box (and a View report button) when ?view=logs", () => {
+  it("shows the feed (and a View report button) when ?view=logs", () => {
     mockValidation = "completed";
-    mockIssue = 30;
+    mockRun = run({
+      validation: { verdict: "passed" },
+      cycles: [validationCycle],
+    });
     mockCriteria.data = { content: CRITERIA };
     mockReport.data = { content: REPORT };
     const onViewChange = renderPage("logs");
 
-    expect(screen.getByTestId("log-view")).toBeInTheDocument();
+    expect(screen.getByTestId("run-feed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /View report/ }));
     expect(onViewChange).toHaveBeenCalledWith(undefined);
   });
 
   it("falls back to criteria-only with a note when the report is missing", () => {
     mockValidation = "completed";
-    mockIssue = 30;
+    mockRun = run({
+      validation: { verdict: "passed" },
+      cycles: [validationCycle],
+    });
     mockCriteria.data = { content: CRITERIA };
     mockReport.isError = true;
     renderPage(undefined);

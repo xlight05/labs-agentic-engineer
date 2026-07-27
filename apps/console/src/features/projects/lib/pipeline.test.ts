@@ -42,12 +42,7 @@ function status(over: {
     specStatus: "",
     designStatus: "",
     spec: { exists: true, version: "", dirty: false, design: false, ...over.spec },
-    build: {
-      version: "",
-      status: "idle",
-      tasks: { total: 0, done: 0, failed: 0, active: 0 },
-      ...over.build,
-    },
+    build: { version: "", status: "idle", ...over.build },
     deploy: {
       version: "",
       status: "none",
@@ -79,62 +74,36 @@ describe("specStageView — derived, no stored status", () => {
   });
 });
 
+// The build stage is deliberately count-free: a per-version task tally can only
+// come from GitHub and this aggregate is polled at 5s, so it carries the run's
+// state and its version and nothing else.
 describe("buildStageView", () => {
-  it("idle → ghosted waiting", () => {
-    expect(buildStageView(status({})).tone).toBe("ghost");
+  it("idle → ghosted waiting, no version claimed", () => {
+    const v = buildStageView(status({}));
+    expect(v.tone).toBe("ghost");
+    expect(v.version).toBe("");
   });
-  it("running with no tasks yet → generating tasks (planning phase)", () => {
+  it("running → the version being built", () => {
     const v = buildStageView(
-      status({
-        build: {
-          version: "v1",
-          status: "running",
-          tasks: { total: 0, done: 0, failed: 0, active: 0 },
-        },
-      }),
+      status({ build: { version: "v1", status: "running" } }),
     );
-    expect(v.line).toBe("building · generating tasks");
-    expect(v.version).toBe("v1");
-  });
-  it("running → counts + failed count carried for red callout", () => {
-    const v = buildStageView(
-      status({
-        build: {
-          version: "v1",
-          status: "running",
-          tasks: { total: 5, done: 3, failed: 1, active: 1 },
-        },
-      }),
-    );
-    expect(v.line).toBe("building · 3/5 done");
-    expect(v.failed).toBe(1);
+    expect(v.line).toBe("building");
+    expect(v.tone).toBe("info");
     expect(v.version).toBe("v1");
   });
   it("failed → error tone", () => {
     const v = buildStageView(
-      status({
-        build: {
-          version: "v1",
-          status: "failed",
-          tasks: { total: 5, done: 2, failed: 3, active: 0 },
-        },
-      }),
+      status({ build: { version: "v1", status: "failed" } }),
     );
     expect(v.tone).toBe("error");
-    expect(v.failed).toBe(3);
+    expect(v.line).toBe("build failed");
   });
-  it("succeeded → success, no failed callout", () => {
+  it("succeeded → success", () => {
     const v = buildStageView(
-      status({
-        build: {
-          version: "v1",
-          status: "succeeded",
-          tasks: { total: 5, done: 5, failed: 0, active: 0 },
-        },
-      }),
+      status({ build: { version: "v1", status: "succeeded" } }),
     );
     expect(v.tone).toBe("success");
-    expect(v.failed).toBeUndefined();
+    expect(v.line).toBe("built");
   });
 });
 
@@ -192,7 +161,7 @@ describe("deployStageView", () => {
         },
       }),
     );
-    expect(v.line).toBe("live in dev · validation report");
+    expect(v.line).toBe("live in dev · validation passed");
   });
   it("failed → error", () => {
     const v = deployStageView(
@@ -219,8 +188,8 @@ describe("deployStageView", () => {
         },
       }),
     );
-    expect(v.line).toBe("live in dev · validation report");
-    expect(v.tone).toBe("info");
+    expect(v.line).toBe("live in dev · validation passed");
+    expect(v.tone).toBe("success");
   });
   it("status none and no validation → nothing deployed", () => {
     const v = deployStageView(status({}));
@@ -241,10 +210,12 @@ describe("validationView", () => {
       tone: "info",
     });
   });
-  it("completed → validation report (neutral — the verdict lives in the report)", () => {
+  // The state is folded from the RUN's verdict, so the label can name the
+  // outcome rather than name the artifact the user would have to open.
+  it("completed → validation passed (success)", () => {
     expect(validationView("completed")).toEqual({
-      label: "validation report",
-      tone: "info",
+      label: "validation passed",
+      tone: "success",
     });
   });
   it("failed → validation failed (error)", () => {

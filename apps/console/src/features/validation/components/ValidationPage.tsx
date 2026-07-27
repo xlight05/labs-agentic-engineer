@@ -25,125 +25,42 @@ import {
   Stack,
   Tooltip,
 } from "@wso2/oxygen-ui";
-import {
-  FileText,
-  GitHub,
-  GitPullRequest,
-  ScrollText,
-} from "@wso2/oxygen-ui-icons-react";
+import { FileText, GitPullRequest, ScrollText } from "@wso2/oxygen-ui-icons-react";
 import { Link } from "@tanstack/react-router";
 import { ValidationView } from "@aep/ui-validation-view";
 import { PageHeader, type PageHeaderStatus } from "../../../components/PageHeader";
 import { EmptyState } from "../../../components/EmptyState";
 import { useProjectStatus } from "../../projects/api/queries";
-import { useTask } from "../../tasks/api/queries";
-import { useTaskLog } from "../../tasks/hooks/useTaskLog";
-import { TaskLogView } from "../../tasks/components/TaskLogView";
+import { useBuildRuns } from "../../builds/api/queries";
+import { RunFeed } from "../../builds/components/RunFeed";
+import { validationVerdictChip } from "../../builds/lib/runView";
 import { useValidationCriteria, useValidationReport } from "../api/queries";
 
-// Header status chip for the coarse validation state. Mirrors the labels the
-// deployments board uses (validationView, projects/lib/pipeline.ts) but returns
-// StatusTone (the header's palette) directly — none / "" gets no chip.
-function validationChip(validation: string): PageHeaderStatus | undefined {
-  switch (validation) {
-    case "running":
-      return { label: "Validating", tone: "info" };
-    case "completed":
-      return { label: "Validation report", tone: "info" };
-    case "failed":
-      return { label: "Validation failed", tone: "error" };
-    default:
-      return undefined;
-  }
+// Validation lives on the DEPLOYMENT surface because the deployment is what is
+// being validated. Its verdict is a RUN property — read from the version's run
+// story (list-build-runs), which is the only place the platform keeps it; there
+// is no validation endpoint. The page joins that verdict with the authored
+// oracle (specs/validation/validation-criteria.json) and the runner's committed
+// report, both read at HEAD through the Files API.
+
+// The validation cycle is the phase of the run this page owns; the rest of the
+// loop is the Builds page's story.
+const VALIDATION_CYCLE = ["validation"] as const;
+
+// Header chip for the run's verdict, falling back to the coarse lifecycle state
+// while no verdict exists yet.
+function headerChip(
+  verdict: ReturnType<typeof validationVerdictChip>,
+  running: boolean,
+): PageHeaderStatus | undefined {
+  if (verdict) return { label: verdict.label, tone: verdict.tone };
+  return running ? { label: "Validating", tone: "info" } : undefined;
 }
 
-// The issue + PR links, mounted only when a validation issue exists so useTask
-// (no `enabled` guard) never fires for a bogus issue. Shares get-task's cache
-// with the log stream — no extra fetch. The PR button appears once the PR opens.
-function ValidationLinks({
-  projectName,
-  issueNumber,
-}: {
-  projectName: string;
-  issueNumber: number;
-}) {
-  const task = useTask(projectName, issueNumber);
-  const issueUrl = task.data?.issueUrl;
-  const prUrl = task.data?.prUrl;
-  return (
-    <>
-      {prUrl && (
-        <Tooltip title="Open the validation PR">
-          <IconButton
-            component="a"
-            href={prUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Validation pull request"
-          >
-            <GitPullRequest size={18} />
-          </IconButton>
-        </Tooltip>
-      )}
-      {issueUrl && (
-        <Tooltip title="Open the validation issue">
-          <IconButton
-            component="a"
-            href={issueUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`GitHub issue #${issueNumber}`}
-          >
-            <GitHub size={18} />
-          </IconButton>
-        </Tooltip>
-      )}
-    </>
-  );
-}
-
-// The validation run's live log. Mounted only in the logs branch so the SSE
-// stream (useTaskLog) opens only when logs are shown — hence a component rather
-// than a top-level hook call. Feeds the shared, pure TaskLogView directly; the
-// tail is a minimal phase hint (no idle-timer reassurance).
-function ValidationLog({
-  projectName,
-  issueNumber,
-}: {
-  projectName: string;
-  issueNumber: number;
-}) {
-  const log = useTaskLog(projectName, issueNumber);
-  let tail: string | undefined;
-  if (log.phase === "connecting") {
-    tail = "· attaching to the validation log…";
-  } else if (log.phase === "reconnecting") {
-    tail = "· connection lost — reconnecting…";
-  } else if (log.phase === "ended") {
-    tail = `· validation settled${log.settledStatus ? ` — ${log.settledStatus}` : ""}`;
-  }
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        // Fill the remaining page height so the log gets a real scroll area.
-        minHeight: 480,
-        height: "calc(100vh - 320px)",
-      }}
-    >
-      <TaskLogView lines={log.lines} {...(tail ? { tail } : {})} />
-    </Box>
-  );
-}
-
-// The Validation page: a read-only report of the deployed system against its
-// acceptance criteria. It joins the authored oracle
-// (specs/validation/validation-criteria.json) with the runner's committed run
-// report (tests/validation/report.json, both read at HEAD) and renders them via
-// the shared ValidationView. Coarse lifecycle comes from the project status; the
-// live run log is absorbed here (inline before a report exists, behind a toggle
-// after). No writes — manual criteria simply show a "Manual" state.
+/**
+ * The Validation page: a read-only report of the deployed system against its
+ * acceptance criteria, plus the validation cycle's live log. No writes.
+ */
 export function ValidationPage({
   projectName,
   view,
@@ -155,21 +72,32 @@ export function ValidationPage({
 }) {
   const status = useProjectStatus(projectName);
   const deploy = status.data?.deploy;
-  const validation = deploy?.validation ?? "";
-  const issue = deploy?.validationIssue || undefined;
   const version = deploy?.version ?? "";
-  const completed = validation === "completed";
+  const running = deploy?.validation === "running";
 
-  // Criteria + report are only fetched once a run has completed (before that the
-  // report isn't at HEAD yet). Hooks stay unconditional; `enabled` gates them.
-  const criteria = useValidationCriteria(projectName, version, completed);
-  const report = useValidationReport(projectName, version, completed);
+  // The deployed version's runs: the newest is the one that landed it, and its
+  // validation record is this page's subject.
+  const runs = useBuildRuns(projectName, version || undefined);
+  const run = runs.data?.runs?.[0];
+  const verdict = validationVerdictChip(run?.validation);
+  const reportPath = run?.validation?.reportPath ?? "";
+  const validationCycle = run?.cycles?.find((c) => c.kind === "validation");
+  const prUrl =
+    status.data?.repoUrl && validationCycle?.prNumber
+      ? `${status.data.repoUrl}/pull/${validationCycle.prNumber}`
+      : undefined;
 
-  // Body rule: the log box shows when there's no report yet (running/failed) OR
-  // the user toggled ?view=logs; otherwise the joined report.
-  const showLogs = !completed || view === "logs";
+  // A verdict means the run committed its report; before that there is nothing
+  // at HEAD to read. Hooks stay unconditional; `enabled` gates them.
+  const settled = verdict !== null && verdict.label !== "Validation skipped";
+  const criteria = useValidationCriteria(projectName, version, settled);
+  const report = useValidationReport(projectName, version, settled, reportPath);
 
-  const chip = validationChip(validation);
+  // Body rule: the log shows while there is no report to show (running, failed
+  // mechanically, nothing settled yet) OR the user toggled ?view=logs.
+  const showLogs = !settled || view === "logs";
+
+  const chip = headerChip(verdict, running);
   const header = (
     <PageHeader
       title="Validation"
@@ -179,36 +107,46 @@ export function ValidationPage({
       }}
       {...(chip ? { status: chip } : {})}
       actions={
-        issue ? (
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <ValidationLinks projectName={projectName} issueNumber={issue} />
-            {completed &&
-              (showLogs ? (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<FileText size={16} />}
-                  onClick={() => onViewChange(undefined)}
-                >
-                  View report
-                </Button>
-              ) : (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<ScrollText size={16} />}
-                  onClick={() => onViewChange("logs")}
-                >
-                  View logs
-                </Button>
-              ))}
-          </Stack>
-        ) : undefined
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          {prUrl && (
+            <Tooltip title="Open the validation PR">
+              <IconButton
+                component="a"
+                href={prUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Validation pull request"
+              >
+                <GitPullRequest size={18} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {settled &&
+            (showLogs ? (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileText size={16} />}
+                onClick={() => onViewChange(undefined)}
+              >
+                View report
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ScrollText size={16} />}
+                onClick={() => onViewChange("logs")}
+              >
+                View logs
+              </Button>
+            ))}
+        </Stack>
       }
     />
   );
 
-  if (status.isPending) {
+  if (status.isPending || (version !== "" && runs.isPending)) {
     return (
       <>
         {header}
@@ -236,14 +174,26 @@ export function ValidationPage({
     );
   }
 
-  // Nothing has run: no report, and no task to stream.
-  if (!issue || validation === "" || validation === "none") {
+  // Nothing to show: no deployed version, or its run never reached validation.
+  if (!run || (!validationCycle && !verdict)) {
     return (
       <>
         {header}
         <EmptyState
           compact
-          description="No validation has run yet — it runs automatically once the project's components are deployed to dev."
+          description="No validation has run yet — it runs automatically once the project's components are deployed to dev and the version's work is done."
+        />
+      </>
+    );
+  }
+
+  if (verdict?.label === "Validation skipped") {
+    return (
+      <>
+        {header}
+        <EmptyState
+          compact
+          description="This version was not validated — it has no acceptance criteria, or it was an incident run, which gets no validation cycle."
         />
       </>
     );
@@ -253,25 +203,26 @@ export function ValidationPage({
     return (
       <>
         {header}
-        <ValidationLog projectName={projectName} issueNumber={issue} />
+        <RunFeed
+          projectName={projectName}
+          runId={run.id}
+          cycleKinds={VALIDATION_CYCLE}
+        />
       </>
     );
   }
 
-  // Completed and showing the report: render the join once the criteria load.
   return (
     <>
       {header}
-      {criteria.isPending ? (
+      {criteria.isPending || (!criteria.isError && !criteria.data) ? (
         <Box sx={{ display: "flex", justifyContent: "center", p: 6 }}>
           <CircularProgress aria-label="Loading validation report" />
         </Box>
       ) : criteria.isError ? (
         <Alert
           severity="error"
-          action={
-            <Button onClick={() => void criteria.refetch()}>Retry</Button>
-          }
+          action={<Button onClick={() => void criteria.refetch()}>Retry</Button>}
         >
           Failed to load the validation criteria
           {criteria.error instanceof Error && criteria.error.message
@@ -283,8 +234,8 @@ export function ValidationPage({
           {report.isError && (
             <Box sx={{ px: 3, pt: 2 }}>
               <Alert severity="info">
-                The run completed but its report wasn't found — showing the
-                criteria without per-criterion results.
+                The run reached a verdict but its report wasn't found — showing
+                the criteria without per-criterion results.
               </Alert>
             </Box>
           )}

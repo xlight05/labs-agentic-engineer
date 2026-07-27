@@ -105,9 +105,10 @@ func TestReads_DerivedStatusIsIssueStateAlone(t *testing.T) {
 	}
 }
 
-// The populations a Task list is made of: agent work and dispatch gates are
-// Tasks; the validation issue is a phase of the run and is hidden; a bare human
-// issue is ledger-only and was never worked.
+// The populations an UNTAGGED list is made of: agent work and dispatch gates.
+// The validation issue is a phase of the run and is hidden. A bare human issue
+// is invisible here by construction — the untagged read is two label queries,
+// and a ledger issue is defined by carrying no label to query on.
 func TestReads_ListPopulations(t *testing.T) {
 	issues := newFakeIssues()
 	issues.seed(agentIssue(1, "Implement user-service", "brief"))
@@ -132,6 +133,39 @@ func TestReads_ListPopulations(t *testing.T) {
 	}
 	if kinds[2] != "provision" {
 		t.Errorf("gate kind = %q, want provision", kinds[2])
+	}
+}
+
+// A version's LEDGER: bare human issues that joined the milestone carrying none
+// of the platform's labels. They are never worked and never stall settle, but
+// they belong to the version, so a milestone-scoped read returns them — marked
+// `ledger` so the console can section them apart from agent work rather than
+// mistaking one for a task. The validation issue stays hidden even here.
+func TestReads_ListByTag_IncludesTheLedger(t *testing.T) {
+	issues := newFakeIssues()
+	issues.seedInMilestone(agentIssue(1, "Implement user-service", "brief"), 7)
+	issues.seedInMilestone(gateIssue(2, "postgres"), 7)
+	issues.seedInMilestone(validationIssue(3), 7)
+	issues.seedInMilestone(ledgerIssue(4, "Login is slow"), 7)
+	runs := fakeMilestones{"v3": 7}
+
+	views, err := newReads(issues, newFakeExecReader(), runs).
+		ListByTag(context.Background(), "org1", "proj1", "all", "v3")
+	if err != nil {
+		t.Fatalf("ListByTag(v3): %v", err)
+	}
+	kinds := map[int]string{}
+	for _, v := range views {
+		kinds[v.IssueNumber] = v.ExecutorClass
+	}
+	if len(views) != 3 {
+		t.Fatalf("want the Task, its gate and the ledger issue, got %d: %+v", len(views), kinds)
+	}
+	if kinds[1] != "coding" || kinds[2] != "provision" || kinds[4] != "ledger" {
+		t.Errorf("kinds = %+v, want 1:coding 2:provision 4:ledger", kinds)
+	}
+	if _, hidden := kinds[3]; hidden {
+		t.Errorf("the validation issue must stay hidden from the list, got %+v", kinds)
 	}
 }
 

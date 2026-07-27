@@ -70,11 +70,7 @@ function status(): ProjectStatus {
     specStatus: "approved",
     designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true },
-    build: {
-      version: "v1",
-      status: "succeeded",
-      tasks: { total: 1, done: 1, failed: 0, active: 0 },
-    },
+    build: { version: "v1", status: "succeeded" },
     deploy: mockDeploy,
   };
 }
@@ -109,8 +105,6 @@ describe("DeploymentsPage — validation chip", () => {
       status: "deployed",
       components: { total: 1, ready: 1 },
       validation: "running",
-      validationIssue: 30,
-      validationUrl: "https://github.com/acme/demo/issues/30",
     };
 
     render(<DeploymentsPage projectName="acme" />);
@@ -127,8 +121,6 @@ describe("DeploymentsPage — validation chip", () => {
       status: "deployed",
       components: { total: 1, ready: 1 },
       validation: "failed",
-      validationIssue: 30,
-      validationUrl: "https://github.com/acme/demo/issues/30",
     };
 
     render(<DeploymentsPage projectName="acme" />);
@@ -138,38 +130,21 @@ describe("DeploymentsPage — validation chip", () => {
     expect(chip).not.toHaveAttribute("target");
   });
 
-  it("routes a COMPLETED validation to the Validation page", () => {
+  it("routes a PASSED validation to the Validation page", () => {
     // The chip opens the Validation page in every state; that page owns the
-    // report, the run log, and the issue/PR links — so no external URL and no
-    // issue number are needed on the chip itself.
+    // report, the run's validation feed, and the PR link — so no external URL
+    // is needed on the chip itself. The label names the run's VERDICT now, not
+    // the artifact: the verdict is a run property the status read folds in.
     mockDeploy = {
       version: "v1",
       status: "deployed",
       components: { total: 1, ready: 1 },
       validation: "completed",
-      validationIssue: 30,
-      validationUrl: "https://github.com/acme/demo/pull/42",
     };
 
     render(<DeploymentsPage projectName="acme" />);
 
-    const chip = screen.getByRole("link", { name: /Validation report/ });
-    expect(chip).toHaveAttribute("href", "/projects/acme/validation");
-    expect(chip).not.toHaveAttribute("target");
-  });
-
-  it("opens the Validation page even with no issue number on the status", () => {
-    mockDeploy = {
-      version: "v1",
-      status: "deployed",
-      components: { total: 1, ready: 1 },
-      validation: "completed",
-      validationUrl: "https://github.com/acme/demo/pull/42",
-    };
-
-    render(<DeploymentsPage projectName="acme" />);
-
-    const chip = screen.getByRole("link", { name: /Validation report/ });
+    const chip = screen.getByRole("link", { name: /Validation passed/ });
     expect(chip).toHaveAttribute("href", "/projects/acme/validation");
     expect(chip).not.toHaveAttribute("target");
   });

@@ -13,7 +13,8 @@ test: check-no-legacy-creds
 # golang.org/x/tools/cmd/deadcode (RTA). Run WITHOUT -test: tests do NOT count
 # as consumers, so a function only a test calls is dead. Generated files are
 # excluded by deadcode; test-support packages and //deadcode:keep-marked seams
-# are excluded by the script. See design/deadcode.md.
+# are excluded by the script, whose header carries the rationale and the
+# marker policy (scripts/deadcode.sh).
 #
 #   make deadcode        human audit (prints findings, never fails)
 #   make deadcode-check  CI gate (fails the build on any surviving finding)
