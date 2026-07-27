@@ -228,7 +228,7 @@ func (noRunSupervisor) SignalRun(ctx context.Context, run *delivery.MilestoneRun
 	return nil
 }
 
-func (noRunSupervisor) StartRun(ctx context.Context, req eventcore.StartRunRequest) error {
+func (noRunSupervisor) StartRun(ctx context.Context, req delivery.StartRunRequest) error {
 	slog.DebugContext(ctx, "run supervisor not wired — run not started",
 		"project", req.ProjectID, "milestone", req.MilestoneNumber, "origin", req.Origin)
 	return nil

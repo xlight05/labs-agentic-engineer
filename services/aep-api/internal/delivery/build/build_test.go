@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,32 +49,20 @@ import (
 
 type fakeRunner struct {
 	readyErr  error
-	startErr  error
-	started   []delivery.DevFlowInput
-	startedID string
 	status    delivery.DevFlowStatus
 	statusErr error
 }
 
 func (f *fakeRunner) Ready() error { return f.readyErr }
-func (f *fakeRunner) StartBuild(_ context.Context, workflowID string, in delivery.DevFlowInput) (string, error) {
-	if f.startErr != nil {
-		return "", f.startErr
-	}
-	f.startedID = workflowID
-	f.started = append(f.started, in)
-	return "run-1", nil
-}
 func (f *fakeRunner) BuildStatus(context.Context, string) (delivery.DevFlowStatus, error) {
 	return f.status, f.statusErr
 }
 
 type fakeStore struct {
-	running  *delivery.DevflowRun
-	row      *delivery.DevflowRun
-	rows     []delivery.DevflowRun
-	listErr  error
-	recorded []*delivery.DevflowRun
+	running *delivery.DevflowRun
+	row     *delivery.DevflowRun
+	rows    []delivery.DevflowRun
+	listErr error
 }
 
 func (f *fakeStore) RunningDevByProject(context.Context, string, string) (*delivery.DevflowRun, error) {
@@ -81,10 +70,6 @@ func (f *fakeStore) RunningDevByProject(context.Context, string, string) (*deliv
 }
 func (f *fakeStore) GetByWorkflowID(context.Context, string, string) (*delivery.DevflowRun, error) {
 	return f.row, nil
-}
-func (f *fakeStore) Record(_ context.Context, row *delivery.DevflowRun) error {
-	f.recorded = append(f.recorded, row)
-	return nil
 }
 func (f *fakeStore) ListByProject(_ context.Context, _, _, kind string) ([]delivery.DevflowRun, error) {
 	if f.listErr != nil {
@@ -143,6 +128,111 @@ func (f fakeTasks) ListByTag(_ context.Context, _, _, _, tag string) ([]delivery
 	return out, nil
 }
 
+// planSpy is the whole milestone plan path as one recording fake: the GitHub
+// milestone surface, the run store, the planner, the gates and the supervisor.
+// The plan path's own wire behaviour is proven at the service tier
+// (milestone_plan_test.go, real IssueService on a gittest.Stub); here it only
+// has to show that the HTTP click reaches it and that its conflict reaches the
+// edge as a 409.
+type planSpy struct {
+	mu sync.Mutex
+
+	createdMilestones []string
+	nextNumber        int
+	activeRun         *delivery.MilestoneRun
+	refuseAdmit       bool
+
+	admitted []delivery.MilestoneRun
+	planned  chan int
+	started  []delivery.StartRunRequest
+}
+
+func newPlanSpy() *planSpy {
+	return &planSpy{nextNumber: 9, planned: make(chan int, 8)}
+}
+
+func (p *planSpy) CreateMilestone(_ context.Context, _, _ string, req sourcecontrol.CreateMilestoneRequest) (*sourcecontrol.MilestoneResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.createdMilestones = append(p.createdMilestones, req.Title)
+	n := p.nextNumber
+	p.nextNumber++
+	return &sourcecontrol.MilestoneResult{Number: n, Created: true}, nil
+}
+func (p *planSpy) CloseMilestone(context.Context, string, string, int) error { return nil }
+func (p *planSpy) ListMilestoneIssues(context.Context, string, string, sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error) {
+	return nil, nil
+}
+func (p *planSpy) CloseIssue(context.Context, string, string, int, string) error { return nil }
+
+func (p *planSpy) ActiveSpecRunByProject(context.Context, string, string) (*delivery.MilestoneRun, error) {
+	return p.activeRun, nil
+}
+func (p *planSpy) TryAdmit(_ context.Context, run *delivery.MilestoneRun) (bool, *delivery.MilestoneRun, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.refuseAdmit {
+		return false, nil, nil
+	}
+	run.ID = "run-1"
+	p.admitted = append(p.admitted, *run)
+	return true, run, nil
+}
+func (p *planSpy) Settle(context.Context, string, string, string) (*delivery.MilestoneRun, error) {
+	return nil, nil
+}
+func (p *planSpy) ListByProject(context.Context, string, string) ([]delivery.MilestoneRun, error) {
+	return nil, nil
+}
+
+func (p *planSpy) PlanIntoMilestone(_ context.Context, _, _ string, milestoneNumber int) error {
+	p.planned <- milestoneNumber
+	return nil
+}
+func (p *planSpy) ProvisionForBuild(context.Context, string, string, string, int, []delivery.ProvisionInput) error {
+	return nil
+}
+func (p *planSpy) StartRun(_ context.Context, req delivery.StartRunRequest) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.started = append(p.started, req)
+	return nil
+}
+
+// awaitPlan waits for the detached plan turn to reach the planner. The click
+// returns its tag before planning finishes, so a test that asserts on the plan
+// must synchronise here rather than sleep.
+func (p *planSpy) awaitPlan(t *testing.T) int {
+	t.Helper()
+	select {
+	case n := <-p.planned:
+		return n
+	case <-time.After(5 * time.Second):
+		t.Fatal("the detached plan path never reached the planner")
+		return 0
+	}
+}
+
+func (p *planSpy) milestones() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.createdMilestones...)
+}
+
+func (p *planSpy) admittedRuns() []delivery.MilestoneRun {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]delivery.MilestoneRun(nil), p.admitted...)
+}
+
+// withPlanPath wires the spy as the service's plan path.
+func withPlanPath(svc *build.Service, spy *planSpy) *build.Service {
+	svc.SetPlanPath(build.PlanPathDeps{
+		Milestones: spy, Runs: spy, Planner: spy, Gates: spy, Starter: spy,
+	})
+	return svc
+}
+
 func newSvc(runner *fakeRunner, store *fakeStore, repos fakeRepos, tagger *fakeTagger, tasks build.TaskReader) *build.Service {
 	return build.NewService(build.Deps{Runner: runner, Store: store, Repos: repos, Tagger: tagger, Tasks: tasks})
 }
@@ -193,50 +283,45 @@ func decodeBody[T any](t *testing.T, body string) T {
 
 // ----- POST /build ------------------------------------------------------------
 
-func TestBuild_TagsAndStartsWorkflow(t *testing.T) {
-	runner := &fakeRunner{}
-	store := &fakeStore{}
+// One click: the whole-spec gate cuts the tag, the version is claimed
+// (milestone minted + run row admitted) BEFORE the response, and the plan turn
+// runs detached — the POST must not hold open for an LLM turn.
+func TestBuild_CutsTheTagAndClaimsTheVersion(t *testing.T) {
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
-	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
 
 	code, body := postBuild(t, svc, "shop")
 	if code != 200 {
 		t.Fatalf("build: got %d body=%s", code, body)
 	}
-	out := decodeBody[gen.BuildResponse](t, body)
-	if out.Tag != "v1" {
+	if out := decodeBody[gen.BuildResponse](t, body); out.Tag != "v1" {
 		t.Errorf("tag = %q, want v1", out.Tag)
 	}
-	if runner.startedID != "devflow-acme-shop-v1" {
-		t.Errorf("workflow id = %q, want devflow-acme-shop-v1", runner.startedID)
+	// The milestone is titled after the tag — the spec pin IS the title, and
+	// the run row records its number.
+	if got := spy.milestones(); len(got) != 1 || got[0] != "v1" {
+		t.Fatalf("milestones created = %v, want [v1]", got)
 	}
-	if len(runner.started) != 1 {
-		t.Fatalf("started %d workflows, want 1", len(runner.started))
+	runs := spy.admittedRuns()
+	if len(runs) != 1 {
+		t.Fatalf("admitted %d run rows, want 1 — the mutex must be armed before the response", len(runs))
 	}
-	in := runner.started[0]
-	if in.OrgID != "acme" || in.ProjectID != "shop" || in.Repo != "acme/shop" || in.Tag != "v1" {
-		t.Errorf("workflow input = %+v", in)
+	row := runs[0]
+	if row.OrgID != "acme" || row.ProjectID != "shop" || row.MilestoneNumber != 9 ||
+		row.MilestoneTitle != "v1" || row.Origin != delivery.RunOriginSpecBuild ||
+		row.State != delivery.RunStateWaiting {
+		t.Errorf("admitted run = %+v", row)
 	}
-	if in.Gates.Auto != nil {
-		t.Errorf("gates must be the zero config (all auto), got %+v", in.Gates)
-	}
-	// The run row is recorded synchronously so an immediate status GET (the
-	// tasks page lands right after) never 404s on the org fence.
-	if len(store.recorded) != 1 {
-		t.Fatalf("recorded %d run rows, want 1", len(store.recorded))
-	}
-	row := store.recorded[0]
-	if row.WorkflowID != "devflow-acme-shop-v1" || row.RunID != "run-1" ||
-		row.Kind != delivery.WorkflowKindDev || row.OrgID != "acme" ||
-		row.Tag != "v1" || row.Status != delivery.WorkflowStatusRunning {
-		t.Errorf("recorded row = %+v", row)
+	if n := spy.awaitPlan(t); n != 9 {
+		t.Errorf("planned into milestone %d, want 9", n)
 	}
 }
 
-func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillStarts(t *testing.T) {
-	runner := &fakeRunner{}
+func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillPlans(t *testing.T) {
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "unchanged", Tag: "v2", Version: 2}}
-	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{})
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
 
 	code, body := postBuild(t, svc, "shop")
 	if code != 200 {
@@ -245,21 +330,62 @@ func TestBuild_UnchangedSpec_ReturnsExistingTagAndStillStarts(t *testing.T) {
 	if out := decodeBody[gen.BuildResponse](t, body); out.Tag != "v2" {
 		t.Errorf("tag = %q, want the existing v2", out.Tag)
 	}
-	if len(runner.started) != 1 {
-		t.Errorf("rebuild of an unchanged spec must still start the workflow")
+	// CreateMilestone is idempotent, so a re-build of an unchanged spec adopts
+	// the same milestone and re-plans into it (dedupe makes that additive-only).
+	spy.awaitPlan(t)
+}
+
+// The spec-run mutex: a second click while a spec run is live is a 409, and it
+// never reaches the tagger — a rejected build claims no version.
+func TestBuild_SpecRunAlreadyLive_409_TaggerUntouched(t *testing.T) {
+	spy := newPlanSpy()
+	spy.activeRun = &delivery.MilestoneRun{ID: "run-1", MilestoneNumber: 9, State: delivery.RunStateWaiting}
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v2"}}
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
+
+	code, body := postBuild(t, svc, "shop")
+	if code != 409 {
+		t.Fatalf("status = %d, want 409 (body=%s)", code, body)
+	}
+	if e := componenttest.DecodeEnvelope(t, body); e.Code != "conflict" {
+		t.Fatalf("409 envelope = %+v", e)
+	}
+	if tagger.called != 0 {
+		t.Errorf("tagger called %d times behind the mutex, want 0", tagger.called)
+	}
+	if len(spy.milestones()) != 0 {
+		t.Errorf("a rejected click minted a milestone: %v", spy.milestones())
+	}
+}
+
+// The DB index is the mutex's authority. When the pre-check passes but the
+// admission INSERT loses the race, the click still answers 409 — never a 500,
+// and never a second live run.
+func TestBuild_AdmissionRaceLost_409(t *testing.T) {
+	spy := newPlanSpy()
+	spy.refuseAdmit = true
+	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v2"}}
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
+
+	code, body := postBuild(t, svc, "shop")
+	if code != 409 {
+		t.Fatalf("status = %d, want 409 (body=%s)", code, body)
+	}
+	if len(spy.admittedRuns()) != 0 {
+		t.Errorf("a lost race must admit nothing, got %+v", spy.admittedRuns())
 	}
 }
 
 // The spec gate's failure was a Huma 422 problem; on the contract-first edge
 // it is a 400 validation_failed whose details keep the per-file path +
 // code:message (the error-model break).
-func TestBuild_SpecValidationFails_400_NoWorkflow(t *testing.T) {
-	runner := &fakeRunner{}
+func TestBuild_SpecValidationFails_400_NoVersionClaimed(t *testing.T) {
+	spy := newPlanSpy()
 	tagger := &fakeTagger{err: &spec.SpecValidationError{Files: []spec.FileValidationError{
 		{Path: "specs/requirements/requirements.md", Code: "MISSING_REQUIREMENTS", Message: "missing"},
 		{Path: "specs/design/design.md", Code: "MISSING_DESIGN", Message: "missing"},
 	}}}
-	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{})
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
 
 	code, body := postBuild(t, svc, "shop")
 	if code != 400 {
@@ -274,8 +400,8 @@ func TestBuild_SpecValidationFails_400_NoWorkflow(t *testing.T) {
 		!strings.Contains(e.Details[0].Message, "MISSING_REQUIREMENTS") {
 		t.Fatalf("details = %+v, want the per-file locations + code:message", e.Details)
 	}
-	if len(runner.started) != 0 {
-		t.Errorf("workflow started despite a failed spec gate")
+	if len(spy.milestones()) != 0 {
+		t.Errorf("a version was claimed despite a failed spec gate: %v", spy.milestones())
 	}
 }
 
@@ -341,44 +467,41 @@ func TestBuild_RepoNotReady_409(t *testing.T) {
 // The gate outranks the handler: a claimless build request is the tenant
 // gate's ENFORCE 401 — the service is never reached.
 func TestBuild_NoClaims401(t *testing.T) {
-	runner := &fakeRunner{}
-	svc := newSvc(runner, &fakeStore{}, fakeRepos{}, &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}, fakeTasks{})
+	spy := newPlanSpy()
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}, fakeTasks{}), spy)
 	resp := newHarness(t, svc).NoAuth().Post("/api/v1/projects/shop/build", `{}`)
 	if resp.Code != 401 {
 		t.Fatalf("no-claims build: want 401, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if len(runner.started) != 0 {
-		t.Errorf("claimless request must never reach the service")
+	if len(spy.milestones()) != 0 {
+		t.Errorf("claimless request must never reach the service, but it claimed %v", spy.milestones())
 	}
 }
 
 // ----- StartProjectBuild (non-HTTP provider-build trigger) --------------------
 
-func TestStartProjectBuild_HappyPath_StartsWorkflow(t *testing.T) {
-	runner := &fakeRunner{}
-	store := &fakeStore{}
+func TestStartProjectBuild_HappyPath_ClaimsTheVersion(t *testing.T) {
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Status: "approved", Tag: "v1", Version: 1}}
-	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
+	svc := withPlanPath(newSvc(&fakeRunner{}, &fakeStore{}, fakeRepos{}, tagger, fakeTasks{}), spy)
 
 	if err := svc.StartProjectBuild(context.Background(), "acme", "shop"); err != nil {
 		t.Fatalf("StartProjectBuild: %v", err)
 	}
-	if runner.startedID != "devflow-acme-shop-v1" {
-		t.Errorf("workflow id = %q, want devflow-acme-shop-v1", runner.startedID)
+	if got := spy.milestones(); len(got) != 1 || got[0] != "v1" {
+		t.Errorf("milestones = %v, want [v1]", got)
 	}
-	if len(runner.started) != 1 {
-		t.Fatalf("started %d workflows, want 1", len(runner.started))
+	if len(spy.admittedRuns()) != 1 {
+		t.Errorf("admitted %d run rows, want 1", len(spy.admittedRuns()))
 	}
-	if len(store.recorded) != 1 {
-		t.Errorf("recorded %d run rows, want 1", len(store.recorded))
-	}
+	spy.awaitPlan(t)
 }
 
 func TestStartProjectBuild_AlreadyRunning_Nil(t *testing.T) {
-	runner := &fakeRunner{}
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
 	store := &fakeStore{running: &delivery.DevflowRun{WorkflowID: "devflow-acme-shop-v1"}}
-	svc := newSvc(runner, store, fakeRepos{}, tagger, fakeTasks{})
+	svc := withPlanPath(newSvc(&fakeRunner{}, store, fakeRepos{}, tagger, fakeTasks{}), spy)
 
 	// The trigger is idempotent: a running provider build already satisfies it.
 	if err := svc.StartProjectBuild(context.Background(), "acme", "shop"); err != nil {
@@ -387,8 +510,8 @@ func TestStartProjectBuild_AlreadyRunning_Nil(t *testing.T) {
 	if tagger.called != 0 {
 		t.Errorf("tagger called %d times while a build is running, want 0", tagger.called)
 	}
-	if len(runner.started) != 0 {
-		t.Errorf("started a workflow despite a build already running")
+	if len(spy.milestones()) != 0 {
+		t.Errorf("claimed a version despite a build already running: %v", spy.milestones())
 	}
 }
 
@@ -692,11 +815,11 @@ func TestBuild_DependencyGate_AmbiguousExternal_BlocksNoTagNoWorkflow(t *testing
 		Dependencies: []spec.Dependency{
 			{Kind: spec.DependencyKindExternal, Name: "salesforce", Status: spec.DependencyStatusAmbiguous},
 		}}}}
-	runner := &fakeRunner{}
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
-	svc := build.NewService(build.Deps{
-		Runner: runner, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Design: design,
-	})
+	svc := withPlanPath(build.NewService(build.Deps{
+		Runner: &fakeRunner{}, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Design: design,
+	}), spy)
 
 	code, body := postBuild(t, svc, "shop")
 	if code != 200 {
@@ -715,8 +838,8 @@ func TestBuild_DependencyGate_AmbiguousExternal_BlocksNoTagNoWorkflow(t *testing
 	if tagger.called != 0 {
 		t.Errorf("tagger called %d times, want 0 — the gate must block before the tag-cut", tagger.called)
 	}
-	if len(runner.started) != 0 {
-		t.Errorf("workflow started despite the dependency gate blocking")
+	if len(spy.milestones()) != 0 {
+		t.Errorf("a version was claimed despite the dependency gate blocking: %v", spy.milestones())
 	}
 }
 
@@ -731,11 +854,11 @@ func TestBuild_DependencyGate_WebApplication_AmbiguousExternal_Blocks(t *testing
 		Dependencies: []spec.Dependency{
 			{Kind: spec.DependencyKindExternal, Name: "salesforce", Status: spec.DependencyStatusAmbiguous},
 		}}}}
-	runner := &fakeRunner{}
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
-	svc := build.NewService(build.Deps{
-		Runner: runner, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Design: design,
-	})
+	svc := withPlanPath(build.NewService(build.Deps{
+		Runner: &fakeRunner{}, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Design: design,
+	}), spy)
 
 	code, body := postBuild(t, svc, "shop")
 	if code != 200 {
@@ -754,8 +877,8 @@ func TestBuild_DependencyGate_WebApplication_AmbiguousExternal_Blocks(t *testing
 	if tagger.called != 0 {
 		t.Errorf("tagger called %d times, want 0 — the gate must block before the tag-cut", tagger.called)
 	}
-	if len(runner.started) != 0 {
-		t.Errorf("workflow started despite the dependency gate blocking")
+	if len(spy.milestones()) != 0 {
+		t.Errorf("a version was claimed despite the dependency gate blocking: %v", spy.milestones())
 	}
 }
 
@@ -820,12 +943,12 @@ func TestBuild_DependencyGate_NeedsSpec_ResolvedByThisRequestsDrawerInput_Procee
 			{Kind: spec.DependencyKindExternal, Name: "partner-api",
 				Status: spec.DependencyStatusUnresolved, Reason: spec.DependencyReasonNeedsSpec},
 		}}}}
-	runner := &fakeRunner{}
+	spy := newPlanSpy()
 	tagger := &fakeTagger{res: &spec.SpecSaveResult{Tag: "v1"}}
 	coord := build.NewInputsCoordinator(&resolvingSpec{design: design}, noopAuth{}, noopStager{}, design)
-	svc := build.NewService(build.Deps{
-		Runner: runner, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Coord: coord, Design: design,
-	})
+	svc := withPlanPath(build.NewService(build.Deps{
+		Runner: &fakeRunner{}, Store: &fakeStore{}, Repos: fakeRepos{}, Tagger: tagger, Tasks: fakeTasks{}, Coord: coord, Design: design,
+	}), spy)
 
 	resp := newHarness(t, svc).AsOrg("acme").Post("/api/v1/projects/shop/build",
 		`{"inputs":[{"component":"o","dependency":"partner-api","kind":"external-spec","specContent":"openapi: 3.0.0"}]}`)
@@ -839,8 +962,8 @@ func TestBuild_DependencyGate_NeedsSpec_ResolvedByThisRequestsDrawerInput_Procee
 	if out.Tag != "v1" {
 		t.Errorf("tag = %q, want v1", out.Tag)
 	}
-	if len(runner.started) != 1 {
-		t.Errorf("workflow not started despite a resolved gate")
+	if len(spy.admittedRuns()) != 1 {
+		t.Errorf("the version was not claimed despite a resolved gate")
 	}
 }
 

@@ -20,15 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	enumspb "go.temporal.io/api/enums/v1"
-	"go.temporal.io/sdk/client"
-
 	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
-// TemporalRunner is the production WorkflowRunner over the devflow Temporal
-// runtime. ExecuteWorkflow is start-and-return, so a build POST answers as
-// soon as the workflow is accepted — never when it completes.
+// TemporalRunner is the production WorkflowRunner over the Temporal runtime:
+// the readiness probe the build click runs before it claims a version, and the
+// live status query behind a build read.
 type TemporalRunner struct {
 	rt *delivery.Runtime
 }
@@ -43,25 +40,6 @@ func (r *TemporalRunner) Ready() error {
 		return ErrTemporalUnavailable
 	}
 	return nil
-}
-
-func (r *TemporalRunner) StartBuild(ctx context.Context, workflowID string, in delivery.DevFlowInput) (string, error) {
-	c, err := r.rt.Client()
-	if err != nil {
-		return "", ErrTemporalUnavailable
-	}
-	// ALLOW_DUPLICATE: re-building an unchanged spec re-runs the same
-	// deterministic id after the previous run closed; a concurrently-running
-	// duplicate is excluded by the API's one-dev-run-per-project 409 guard.
-	run, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-		ID:                    workflowID,
-		TaskQueue:             r.rt.TaskQueue(),
-		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
-	}, delivery.DevFlowWorkflowName, in)
-	if err != nil {
-		return "", fmt.Errorf("start workflow: %w", err)
-	}
-	return run.GetRunID(), nil
 }
 
 func (r *TemporalRunner) BuildStatus(ctx context.Context, workflowID string) (delivery.DevFlowStatus, error) {

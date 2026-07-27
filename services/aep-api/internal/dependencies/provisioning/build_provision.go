@@ -77,7 +77,7 @@ type ProvisionFailure struct {
 // definition (name + description + config schema) is built straight off the
 // project's committed design (authorExternalWithRef) — the external dep need
 // not be separately registered anywhere.
-func (s *Service) ProvisionForBuild(ctx context.Context, orgID, ocOrgID, projectID, tag string, inputs []BuildProvisionInput) ([]ProvisionFailure, error) {
+func (s *Service) ProvisionForBuild(ctx context.Context, orgID, ocOrgID, projectID, tag string, milestoneNumber int, inputs []BuildProvisionInput) ([]ProvisionFailure, error) {
 	// Mint gates only when the drawer carried inputs. A not-ready dependency is
 	// always surfaced in the build drawer, so a build with no inputs needs no new
 	// gate — and a pure re-build must not churn a fresh gate for every already-ready
@@ -91,7 +91,7 @@ func (s *Service) ProvisionForBuild(ctx context.Context, orgID, ocOrgID, project
 	var gateByDep map[string]int
 	if len(inputs) > 0 {
 		var err error
-		gateByDep, err = s.EnsureProvisionIssues(ctx, orgID, projectID, tag)
+		gateByDep, err = s.EnsureProvisionIssues(ctx, orgID, projectID, tag, milestoneNumber)
 		if err != nil {
 			return nil, err
 		}

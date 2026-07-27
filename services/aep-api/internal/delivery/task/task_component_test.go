@@ -96,6 +96,9 @@ func (f *fakeIssues) GetIssue(_ context.Context, _, _ string, n int) (*sourcecon
 	}
 	return nil, sourcecontrol.ErrIssueNotFound
 }
+func (f *fakeIssues) ListMilestoneIssues(context.Context, string, string, sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error) {
+	return nil, nil
+}
 func (f *fakeIssues) CommentIssue(context.Context, string, string, int, string) error { return nil }
 func (f *fakeIssues) EditIssueBody(context.Context, string, string, int, string) error {
 	return nil

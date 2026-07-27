@@ -45,6 +45,20 @@ type IssueClient interface {
 	EditIssueTitle(ctx context.Context, orgID, projectID string, number int, title string) error
 	AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error
 	RemoveLabel(ctx context.Context, orgID, projectID string, number int, label string) error
+	// ListMilestoneIssues reads one milestone's issues (pull requests excluded).
+	// The plan turn reads the milestone it is planning INTO so a re-plan and a
+	// crash re-run dedupe against what is already there — the milestone, not a
+	// label query, is the version's membership.
+	ListMilestoneIssues(ctx context.Context, orgID, projectID string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error)
+}
+
+// ComponentPathReader maps a design component to its source directory (appPath)
+// relative to the repo root — the "App Path" line a planned Task's prose body
+// carries so the agent knows where to work. The same app-root designComponents
+// adapter satisfies the identical port in the event plane. Optional: an unwired
+// reader simply omits the line.
+type ComponentPathReader interface {
+	ComponentPaths(ctx context.Context, orgID, projectID string) (map[string]string, error)
 }
 
 // RepoResolver looks up the project's git repo row (its RepoURL yields the

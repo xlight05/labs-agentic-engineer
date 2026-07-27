@@ -1012,6 +1012,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		Criteria: validationCriteria{files: filesSvc},
 	})
 	taskPlan.SetValidationIssueMinter(validationSvc)
+	// A planned Task's prose body names the App Path the agent works in — the
+	// same component → appPath read the merged-PR build fan-out matches against.
+	taskPlan.SetComponentPaths(designComponents{store: artifactStore})
 	// Committed-truth spec-collect write surface: CollectSpec fetches/validates an
 	// external dependency's OpenAPI contract and atomically commits the spec file
 	// + the design.json specPath edit (clearing the external-needs-spec gate) via
@@ -1027,6 +1030,21 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// feature never imports build/devflow; the app-root adapter calls the build
 	// service's non-HTTP StartProjectBuild entry point (idempotent).
 	provisioningSvc.SetProviderBuildTrigger(providerBuildTrigger{build: buildSvc})
+	// The milestone plan path (issue-driven execution §5): once the build's
+	// whole-spec gate cuts `v<N>`, the click supersedes the previous milestone,
+	// mints this version's, admits the run row that IS the one-spec-run-per-
+	// project mutex, then (detached) plans the version's Tasks into the milestone
+	// and mints its gates. Set here rather than in build.Deps because its gate
+	// resolver is provisioningSvc, which is constructed after buildSvc.
+	// noRunSupervisor is the same stand-in the event plane holds: the run row
+	// waits until the supervisor lands.
+	buildSvc.SetPlanPath(build.PlanPathDeps{
+		Milestones: issueService,
+		Runs:       milestoneRunRepo,
+		Planner:    taskPlan,
+		Gates:      buildGateResolver{prov: provisioningSvc},
+		Starter:    noRunSupervisor{},
+	})
 	// Reject cascade: an org-publish gate issue closed with its consumers still
 	// ungranted is a decline → flip those access requests to rejected. Registered
 	// on the router's issues/closed chain alongside task's noop (both run). The

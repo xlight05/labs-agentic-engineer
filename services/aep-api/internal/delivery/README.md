@@ -17,7 +17,7 @@ flowchart LR
       K1["Executor · DispatchRequest · TaskFacts · TaskStreamHub"]
       K2["Runtime · Signaler · signals · workflow I/O vocab (DevFlowInput/Status, DevPhase*…)"]
       K3["read DTOs — TaskView · ExecutionView · Lineage · TaskDetail"]
-      K4["milestone model — labels · run signals · BuildTerminalObserver"]
+      K4["milestone model — labels · run signals · StartRunRequest · BuildTerminalObserver"]
     end
     BUILD["build (buildpipe)"] --> ROOT
     TASK["task (taskflow)"] --> ROOT
@@ -28,12 +28,15 @@ flowchart LR
     VAL["validation — S2S context/credentials"] --> ROOT
     HTTP --> BUILD & TASK & EXEC
     CODE -.->|BuildTerminalObserver| EVENT
+    BUILD -.->|SpecPlanner| TASK
   end
   EXEC --> EXECS[("executions · workflow_runs")]
   EVENT --> RUNS[("milestone_runs · run_cycles")]
+  BUILD --> RUNS
   DEV --> TMPRL[["Temporal"]]
   BUILD -->|SpecTagger · SaveSpec| SPEC[[spec]]
-  BUILD -->|repo full-name| SC[[sourcecontrol]]
+  BUILD -->|repo full-name · milestones · supersede| SC[[sourcecontrol]]
+  BUILD -->|GateResolver| DEP[[dependencies/provisioning]]
   EVENT -->|issues · merges · builds| SC
   CODE -->|org keys · git tokens| SEC[[platform/secrets]]
   EXEC -->|ExecutionReader| OPS[[ops]]
@@ -51,8 +54,8 @@ and every former feature→feature edge becomes a legal slice→root type refere
 
 | Sub-package | Owns | Reaches the root for |
 |---|---|---|
-| `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, dev-workflow start/status, builds history, dep-drawer preflight | `Runtime`, the workflow I/O vocab, `TaskView` (via `TaskReader` port) |
-| `task` (taskflow) | GitHub-native Task Commands/Reads/Plan + list/get/promote handlers | the read DTOs; reaches the funnel via the `Dispatcher` port |
+| `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, **the milestone plan path** (supersede the previous version, mint `v<N>`'s milestone, admit the run row, then plan its Tasks and mint its gates), builds history, dep-drawer preflight | `Runtime`, the workflow I/O vocab, `MilestoneRun`/`StartRunRequest`, `TaskView` (via `TaskReader`) and the planner (via `SpecPlanner`) |
+| `task` (taskflow) | GitHub-native Task Commands/Reads/Plan + list/get/promote handlers. The plan turn mints one **prose** issue per Task **into the version's milestone**, assigned at creation | the read DTOs and the label vocabulary; reaches the funnel via the `Dispatcher` port |
 | `execution` | the ONE funnel (admit/finish/reevaluate), registry, sweep, `TaskStreamService`, `OpsExecutionReader` | `Executor`/`DispatchRequest`/`TaskFacts`, `Signaler`, `TaskStreamHub` |
 | `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals) and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
 | `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler` |
@@ -74,7 +77,11 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | org-credential reads · `AnthropicKeyResolver` | needs | `platform/secrets` / P3a org repositories — coding-agent runner secrets |
 | `ExecutionReader` (`ops.ExecutionFact`) | offers | `ops` — latest-execution-per-kind correlation (`execution.OpsExecutionReader`, P6-retired the app bridge) |
 | `BuildTerminalObserver` (root) | offers | the OpenChoreo watcher → the event plane: a settled build reported outwards, so watcher and event plane stay peer sub-packages |
-| `RunSignaler` · `RunStarter` | needs | `eventcore` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps the event plane free of a workflow engine |
+| `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, so one adapter satisfies them |
+| `MilestoneClient` (mint · list a milestone's issues · close issue · close milestone) | needs | `build` → `sourcecontrol`. The plan path's whole GitHub surface: create `v<N>` idempotently, and supersede `v<N-1>` |
+| `MilestoneRunStore` (active-run read · admit · settle · list) | needs | `build` → the root run repository. The 409 pre-check and the admission that arms the spec-run mutex |
+| `SpecPlanner` (`PlanIntoMilestone`) | needs | `build` → `task`. The planning turn, reached through the root exactly as `TaskReader` is, so `build` names no sibling |
+| `GateResolver` (author dependencies + mint gates into a milestone) | needs | `build` → `dependencies/provisioning`. Gates are dispatch holds, never agent work |
 | `BuildTrigger` (trigger at commit + list a component's runs) | needs | `clients/openchoreo` — the fan-out, and the run list the re-trigger budget is derived from |
 | `IssueClient` (mint · milestone membership · milestone counts · assign) · `PRReader` · `PRMerger` | needs | `sourcecontrol` — every GitHub write the event plane makes, on the org's own credential |
 | `ValidationContext` · `ValidationCredentials` | offers | the S2S runner callbacks (`/internal/v1`, via the internalServer — not the public edge) |
@@ -82,6 +89,10 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 ## Owns
 - The **executions** write-API (admit/finish/reevaluate through the funnel) and **workflow_runs**; the
   Temporal `Runtime`, `Signaler`, and the dev/task/validation workflows.
+- The **build click's whole sequence** (`build`): probe → repo → drawer pre-tag work → dependency hard
+  gate → whole-spec gate + `v<N>` tag cut → supersede → milestone → run row → plan. The ORDER is the
+  domain fact `build` owns; the two halves it does not own (the planning turn, the gate resolvers) are
+  root ports.
 - The **event plane** (`eventcore`): the platform's whole reaction to a pull request, a milestone-matched
   issue and a build terminal. It merges, mints and signals — the supervisor decides. Its three GitHub
   effects are a squash-merge, an issue in a milestone, and a build pinned to a merge SHA.
@@ -104,8 +115,27 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   run exists per (org, project) — a partial unique index (`ux_milestone_runs_spec_active`, created by the
   `milestone_runs` migration; AutoMigrate cannot express one) that admission hits with
   `INSERT … ON CONFLICT DO NOTHING`, so the invariant holds under concurrency and not merely under the
-  endpoint's pre-check. `incident-adoption` runs sit deliberately outside the index and execute
-  concurrently on their own milestones.
+  endpoint's pre-check. Both answers are the same 409. `incident-adoption` runs sit deliberately outside
+  the index and execute concurrently on their own milestones.
+- **The version is claimed before it is planned.** The run row IS that mutex, so the build click admits it
+  synchronously — supersede, mint the milestone, admit — and only then runs the planning turn, detached
+  from the request. Admitting after planning would leave the mutex unarmed for the minutes an LLM turn
+  takes, which is exactly the window a double-click lands in. A plan that cannot land settles the run it
+  armed (`plan-failed`), so a failure never wedges the project behind its own mutex.
+- **A version supersedes its predecessor, found through the run rows.** Before `v<N+1>`'s milestone exists,
+  `v<N>`'s still-open issues are closed with a `Superseded by v<N+1>` comment — the agent work first, then
+  the gates that were holding it — and then the milestone. The previous milestone is located by the NUMBER
+  recorded on a run row, never by matching titles against GitHub (titles are renamable, and title filters
+  are case-insensitive while create-uniqueness is not). This is what keeps the reconcile sweep sound: a
+  superseded milestone holds no open `aep` issue, so the sweep's trigger never fires on it.
+- **A planned Task's body is prose; nothing parses it.** The milestone is the version pin, the `aep` label
+  is the working-set marker, and ordering is the "Depends on #N" lines the AGENT honours. Dedupe on
+  re-plan is `taskmeta.TitleSlug` against the milestone's own issues, which makes reconcile additive-only
+  and a crash re-run a no-op. Gates (`aep:provision`) and the validation issue (`aep:validation`) are
+  minted elsewhere and deliberately do NOT carry `aep` — a gate is a dispatch hold, never agent work.
+- **Milestone assignment rides issue creation.** A plan costs `1+N` content-generating requests against
+  GitHub's 80-per-minute ceiling: one milestone create plus one issue create per Task. Never
+  create-then-PATCH, and never a label pre-create per issue (`sourcecontrol` memoises the ensure).
 - **Settled rows are never resurrected.** Every run and cycle mutator is a guarded update — fenced on the
   run not being terminal, or the cycle not being closed — and returns `(nil, nil)` when it changes no row,
   so a duplicate webhook or signal is a no-op rather than a rewrite of a recorded outcome.

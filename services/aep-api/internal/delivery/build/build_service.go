@@ -16,10 +16,11 @@
 
 // Package build is the public build surface (contract: build-project /
 // get-project-build). POST validates the whole spec, cuts the single `v<N>`
-// version tag, starts the dev workflow asynchronously, and returns the tag —
-// the one-button successor to the requirements-save → design-save → devflow
-// sequence. GET maps the workflow's live status onto the contract's
-// BuildStatus.
+// version tag, claims the version (supersede the previous milestone, mint this
+// one, admit the run row that is the spec-run mutex) and returns the tag, then
+// plans the version's Tasks into its milestone detached from the request — the
+// one button that turns an approved spec into a delivery increment. GET maps
+// the run's live status onto the contract's BuildStatus.
 package build
 
 import (
@@ -65,6 +66,10 @@ type Service struct {
 	tasks  TaskReader
 	coord  *InputsCoordinator
 	design PreflightDesignReader
+	// plan is the milestone plan path (milestone_plan.go), wired separately via
+	// SetPlanPath because its gate resolver is built after this service. Nil
+	// means the build stops at the tag cut.
+	plan *planPath
 }
 
 // Deps carries the service's ports.
@@ -197,8 +202,8 @@ type BuildList struct {
 // StartProjectBuild is the non-HTTP entry point that starts a project build with
 // NO drawer inputs — the provider-build auto-kick behind provisioning's
 // ProviderBuildTrigger (issue #164, Task 4). It reuses the exact build sequence
-// (Ready → one-run guard → repo → pre-tag → tag → StartBuild → Record) and is
-// idempotent: an already-running dev workflow already satisfies the trigger, so
+// (Ready → mutexes → repo → pre-tag → dependency gate → tag → claim → plan) and
+// is idempotent: a build already in flight already satisfies the trigger, so
 // ErrBuildAlreadyRunning is treated as success (nil). Any other failure
 // propagates so the funnel logs it and the sweep heals later.
 func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string) error {
@@ -240,8 +245,16 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 	} else if running != nil {
 		return "", nil, ErrBuildAlreadyRunning
 	}
-	repo, err := s.repos.RepoFullName(ctx, orgID, projectID)
-	if err != nil {
+	// One live SPEC RUN per project — the milestone model's mutex (§5). The
+	// partial unique index behind TryAdmit is the authority; this read is what
+	// turns the race into a conflict that names itself, and it runs BEFORE the
+	// tag is cut so a rejected second click claims no version.
+	if err := s.activeSpecRun(ctx, orgID, projectID); err != nil {
+		return "", nil, err
+	}
+	// The repo must exist and be resolvable before a version is claimed — every
+	// GitHub write the plan path makes lands on it.
+	if _, err := s.repos.RepoFullName(ctx, orgID, projectID); err != nil {
 		return "", nil, &EdgeError{Status: 404, Message: "project repository not found"}
 	}
 
@@ -291,37 +304,19 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 		return "", nil, mapTagError(err)
 	}
 
-	workflowID := delivery.DevWorkflowID(orgID, projectID, res.Tag)
-	runID, err := s.runner.StartBuild(ctx, workflowID, delivery.DevFlowInput{
-		OrgID:     orgID,
-		ProjectID: projectID,
-		Repo:      repo,
-		Tag:       res.Tag,
-		Gates:     delivery.GateConfig{}, // all gates auto
-		Provision: provInputs,
-	})
-	if err != nil {
-		if errors.Is(err, ErrTemporalUnavailable) {
-			return "", nil, &EdgeError{Status: 503, Message: "temporal_unavailable"}
+	// The milestone plan path (§5). Its synchronous half claims the version —
+	// supersede the previous milestone, mint `v<N>`, admit the run row that IS
+	// the spec-run mutex — and its detached half plans the Tasks into it.
+	if s.plan != nil {
+		run, cerr := s.claimVersion(ctx, orgID, projectID, res.Tag)
+		if cerr != nil {
+			return "", nil, cerr
 		}
-		return "", nil, &EdgeError{Status: 500, Message: "start build workflow: " + err.Error()}
-	}
-
-	// Record the run row NOW so a status GET issued right after this response
-	// never races the workflow's own RecordWorkflowRun activity (both upsert
-	// the same (workflowID, runID) row). Best-effort: the activity re-records.
-	if err := s.store.Record(ctx, &delivery.DevflowRun{
-		WorkflowID: workflowID,
-		RunID:      runID,
-		Kind:       delivery.WorkflowKindDev,
-		OrgID:      orgID,
-		ProjectID:  projectID,
-		Tag:        res.Tag,
-		Repo:       repo,
-		Status:     delivery.WorkflowStatusRunning,
-	}); err != nil {
-		slog.WarnContext(ctx, "build: record workflow run failed (activity will re-record)",
-			"workflowId", workflowID, "error", err)
+		// Detached: a planning turn is an LLM turn, and the click must not hold
+		// the request open for it. The version is already claimed, so a second
+		// click 409s while this runs.
+		detached := context.WithoutCancel(ctx)
+		go s.fillMilestone(detached, orgID, projectID, res.Tag, run, provInputs)
 	}
 
 	slog.InfoContext(ctx, "build started",

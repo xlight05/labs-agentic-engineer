@@ -388,7 +388,7 @@ func (f *fakeBuilds) triggeredFor(component string) []string {
 type fakeSupervisor struct {
 	mu      sync.Mutex
 	signals []delivery.RunSignal
-	started []StartRunRequest
+	started []delivery.StartRunRequest
 }
 
 func (f *fakeSupervisor) SignalRun(_ context.Context, _ *delivery.MilestoneRun, _ string, payload delivery.RunSignal) error {
@@ -398,7 +398,7 @@ func (f *fakeSupervisor) SignalRun(_ context.Context, _ *delivery.MilestoneRun, 
 	return nil
 }
 
-func (f *fakeSupervisor) StartRun(_ context.Context, req StartRunRequest) error {
+func (f *fakeSupervisor) StartRun(_ context.Context, req delivery.StartRunRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.started = append(f.started, req)

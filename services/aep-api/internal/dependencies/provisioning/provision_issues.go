@@ -41,7 +41,13 @@ type provisionDep struct {
 // 4: "Planning mints coding issues AND provisioning issues"). The gate issues
 // hold their consumer coding tasks until each derives deployed. Best-effort per
 // issue: a single create failure is logged and does not abort the rest.
-func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, designTag string) (map[string]int, error) {
+//
+// milestoneNumber joins each minted gate to the version's milestone AT CREATION
+// (one call, no follow-up PATCH) so the run's dispatch predicate — "no open
+// aep:provision issue in this milestone" — can see it. Zero leaves gates
+// unassigned. A gate deliberately does NOT carry the `aep` working-set label:
+// it is never agent work, only a hold on the next dispatch.
+func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, designTag string, milestoneNumber int) (map[string]int, error) {
 	comps, err := s.design.ReadDesignComponents(ctx, orgID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning: read design: %w", err)
@@ -94,6 +100,10 @@ func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, d
 			Title:  title,
 			Body:   body,
 			Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginSpecPlan),
+		}
+		if milestoneNumber > 0 {
+			n := milestoneNumber
+			req.Milestone = &n
 		}
 		res, cerr := s.issues.CreateIssue(ctx, orgID, projectID, req)
 		if cerr != nil {

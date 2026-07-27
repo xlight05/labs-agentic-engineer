@@ -426,7 +426,7 @@ func TestEnsureProvisionIssues_MintsPerDepDeduped(t *testing.T) {
 	issues := newFakeIssues(nil)
 	svc := newTestService(issues, &fakeExecStore{}, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, &fakeExtProv{}, &fakePlatProv{}, &fakeBindings{})
 
-	gateByDep, err := svc.EnsureProvisionIssues(context.Background(), "org", "proj", "v1-1")
+	gateByDep, err := svc.EnsureProvisionIssues(context.Background(), "org", "proj", "v1-1", 0)
 	if err != nil {
 		t.Fatalf("EnsureProvisionIssues: %v", err)
 	}
@@ -463,7 +463,7 @@ func TestEnsureProvisionIssues_MintsPerDepDeduped(t *testing.T) {
 
 	// Idempotent: a second call mints nothing new (the deps already have open issues).
 	issues.created = nil
-	gateByDep2, err := svc.EnsureProvisionIssues(context.Background(), "org", "proj", "v1-1")
+	gateByDep2, err := svc.EnsureProvisionIssues(context.Background(), "org", "proj", "v1-1", 0)
 	if err != nil {
 		t.Fatalf("EnsureProvisionIssues #2: %v", err)
 	}
@@ -473,6 +473,31 @@ func TestEnsureProvisionIssues_MintsPerDepDeduped(t *testing.T) {
 	// The map still resolves the pre-existing open gates (from openProvisionDeps).
 	if gateByDep2["stripe"] == 0 || gateByDep2["orders-db"] == 0 {
 		t.Fatalf("second call must still return the existing gate numbers, got %+v", gateByDep2)
+	}
+}
+
+// A gate must land IN the version's milestone, or the run's dispatch predicate
+// ("no open aep:provision issue in this milestone") can never see the hold. The
+// number rides the CREATE — one call, no follow-up PATCH. A gate deliberately
+// does not carry the `aep` working-set label: it is a dispatch hold, never
+// agent work.
+func TestEnsureProvisionIssues_AssignsTheMilestoneAtCreation(t *testing.T) {
+	issues := newFakeIssues(nil)
+	svc := newTestService(issues, &fakeExecStore{}, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, &fakeExtProv{}, &fakePlatProv{}, &fakeBindings{})
+
+	if _, err := svc.EnsureProvisionIssues(context.Background(), "org", "proj", "v4", 7); err != nil {
+		t.Fatalf("EnsureProvisionIssues: %v", err)
+	}
+	if len(issues.created) == 0 {
+		t.Fatal("no gate issue was minted")
+	}
+	for _, req := range issues.created {
+		if req.Milestone == nil || *req.Milestone != 7 {
+			t.Errorf("gate %q: milestone = %v, want 7 assigned at creation", req.Title, req.Milestone)
+		}
+		if contains(req.Labels, "aep") {
+			t.Errorf("gate %q carries the aep working-set label: %v — a gate is never agent work", req.Title, req.Labels)
+		}
 	}
 }
 

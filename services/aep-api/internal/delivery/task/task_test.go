@@ -29,34 +29,46 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
-// ---- issue_compose round-trip ----------------------------------------------
+// ---- issue body prose ------------------------------------------------------
 
-func TestComposePlannedIssue_RoundTrip(t *testing.T) {
-	block, body := composePlannedIssue("proj1", plannedTask{
+// A Task body is a brief for the agent: what to build, where, and which issues
+// come first. Nothing parses it, so the test pins what a READER needs, not a
+// round-trip.
+func TestComposeTaskBody_ProseWithResolvedAndUnresolvedDependencies(t *testing.T) {
+	planned := plannedTask{
 		Component: "order-service",
-		Title:     "Implement order-service",
-		DependsOn: []string{"user-service"},
-		Origin:    taskmeta.OriginSpecPlan,
-		SpecTag:   "req-v1",
-		DesignTag: "design-v1",
+		AppPath:   "src/order-service",
+		DependsOn: []string{"user-service", "cart-service"},
 		Rationale: "core of the plan",
+		Body:      "## Scope\nWrite it.",
+	}
+	body := composeTaskBody(planned, func(component string) (int, bool) {
+		if component == "user-service" {
+			return 12, true
+		}
+		return 0, false
 	})
-	if block.Key == "" {
-		t.Fatal("expected an idempotency key")
+	for _, want := range []string{
+		"core of the plan",
+		"**Component:** `order-service`",
+		"**App Path:** `src/order-service`",
+		"Depends on #12",
+		"Depends on the `cart-service` task",
+		"## Scope",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q:\n%s", want, body)
+		}
 	}
-	got, human, err := taskmeta.ParseBody(body)
-	if err != nil {
-		t.Fatalf("round-trip parse: %v", err)
+	if _, _, err := taskmeta.ParseBody(body); err == nil {
+		t.Errorf("a Task body must carry no machine block:\n%s", body)
 	}
-	if got.Component != "order-service" || got.DesignTag != "design-v1" || len(got.DependsOn) != 1 {
-		t.Errorf("block did not round-trip: %+v", got)
-	}
-	if human.Rationale != "core of the plan" {
-		t.Errorf("rationale did not round-trip: %q", human.Rationale)
-	}
-	// Key is stable for the same inputs.
-	if k := taskmeta.Key("proj1", "design-v1", "order-service", "Implement order-service"); k != block.Key {
-		t.Errorf("key not reproducible: %q != %q", k, block.Key)
+}
+
+// An empty plan renders an empty body rather than a skeleton of blank headings.
+func TestComposeTaskBody_EmptyFactsRenderNothing(t *testing.T) {
+	if got := composeTaskBody(plannedTask{}, func(string) (int, bool) { return 0, false }); got != "" {
+		t.Errorf("empty plannedTask rendered %q, want an empty body", got)
 	}
 }
 

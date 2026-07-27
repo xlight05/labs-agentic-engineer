@@ -42,7 +42,7 @@ func TestProvisionForBuild_ByKind(t *testing.T) {
 	plat := &fakePlatProv{}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, ext, plat, &fakeBindings{})
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "orders", Dependency: "stripe", Kind: "external-config",
 			Config: map[string]string{"region": "us"}, SecretRefByEnv: map[string]string{"development": "sm://x"}},
 		{Component: "orders", Dependency: "orders-db", Kind: "platform-resource",
@@ -109,7 +109,7 @@ func TestProvisionForBuild_UsesMintedGateDespiteListRace(t *testing.T) {
 	plat := &fakePlatProv{}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, ext, plat, &fakeBindings{})
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "orders", Dependency: "stripe", Kind: "external-config",
 			Config: map[string]string{"region": "us"}, SecretRefByEnv: map[string]string{"development": "sm://x"}},
 	})
@@ -143,7 +143,7 @@ func TestProvisionForBuild_ExternalAuthorFailureContinues(t *testing.T) {
 	plat := &fakePlatProv{}
 	svc := newTestService(issues, execs, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, ext, plat, &fakeBindings{})
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "orders", Dependency: "stripe", Kind: "external-config",
 			SecretRefByEnv: map[string]string{"development": "sm://x"}},
 		{Component: "orders", Dependency: "orders-db", Kind: "platform-resource",
@@ -176,7 +176,7 @@ func TestProvisionForBuild_OrgServiceUnapprovedIsNoop(t *testing.T) {
 	svc := newTestService(issues, &fakeExecStore{}, &fakeReeval{},
 		fakeDesign{comps: []spec.DesignComponent{{Name: "web"}}}, ext, plat, &fakeBindings{})
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "web", Dependency: "inventory", Kind: "org-service", Approved: false},
 	})
 	if err != nil || len(fails) != 0 {
@@ -214,7 +214,7 @@ func TestProvisionForBuild_OrgServiceApprovedStartsVisibility(t *testing.T) {
 	})
 	svc.SetProviderBuildTrigger(build)
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "storefront", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "storefront", "v3", 0, []BuildProvisionInput{
 		{Component: "web", Dependency: "inventory", Kind: "org-service", Approved: true},
 	})
 	if err != nil || len(fails) != 0 {
@@ -261,7 +261,7 @@ func TestProvisionForBuild_SettlesReadyGateNotInInputs(t *testing.T) {
 	}}
 	svc := newTestService(issues, execs, reeval, fakeDesign{comps: designWithDeps()}, ext, plat, bindings)
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "orders", Dependency: "stripe", Kind: "external-config",
 			Config: map[string]string{"region": "us"}, SecretRefByEnv: map[string]string{"development": "sm://x"}},
 	})
@@ -301,7 +301,7 @@ func TestProvisionForBuild_SkipsNotReadyGateNotInInputs(t *testing.T) {
 	// orders-db has NO binding (never provisioned) → Status reports not-ready.
 	svc := newTestService(issues, execs, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, &fakeExtProv{}, &fakePlatProv{}, &fakeBindings{})
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", []BuildProvisionInput{
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, []BuildProvisionInput{
 		{Component: "orders", Dependency: "stripe", Kind: "external-config",
 			SecretRefByEnv: map[string]string{"development": "sm://x"}},
 	})
@@ -353,7 +353,7 @@ func TestProvisionForBuild_EmptyInputsDoesNotMint(t *testing.T) {
 	}}
 	svc := newTestService(issues, execs, &fakeReeval{}, fakeDesign{comps: designWithDeps()}, &fakeExtProv{}, &fakePlatProv{}, bindings)
 
-	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", nil)
+	fails, err := svc.ProvisionForBuild(context.Background(), "acme", "acme", "proj", "v3", 0, nil)
 	if err != nil {
 		t.Fatalf("ProvisionForBuild (empty inputs): %v", err)
 	}

@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
 	"github.com/wso2/aep/aep-api/internal/platform/gittest"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
@@ -46,12 +47,20 @@ func (planVersions) GetRequirementsAtTag(context.Context, string, string, string
 	return map[string]string{}, nil
 }
 
-// capturingTurn records the TurnRequest and returns an already-finished stream.
-type capturingTurn struct{ req *agentsvc.TurnRequest }
+// capturingTurn records the TurnRequest and replays a canned upstream stream
+// (an immediate [DONE] unless the test scripts frames).
+type capturingTurn struct {
+	req    *agentsvc.TurnRequest
+	script string
+}
 
 func (c *capturingTurn) Turn(_ context.Context, _, _, _ string, req agentsvc.TurnRequest) (io.ReadCloser, error) {
 	c.req = &req
-	return io.NopCloser(strings.NewReader("data: [DONE]\n\n")), nil
+	body := c.script
+	if body == "" {
+		body = "data: [DONE]\n\n"
+	}
+	return io.NopCloser(strings.NewReader(body)), nil
 }
 
 type nilResolver struct{}
@@ -323,5 +332,65 @@ func TestStartPlan_ContextExcludesValidationTask(t *testing.T) {
 	}
 	if strings.Contains(instr, "tasks/105.md") || strings.Contains(instr, "Validate the deployed system") {
 		t.Errorf("validation task leaked into plan context: %q", instr)
+	}
+}
+
+// A milestone plan reads its context from MILESTONE MEMBERSHIP, not a label
+// query: the version's own issues are the additive-only dedupe set (§6 plans
+// fresh from the new spec, so nothing carries over from the previous version),
+// and the version's gate and validation issues are not the planner's to touch.
+func TestPlanIntoMilestone_ContextIsTheMilestonesOwnWork(t *testing.T) {
+	r := newPlanRig(t, map[string]string{"specs/design/design.md": "# design\n"}, "v2")
+
+	// The version's own milestone: one Task already planned (a re-plan or a
+	// crash re-run), one gate, one ledger-only human issue.
+	r.issues.seedInMilestone(sourcecontrol.IssueInfo{
+		Number: 201, Title: "Implement hello-world-api", Body: "Build the API.",
+		State: "open", Labels: []string{delivery.LabelAgentWork},
+	}, 7)
+	r.issues.seedInMilestone(sourcecontrol.IssueInfo{
+		Number: 202, Title: "Provision orders-db", Body: "Waiting on the drawer.",
+		State: "open", Labels: []string{delivery.LabelProvisionGate},
+	}, 7)
+	r.issues.seedInMilestone(sourcecontrol.IssueInfo{
+		Number: 203, Title: "Flaky checkout", Body: "Sometimes 500s.",
+		State: "open", Labels: nil,
+	}, 7)
+	// A Task of the PREVIOUS version, in another milestone: superseded, and
+	// therefore not context for this one.
+	r.issues.seedInMilestone(sourcecontrol.IssueInfo{
+		Number: 199, Title: "Implement legacy-thing", Body: "Old.",
+		State: "open", Labels: []string{delivery.LabelAgentWork},
+	}, 6)
+
+	if err := r.svc.PlanIntoMilestone(context.Background(), "org1", "proj1", 7); err != nil {
+		t.Fatalf("PlanIntoMilestone: %v", err)
+	}
+	instr := r.turn.req.Instruction
+	if !strings.Contains(instr, "--- tasks/201.md ---") {
+		t.Errorf("the milestone's own Task is missing from the plan context:\n%s", instr)
+	}
+	for _, leaked := range []string{"tasks/202.md", "tasks/203.md", "tasks/199.md"} {
+		if strings.Contains(instr, leaked) {
+			t.Errorf("%s leaked into the plan context — only the milestone's agent work is context:\n%s", leaked, instr)
+		}
+	}
+}
+
+// The plan path settles the run it armed on a failed plan, so a write the tap
+// could not land has to surface as an ERROR rather than a warning.
+func TestPlanIntoMilestone_WriteFailureIsAnError(t *testing.T) {
+	r := newPlanRig(t, map[string]string{"specs/design/design.md": "# design\n"}, "v2")
+	r.issues.failCreate = true
+	r.turn.script = "data: {\"type\":\"tool-result\",\"output\":" +
+		`{"ok":true,"op":"plan","component":"hello-world-api","title":"Implement hello-world-api","dependsOn":[],"origin":"spec-plan","rationale":"go"}` +
+		"}\n\ndata: [DONE]\n\n"
+
+	err := r.svc.PlanIntoMilestone(context.Background(), "org1", "proj1", 7)
+	if err == nil {
+		t.Fatal("a plan whose issue writes all failed must return an error")
+	}
+	if !strings.Contains(err.Error(), "milestone 7") {
+		t.Errorf("error = %v, want it to name the milestone", err)
 	}
 }

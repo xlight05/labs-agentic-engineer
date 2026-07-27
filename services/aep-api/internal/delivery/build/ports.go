@@ -21,6 +21,7 @@ import (
 	"errors"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
+	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
@@ -61,15 +62,12 @@ type SecretStager interface {
 }
 
 // RunStore is the workflow_runs surface the build endpoints need: the
-// one-dev-run-per-project guard, the org fence for status reads, and the
-// synchronous row record on start (so a GET issued right after the POST
-// returns never races the workflow's own RecordWorkflowRun activity — both
-// upsert the same (workflowID, runID) row). Satisfied by
+// one-run-per-project guard and the reads behind the build status and history
+// endpoints (the row is also the org fence for a status read). Satisfied by
 // delivery.WorkflowRunRepository.
 type RunStore interface {
 	RunningDevByProject(ctx context.Context, orgID, projectID string) (*delivery.DevflowRun, error)
 	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*delivery.DevflowRun, error)
-	Record(ctx context.Context, row *delivery.DevflowRun) error
 	// ListByProject enumerates a project's run rows newest-first, optionally
 	// filtered to one kind — the builds-history read behind list-project-builds.
 	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]delivery.DevflowRun, error)
@@ -88,17 +86,93 @@ type SpecTagger interface {
 	TagSpec(ctx context.Context, orgID, projectID string) (*spec.SpecSaveResult, error)
 }
 
-// WorkflowRunner starts and observes dev workflows. The real implementation
-// wraps the devflow Temporal runtime; tests fake it.
+// WorkflowRunner probes and observes the workflow engine. The real
+// implementation wraps the Temporal runtime; tests fake it.
 type WorkflowRunner interface {
 	// Ready reports whether workflows can be started right now
 	// (ErrTemporalUnavailable while the Temporal client is down) — probed
-	// BEFORE the tag is cut so an unstartable build never claims a version.
+	// BEFORE the tag is cut, so a build that could never be supervised claims
+	// no version.
 	Ready() error
-	// StartBuild starts the dev workflow (start-and-return) and reports the
-	// accepted execution's run id.
-	StartBuild(ctx context.Context, workflowID string, in delivery.DevFlowInput) (runID string, err error)
 	BuildStatus(ctx context.Context, workflowID string) (delivery.DevFlowStatus, error)
+}
+
+// --- the milestone plan path's ports ------------------------------------------
+//
+// Everything the build click does AFTER the tag is cut — supersede the previous
+// version, mint this version's milestone, plan its Tasks into it, mint its
+// gates, admit the run row, start the supervisor — reaches out through the five
+// ports below. They are consumer ports over services this sub-package may not
+// name: a sibling (`task`, the planner), another domain (`sourcecontrol`,
+// `dependencies/provisioning`), the domain root's repository, and the run
+// supervisor that does not exist yet.
+
+// MilestoneClient is the GitHub milestone + issue-close surface the plan path
+// drives: mint the version's milestone (idempotently), read the PREVIOUS
+// version's open issues, close them with a superseded comment, and close the
+// milestone itself. sourcecontrol.IssueService satisfies it.
+type MilestoneClient interface {
+	// CreateMilestone mints the version's milestone and returns its NUMBER — the
+	// platform key. It is idempotent: a title that already exists (case-
+	// insensitively) returns the existing number rather than failing.
+	CreateMilestone(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateMilestoneRequest) (*sourcecontrol.MilestoneResult, error)
+	// CloseMilestone closes a milestone. Display only — its issues are untouched
+	// and it still accepts new ones, which is why superseding closes the issues
+	// explicitly rather than relying on this.
+	CloseMilestone(ctx context.Context, orgID, projectID string, number int) error
+	// ListMilestoneIssues reads a milestone's issues by state and label; pull
+	// requests are excluded by the host.
+	ListMilestoneIssues(ctx context.Context, orgID, projectID string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error)
+	// CloseIssue closes an issue, posting comment first when non-empty.
+	CloseIssue(ctx context.Context, orgID, projectID string, number int, comment string) error
+}
+
+// MilestoneRunStore is the run-row surface the plan path needs: the pre-check
+// behind the endpoint's 409, and the admission that arms the DB-level mutex.
+// delivery.MilestoneRunRepository satisfies it.
+type MilestoneRunStore interface {
+	// ActiveSpecRunByProject returns the project's live spec-build run, or
+	// (nil, nil) when it is free. This is the read behind a clean 409; the
+	// partial unique index TryAdmit hits is the authority under concurrency.
+	ActiveSpecRunByProject(ctx context.Context, orgID, projectID string) (*delivery.MilestoneRun, error)
+	// TryAdmit inserts the run unless the mutex says another one is live.
+	TryAdmit(ctx context.Context, run *delivery.MilestoneRun) (admitted bool, row *delivery.MilestoneRun, err error)
+	// Settle ends a run — the plan path's own error handler, so a planning turn
+	// that dies does not wedge the project behind the mutex it armed.
+	Settle(ctx context.Context, id, state, terminalReason string) (*delivery.MilestoneRun, error)
+	// ListByProject returns the project's runs newest-first: how the plan path
+	// finds the PREVIOUS milestone to supersede. Never by title match — GitHub
+	// titles are renamable, so the run rows are the only sound index.
+	ListByProject(ctx context.Context, orgID, projectID string) ([]delivery.MilestoneRun, error)
+}
+
+// SpecPlanner runs the version's planning turn, minting one prose issue per
+// planned Task straight into the milestone (assignment rides creation, so the
+// plan costs 1+N calls). Satisfied by *task.PlanService at the composition root
+// — build names no sibling, exactly as it reaches the task reads through
+// TaskReader.
+//
+// It BLOCKS for the length of an LLM turn, which is why the plan path runs it
+// detached from the HTTP request.
+type SpecPlanner interface {
+	PlanIntoMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) error
+}
+
+// GateResolver authors the version's dependencies and mints the aep:provision
+// gate issues into its milestone. Gates are never agent work: they hold the
+// next dispatch until the platform (drawer submission, readiness watcher)
+// resolves them. Satisfied by an app-root adapter over the provisioning
+// service.
+type GateResolver interface {
+	ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, milestoneNumber int, inputs []delivery.ProvisionInput) error
+}
+
+// RunStarter hands the admitted run to the supervisor. It is an interface, not
+// a call into the supervisor package, because that is what keeps the build path
+// free of a workflow engine — and because the supervisor lands in a later
+// increment behind the same seam the event plane already uses.
+type RunStarter interface {
+	StartRun(ctx context.Context, req delivery.StartRunRequest) error
 }
 
 // TaskReader is the DURABLE task source behind a build's task list: the live

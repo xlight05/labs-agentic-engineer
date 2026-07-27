@@ -50,6 +50,12 @@ const (
 	RunReasonNoProgress           = "no-progress"
 	RunReasonCycleCeiling         = "cycle-ceiling"
 	RunReasonValidationFailed     = "validation-failed"
+	// RunReasonPlanFailed is the plan path's own failure class: the run row is
+	// admitted BEFORE the planning turn (so the spec-run mutex is armed for the
+	// whole of it), which means a planning turn that cannot finish must settle
+	// the row it armed. Without it a failed plan would wedge the project behind
+	// its own mutex until a human cancelled.
+	RunReasonPlanFailed = "plan-failed"
 
 	// Validation verdicts. Empty until the validation cycle settles; skipped
 	// when the project has no acceptance criteria and on incident runs (which

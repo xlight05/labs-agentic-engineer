@@ -19,6 +19,8 @@ package task
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
@@ -36,10 +38,13 @@ type fakeIssues struct {
 	comments     map[int][]string
 	failCreate   bool
 	failEditBody bool
+	// milestoneOf records the milestone each seeded issue belongs to, so
+	// ListMilestoneIssues can answer the plan turn's membership read.
+	milestoneOf map[int]int
 }
 
 func newFakeIssues() *fakeIssues {
-	return &fakeIssues{byNumber: map[int]*sourcecontrol.IssueInfo{}, nextNum: 100, comments: map[int][]string{}}
+	return &fakeIssues{byNumber: map[int]*sourcecontrol.IssueInfo{}, nextNum: 100, comments: map[int][]string{}, milestoneOf: map[int]int{}}
 }
 
 func (f *fakeIssues) seed(issue sourcecontrol.IssueInfo) *fakeIssues {
@@ -63,6 +68,9 @@ func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontr
 	f.nextNum++
 	f.created = append(f.created, req)
 	f.byNumber[n] = &sourcecontrol.IssueInfo{Number: n, Title: req.Title, Body: req.Body, State: "open", Labels: req.Labels, URL: fmt.Sprintf("https://github.com/o/r/issues/%d", n)}
+	if req.Milestone != nil {
+		f.milestoneOf[n] = *req.Milestone
+	}
 	return &sourcecontrol.IssueResult{Number: n, URL: f.byNumber[n].URL}, nil
 }
 
@@ -75,6 +83,35 @@ func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, labels []string)
 			out = append(out, *issue)
 		}
 	}
+	return out, nil
+}
+
+// seedInMilestone seeds an issue as a member of a milestone.
+func (f *fakeIssues) seedInMilestone(issue sourcecontrol.IssueInfo, milestone int) *fakeIssues {
+	f.seed(issue)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.milestoneOf[issue.Number] = milestone
+	return f
+}
+
+func (f *fakeIssues) ListMilestoneIssues(_ context.Context, _, _ string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []sourcecontrol.IssueInfo
+	for n, issue := range f.byNumber {
+		if f.milestoneOf[n] != filter.Number {
+			continue
+		}
+		if filter.State != "" && filter.State != "all" && !strings.EqualFold(issue.State, filter.State) {
+			continue
+		}
+		if !issueHasAll(issue.Labels, filter.Labels) {
+			continue
+		}
+		out = append(out, *issue)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Number < out[j].Number })
 	return out, nil
 }
 

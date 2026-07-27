@@ -190,25 +190,20 @@ type RunSignaler interface {
 	SignalRun(ctx context.Context, run *delivery.MilestoneRun, name string, payload delivery.RunSignal) error
 }
 
-// StartRunRequest asks for a run over one milestone.
-type StartRunRequest struct {
-	OrgID           string
-	ProjectID       string
-	MilestoneNumber int
-	MilestoneTitle  string
-	// Origin is delivery.RunOriginIncidentAdoption for everything the event
-	// plane starts — the spec-build origin belongs to the plan path alone.
-	Origin string
-}
-
 // RunStarter starts a run over a milestone that has work and no live run: the
-// adoption path and the reconcile sweep's backstop.
+// adoption path and the reconcile sweep's backstop. Everything this package
+// starts carries delivery.RunOriginIncidentAdoption — the spec-build origin
+// belongs to the plan path alone.
 //
 // Admission (the run row) and supervision (the workflow) must happen together
 // or a run row exists that nobody is driving, so both live behind this one
 // port on the supervisor's side rather than being split across packages.
 // Implementations must be idempotent — the sweep re-offers the same milestone
 // every pass until a run is live.
+//
+// The request type lives at the domain root because the plan path in `build`
+// asks the same supervisor the same question and the two sub-packages may not
+// import each other.
 type RunStarter interface {
-	StartRun(ctx context.Context, req StartRunRequest) error
+	StartRun(ctx context.Context, req delivery.StartRunRequest) error
 }

@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/taskplan"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
@@ -39,52 +40,77 @@ import (
 // restart.
 const planDrainIdleTimeout = 90 * time.Second
 
-// taskState is a Task's current machine block + human parts, tracked by the tap
-// so an updateTask patch (which sets only the changed fields) recomposes the
-// whole body from the latest known state.
-type taskState struct {
-	block taskmeta.Block
-	human taskmeta.Human
-}
-
 // planTap streams the agents-service SSE verbatim to the client while parsing
 // tool-result frames and performing the GitHub writes for planTask/updateTask
 // as they pass (§6). It survives client disconnect: forwarding stops but reading
 // continues, so the upstream turn drains to completion and every write lands.
 //
 // The tap acts on the self-contained tool-RESULT frame (output echoes the
-// normalized fields), only when output.ok is true (phase-1 rule). Idempotency:
-// before creating, it dedupes against the machine-block key of both the
-// pre-existing Tasks and this-run creations (crash re-run safe).
+// normalized fields), only when output.ok is true (phase-1 rule).
+//
+// Every issue it mints is PROSE in a MILESTONE: the milestone number rides the
+// create call (so a plan costs 1+N calls, never create-then-patch), the `aep`
+// label marks it as the run's working set, and nothing in the body is ever
+// parsed back. Re-plan reconcile is therefore ADDITIVE-ONLY, deduped on the
+// title slug against the milestone's existing issues plus this run's creations —
+// which is also what makes a crash re-run land no duplicates.
 type planTap struct {
 	ctx       context.Context // detached — survives client disconnect (drain, §6)
 	orgID     string
-	projectID string // also the stable project identifier in the idempotency key
-	specTag   string
-	designTag string
+	projectID string
 	issues    IssueClient
+
+	// milestone is the version's milestone NUMBER, assigned at issue creation.
+	// Zero leaves creations unassigned (no milestone was minted for this turn).
+	milestone int
+	// appPaths maps a design component name (lowercased) to its source directory,
+	// rendered into the body as the App Path the agent works in. Empty when no
+	// design reader is wired.
+	appPaths map[string]string
 
 	// state carries BOTH pre-existing Tasks (preloaded by the plan assembler,
 	// addressable by updateTask{issueNumber}) and this-run creations.
-	state        map[int]taskState
-	existingKeys map[string]bool // machine-block keys of pre-existing Tasks (dedupe)
+	state map[int]plannedTask
 
 	// contextNumbers is the frozen set of issue numbers preloaded into the turn's
-	// context (the pre-existing open aep:task issues). An updateTask{issueNumber}
-	// ref MUST target a member: the agent only ever sees the numbers the assembler
-	// pushed, so an out-of-context number is a hallucination (or a human bug
-	// report that happens to share the id space) and must NEVER be written — doing
-	// so would clobber an unrelated issue's body with a zero-value machine block.
+	// context. An updateTask{issueNumber} ref MUST target a member: the agent only
+	// ever sees the numbers the assembler pushed, so an out-of-context number is a
+	// hallucination (or a human bug report that happens to share the id space) and
+	// must NEVER be written — doing so would clobber an unrelated issue's body.
 	contextNumbers map[int]bool
 
-	titleToNumber map[string]int  // normalized this-run title → created issue number
-	createdKeys   map[string]bool // machine-block keys created this run (dedupe)
+	titleToNumber map[string]int // normalized this-run title → created issue number
+	// existingSlugs is the TitleSlug of every issue already in the milestone;
+	// createdSlugs the ones minted this run. Together they are the whole dedupe
+	// primitive — there is no machine-block key to compare any more.
+	existingSlugs map[string]bool
+	createdSlugs  map[string]bool
+	// componentToNumber resolves a "Depends on" component name to the issue this
+	// run planned for it, so dependency lines carry real issue numbers.
+	componentToNumber map[string]int
 
 	// idleTimeout overrides planDrainIdleTimeout (tests set a small value). Zero
 	// uses the default.
 	idleTimeout time.Duration
 
 	failures int
+}
+
+// newPlanTap builds a tap with every map initialised. Callers set the milestone,
+// the preloaded state and the app paths.
+func newPlanTap(ctx context.Context, orgID, projectID string, issues IssueClient) *planTap {
+	return &planTap{
+		ctx:               ctx,
+		orgID:             orgID,
+		projectID:         projectID,
+		issues:            issues,
+		state:             map[int]plannedTask{},
+		contextNumbers:    map[int]bool{},
+		titleToNumber:     map[string]int{},
+		existingSlugs:     map[string]bool{},
+		createdSlugs:      map[string]bool{},
+		componentToNumber: map[string]int{},
+	}
 }
 
 // streamPartFrame is the minimal shape of an agents-service SSE frame the tap
@@ -213,49 +239,72 @@ func (t *planTap) consume(line []byte) {
 	}
 }
 
-// handlePlan creates an issue for a planTask result (deduped by machine-block key).
+// handlePlan mints one Task issue into the version's milestone for a planTask
+// result. Dedupe is the TitleSlug of the title against the milestone's existing
+// issues and this run's creations — so a re-plan is additive-only and a crash
+// re-run converges to no-ops.
 func (t *planTap) handlePlan(out *taskplan.PlanTaskOk) {
-	origin := out.Origin
-	if !origin.Valid() {
-		origin = taskmeta.OriginSpecPlan
-	}
-	block, body := composePlannedIssue(t.projectID, plannedTask{
-		Component: out.Component,
-		Title:     out.Title,
-		DependsOn: out.DependsOn,
-		Origin:    origin,
-		SpecTag:   t.specTag,
-		DesignTag: t.designTag,
-		Rationale: out.Rationale,
-	})
+	slug := taskmeta.TitleSlug(out.Title)
 	norm := normalizeTitle(out.Title)
-	if t.existingKeys[block.Key] || t.createdKeys[block.Key] {
-		return // already created (re-plan converges to no-ops, crash re-run safe)
+	if slug != "" && (t.existingSlugs[slug] || t.createdSlugs[slug]) {
+		return
 	}
 	if _, dup := t.titleToNumber[norm]; dup {
 		return
 	}
-	labels := taskmeta.NewTaskLabels(taskmeta.ClassCoding, origin)
-	// Stamp the build/spec version as a filterable label so Tasks can be listed
-	// server-side by the version they were planned from (aep:spec/<tag>). The
-	// same value is the block's structured specTag; the label is its flat mirror.
-	if l := taskmeta.SpecTagLabel(t.specTag); l != "" {
-		labels = append(labels, l)
+	planned := plannedTask{
+		Component: out.Component,
+		AppPath:   t.appPathFor(out.Component),
+		DependsOn: out.DependsOn,
+		Rationale: out.Rationale,
 	}
-	issue, err := t.issues.CreateIssue(t.ctx, t.orgID, t.projectID, sourcecontrol.CreateIssueRequest{
-		Title:  out.Title,
-		Body:   body,
-		Labels: labels,
-	})
+	req := sourcecontrol.CreateIssueRequest{
+		Title: out.Title,
+		Body:  composeTaskBody(planned, t.issueForComponent),
+		// The working-set marker, and nothing else: a Task is agent work. Gates
+		// (aep:provision) and the validation Task (aep:validation) are minted
+		// elsewhere and are deliberately not this population.
+		Labels: []string{delivery.LabelAgentWork},
+	}
+	// Milestone assignment RIDES the create — one call, which is what keeps the
+	// plan's API cost at 1+N rather than 1+2N.
+	if t.milestone > 0 {
+		n := t.milestone
+		req.Milestone = &n
+	}
+	issue, err := t.issues.CreateIssue(t.ctx, t.orgID, t.projectID, req)
 	if err != nil {
 		// No issue exists to flag — record for the terminal in-band surface.
 		t.failures++
 		slog.WarnContext(t.ctx, "plan tap: create issue failed", "title", out.Title, "error", err)
 		return
 	}
-	t.createdKeys[block.Key] = true
+	if slug != "" {
+		t.createdSlugs[slug] = true
+	}
 	t.titleToNumber[norm] = issue.Number
-	t.state[issue.Number] = taskState{block: block, human: taskmeta.Human{Rationale: out.Rationale}}
+	if c := strings.ToLower(strings.TrimSpace(out.Component)); c != "" {
+		t.componentToNumber[c] = issue.Number
+	}
+	t.state[issue.Number] = planned
+}
+
+// appPathFor resolves a component's source directory from the design, or ""
+// when the design pins none (the component builds from the repo root) or no
+// design reader is wired.
+func (t *planTap) appPathFor(component string) string {
+	if len(t.appPaths) == 0 {
+		return ""
+	}
+	return t.appPaths[strings.ToLower(strings.TrimSpace(component))]
+}
+
+// issueForComponent resolves a dependency's component name to the issue this
+// run planned for it. A forward reference (the dependency's own Task has not
+// been minted yet) misses, and the body names the component instead.
+func (t *planTap) issueForComponent(component string) (int, bool) {
+	n, ok := t.componentToNumber[strings.ToLower(strings.TrimSpace(component))]
+	return n, ok
 }
 
 // handleUpdate patches an existing or this-run Task for an updateTask result.
@@ -272,7 +321,7 @@ func (t *planTap) handleUpdate(out *taskplan.UpdateTaskOk) {
 		}
 		return
 	}
-	st := t.state[number] // zero value is a benign empty block for a pre-existing miss
+	st := t.state[number] // zero value is a benign empty state for a pre-existing miss
 
 	set := out.Set
 	if set.Title != nil && strings.TrimSpace(*set.Title) != "" {
@@ -285,17 +334,24 @@ func (t *planTap) handleUpdate(out *taskplan.UpdateTaskOk) {
 			delete(t.titleToNumber, normalizeTitle(*out.Ref.Title))
 		}
 		t.titleToNumber[normalizeTitle(*set.Title)] = number
+		if s := taskmeta.TitleSlug(*set.Title); s != "" {
+			t.createdSlugs[s] = true
+		}
 	}
 	if set.DependsOn != nil {
-		st.block.DependsOn = *set.DependsOn
+		st.DependsOn = *set.DependsOn
 	}
 	if set.Rationale != nil {
-		st.human.Rationale = *set.Rationale
+		st.Rationale = *set.Rationale
 	}
 	if set.Body != nil {
-		st.human.Body = *set.Body
+		st.Body = *set.Body
 	}
-	body := recomposeBody(st.block, st.human.Rationale, st.human.Body)
+	// The whole body is re-rendered from the current facts, so a patch never
+	// accumulates: the dependency lines are re-resolved too, which is how a
+	// forward reference planned before its dependency picks up the real issue
+	// number once updateTask touches it.
+	body := composeTaskBody(st, t.issueForComponent)
 	if err := t.issues.EditIssueBody(t.ctx, t.orgID, t.projectID, number, body); err != nil {
 		t.recordFlag(number, err)
 	}

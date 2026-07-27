@@ -105,7 +105,7 @@ func (e *Events) startRun(ctx context.Context, orgID, projectID string, mileston
 			"project", projectID, "milestone", milestone.Number)
 		return nil
 	}
-	return e.p.Starter.StartRun(ctx, StartRunRequest{
+	return e.p.Starter.StartRun(ctx, delivery.StartRunRequest{
 		OrgID:           orgID,
 		ProjectID:       projectID,
 		MilestoneNumber: milestone.Number,
