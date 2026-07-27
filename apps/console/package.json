@@ -61,7 +61,7 @@
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "4.1.10",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "26.1.0",
     "msw": "^2.12.0",
     "openapi-typescript": "^7.4.2",
     "playwright": "1.61.1",
