@@ -169,6 +169,6 @@ func (s *Service) resolveConsumerVisibilityGate(ctx context.Context, orgID, cons
 	if _, serr := s.execs.StartWithRun(ctx, row.ID, dep); serr != nil {
 		slog.WarnContext(ctx, "provisioning: start consumer visibility run failed", "execution", row.ID, "error", serr)
 	}
-	s.completeProvisionRow(ctx, orgID, consumerProjectID, issueNumber, row.ID,
+	s.completeProvisionRow(ctx, orgID, consumerProjectID, dep, issueNumber, row.ID,
 		fmt.Sprintf("Org-service `%s` published org-wide by the provider.", dep))
 }

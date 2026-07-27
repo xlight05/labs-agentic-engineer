@@ -57,14 +57,17 @@ slices.
 | SecretWriter | needs | `platform/secrets` — SM-API vault writes for external-resource secret values |
 | OC `Resource`/`ResourceReleaseBinding` CRUD · `ClusterResourceType` discovery | needs | `openchoreo` client — OC is the store |
 | ExecutionStore (admit/finish) | needs | `delivery` — a gate's provisioning run is the last remaining execution row, and this is its write surface |
-| IssueClient (aep:provision gate) | needs | `sourcecontrol` — gate issues, closed via a no-secrets reference |
+| IssueClient (aep:provision gate · resolved-wiring comment) | needs | `sourcecontrol` — gate issues closed via a no-secrets reference, and the ADR-0004 comment + its `aep:wired/<slug>` marker on the working set |
+| ProviderResolver (endpoint targets) | needs | root `Catalog` — any-visibility provider lookup for an access request, namespace/project-visible resolves for the wiring block |
 | DesignReader / DesignBundleReader | needs | `spec` — design at HEAD (what to provision) + provider design bundles |
 | the 8 public ops | offers | the edge (`dependenciesHandlers`) |
 
 ## Owns
 - `ExternalResource` (an in-memory definition, NOT a DB row — see Persistence), `AccessRequest`, the
   authored OC external Resource model + provisioned binding values, the `aep:provision` gate issues
-  (via `sourcecontrol`), and the resource-type catalog projection.
+  (via `sourcecontrol`), the **resolved consumer-side `dependencies:` block** the coding agent copies
+  into `workload.yaml` (ADR-0004 — resolved here, never patched onto a Workload CR), and the
+  resource-type catalog projection.
 - **Persistence**: only `AccessRequest` is persisted (`repository_access_request.go` over
   `access_request.go`), single write-authority. `ExternalResource` is an in-memory definition, not a
   DB row — the org-namespaced OpenChoreo `ResourceType` is the registry (ADR-0009).
@@ -81,6 +84,12 @@ slices.
 - **A gate's provisioning run keeps an execution row.** It is the one execution kind the milestone model
   still writes: admitted when the drawer submits, finished by the readiness watcher, and its terminal state
   is what closes the gate issue.
+- **Dependency wiring is SAID, never patched** (ADR-0004). The domain resolves a component's targets +
+  env bindings and posts them as the "Platform-resolved dependencies" comment; the coding agent authors
+  `workload.yaml`, and nothing here writes a Workload CR. The comment goes up **at gate resolution** — the
+  first moment the address exists — onto the run's working set (open `aep`, minus gates and validation),
+  keyed by component in its content because no label attributes an issue to a component. It is idempotent
+  on the `aep:wired/<slug>` marker: a re-settled gate must not pile the same comment up.
 - **The wire quirks the contract-first cutover pinned stay pinned**: wrong-kind → 400, not-found/
   not-registered → 404, in-use → 409, provision-failure → 502; get-dependency-status and list-access-requests
   return their empty-but-present shapes; a nil service 503s (the surface exists with the feature unwired).

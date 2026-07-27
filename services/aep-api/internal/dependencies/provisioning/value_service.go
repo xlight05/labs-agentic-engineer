@@ -111,7 +111,7 @@ func (s *Service) SaveValues(ctx context.Context, orgID, ocOrgID, projectID, dep
 		if _, serr := s.execs.StartWithRun(ctx, execID, ref); serr != nil {
 			slog.WarnContext(ctx, "provisioning: start external provision run failed", "execution", execID, "error", serr)
 		}
-		s.completeProvisionRow(ctx, orgID, projectID, issueNumber, execID,
+		s.completeProvisionRow(ctx, orgID, projectID, depName, issueNumber, execID,
 			fmt.Sprintf("External resource `%s` configured (OC binding `%s`).", depName, ref))
 	}
 	return nil

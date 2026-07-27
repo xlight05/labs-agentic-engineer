@@ -200,10 +200,19 @@ func (s *Service) admitProvisionRow(ctx context.Context, orgID, projectID, repo,
 }
 
 // completeProvisionRow finishes a provision Execution succeeded, closes the gate
-// issue with a no-secrets reference, and re-evaluates the funnel so consumer
-// tasks gated on this dependency dispatch. Used by the synchronous external path
-// and the readiness watcher.
-func (s *Service) completeProvisionRow(ctx context.Context, orgID, projectID string, issueNumber int, execID, reference string) {
+// issue with a no-secrets reference, posts the dependency's resolved wiring to
+// the run's working set (ADR-0004), and re-evaluates the funnel so consumer tasks
+// gated on this dependency dispatch. Used by the synchronous external path and
+// the readiness watcher.
+//
+// depName is the dependency this gate held. It is what the wiring comment is
+// about, so every caller passes it — the execution row's Component carries it on
+// the watcher path.
+//
+// ORDER: the wiring comment goes up BEFORE the re-evaluation that may release a
+// coding cycle, so an agent dispatched by this very resolution finds the block
+// already on its issues.
+func (s *Service) completeProvisionRow(ctx context.Context, orgID, projectID, depName string, issueNumber int, execID, reference string) {
 	if _, err := s.execs.Finish(ctx, execID, string(taskmeta.ExecSucceeded), reference); err != nil {
 		slog.WarnContext(ctx, "provisioning: finish provision run failed", "execution", execID, "error", err)
 		return
@@ -212,6 +221,7 @@ func (s *Service) completeProvisionRow(ctx context.Context, orgID, projectID str
 	if err := s.issues.CloseIssue(ctx, orgID, projectID, issueNumber, comment); err != nil {
 		slog.WarnContext(ctx, "provisioning: close gate issue failed", "issue", issueNumber, "error", err)
 	}
+	s.postResolvedWiring(ctx, orgID, projectID, depName)
 	if s.reeval != nil {
 		if err := s.reeval.Reevaluate(ctx); err != nil {
 			slog.WarnContext(ctx, "provisioning: reevaluate after provision failed", "error", err)

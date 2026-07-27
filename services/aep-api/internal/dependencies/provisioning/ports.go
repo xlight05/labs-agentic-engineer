@@ -32,13 +32,16 @@ import (
 // {dependencies/resources, gitrepo} — everything else is a local port.
 
 // IssueClient is the GitHub issue surface: list Task issues (to find/dedup
-// aep:provision gate issues), create a gate issue, close it with a reference,
-// and comment a failure. sourcecontrol.IssueService satisfies it.
+// aep:provision gate issues and to reach the run's working set), create a gate
+// issue, close it with a reference, comment (a failure, or the ADR-0004
+// resolved-wiring block), and stamp the aep:wired/<slug> marker that keeps that
+// comment idempotent. sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
 	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
 	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
 	CloseIssue(ctx context.Context, orgID, projectID string, number int, comment string) error
 	CommentIssue(ctx context.Context, orgID, projectID string, number int, body string) error
+	AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error
 }
 
 // ExecutionStore is the executions-rows repository slice the provision lifecycle
@@ -140,11 +143,20 @@ type BindingReader interface {
 	GetBinding(ctx context.Context, namespace, name string) (*openchoreo.ResourceReleaseBinding, error)
 }
 
-// ProviderResolver resolves an org-service name to its providing project +
-// component at ANY visibility (an access request targets a not-yet-published
-// provider). *endpoints.Catalog satisfies it.
+// ProviderResolver resolves a dependency's provider endpoint in OpenChoreo. It
+// has two readers with different visibility rules, so all three resolves live on
+// one port (*dependencies.Catalog satisfies all of them):
+//
+//   - FindByComponent — ANY visibility, because an access request deliberately
+//     targets a not-yet-published provider.
+//   - ResolveNamespaceVisible / ResolveProjectEndpoint — the visibility-scoped
+//     targets the ADR-0004 wiring comment names (wiring.go). A provider that is
+//     not yet published at the required visibility simply misses, and its
+//     endpoint is omitted from the block until it is.
 type ProviderResolver interface {
 	FindByComponent(ctx context.Context, orgHandle, name string) (openchoreo.WorkloadEndpointInfo, bool, error)
+	ResolveNamespaceVisible(ctx context.Context, orgHandle, name string) (openchoreo.WorkloadEndpointInfo, bool, error)
+	ResolveProjectEndpoint(ctx context.Context, orgHandle, project, ocComponent string) (openchoreo.WorkloadEndpointInfo, bool, error)
 }
 
 // ProviderBuildTrigger kicks the provider project's build so a not-yet-published

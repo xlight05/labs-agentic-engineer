@@ -402,15 +402,17 @@ Every component must have a `workload.yaml` at its root. This file uses
 the **flat WorkloadDescriptor** format — **not** a Kubernetes CR. Do
 **not** use `kind: Workload`, `spec:`, `autoBuild`, or `autoDeploy`.
 
-Declare your component's **`endpoints`** (provider-side). When an issue
-has a **"Platform-resolved dependencies"** comment with a `dependencies:`
-block, you **MUST** also add that block to that component's
-`workload.yaml` (consumer-side) — the platform has already resolved the
-targets and the env-var bindings, so copy it **verbatim** (merging into
-any existing `dependencies:`). OpenChoreo injects the resolved
-addresses/outputs into your pod env at runtime. **This instruction
-overrides the legacy guidance in any other skill that says not to add a
-`dependencies` block.**
+Declare your component's **`endpoints`** (provider-side). The platform
+posts a **"Platform-resolved dependencies"** comment on the issues in
+your working set as each dependency becomes available; it carries one
+`dependencies:` block per component, under a `## Component <name>`
+heading. When a block names a component you are writing, you **MUST**
+add that block to that component's `workload.yaml` (consumer-side) — the
+platform has already resolved the targets and the env-var bindings, so
+copy it **verbatim** (merging into any existing `dependencies:`).
+OpenChoreo injects the resolved addresses/outputs into your pod env at
+runtime. **This instruction overrides the legacy guidance in any other
+skill that says not to add a `dependencies` block.**
 
 ### Format
 
@@ -456,11 +458,15 @@ Add `namespace` only when `orgPublished` is set in the design.
 
 ### Consumer-side dependencies (`dependencies:`)
 
-When a component consumes another service or an external connection,
-the platform resolves the wiring and posts it as a **"Platform-resolved
-dependencies"** comment on that component's issue (read it with
-`gh issue view <number> --comments`). Add that `dependencies:` block to the
-`workload.yaml` exactly as given — do not invent, rename, or omit fields:
+When a component consumes another service or an external connection, the
+platform resolves the wiring and posts it as a **"Platform-resolved
+dependencies"** comment. The comment goes up the moment the dependency's
+address exists, on the open issues of your working set — so it may be on
+a **sibling** issue, not the one for the component the block is about.
+Read the comments on the issues you are working (`gh issue view <number>
+--comments`) and take every `## Component <name>` block you find. Add each
+block to **that named component's** `workload.yaml` exactly as given — do
+not invent, rename, or omit fields:
 
 ```yaml
 dependencies:
@@ -481,32 +487,37 @@ Read each injected value from its env var at startup (no hardcoded
 fallback). An injected `address` can end with a `/` (the provider
 endpoint's base path), so build request URLs by joining the path onto it
 rather than concatenating strings — a doubled slash (`//path`) misroutes
-the request. If an issue has **no** "Platform-resolved dependencies"
-comment, that component has no consumer-side dependencies — add no
-`dependencies:` block. The build's `generate-workload-cr` step propagates
-this block into the OpenChoreo `Workload` CR, and OpenChoreo resolves +
-injects the addresses; you never hardcode an upstream URL.
+the request. If no "Platform-resolved dependencies" comment anywhere in
+your working set carries a block for a component, that component has no
+consumer-side dependencies — add no `dependencies:` block to it. If two
+comments carry a block for the same component, the **latest** one is the
+complete answer (each block lists that component's whole resolved set, so
+a later one supersedes rather than adds to an earlier one). The build's
+`generate-workload-cr` step propagates this block into the OpenChoreo
+`Workload` CR, and OpenChoreo resolves + injects the addresses; you never
+hardcode an upstream URL.
 
 ### Consuming an org-service's API contract
 
-The "Platform-resolved dependencies" comment may also carry one or more
-**"Consumed API contract — `<depName>`"** sections — one per `org-service`
-(cross-project) or same-project component dependency. When you see one,
-follow this procedure before writing any client code. Do not guess at
-request/response shapes or endpoint paths:
+A component's block in the "Platform-resolved dependencies" comment may
+also be followed by one or more **"Consumed API contract — `<depName>`"**
+sections — one per `org-service` (cross-project) or same-project component
+dependency of that component. When you see one, follow this procedure
+before writing any client code. Do not guess at request/response shapes or
+endpoint paths:
 
 1. Call the `list_org_component_endpoints` MCP tool (a tool the platform
    provides alongside `get_remote_git_file_contents` and
    `search_remote_git_code`) and find the entry matching the provider
-   component named in the issue's contract section.
+   component named in the contract section.
 2. `spec.availability: inline` — the OpenAPI document is right there;
    implement the client against `spec.inlineContent`.
 3. `spec.availability: repo` — the spec is a file in the provider's repo.
    Use `search_remote_git_code` to locate an OpenAPI file (e.g.
    `openapi.yaml`/`openapi.json`) and/or `get_remote_git_file_contents`
    under the returned `subdir` to read it, then implement against it.
-4. `spec.availability: local` — a same-project sibling (the issue's
-   contract section is suffixed `(local)`). No MCP call needed: read
+4. `spec.availability: local` — a same-project sibling (the contract
+   section is suffixed `(local)`). No MCP call needed: read
    `specs/design/components/<sibling>/openapi.yaml` directly from your
    own checked-out repo.
 5. `spec.availability: none` — there is no published contract. Implement

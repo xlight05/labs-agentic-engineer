@@ -112,6 +112,8 @@ func (w *ResourceWatcher) reconcile(ctx context.Context, row *delivery.Execution
 	if !b.IsReady() {
 		return // still provisioning — wait (the stale bound catches genuinely stuck ones)
 	}
-	w.svc.completeProvisionRow(ctx, row.OrgID, row.ProjectID, row.IssueNumber, row.ID,
+	// row.Component is the dependency name the gate holds (admitProvisionRow
+	// stamps it) — the wiring comment's subject.
+	w.svc.completeProvisionRow(ctx, row.OrgID, row.ProjectID, row.Component, row.IssueNumber, row.ID,
 		fmt.Sprintf("Platform resource ready (OC binding `%s`).", row.RunName))
 }

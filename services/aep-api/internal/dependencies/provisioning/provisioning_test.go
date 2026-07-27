@@ -100,6 +100,14 @@ func (f *fakeIssues) CommentIssue(_ context.Context, _, _ string, number int, bo
 	f.comments[number] = append(f.comments[number], body)
 	return nil
 }
+func (f *fakeIssues) AddLabels(_ context.Context, _, _ string, number int, labels []string) error {
+	for i := range f.list {
+		if f.list[i].Number == number {
+			f.list[i].Labels = append(f.list[i].Labels, labels...)
+		}
+	}
+	return nil
+}
 
 type fakeExecStore struct {
 	rows   []*delivery.Execution
@@ -297,10 +305,22 @@ func (f fakeProjects) ListProjects(_ context.Context, orgID string) ([]ProjectRe
 
 type fakeProviders struct {
 	byName map[string]openchoreo.WorkloadEndpointInfo
+	// nsVisible / projectEP back the two visibility-scoped resolves the ADR-0004
+	// wiring comment uses; byName is the any-visibility access-request lookup.
+	nsVisible map[string]openchoreo.WorkloadEndpointInfo
+	projectEP map[string]openchoreo.WorkloadEndpointInfo
 }
 
 func (f fakeProviders) FindByComponent(_ context.Context, _, name string) (openchoreo.WorkloadEndpointInfo, bool, error) {
 	ep, ok := f.byName[name]
+	return ep, ok, nil
+}
+func (f fakeProviders) ResolveNamespaceVisible(_ context.Context, _, name string) (openchoreo.WorkloadEndpointInfo, bool, error) {
+	ep, ok := f.nsVisible[name]
+	return ep, ok, nil
+}
+func (f fakeProviders) ResolveProjectEndpoint(_ context.Context, _, _, ocComponent string) (openchoreo.WorkloadEndpointInfo, bool, error) {
+	ep, ok := f.projectEP[ocComponent]
 	return ep, ok, nil
 }
 

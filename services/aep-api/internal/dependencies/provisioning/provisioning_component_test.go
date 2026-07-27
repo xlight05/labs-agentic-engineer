@@ -101,6 +101,7 @@ func (cIssues) CreateIssue(context.Context, string, string, sourcecontrol.Create
 }
 func (cIssues) CloseIssue(context.Context, string, string, int, string) error   { return nil }
 func (cIssues) CommentIssue(context.Context, string, string, int, string) error { return nil }
+func (cIssues) AddLabels(context.Context, string, string, int, []string) error  { return nil }
 
 type cRepos struct{}
 

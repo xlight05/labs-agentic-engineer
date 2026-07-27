@@ -212,7 +212,7 @@ func (s *Service) completeReadyGate(ctx context.Context, orgID, projectID, depNa
 	if _, serr := s.execs.StartWithRun(ctx, row.ID, ref); serr != nil {
 		slog.WarnContext(ctx, "provisioning: start settle provision run failed", "execution", row.ID, "error", serr)
 	}
-	s.completeProvisionRow(ctx, orgID, projectID, issueNumber, row.ID,
+	s.completeProvisionRow(ctx, orgID, projectID, depName, issueNumber, row.ID,
 		fmt.Sprintf("Dependency `%s` already provisioned (OC binding Ready) — gate settled.", depName))
 	return nil
 }
@@ -286,7 +286,7 @@ func (s *Service) authorExternalWithRef(ctx context.Context, orgID, ocOrgID, pro
 		if _, serr := s.execs.StartWithRun(ctx, execID, ref); serr != nil {
 			slog.WarnContext(ctx, "provisioning: start external provision run failed", "execution", execID, "error", serr)
 		}
-		s.completeProvisionRow(ctx, orgID, projectID, issueNumber, execID,
+		s.completeProvisionRow(ctx, orgID, projectID, in.Dependency, issueNumber, execID,
 			fmt.Sprintf("External resource `%s` configured (OC binding `%s`).", in.Dependency, ref))
 	}
 	return nil
