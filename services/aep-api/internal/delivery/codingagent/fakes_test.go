@@ -176,6 +176,14 @@ func (f *fakeExecRepo) get(id string) *delivery.Execution {
 	return nil
 }
 
+// count reports how many rows exist — the milestone-dispatch tests read it to
+// prove that path writes NO execution row.
+func (f *fakeExecRepo) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.rows)
+}
+
 func (f *fakeExecRepo) ListActive(context.Context) ([]delivery.Execution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

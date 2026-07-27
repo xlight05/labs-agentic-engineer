@@ -220,12 +220,6 @@ type Config struct {
 	// functional with the workflow endpoints answering 503.
 	Temporal TemporalConfig
 
-	// Deprecated: the validation task kind now dispatches AgentRunnerImage —
-	// one runner image serves both kinds. This field is read by nothing and
-	// survives only until the composition root drops its
-	// CodingExecutor.WithValidationImage call; delete both together.
-	AgentValidationRunnerImage string
-
 	// AgentClusterSecretStore is the ESO ClusterSecretStore that backs
 	// per-run ExternalSecret reads in the remote-worker NS on DP.
 	// On cloud-dp-oc-dp this MUST be `application-secrets-read` (Vault

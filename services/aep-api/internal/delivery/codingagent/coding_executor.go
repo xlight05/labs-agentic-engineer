@@ -147,17 +147,6 @@ func (e *CodingExecutor) WithProxy(proxy *Dispatcher, idp OrgPublisherProvisione
 	return e
 }
 
-// WithValidationImage is a no-op.
-//
-// Deprecated: both task kinds dispatch the single runner image set by
-// WithProxy — a validation run differs only by AEP_TASK_KIND, the component
-// sentinel and its longer deadline. This method survives only until the
-// composition root drops its call; delete it together with
-// config.Config.AgentValidationRunnerImage and the VALIDATION_RUNNER_IMAGE env.
-func (e *CodingExecutor) WithValidationImage(string) *CodingExecutor {
-	return e
-}
-
 // WithK8sJobDispatch enables the direct K8s Job dispatch path. The org UUID
 // lookup (needed to derive the data-plane namespace) reads through the org
 // repository wired at construction.
@@ -295,32 +284,6 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 			slog.WarnContext(ctx, "coding executor: env-config.js emit failed (best-effort)", "component", t.Component, "error", rcErr)
 		}
 	}
-	repo, err := e.repos.GetRepo(ctx, t.OrgID, t.ProjectID)
-	if err != nil || repo == nil {
-		return fmt.Errorf("resolve project repo: %w", err)
-	}
-	name, email, login, err := e.identities.IdentityFor(ctx, t.OrgID)
-	if err != nil {
-		return fmt.Errorf("resolve git identity: %w", err)
-	}
-	bearer, err := e.tokens.Issue(req.Execution.ID, t.OrgID, t.ProjectID)
-	if err != nil {
-		return fmt.Errorf("mint runner bearer: %w", err)
-	}
-	// Dedicated MCP identity token (aud aep-api-mcp): the runner bearer above
-	// (aud git-service) is pinned-rejected by the MCP verifier, so the pod needs
-	// a separate token to call the BFF's internal MCP surface (list endpoints /
-	// read remote file / search remote code). One token stamped at dispatch,
-	// TTL matching the runner bearer's 24h Job lifetime — no refresh route.
-	mcpToken, err := e.tokens.IssueServiceToken(auth.AudienceMCP, t.OrgID, 24*time.Hour)
-	if err != nil {
-		return fmt.Errorf("mint MCP token: %w", err)
-	}
-	// Resolve the org's skills repo URL (provisioning on first touch) so the
-	// runner can clone it and resolve applied skills locally. Best-effort — ""
-	// on any failure, the runner then degrades to the base plugin.
-	skillsRepoURL := e.resolveSkillsRepoURL(ctx, t.OrgID)
-
 	// Per-class dispatch shape. Both classes run the SAME runner image; a
 	// validation run differs only by the project-scoped component sentinel,
 	// AEP_TASK_KIND=validation, a longer deadline (browser boot + e2e
@@ -349,16 +312,97 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 		}
 	}
 
+	runName, err := e.launchAgent(ctx, agentLaunch{
+		orgID:     t.OrgID,
+		projectID: t.ProjectID,
+		// NAMING DEBT: the pod's AEP_TASK_ID carries the EXECUTION id on this
+		// path. It is the correlation key the JobWatcher and the progress reader
+		// key on, not a Task id.
+		correlationID:   req.Execution.ID,
+		shape:           disp,
+		secretComponent: t.Component,
+	})
+	if err != nil {
+		return err
+	}
+	e.startRun(ctx, req.Execution.ID, runName)
+	return nil
+}
+
+// agentLaunch is ONE runner-Job launch with the reason for it stripped out: the
+// same image, namespace, secrets, tokens and dispatch chain serve the retiring
+// per-issue funnel dispatch and the milestone-run cycle dispatch, and the only
+// things that differ are the correlation id stamped on the pod and the shape.
+//
+// Keeping the launch here — rather than having the milestone dispatcher reuse
+// runCoding — is what lets a cycle dispatch mint no Execution row: the execution
+// bookkeeping (startRun, the component pre-flights) lives with its caller, and
+// this function performs no state write at all.
+type agentLaunch struct {
+	orgID     string
+	projectID string
+
+	// correlationID is the platform id the pod carries: it is stamped as
+	// AEP_TASK_ID, seeds the `ca-…` run name, and is the subject of the runner
+	// bearer. An EXECUTION id on the funnel path, a CYCLE id on the run path.
+	correlationID string
+
+	shape dispatchShape
+
+	// secretComponent, when non-empty, mounts that component's external-resource
+	// secrets into the runner. Empty for project-scoped launches — a validation
+	// run, and the milestone loop, which spans every component in the milestone.
+	secretComponent string
+
+	// repo, when non-nil, is a repository row the caller already resolved (the
+	// validation dispatch reads it to anchor its prompt at the issue URL), saving
+	// a second lookup. Nil means "resolve it here".
+	repo *sourcecontrol.GitRepository
+}
+
+// launchAgent resolves the run's credentials and launches the runner Job,
+// returning the launched run name. It writes no platform state: everything it
+// touches is either a read or the cluster.
+func (e *CodingExecutor) launchAgent(ctx context.Context, in agentLaunch) (string, error) {
+	repo := in.repo
+	if repo == nil {
+		resolved, err := e.repos.GetRepo(ctx, in.orgID, in.projectID)
+		if err != nil || resolved == nil {
+			return "", fmt.Errorf("resolve project repo: %w", err)
+		}
+		repo = resolved
+	}
+	name, email, login, err := e.identities.IdentityFor(ctx, in.orgID)
+	if err != nil {
+		return "", fmt.Errorf("resolve git identity: %w", err)
+	}
+	bearer, err := e.tokens.Issue(in.correlationID, in.orgID, in.projectID)
+	if err != nil {
+		return "", fmt.Errorf("mint runner bearer: %w", err)
+	}
+	// Dedicated MCP identity token (aud aep-api-mcp): the runner bearer above
+	// (aud git-service) is pinned-rejected by the MCP verifier, so the pod needs
+	// a separate token to call the BFF's internal MCP surface (list endpoints /
+	// read remote file / search remote code). One token stamped at dispatch,
+	// TTL matching the runner bearer's 24h Job lifetime — no refresh route.
+	mcpToken, err := e.tokens.IssueServiceToken(auth.AudienceMCP, in.orgID, 24*time.Hour)
+	if err != nil {
+		return "", fmt.Errorf("mint MCP token: %w", err)
+	}
+	// Resolve the org's skills repo URL (provisioning on first touch) so the
+	// runner can clone it and resolve applied skills locally. Best-effort — ""
+	// on any failure, the runner then degrades to the base plugin.
+	skillsRepoURL := e.resolveSkillsRepoURL(ctx, in.orgID)
+
 	// Proxy path (cloud / local-proxy plane): per-org NS + per-run ExternalSecrets
 	// + K8s Job via the cluster-gateway-proxy. Falls back to the direct K8s Job
 	// path below when the proxy / SM-API is not configured.
-	used, runName, perr := e.dispatchViaProxy(ctx, req, repo, name, email, login, bearer, disp, mcpToken, skillsRepoURL)
+	used, runName, perr := e.dispatchViaProxy(ctx, in, repo, name, email, login, bearer, mcpToken, skillsRepoURL)
 	if perr != nil {
-		return perr
+		return "", perr
 	}
 	if used {
-		e.startRun(ctx, req.Execution.ID, runName)
-		return nil
+		return runName, nil
 	}
 
 	// Validation has no non-proxy fallback. The image is no longer the reason
@@ -366,28 +410,27 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 	// no deadline override, so the direct path would launch a runner that never
 	// preloads the `aep-validation` skill and dies at the 1h default. Fail
 	// loudly rather than launch a run that cannot do the job.
-	if isValidation {
-		return fmt.Errorf("validation dispatch requires the cluster-gateway-proxy path; the direct K8s Job fallback carries no AEP_TASK_KIND or deadline override")
+	if in.shape.taskKind != "" || in.shape.deadline != 0 {
+		return "", fmt.Errorf("dispatch kind %q requires the cluster-gateway-proxy path; the direct K8s Job fallback carries no AEP_TASK_KIND or deadline override", in.shape.taskKind)
 	}
 
 	// Direct K8s Job path: creates the org's data-plane namespace, SA, Anthropic
 	// secret, and Job directly via the in-cluster client. No cluster-gateway-proxy
 	// or SM-API needed — the sole fallback for aep-init local installs.
 	if e.k8sJob != nil {
-		orgUUID, uuidErr := e.lookupOrgUUID(ctx, t.OrgID)
+		orgUUID, uuidErr := e.lookupOrgUUID(ctx, in.orgID)
 		if uuidErr != nil {
-			return fmt.Errorf("k8s-job dispatch: lookup org UUID for %q: %w", t.OrgID, uuidErr)
+			return "", fmt.Errorf("k8s-job dispatch: lookup org UUID for %q: %w", in.orgID, uuidErr)
 		}
-		k8sRunName := codingAgentRunNameFor(req.Execution.ID)
 		rn, k8serr := e.k8sJob.Dispatch(ctx, K8sJobInput{
-			RunName:       k8sRunName,
-			OrgID:         t.OrgID,
+			RunName:       codingAgentRunNameFor(in.correlationID),
+			OrgID:         in.orgID,
 			OrgUUID:       orgUUID,
-			ProjectID:     t.ProjectID,
-			Component:     t.Component,
-			ExecutionID:   req.Execution.ID,
+			ProjectID:     in.projectID,
+			Component:     in.shape.componentName,
+			ExecutionID:   in.correlationID,
 			RepoURL:       repo.RepoURL,
-			Prompt:        disp.prompt,
+			Prompt:        in.shape.prompt,
 			IdentityName:  name,
 			IdentityEmail: email,
 			IdentityLogin: login,
@@ -395,38 +438,36 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 			SkillsRepoURL: skillsRepoURL,
 		})
 		if k8serr != nil {
-			return k8serr
+			return "", k8serr
 		}
-		e.startRun(ctx, req.Execution.ID, rn)
-		return nil
+		return rn, nil
 	}
 
-	return fmt.Errorf("no coding-agent dispatch path configured: set CLUSTER_GATEWAY_PROXY_URL or ensure in-cluster client + AGENT_RUNNER_IMAGE + AGENT_PLATFORM_URL are set")
+	return "", fmt.Errorf("no coding-agent dispatch path configured: set CLUSTER_GATEWAY_PROXY_URL or ensure in-cluster client + AGENT_RUNNER_IMAGE + AGENT_PLATFORM_URL are set")
 }
 
-// dispatchViaProxy runs the cluster-gateway-proxy apply-chain for one coding
-// Execution — the same recipe as the legacy dispatch service's
-// tryDispatchViaProxy, re-keyed off the execution + Task facts. used=false ⇒ not
-// configured for the proxy path (fall back). The runner env AEP_TASK_ID carries
-// the EXECUTION id (JobInputs.TaskID) and the bearer's task claim is the
-// execution id — the re-keyed runner contract (§9.2).
-func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.DispatchRequest, repo *sourcecontrol.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
-	t := req.Task
+// dispatchViaProxy runs the cluster-gateway-proxy apply-chain for one agent
+// launch — the same recipe as the legacy dispatch service's tryDispatchViaProxy.
+// used=false ⇒ not configured for the proxy path (fall back). The runner env
+// AEP_TASK_ID carries the launch's correlation id (JobInputs.TaskID) and so does
+// the bearer's task claim — the re-keyed runner contract (§9.2).
+func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, in agentLaunch, repo *sourcecontrol.GitRepository, name, email, login, bearer string, mcpToken, skillsRepoURL string) (bool, string, error) {
+	disp := in.shape
 	if e.proxy == nil || e.runnerImage == "" || e.clusterSecretStore == "" {
 		return false, "", nil
 	}
-	anthropicRow, err := e.anthropicCreds.GetByOrg(ctx, t.OrgID)
+	anthropicRow, err := e.anthropicCreds.GetByOrg(ctx, in.orgID)
 	if err != nil || anthropicRow == nil {
-		slog.InfoContext(ctx, "proxy dispatch: anthropic row missing; falling back", "org", t.OrgID, "error", err)
+		slog.InfoContext(ctx, "proxy dispatch: anthropic row missing; falling back", "org", in.orgID, "error", err)
 		return false, "", nil
 	}
-	githubRow, err := e.githubCreds.GetByOrg(ctx, t.OrgID)
+	githubRow, err := e.githubCreds.GetByOrg(ctx, in.orgID)
 	if err != nil || githubRow == nil {
-		slog.InfoContext(ctx, "proxy dispatch: github row missing; falling back", "org", t.OrgID, "error", err)
+		slog.InfoContext(ctx, "proxy dispatch: github row missing; falling back", "org", in.orgID, "error", err)
 		return false, "", nil
 	}
 	if anthropicRow.SMAPIKVPath == nil || githubRow.SMAPIKVPath == nil {
-		slog.InfoContext(ctx, "proxy dispatch: SM-API triplet missing; falling back", "org", t.OrgID)
+		slog.InfoContext(ctx, "proxy dispatch: SM-API triplet missing; falling back", "org", in.orgID)
 		return false, "", nil
 	}
 
@@ -436,11 +477,11 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.Disp
 		publisherTokenURL string
 	)
 	if e.idp != nil {
-		if _, _, _, perr := e.idp.EnsureOrgPublisher(ctx, t.OrgID, "dispatch"); perr != nil {
-			slog.ErrorContext(ctx, "proxy dispatch: EnsureOrgPublisher failed — runner cc may be invalid", "org", t.OrgID, "error", perr)
+		if _, _, _, perr := e.idp.EnsureOrgPublisher(ctx, in.orgID, "dispatch"); perr != nil {
+			slog.ErrorContext(ctx, "proxy dispatch: EnsureOrgPublisher failed — runner cc may be invalid", "org", in.orgID, "error", perr)
 		}
 	}
-	if idpRow, err := e.idpProfiles.GetProfileByOrgID(ctx, t.OrgID); err == nil && idpRow != nil {
+	if idpRow, err := e.idpProfiles.GetProfileByOrgID(ctx, in.orgID); err == nil && idpRow != nil {
 		if idpRow.SMAPIKVPath != nil && idpRow.SMAPISecretRefName != nil {
 			publisherSR = &SecretRef{
 				SecretRefName: derefStr(idpRow.SMAPISecretRefName),
@@ -456,23 +497,24 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.Disp
 	// On the cloud gateway (https) a per-task JWT is rejected — publisher cc is
 	// mandatory. Local k3d (http) keeps the bearer fallback.
 	if publisherSR == nil && isGatewayPlatformURL(e.platformURL) {
-		return false, "", fmt.Errorf("publisher cc not provisioned for org %q: the coding-agent runner cannot authenticate through the gateway", t.OrgID)
+		return false, "", fmt.Errorf("publisher cc not provisioned for org %q: the coding-agent runner cannot authenticate through the gateway", in.orgID)
 	}
 
-	orgUUID, err := e.lookupOrgUUID(ctx, t.OrgID)
+	orgUUID, err := e.lookupOrgUUID(ctx, in.orgID)
 	if err != nil {
-		slog.InfoContext(ctx, "proxy dispatch: org UUID not found; falling back", "org", t.OrgID, "error", err)
+		slog.InfoContext(ctx, "proxy dispatch: org UUID not found; falling back", "org", in.orgID, "error", err)
 		return false, "", nil
 	}
-	runName := codingAgentRunNameFor(req.Execution.ID)
+	runName := codingAgentRunNameFor(in.correlationID)
 	job := JobInputs{
 		RunName: runName,
 		// NAMING DEBT: JobInputs.TaskID → the Job's AEP_TASK_ID env carries the
-		// EXECUTION id (see the CodingAgentParams note in runCoding). Un-renamed
-		// this pass to avoid a cluster-workflow + runner rename before Phase 4.
-		TaskID:                req.Execution.ID,
-		OrgID:                 t.OrgID,
-		ProjectID:             t.ProjectID,
+		// launch's CORRELATION id (an execution id on the funnel path, a cycle id
+		// on the milestone-run path), never a Task id. Un-renamed to avoid a
+		// cluster-workflow + runner rename.
+		TaskID:                in.correlationID,
+		OrgID:                 in.orgID,
+		ProjectID:             in.projectID,
 		ComponentName:         disp.componentName,
 		RunnerImage:           e.runnerImage,
 		TaskKind:              disp.taskKind,
@@ -493,12 +535,12 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.Disp
 	// materialises each into a per-run ExternalSecret the runner mounts (the agent
 	// integration-tests against the live service). Best-effort: on failure the run
 	// dispatches without them (identical to no secret-bearing external deps).
-	// Component tasks only — a validation task is project-scoped (no component,
-	// no component-bound external resources).
+	// Component launches only — a validation task and a milestone cycle are
+	// project-scoped (no single component, no component-bound external resources).
 	var extResSRs []ExternalResourceSecretInputs
-	if e.runnerSecrets != nil && t.Component != "" {
-		if srs, rerr := e.runnerSecrets.ResolveRunnerSecrets(ctx, t.OrgID, t.ProjectID, t.Component, openchoreo.DevEnvironmentName); rerr != nil {
-			slog.WarnContext(ctx, "coding executor: resolve external-resource runner secrets failed — dispatching without", "component", t.Component, "error", rerr)
+	if e.runnerSecrets != nil && in.secretComponent != "" {
+		if srs, rerr := e.runnerSecrets.ResolveRunnerSecrets(ctx, in.orgID, in.projectID, in.secretComponent, openchoreo.DevEnvironmentName); rerr != nil {
+			slog.WarnContext(ctx, "coding executor: resolve external-resource runner secrets failed — dispatching without", "component", in.secretComponent, "error", rerr)
 		} else {
 			extResSRs = srs
 		}

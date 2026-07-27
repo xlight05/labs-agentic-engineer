@@ -713,6 +713,48 @@ paths:
       summary: List project builds
       tags:
       - Projects
+  /projects/{projectName}/builds/{tag}/runs:
+    get:
+      description: The version's whole run story, straight from the platform's own tables — every
+        milestone run that has worked this version (a spec build, then any incident adoption into the
+        same milestone), newest first, each with its cycle records in dispatch order. DB-only, so the
+        console may poll it while a run is live without spending GitHub rate. The validation verdict is
+        a RUN property and is read here; there is no separate validation endpoint.
+      operationId: list-build-runs
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Spec version tag (`v<N>`), resolved to a milestone number through the run rows —
+          never by matching titles against GitHub.
+        in: path
+        name: tag
+        required: true
+        schema:
+          description: Spec version tag
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildRunList'
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      summary: List a version's milestone runs and their cycles
+      tags:
+      - Runs
   /projects/{projectName}/components:
     get:
       operationId: list-components
@@ -1488,6 +1530,88 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: Error
+  /projects/{projectName}/runs/{runId}/cancel:
+    post:
+      description: Abandon an increment. Cancel is the only expiry the run's unbounded wait state has.
+        It is delivered as a SIGNAL rather than a workflow cancellation, so the run settles its own row
+        and closes its own cycle on the ordinary path. 202 means the signal was sent; the run row flips
+        to `cancelled` when the supervisor acts on it. 503 when the workflow engine is unreachable —
+        nothing was cancelled and the caller may retry.
+      operationId: cancel-run
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Milestone run id
+        in: path
+        name: runId
+        required: true
+        schema:
+          description: Milestone run id
+          type: string
+      responses:
+        '202':
+          description: Cancel signalled
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      summary: Cancel a milestone run
+      tags:
+      - Runs
+  /projects/{projectName}/runs/{runId}/progress:
+    get:
+      operationId: stream-run-progress
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Milestone run id
+        in: path
+        name: runId
+        required: true
+        schema:
+          description: Milestone run id
+          type: string
+      responses:
+        '200':
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RunProgressEvent'
+          description: 'ONE SSE stream stitching every cycle of the run: a `cycle` frame per cycle record
+            (client upserts by id) and a `line` frame per agent-log entry, each line carrying the id of
+            the cycle that produced it so the console can render one accordion section per cycle. Each
+            line also carries an `emitter` chip — `main` for the run''s main agent, `subagent` for work
+            it fanned out with the Task tool. One `data:` JSON frame per event (a RunProgressEvent
+            discriminated by `type`), each stamped `id: <seq>`; `: keep-alive` comments pace idle waits.
+            ONLY a terminal run settles the stream: a terminal run streams its whole history then ends
+            with a `done` frame, `data: [DONE]`, and a server close, while a live run stays open
+            indefinitely. Reconnects are idempotent — the client upserts cycles by id and dedups lines
+            by cycleId+seq.'
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      summary: Stream a milestone run's per-cycle agent progress as SSE
+      tags:
+      - Runs
   /projects/{projectName}/spec/collab-session:
     get:
       operationId: get-spec-collab-session
@@ -2524,6 +2648,27 @@ components:
       - status
       - tasks
       type: object
+    BuildRunList:
+      additionalProperties: false
+      description: A version's milestone runs. `milestoneNumber` is the platform key the tag resolved
+        to through the run rows; a tag with no run rows is a 404, not an empty list.
+      properties:
+        milestoneNumber:
+          format: int64
+          type: integer
+        runs:
+          description: Newest run first. A milestone sees SEQUENTIAL runs across its life — the spec
+            build that created the version, then any later incident adoption into it.
+          items:
+            $ref: '#/components/schemas/MilestoneRunView'
+          type: array
+        tag:
+          type: string
+      required:
+      - tag
+      - milestoneNumber
+      - runs
+      type: object
     BuildStatus:
       additionalProperties: false
       properties:
@@ -3553,6 +3698,71 @@ components:
         specTag:
           type: string
       type: object
+    MilestoneRunView:
+      additionalProperties: false
+      description: One run of the milestone loop, with the cycle records that make up its timeline. Loop
+        POSITION is deliberately absent — it renders from the latest cycle, because fix and conflict
+        cycles re-enter earlier phases and a stored phase enum would lie mid-loop.
+      properties:
+        budgets:
+          $ref: '#/components/schemas/RunBudgets'
+        createdAt:
+          format: date-time
+          type: string
+        cycles:
+          description: Oldest first — one record per dispatch.
+          items:
+            $ref: '#/components/schemas/RunCycleView'
+          type: array
+        endedAt:
+          format: date-time
+          nullable: true
+          type: string
+          x-go-type: '*time.Time'
+        id:
+          type: string
+        milestoneNumber:
+          format: int64
+          type: integer
+        milestoneTitle:
+          description: The milestone's title at creation, equal to the spec tag. Display only — the
+            number is the key.
+          type: string
+        origin:
+          enum:
+          - spec-build
+          - incident-adoption
+          type: string
+        startedAt:
+          format: date-time
+          nullable: true
+          type: string
+          x-go-type: '*time.Time'
+        state:
+          enum:
+          - waiting
+          - running
+          - succeeded
+          - failed
+          - cancelled
+          type: string
+        terminalReason:
+          description: Why a non-succeeded run stopped. Each value names exactly one failure class;
+            empty while the run is non-terminal and on a succeeded run.
+          type: string
+        validation:
+          $ref: '#/components/schemas/RunValidation'
+      required:
+      - id
+      - milestoneNumber
+      - milestoneTitle
+      - origin
+      - state
+      - budgets
+      - validation
+      - cycles
+      - createdAt
+      type: object
     OrganizationList:
       additionalProperties: false
       properties:
@@ -3655,6 +3865,13 @@ components:
         command:
           type: string
         completedAt:
+          type: string
+        emitter:
+          description: Who produced the line — `subagent` for work the main agent fanned out with the
+            Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+          enum:
+          - main
+          - subagent
           type: string
         error:
           type: string
@@ -3897,6 +4114,191 @@ components:
           type: string
       required:
       - items
+      type: object
+    RunBudgets:
+      additionalProperties: false
+      description: The run's budget counters as the supervisor wrote them out. Read-model bookkeeping —
+        the loop counts its own budgets and never reads these back.
+      properties:
+        buildRetriggers:
+          description: Run-wide tally of automatic build re-triggers. The authoritative
+            one-per-component-per-SHA guard is derived at the trigger site, not from this number.
+          format: int64
+          type: integer
+        conflictCycles:
+          format: int64
+          type: integer
+        cycleCeiling:
+          description: Snapshotted at start, so a config change cannot retroactively fail a live run.
+          format: int64
+          type: integer
+        cyclesTotal:
+          format: int64
+          type: integer
+        fixCycles:
+          format: int64
+          type: integer
+      required:
+      - cyclesTotal
+      - cycleCeiling
+      - fixCycles
+      - conflictCycles
+      - buildRetriggers
+      type: object
+    RunCycleView:
+      additionalProperties: false
+      description: One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS
+        — the agent derives its own branch identity — so they stay empty on a cycle whose agent died
+        before opening a pull request.
+      properties:
+        attempts:
+          description: Dispatches of THIS cycle (the per-cycle re-dispatch budget, which resets at every
+            cycle boundary).
+          format: int64
+          type: integer
+        branch:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        endedAt:
+          format: date-time
+          nullable: true
+          type: string
+          x-go-type: '*time.Time'
+        id:
+          type: string
+        jobRef:
+          description: The dispatched runner Job for the current attempt; replaced on re-dispatch.
+          type: string
+        kind:
+          enum:
+          - coding
+          - conflict
+          - fix
+          - validation
+          type: string
+        mergeSha:
+          type: string
+        prNumber:
+          format: int64
+          type: integer
+      required:
+      - id
+      - kind
+      - attempts
+      - createdAt
+      type: object
+    RunProgressEvent:
+      additionalProperties: false
+      description: 'One SSE frame on the run progress stream. `type` discriminates the payload: `cycle`
+        carries a RunCycleView (client upserts by id and renders one accordion section per cycle),
+        `line` one RunProgressLine attributed to its cycle, and `done` the terminal run state (the
+        server then closes the stream).'
+      properties:
+        cycle:
+          $ref: '#/components/schemas/RunCycleView'
+        line:
+          $ref: '#/components/schemas/RunProgressLine'
+        state:
+          description: Terminal run state — present only on the `done` frame.
+          type: string
+        type:
+          enum:
+          - cycle
+          - line
+          - done
+          type: string
+          x-enum-varnames:
+          - RunProgressEventTypeCycle
+          - RunProgressEventTypeLine
+          - RunProgressEventTypeDone
+      required:
+      - type
+      type: object
+    RunProgressLine:
+      additionalProperties: false
+      description: 'One line of a cycle''s agent log: the runner''s progress envelope (phase | tool_use
+        | git_commit | git_push | gh_action | log | result) plus the attribution the console groups on —
+        which cycle produced it, and whether the main agent or one of its Task subagents did.'
+      properties:
+        branch:
+          type: string
+        command:
+          type: string
+        cycleId:
+          description: Id of the cycle this line belongs to — the accordion section key.
+          type: string
+        cycleIndex:
+          description: 1-based position of that cycle in the run, so the console can label a section
+            without holding the whole cycle list.
+          format: int64
+          type: integer
+        cycleKind:
+          description: Kind of that cycle (coding | conflict | fix | validation) — the section label.
+          type: string
+        emitter:
+          description: Who produced the line. The runner stamps `subagent` only on lines forwarded from
+            inside a Task tool call; everything else is the main agent.
+          enum:
+          - main
+          - subagent
+          type: string
+          x-enum-varnames:
+          - RunProgressLineEmitterMain
+          - RunProgressLineEmitterSubagent
+        error:
+          type: string
+        files:
+          format: int64
+          type: integer
+        kind:
+          type: string
+        level:
+          type: string
+        phase:
+          type: string
+        schemaVersion:
+          format: int64
+          type: integer
+        seq:
+          format: int64
+          type: integer
+        sha:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        tool:
+          type: string
+        ts:
+          type: string
+      required:
+      - cycleId
+      - cycleKind
+      - cycleIndex
+      - kind
+      - emitter
+      type: object
+    RunValidation:
+      additionalProperties: false
+      description: The run's validation outcome. The verdict is a RUN property, not a per-issue one, and
+        this is where the deployment surface reads it.
+      properties:
+        reportPath:
+          description: Repository path of the validation runner's committed report, present once a
+            verdict exists. The console fetches it at HEAD through the files API — there is no dedicated
+            validation endpoint.
+          type: string
+        verdict:
+          description: Empty until the validation cycle settles. `skipped` covers both "no acceptance
+            criteria" and an incident run, which gets no validation cycle at all.
+          enum:
+          - passed
+          - failed
+          - skipped
+          type: string
       type: object
     SaveValuesBody:
       additionalProperties: false
@@ -4281,6 +4683,13 @@ components:
         command:
           type: string
         completedAt:
+          type: string
+        emitter:
+          description: Who produced the line — `subagent` for work the main agent fanned out with the
+            Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+          enum:
+          - main
+          - subagent
           type: string
         error:
           type: string

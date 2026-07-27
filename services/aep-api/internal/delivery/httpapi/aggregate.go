@@ -19,6 +19,7 @@ package httpapi
 import (
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
+	"github.com/wso2/aep/aep-api/internal/delivery/runread"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 )
 
@@ -35,6 +36,12 @@ type Deps struct {
 	TaskReads     *task.Reads
 	TaskCommands  *task.Commands
 	TaskStream    *execution.TaskStreamService
+
+	// The milestone run read surface: a version's runs + cycles, the per-run
+	// progress stream, and cancel.
+	RunReads    *runread.Reads
+	RunProgress *runread.ProgressService
+	RunCommands *runread.Commands
 }
 
 // Every slice names its type Handler, so embedding them directly would be
@@ -43,6 +50,7 @@ type (
 	buildHandler     = build.Handler
 	taskHandler      = task.Handler
 	executionHandler = execution.Handler
+	runreadHandler   = runread.Handler
 )
 
 // Handlers is the delivery domain's slice handlers, embedded so Go promotes each
@@ -51,6 +59,7 @@ type Handlers struct {
 	*buildHandler
 	*taskHandler
 	*executionHandler
+	*runreadHandler
 }
 
 // New assembles the domain: pure wiring, constructor injection only. The
@@ -61,5 +70,6 @@ func New(d Deps) (*Handlers, error) {
 		buildHandler:     build.NewHandler(d.BuildSvc, d.PreflightSvc, d.BuildActivity),
 		taskHandler:      task.NewHandler(d.TaskReads, d.TaskCommands),
 		executionHandler: execution.NewHandler(d.TaskStream),
+		runreadHandler:   runread.NewHandler(d.RunReads, d.RunProgress, d.RunCommands),
 	}, nil
 }

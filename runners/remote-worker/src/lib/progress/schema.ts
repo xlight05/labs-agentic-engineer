@@ -32,11 +32,19 @@ export type ProgressKind =
   | "log"
   | "result";
 
+// Who produced the event: the main agent, or one of the subagents it fans out
+// to with the Task tool. Absent means "main" — the field only appears on
+// subagent lines, so an older consumer reads an unlabelled feed exactly as
+// before. The SDK's `parent_tool_use_id` is the discriminator: it is non-null
+// precisely on messages forwarded from inside a Task tool call.
+export type ProgressEmitter = "main" | "subagent";
+
 interface ProgressEnvelope {
   schemaVersion: typeof PROGRESS_SCHEMA_VERSION;
   ts: string;
   seq: number;
   kind: ProgressKind;
+  emitter?: ProgressEmitter;
 }
 
 export interface PhaseEvent extends ProgressEnvelope {
@@ -92,13 +100,15 @@ export type ProgressEvent =
   | LogEvent
   | ResultEvent;
 
-// Discriminated union of payloads (no envelope fields). The emitter stamps
-// schemaVersion / ts / seq itself so callers cannot forget.
-export type ProgressEventInput =
+// Discriminated union of payloads (no envelope fields except the optional
+// emitter attribution, which the translator knows and emit() cannot). The
+// emitter stamps schemaVersion / ts / seq itself so callers cannot forget.
+export type ProgressEventInput = (
   | { kind: "phase"; phase: string }
   | { kind: "tool_use"; tool: string; summary: string }
   | { kind: "git_commit"; sha?: string; files?: number; summary?: string }
   | { kind: "git_push"; sha?: string; branch?: string; summary?: string }
   | { kind: "gh_action"; command: string; summary?: string }
   | { kind: "log"; level?: "info" | "warn" | "error"; summary: string }
-  | { kind: "result"; status: "success" | "failure"; summary?: string; error?: string };
+  | { kind: "result"; status: "success" | "failure"; summary?: string; error?: string }
+) & { emitter?: ProgressEmitter };

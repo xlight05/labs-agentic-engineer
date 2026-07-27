@@ -135,12 +135,116 @@ type AgentProgressReader struct {
 	proxy *clustergatewayproxy.Client
 	logs  delivery.CodingAgentLogRepository
 	orgs  organization.OrganizationRepository
+
+	// cycleLogs is the milestone-run half's snapshot store (run_cycle_logs).
+	// Nil → CycleProgress live-tails only.
+	cycleLogs delivery.RunCycleLogRepository
 }
 
 // NewAgentProgressReader wires the reader. proxy/logs may be nil in degraded
 // boot (AgentProgress then returns an empty, non-final response).
 func NewAgentProgressReader(proxy *clustergatewayproxy.Client, logs delivery.CodingAgentLogRepository, orgs organization.OrganizationRepository) *AgentProgressReader {
 	return &AgentProgressReader{proxy: proxy, logs: logs, orgs: orgs}
+}
+
+// WithCycleLogs enables the milestone-run snapshot read (run_cycle_logs), the
+// source CycleProgress prefers once a cycle's Job has been captured. Optional —
+// without it a finished cycle's log dies with its pod. Returns the receiver.
+func (r *AgentProgressReader) WithCycleLogs(logs delivery.RunCycleLogRepository) *AgentProgressReader {
+	r.cycleLogs = logs
+	return r
+}
+
+// CycleProgress returns one run CYCLE's agent activity, filtered to events
+// strictly newer than sinceMillis.
+//
+// It is the milestone-run twin of AgentProgress and reads the same two sources
+// in the same order — the captured snapshot first (Final=true: the complete log,
+// still readable long after the pod is gone), else a live tail of the pod. The
+// keys differ, and that is the whole point: a cycle has no execution row, so its
+// snapshot is keyed by the CYCLE id in run_cycle_logs rather than by an
+// execution id in coding_agent_logs.
+//
+// A cycle whose Job never launched, an unresolvable namespace, or a pod that has
+// not produced output yet all return an empty non-final response rather than an
+// error — the caller keeps polling.
+func (r *AgentProgressReader) CycleProgress(ctx context.Context, cycle *delivery.RunCycle, sinceMillis int64) (*contracts.ProgressResponse, error) {
+	resp := &contracts.ProgressResponse{
+		SchemaVersion: progressSchemaVersion,
+		Lines:         []contracts.ProgressEvent{},
+		CursorMillis:  sinceMillis,
+		Final:         false,
+	}
+	if r == nil || cycle == nil || cycle.JobRef == "" {
+		return resp, nil
+	}
+	cycleUUID, err := uuid.Parse(cycle.ID)
+	if err != nil {
+		return nil, fmt.Errorf("parse cycle id: %w", err)
+	}
+
+	// Snapshot path: the watcher captured the terminal pod's whole log.
+	if r.cycleLogs != nil {
+		snap, serr := r.cycleLogs.GetByRun(ctx, cycleUUID, cycle.JobRef)
+		if serr != nil {
+			return nil, fmt.Errorf("read run_cycle_logs: %w", serr)
+		}
+		if snap != nil {
+			resp.Lines, resp.Truncated = pageEvents(snap.LogText, sinceMillis)
+			if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
+				resp.CursorMillis = cur
+			}
+			if capturedMs := snap.CapturedAt.UnixMilli(); capturedMs > resp.CursorMillis {
+				resp.CursorMillis = capturedMs
+			}
+			resp.Final = true
+			return resp, nil
+		}
+	}
+	if r.proxy == nil {
+		return resp, nil
+	}
+
+	// Live tail: the Job is still running, or the watcher has not captured yet.
+	// A CLOSED cycle narrates nothing — its stream is settled by the run's state,
+	// and the bootstrap lines below only mean something while a Job is pending.
+	live := cycle.EndedAt == nil
+	ns, ok := resolveRemoteWorkerNS(ctx, r.orgs, cycle.OrgID)
+	if !ok {
+		return resp, nil
+	}
+	pod, err := r.proxy.GetJobPod(ctx, ns, cycle.JobRef)
+	if err != nil {
+		if errors.Is(err, clustergatewayproxy.ErrNotFound) {
+			if live {
+				resp.Lines = []contracts.ProgressEvent{bootstrapEvent(false, "", "")}
+			}
+			return resp, nil
+		}
+		return nil, fmt.Errorf("get cycle job pod: %w", err)
+	}
+	body, err := r.proxy.TailPodLog(ctx, ns, pod.Name, clustergatewayproxy.PodLogOptions{
+		Timestamps: true,
+		LimitBytes: logPageBytes,
+	})
+	if err != nil {
+		if errors.Is(err, clustergatewayproxy.ErrNotFound) || errors.Is(err, clustergatewayproxy.ErrPodNotReady) {
+			if live {
+				resp.Lines = []contracts.ProgressEvent{bootstrapEvent(true, pod.Phase, pod.WaitingReason)}
+			}
+			return resp, nil
+		}
+		return nil, fmt.Errorf("tail cycle pod log: %w", err)
+	}
+	resp.Lines, resp.Truncated = pageEvents(string(body), sinceMillis)
+	if len(resp.Lines) == 0 && live {
+		resp.Lines = []contracts.ProgressEvent{bootstrapEvent(true, "Running", "")}
+		return resp, nil
+	}
+	if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
+		resp.CursorMillis = cur
+	}
+	return resp, nil
 }
 
 // AgentProgress returns the coding execution's activity, filtered to events

@@ -53,6 +53,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
 	"github.com/wso2/aep/aep-api/internal/delivery/run"
+	"github.com/wso2/aep/aep-api/internal/delivery/runread"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
@@ -130,6 +131,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	orgAnthropicRepo := organization.NewOrgAnthropicRepository(db)
 	idpRepo := organization.NewIDPRepository(db)
 	codingAgentLogRepo := delivery.NewCodingAgentLogRepository(db)
+	runCycleLogRepo := delivery.NewRunCycleLogRepository(db)
 	activityRepo := projects.NewActivityEventRepository(db)
 	activityHub := projects.NewActivityHub()
 	activitySvc := projects.NewActivityService(activityRepo, activityHub)
@@ -146,19 +148,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// so webhook handlers/watchers hold it unconditionally.
 	devflowRuntime := delivery.NewRuntime(cfg.Temporal)
 	devflowSignaler := delivery.NewSignaler(devflowRuntime, workflowRunRepo)
-
-	// The milestone RUN SUPERVISOR — the same nil-safe-concrete-type shape as
-	// the signaler above, and for the same reason: the event plane and the build
-	// click both hold it unconditionally, and every degraded state (Temporal
-	// down, no agent dispatcher) has to be a logged no-op rather than a nil check
-	// at each call site.
-	//
-	// The agent dispatcher is not wired yet: the coding agent does not implement
-	// delivery.MilestoneDispatcher, so a started run could dispatch nothing. The
-	// supervisor refuses to start rather than burning a version's run row on a
-	// loop with no way forward, and the reconcile sweep re-offers each milestone
-	// once the dispatcher lands.
-	runSupervisor := run.NewSupervisor(devflowRuntime, runRuns{runs: milestoneRunRepo}, nil)
 
 	// Token provider for service-to-service auth. OC authorizes requests by
 	// the service client subject (aep-api-client), so every OC API call
@@ -454,8 +443,14 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// proxy client alone (NOT on the dispatch path): a local install dispatches
 	// via the direct K8sJobDispatcher but still reads pod logs through the
 	// proxy stub, so streaming works regardless of which dispatcher ran.
+	// The SAME reader serves the milestone run's per-cycle stream through
+	// runread.CycleLogReader — one pod-log edge, two callers — so it is built
+	// once here and held for both. Nil outside the proxy-configured plane.
+	var agentProgressReader *codingagent.AgentProgressReader
 	if cgwClient != nil {
-		execProgressSvc.WithCodingProgress(codingagent.NewAgentProgressReader(cgwClient, codingAgentLogRepo, orgRepo))
+		agentProgressReader = codingagent.NewAgentProgressReader(cgwClient, codingAgentLogRepo, orgRepo).
+			WithCycleLogs(runCycleLogRepo)
+		execProgressSvc.WithCodingProgress(agentProgressReader)
 	}
 	// The task-log SSE stream: one connection per open task-detail page carries
 	// the Task's whole live state (status + executions + unified timeline across
@@ -619,12 +614,21 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// to build (else "Component not found"). Ported from the legacy dispatch
 	// service's ensureOCComponent; componentService reads the design facts.
 	codingExecutor.WithComponentEnsurer(componentService)
-	codingExecutor.WithValidationImage(cfg.AgentValidationRunnerImage)
 	registry.Register(taskmeta.ClassCoding, codingExecutor)
-	// The same executor serves ClassValidation: its runCoding branch swaps the
-	// Playwright image + AEP_TASK_KIND=validation and skips the coding-only
-	// component-ensure/wiring pre-flight (validation-phase).
+	// The same executor serves ClassValidation: its runCoding branch stamps
+	// AEP_TASK_KIND=validation (one image serves both kinds) and skips the
+	// coding-only component-ensure/wiring pre-flight (validation-phase).
 	registry.Register(taskmeta.ClassValidation, codingExecutor)
+
+	// The milestone RUN SUPERVISOR — the same nil-safe-concrete-type shape as
+	// the devflow signaler, and for the same reason: the event plane and the
+	// build click both hold it unconditionally, and a degraded boot (Temporal
+	// down) has to be a logged no-op rather than a nil check at each call site.
+	//
+	// It is constructed HERE, after the coding executor, because the executor IS
+	// its agent dispatcher (delivery.MilestoneDispatcher): a supervisor with no
+	// dispatcher refuses to start runs, so the two must be wired together.
+	runSupervisor := run.NewSupervisor(devflowRuntime, runRuns{runs: milestoneRunRepo}, codingExecutor)
 
 	// Command surface calls into the funnel; webhook handling splits across the
 	// two package halves: issues.* (task birth / block repair / command labels)
@@ -1005,6 +1009,17 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// edge holds no build/task/stream service. Assembled here, after the build +
 	// preflight services (whose ports depend on the external-resource provisioner
 	// constructed just above).
+	// The milestone run READ surface. Both readers are the root repositories
+	// (this is a read model — it writes nothing), and the log source is the same
+	// pod-log reader the task-log stream uses; a boot without the
+	// cluster-gateway-proxy leaves it nil and the stream carries cycles only.
+	runReads := runread.NewReads(milestoneRunRepo, runCycleRepo)
+	var runCycleLogs runread.CycleLogReader
+	if agentProgressReader != nil {
+		runCycleLogs = agentProgressReader
+	}
+	runProgress := runread.NewProgressService(milestoneRunRepo, runCycleRepo, runCycleLogs)
+
 	deliveryHandlers, err := deliveryhttpapi.New(deliveryhttpapi.Deps{
 		BuildSvc:      buildSvc,
 		PreflightSvc:  preflightSvc,
@@ -1012,6 +1027,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		TaskReads:     taskReads,
 		TaskCommands:  taskCommands,
 		TaskStream:    taskStreamSvc,
+		RunReads:      runReads,
+		RunProgress:   runProgress,
+		RunCommands:   runread.NewCommands(milestoneRunRepo, runSupervisor),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assemble delivery domain: %w", err)
@@ -1163,7 +1181,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	if cgwClient != nil {
 		jobWatcher := codingagent.NewJobWatcher(codingAgentLogRepo, orgRepo, cgwClient, executionRepo).
 			WithWorkflowSignaler(devflowSignaler).
-			WithTaskNotifier(taskStreamHub)
+			WithTaskNotifier(taskStreamHub).
+			// The milestone-run half: capture a run cycle's agent log when its Job
+			// goes terminal, so the run progress stream can serve history after the
+			// pod's TTL reaps it. Capture only — a cycle's outcome is the
+			// supervisor's, and it learns it from webhooks.
+			WithCycleLogCapture(runCycleRepo, runCycleLogRepo)
 		// Per-run ExternalSecret teardown applies only to the proxy dispatch
 		// path (which stages them); the direct K8s-Job path creates none.
 		if cfg.SecretManagerAPIURL != "" {
@@ -1210,7 +1233,10 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 				files:     filesSvc,
 				milestone: issueService,
 			},
-			// Dispatcher is deliberately unset — see runSupervisor above.
+			// The coding executor launches the cycle's runner Job and answers with
+			// its Job ref. It mints no execution row on this path — the cycle
+			// record is the supervisor's own bookkeeping.
+			Dispatcher: codingExecutor,
 		})
 		watchers = append(watchers, devflow.NewWorkerWatcher(devflowRuntime, devflowActs).
 			AlsoRegister(func(wk worker.Worker) { run.Register(wk, runActs) }))

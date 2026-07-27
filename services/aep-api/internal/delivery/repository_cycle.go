@@ -65,6 +65,20 @@ type RunCycleRepository interface {
 	// ListByRun returns a run's cycles oldest first — the cycle timeline.
 	ListByRun(ctx context.Context, orgID, runID string) ([]RunCycle, error)
 
+	// ListRecentDispatched returns every cycle that has launched a Job and is
+	// either still open or closed no earlier than `since` — the watcher's claim
+	// set for capturing agent logs.
+	//
+	// It is deliberately NOT "open cycles only": the agent Job exits the moment
+	// it opens its pull request, and the auto-merge that CLOSES the cycle follows
+	// within seconds, so a watcher restricted to open cycles would routinely
+	// arrive after the cycle had closed and capture nothing. The window instead
+	// tracks how long the Job's pod survives (its TTL), which is what actually
+	// bounds the capture.
+	//
+	// Unscoped by org on purpose: it drives a platform watcher, not an HTTP read.
+	ListRecentDispatched(ctx context.Context, since time.Time) ([]RunCycle, error)
+
 	// DeleteByProject purges a project's cycle records — the project-delete
 	// cascade, paired with MilestoneRunRepository.DeleteByProject so a recreated
 	// same-named project starts with a clean timeline.
@@ -130,6 +144,18 @@ func (r *runCycleRepository) ListByRun(ctx context.Context, orgID, runID string)
 	var rows []RunCycle
 	err := r.db.WithContext(ctx).
 		Where("org_id = ? AND run_id = ?", orgID, runID).
+		Order("created_at ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *runCycleRepository) ListRecentDispatched(ctx context.Context, since time.Time) ([]RunCycle, error) {
+	var rows []RunCycle
+	err := r.db.WithContext(ctx).
+		Where("job_ref <> '' AND (ended_at IS NULL OR ended_at >= ?)", since.UTC()).
 		Order("created_at ASC").
 		Find(&rows).Error
 	if err != nil {

@@ -69,6 +69,7 @@ const (
 var opOwner = map[string]string{
 	"ApplyFiles":                    embedSpec,
 	"BuildProject":                  embedDelivery,
+	"CancelRun":                     embedDelivery,
 	"CollectExternalResourceValues": embedDependencies,
 	"CreateIssue":                   embedSourceControl,
 	"CreateProject":                 embedProjects,
@@ -109,6 +110,7 @@ var opOwner = map[string]string{
 	"ListIssues":                    embedSourceControl,
 	"ListOrganizations":             embedOrganization,
 	"ListPlatformResourceTypes":     embedDependencies,
+	"ListBuildRuns":                 embedDelivery,
 	"ListProjectBuilds":             embedDelivery,
 	"ListProjectTags":               embedSpec,
 	"ListProjects":                  embedProjects,
@@ -123,6 +125,7 @@ var opOwner = map[string]string{
 	"RotateIdpClientSecret":         embedOrganization,
 	"StartGitProviderConnect":       embedOrganization,
 	"StreamActivity":                embedProjects,
+	"StreamRunProgress":             embedDelivery,
 	"StreamTaskLog":                 embedDelivery,
 	"StreamTurn":                    embedSpec,
 	"SyncSkills":                    embedSpec,

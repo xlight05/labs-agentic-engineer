@@ -25,10 +25,13 @@ flowchart LR
     EXEC["execution — funnel/registry/sweep/TaskStreamService"] --> ROOT
     EVENT["eventcore — merge policy · build fan-out · issue minting · sweep"] --> ROOT
     RUN["run — the milestone run supervisor (one Temporal workflow)"] --> ROOT
+    RREAD["runread — the run read surface: version runs · progress SSE · cancel"] --> ROOT
     CODE["codingagent"] --> ROOT
     DEV["devflow — Temporal workflows/activities/worker"] --> ROOT
     VAL["validation — S2S context/credentials · report verdict"] --> ROOT
-    HTTP --> BUILD & TASK & EXEC
+    HTTP --> BUILD & TASK & EXEC & RREAD
+    RREAD -.->|RunCanceller| RUN
+    CODE -.->|CycleLogReader| RREAD
     CODE -.->|BuildTerminalObserver| EVENT
     CODE -.->|MilestoneDispatcher| RUN
     EVENT -.->|RunSignaler · RunStarter| RUN
@@ -37,7 +40,8 @@ flowchart LR
     RUN -.->|ValidationCoordinator| VAL
   end
   EXEC --> EXECS[("executions · workflow_runs")]
-  EVENT --> RUNS[("milestone_runs · run_cycles")]
+  EVENT --> RUNS[("milestone_runs · run_cycles · run_cycle_logs")]
+  RREAD --> RUNS
   BUILD --> RUNS
   RUN --> RUNS
   DEV --> TMPRL[["Temporal"]]
@@ -67,10 +71,11 @@ and every former feature→feature edge becomes a legal slice→root type refere
 | `execution` | the ONE funnel (admit/finish/reevaluate), registry, sweep, `TaskStreamService`, `OpsExecutionReader` | `Executor`/`DispatchRequest`/`TaskFacts`, `Signaler`, `TaskStreamHub` |
 | `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals), `DiffComponents`/`BuildRunName` and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
 | `run` | the milestone run SUPERVISOR: the wait state + dispatch predicate, the cycle loop, the four budgets + no-progress + ceiling, the validation cycle, settle, and cancel. Plus the `Supervisor` handle the event plane and the build click signal and start runs through | `Runtime`, the milestone model, `RunStatus`/`MilestoneRunWorkflowID`, `MilestoneDispatch`, `DiffComponents`/`BuildRunNamePrefix`; **no GitHub client, no gorm** |
+| `runread` | the run READ surface: a version's runs + their cycles, ONE SSE stream stitching the per-cycle agent logs, and cancel. Owns no state and decides nothing | the run/cycle entities and `IsTerminalRunState`; reaches the pod log through `CycleLogReader` and the supervisor through `RunCanceller`, so it drags in neither a cluster client nor a workflow engine |
 | `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler`, `MilestoneDispatcher` |
 | `devflow` | the Temporal dev/task/validation workflows, activities, worker — and the worker itself, which the supervisor rides through `AlsoRegister` | `Runtime`, `Signaler`, the workflow I/O vocab |
 | `validation` | the two S2S validation runner callbacks (context / test-credentials), the validation issue, and the report → verdict rule | — (no cross-edges; least entangled) |
-| `httpapi` | the aggregator: embeds build/task/execution handlers; **holds `Deps`** (see below) | imports the sub-packages (the exempt aggregator) |
+| `httpapi` | the aggregator: embeds build/task/execution/runread handlers; **holds `Deps`** (see below) | imports the sub-packages (the exempt aggregator) |
 
 **`Deps` lives in `httpapi`, not the root.** Every other domain keeps its `Deps` in the domain root, but
 delivery's services live in sub-packages the root may not import (`root ⊥ slice`). The `httpapi` aggregator
@@ -86,7 +91,8 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | org-credential reads · `AnthropicKeyResolver` | needs | `platform/secrets` / P3a org repositories — coding-agent runner secrets |
 | `ExecutionReader` (`ops.ExecutionFact`) | offers | `ops` — latest-execution-per-kind correlation (`execution.OpsExecutionReader`, P6-retired the app bridge) |
 | `BuildTerminalObserver` (root) | offers | the OpenChoreo watcher → the event plane: a settled build reported outwards, so watcher and event plane stay peer sub-packages |
-| `MilestoneDispatcher` (root, over `MilestoneDispatch`) | offers | the coding agent → the supervisor: launch one agent run at a milestone and answer with its Job ref. The dispatch prompt is a milestone reference; the runner discovers its own working set |
+| `MilestoneDispatcher` (root, over `MilestoneDispatch`) | offers | the coding agent → the supervisor: launch one agent run at a milestone and answer with its Job ref. The dispatch prompt is a milestone reference; the runner discovers its own working set. Satisfied by `*codingagent.CodingExecutor`, which launches the cycle's Job through the SAME chain as a funnel dispatch and writes no execution row |
+| `RunReader` · `CycleReader` · `CycleLogReader` · `RunCanceller` | needs | `runread` → the root run/cycle repositories, `codingagent`'s pod-log reader, and `*run.Supervisor`. Four reads and one write, which is the whole dependency surface of the read model |
 | `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, and `*run.Supervisor` satisfies both |
 | `RunStore` · `CycleStore` · `MilestoneReader` · `PRReader` · `DesignReader` · `BuildReader` · `ValidationCoordinator` | needs | `run` → the root repositories, `sourcecontrol`, the design reader, `clients/openchoreo` and `delivery/validation`. Every I/O the loop performs, named once; `BuildReader` is read-ONLY because the supervisor never triggers a build |
 | `MilestoneClient` (mint · list a milestone's issues · close issue · close milestone) | needs | `build` → `sourcecontrol`. The plan path's whole GitHub surface: create `v<N>` idempotently, and supersede `v<N-1>` |
@@ -118,9 +124,10 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   nothing else: it detects no event and writes no issue.
 - **Persistence**: every gorm in this domain sits at the ROOT (the fence `TestGormFencedToDomainRepository`
   draws), as single write-authority — `repository_execution.go` · `repository_workflow_run.go` ·
-  `repository_coding_agent_log.go` · `repository_run.go` · `repository_cycle.go` over the `execution.go` /
-  `workflow_run.go` / `coding_agent_log.go` / `milestone_run.go` / `run_cycle.go` entities. Their tables are
-  `executions` · `workflow_runs` · `coding_agent_logs` · `milestone_runs` · `run_cycles`.
+  `repository_coding_agent_log.go` · `repository_run.go` · `repository_cycle.go` ·
+  `repository_run_cycle_log.go` over the `execution.go` / `workflow_run.go` / `coding_agent_log.go` /
+  `milestone_run.go` / `run_cycle.go` / `run_cycle_log.go` entities. Their tables are `executions` ·
+  `workflow_runs` · `coding_agent_logs` · `milestone_runs` · `run_cycles` · `run_cycle_logs`.
 
 ## Invariants — don't break
 - **`task ⊥ execution`.** The GitHub-facing half (`task`) and the platform-owned half (`execution`) are
@@ -202,6 +209,22 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   sub-package (`root ⊥ slice`), and the domain never imports `internal/feature/*`.
 - **`Signaler` stays a nil-safe concrete type**, not an interface — its nil-safety (no-op when Temporal is
   unavailable) is load-bearing for tests and degraded runs.
+- **The run progress stream is ONE connection over every cycle, and only a terminal run settles it.**
+  `stream-run-progress` (`GET .../runs/{runId}/progress`, `text/event-stream`) carries a `cycle` frame per
+  cycle record and a `line` frame per agent-log entry, each line stamped with its cycle id, its 1-based
+  cycle index and an **emitter chip** (`main` | `subagent`) so the console renders one accordion section
+  per cycle and can tell the run's main agent from the work it fanned out with the Task tool. The frame
+  kind rides in a `type` field inside the `data:` payload so it passes the shared agent-stream parser.
+  A live run — including one parked in `waiting` — holds the stream open indefinitely; a terminal run
+  streams its history, sends `done` + `[DONE]`, and the server closes. The server keeps no cursor; the
+  client dedups by cycle id and `(cycleId, seq)`.
+- **A cycle's agent log is keyed by the CYCLE, not by an execution.** `coding_agent_logs` is FK'd to
+  `executions(id)` and a milestone run mints no execution row, so the milestone loop has its own sidecar,
+  `run_cycle_logs`, keyed `(cycle_id, run_name)` — one row per attempt, since a re-dispatch keeps the
+  cycle and takes a new Job. The `JobWatcher` captures it when the cycle's Job goes terminal and does
+  NOTHING else on that pass: a Job that exited zero says nothing about whether the cycle landed, and the
+  cycle's outcome is the supervisor's, learned from webhooks. Without the capture a finished run would
+  have no history at all — the Job's TTL reaps the pod long before anyone opens an old version's page.
 - **The task-log stream is one connection, no server cursor.** `stream-task-log`
   (`GET .../tasks/{issueNumber}/log`, `text/event-stream`) carries a Task's whole live state — `task` /
   `execution` / `line` / `done` frames, the frame kind in a `type` field inside the `data:` payload so it
@@ -211,7 +234,7 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 - **Validation is the last devflow phase and never builds.** It starts only after every coding task
   succeeds and an OpenChoreo Ready-deployment check passes, then spawns `ValidationFlowWorkflow` → one
   `ValidationTaskWorkflow` lane per method (e2e only today). A validation Task is project-scoped, swaps to
-  the Playwright runner image (`VALIDATION_RUNNER_IMAGE`), and its merged PR spawns **no build** — a
+  `AEP_TASK_KIND=validation` on the single runner image, and its merged PR spawns **no build** — a
   completed validation derives to `deployed`/"Done". The acceptance oracle
   `specs/validation/validation-criteria.json` is read-only input authored in the design phase (spec domain).
 - **Task LIST reads exclude the validation task** (`task/reads.go` `ListByTag`, the read-model boundary):

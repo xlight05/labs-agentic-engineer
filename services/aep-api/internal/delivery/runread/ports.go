@@ -1,0 +1,81 @@
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package runread
+
+import (
+	"context"
+	"errors"
+
+	"github.com/wso2/aep/aep-api/internal/contracts"
+	"github.com/wso2/aep/aep-api/internal/delivery"
+)
+
+// Pre-stream fence sentinels. They are the whole error vocabulary of this
+// package, and both map to 404 — a run that belongs to another org resolves to
+// nil through the org-scoped read, so a cross-tenant probe is indistinguishable
+// from a typo and never leaks existence.
+var (
+	// ErrTagNotFound means the project has no run row for that spec tag, which
+	// is also how "no such version" reads.
+	ErrTagNotFound = errors.New("runread: no run for this tag")
+	// ErrRunNotFound means no run with that id belongs to this org and project.
+	ErrRunNotFound = errors.New("runread: run not found")
+)
+
+// RunReader is the run rows this surface serves. Satisfied by
+// delivery.MilestoneRunRepository.
+//
+// Note what is NOT here: no writes. Cancel goes through the supervisor, not the
+// row, because a run's state is the workflow's to change.
+type RunReader interface {
+	// MilestoneNumberForTag resolves a `?tag=v<N>` to a milestone number THROUGH
+	// THE RUN ROWS, never by title-matching against GitHub — titles are
+	// renamable and GitHub's title filters are case-insensitive while its
+	// create-uniqueness is not.
+	MilestoneNumberForTag(ctx context.Context, orgID, projectID, tag string) (number int, found bool, err error)
+	// ListByMilestone returns a milestone's runs, newest first.
+	ListByMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) ([]delivery.MilestoneRun, error)
+	// GetByIDScoped returns the run only when it belongs to orgID, missing with
+	// (nil, nil) — the org fence behind "404, never 403".
+	GetByIDScoped(ctx context.Context, orgID, id string) (*delivery.MilestoneRun, error)
+}
+
+// CycleReader is a run's cycle timeline. Satisfied by
+// delivery.RunCycleRepository.
+type CycleReader interface {
+	ListByRun(ctx context.Context, orgID, runID string) ([]delivery.RunCycle, error)
+}
+
+// CycleLogReader is one cycle's agent activity — the captured snapshot once the
+// cycle's Job is terminal, the live pod tail before that. Satisfied by
+// codingagent.AgentProgressReader, reached as a port because that is a sibling
+// slice and because a boot without the cluster-gateway-proxy has no log source
+// at all (nil → the stream carries cycles and no lines).
+type CycleLogReader interface {
+	CycleProgress(ctx context.Context, cycle *delivery.RunCycle, sinceMillis int64) (*contracts.ProgressResponse, error)
+}
+
+// RunCanceller is the write behind the console's cancel button, satisfied by
+// *run.Supervisor.
+//
+// Cancel is a SIGNAL, not a workflow cancellation: a cancelled context could not
+// run the activities that record the outcome, so the run settles its own row on
+// the ordinary path. delivery.ErrTemporalUnavailable means nothing was
+// cancelled and the caller may retry.
+type RunCanceller interface {
+	CancelRun(ctx context.Context, row *delivery.MilestoneRun) error
+}

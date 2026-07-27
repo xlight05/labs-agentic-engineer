@@ -154,6 +154,35 @@ test("from-sdk: assistant with multiple tool_use blocks emits in order", () => {
   assert.equal((events[1] as { summary: string }).summary, "b.go");
 });
 
+test("from-sdk: a main-agent message carries no emitter attribution", () => {
+  const events = progressFromSdkMessage({
+    type: "assistant",
+    parent_tool_use_id: null,
+    message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "a.go" } }] },
+  });
+  assert.equal(events.length, 1);
+  assert.equal((events[0] as { emitter?: string }).emitter, undefined);
+});
+
+test("from-sdk: a forwarded subagent message is attributed to the subagent", () => {
+  const events = progressFromSdkMessage({
+    type: "assistant",
+    parent_tool_use_id: "toolu_01Task",
+    message: {
+      content: [
+        { type: "tool_use", name: "Read", input: { file_path: "a.go" } },
+        { type: "tool_use", name: "Bash", input: { command: "git commit -m \"x\"" } },
+      ],
+    },
+  });
+  assert.equal(events.length, 2);
+  // Every event derived from the message inherits the attribution, including
+  // the ones bashEvents rewrites into a different kind.
+  assert.equal((events[0] as { emitter?: string }).emitter, "subagent");
+  assert.equal(events[1].kind, "git_commit");
+  assert.equal((events[1] as { emitter?: string }).emitter, "subagent");
+});
+
 test("from-sdk: unknown message type → empty", () => {
   assert.deepEqual(progressFromSdkMessage({ type: "user", message: { content: [] } }), []);
   assert.deepEqual(progressFromSdkMessage(null), []);

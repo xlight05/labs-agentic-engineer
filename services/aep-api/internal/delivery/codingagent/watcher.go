@@ -63,7 +63,21 @@ type JobWatcher struct {
 	signaler *delivery.Signaler
 	// notifier wakes any attached task-log stream on the failure. Nil-safe.
 	notifier *delivery.TaskStreamHub
+
+	// cycles + cycleLogs are the milestone-run half: the same `ca-…` Jobs, but
+	// dispatched by a run CYCLE instead of an execution row. Both nil → the pass
+	// is skipped entirely. The pass only ever captures a log; a cycle's outcome
+	// is the supervisor's, learned from webhooks, never from a Job phase.
+	cycles    delivery.RunCycleRepository
+	cycleLogs delivery.RunCycleLogRepository
 }
+
+// cycleCaptureWindow bounds how far back a CLOSED cycle is still worth polling
+// for its log. A cycle closes on the merge webhook, seconds after the agent Job
+// exits — long before the next 30s tick — so restricting the pass to open cycles
+// would miss nearly every capture. The Job's own ttlSecondsAfterFinished (24h)
+// is what actually bounds availability; this window sits well inside it.
+const cycleCaptureWindow = 6 * time.Hour
 
 // NewJobWatcher constructs a watcher. logs + orgs + proxy + execRows required.
 func NewJobWatcher(logs delivery.CodingAgentLogRepository, orgs organization.OrganizationRepository, proxy *clustergatewayproxy.Client, execRows delivery.ExecutionRepository) *JobWatcher {
@@ -92,6 +106,19 @@ func (w *JobWatcher) WithExternalSecretCleanup() *JobWatcher {
 // attached console streams instantly. Optional — nil-safe.
 func (w *JobWatcher) WithTaskNotifier(h *delivery.TaskStreamHub) *JobWatcher {
 	w.notifier = h
+	return w
+}
+
+// WithCycleLogCapture enables the milestone-run pass: capture a run cycle's
+// agent-pod log once its Job is terminal, so the run progress stream can serve
+// history after the pod is reaped. Both arguments are required to enable it.
+// Returns the receiver.
+func (w *JobWatcher) WithCycleLogCapture(cycles delivery.RunCycleRepository, logs delivery.RunCycleLogRepository) *JobWatcher {
+	if cycles == nil || logs == nil {
+		return w
+	}
+	w.cycles = cycles
+	w.cycleLogs = logs
 	return w
 }
 
@@ -129,6 +156,84 @@ func (w *JobWatcher) tick(ctx context.Context) {
 		}
 		w.checkOne(ctx, row)
 	}
+	w.captureCycleLogs(ctx)
+}
+
+// captureCycleLogs is the milestone-run half of the tick: snapshot a run
+// cycle's agent pod once its Job is terminal.
+//
+// It captures and NOTHING else — no status projection, no signal, no cleanup.
+// A cycle's outcome belongs to the supervisor and reaches it through webhooks;
+// a Job that exited zero says nothing about whether the cycle landed. So this
+// pass is purely about not losing the log when the pod is reaped.
+func (w *JobWatcher) captureCycleLogs(ctx context.Context) {
+	if w.cycles == nil || w.cycleLogs == nil {
+		return
+	}
+	rows, err := w.cycles.ListRecentDispatched(ctx, time.Now().UTC().Add(-cycleCaptureWindow))
+	if err != nil {
+		slog.ErrorContext(ctx, "codingagent.JobWatcher: list recent run cycles failed", "error", err)
+		return
+	}
+	for i := range rows {
+		cycle := &rows[i]
+		if !isProxyJobRun(cycle.JobRef) {
+			continue
+		}
+		w.captureCycleLog(ctx, cycle)
+	}
+}
+
+func (w *JobWatcher) captureCycleLog(ctx context.Context, cycle *delivery.RunCycle) {
+	cycleUUID, err := uuid.Parse(cycle.ID)
+	if err != nil {
+		return
+	}
+	if existing, gerr := w.cycleLogs.GetByRun(ctx, cycleUUID, cycle.JobRef); gerr != nil || existing != nil {
+		return
+	}
+	ns, ok := w.resolveNS(ctx, cycle.OrgID)
+	if !ok {
+		return
+	}
+	status, err := w.proxy.GetJob(ctx, ns, cycle.JobRef)
+	if err != nil {
+		if !errors.Is(err, clustergatewayproxy.ErrNotFound) {
+			slog.WarnContext(ctx, "codingagent.JobWatcher: cycle GetJob failed", "cycle", cycle.ID, "ns", ns, "run", cycle.JobRef, "error", err)
+		}
+		return
+	}
+	phase := ""
+	switch {
+	case status.Succeeded > 0:
+		phase = "Succeeded"
+	case status.Failed > 0:
+		phase = "Failed"
+	default:
+		return // still running — the live tail serves the stream meanwhile
+	}
+	podName, err := w.proxy.GetJobPodName(ctx, ns, cycle.JobRef)
+	if err != nil {
+		slog.WarnContext(ctx, "codingagent.JobWatcher: cycle pod lookup failed", "cycle", cycle.ID, "ns", ns, "run", cycle.JobRef, "error", err)
+		return
+	}
+	body, err := w.proxy.TailPodLog(ctx, ns, podName, clustergatewayproxy.PodLogOptions{Timestamps: true, LimitBytes: finalLogTailBytes})
+	if err != nil {
+		slog.WarnContext(ctx, "codingagent.JobWatcher: cycle tail failed", "cycle", cycle.ID, "ns", ns, "pod", podName, "error", err)
+		return
+	}
+	if err := w.cycleLogs.Create(ctx, &delivery.RunCycleLog{
+		CycleID:    cycleUUID,
+		RunName:    cycle.JobRef,
+		FinalPhase: phase,
+		LogText:    string(body),
+		SizeBytes:  int64(len(body)),
+	}); err != nil {
+		slog.WarnContext(ctx, "codingagent.JobWatcher: cycle log persist failed", "cycle", cycle.ID, "run", cycle.JobRef, "error", err)
+		return
+	}
+	slog.InfoContext(ctx, "codingagent.JobWatcher: captured cycle log",
+		"cycle", cycle.ID, "run", cycle.JobRef, "phase", phase, "bytes", len(body))
 }
 
 func (w *JobWatcher) checkOne(ctx context.Context, row *delivery.Execution) {

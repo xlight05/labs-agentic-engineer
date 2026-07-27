@@ -144,6 +144,10 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		// (org, project). Fresh schema — nothing to backfill from the legacy
 		// executions/workflow_runs tables.
 		ctxStep("milestone_runs", RunMilestoneRuns),
+		// run_cycle_logs: the cycle-keyed agent-log sidecar the run progress
+		// stream reads once the Job's pod is reaped. FK'd to run_cycles(id), so it
+		// follows milestone_runs.
+		ctxStep("run_cycle_logs", RunRunCycleLogs),
 	}
 }
 

@@ -6,7 +6,7 @@
     "start": "tsx src/oneshot.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts"
+    "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",

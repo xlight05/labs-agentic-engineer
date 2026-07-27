@@ -31,6 +31,12 @@ type ProgressEvent struct {
 	Seq           int64  `json:"seq"`
 	Kind          string `json:"kind"`
 
+	// Emitter attributes the line to the main agent or to one of the subagents
+	// it fans out to with the Task tool ("main" | "subagent"). The runner stamps
+	// it only on subagent lines (from the SDK's parent_tool_use_id), so an empty
+	// value means main — readers should default rather than treat it as unknown.
+	Emitter string `json:"emitter,omitempty"`
+
 	// Phase events.
 	Phase string `json:"phase,omitempty"`
 

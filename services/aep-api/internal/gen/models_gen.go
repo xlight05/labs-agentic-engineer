@@ -90,22 +90,67 @@ func (e BuildSummaryStatus) Valid() bool {
 
 // Defines values for DeployStageValidation.
 const (
-	Completed DeployStageValidation = "completed"
-	Failed    DeployStageValidation = "failed"
-	None      DeployStageValidation = "none"
-	Running   DeployStageValidation = "running"
+	DeployStageValidationCompleted DeployStageValidation = "completed"
+	DeployStageValidationFailed    DeployStageValidation = "failed"
+	DeployStageValidationNone      DeployStageValidation = "none"
+	DeployStageValidationRunning   DeployStageValidation = "running"
 )
 
 // Valid indicates whether the value is a known member of the DeployStageValidation enum.
 func (e DeployStageValidation) Valid() bool {
 	switch e {
-	case Completed:
+	case DeployStageValidationCompleted:
 		return true
-	case Failed:
+	case DeployStageValidationFailed:
 		return true
-	case None:
+	case DeployStageValidationNone:
 		return true
-	case Running:
+	case DeployStageValidationRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MilestoneRunViewOrigin.
+const (
+	IncidentAdoption MilestoneRunViewOrigin = "incident-adoption"
+	SpecBuild        MilestoneRunViewOrigin = "spec-build"
+)
+
+// Valid indicates whether the value is a known member of the MilestoneRunViewOrigin enum.
+func (e MilestoneRunViewOrigin) Valid() bool {
+	switch e {
+	case IncidentAdoption:
+		return true
+	case SpecBuild:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MilestoneRunViewState.
+const (
+	MilestoneRunViewStateCancelled MilestoneRunViewState = "cancelled"
+	MilestoneRunViewStateFailed    MilestoneRunViewState = "failed"
+	MilestoneRunViewStateRunning   MilestoneRunViewState = "running"
+	MilestoneRunViewStateSucceeded MilestoneRunViewState = "succeeded"
+	MilestoneRunViewStateWaiting   MilestoneRunViewState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the MilestoneRunViewState enum.
+func (e MilestoneRunViewState) Valid() bool {
+	switch e {
+	case MilestoneRunViewStateCancelled:
+		return true
+	case MilestoneRunViewStateFailed:
+		return true
+	case MilestoneRunViewStateRunning:
+		return true
+	case MilestoneRunViewStateSucceeded:
+		return true
+	case MilestoneRunViewStateWaiting:
 		return true
 	default:
 		return false
@@ -142,6 +187,108 @@ func (e PreflightItemKind) Valid() bool {
 	}
 }
 
+// Defines values for ProgressEventEmitter.
+const (
+	ProgressEventEmitterMain     ProgressEventEmitter = "main"
+	ProgressEventEmitterSubagent ProgressEventEmitter = "subagent"
+)
+
+// Valid indicates whether the value is a known member of the ProgressEventEmitter enum.
+func (e ProgressEventEmitter) Valid() bool {
+	switch e {
+	case ProgressEventEmitterMain:
+		return true
+	case ProgressEventEmitterSubagent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunCycleViewKind.
+const (
+	Coding     RunCycleViewKind = "coding"
+	Conflict   RunCycleViewKind = "conflict"
+	Fix        RunCycleViewKind = "fix"
+	Validation RunCycleViewKind = "validation"
+)
+
+// Valid indicates whether the value is a known member of the RunCycleViewKind enum.
+func (e RunCycleViewKind) Valid() bool {
+	switch e {
+	case Coding:
+		return true
+	case Conflict:
+		return true
+	case Fix:
+		return true
+	case Validation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunProgressEventType.
+const (
+	RunProgressEventTypeCycle RunProgressEventType = "cycle"
+	RunProgressEventTypeDone  RunProgressEventType = "done"
+	RunProgressEventTypeLine  RunProgressEventType = "line"
+)
+
+// Valid indicates whether the value is a known member of the RunProgressEventType enum.
+func (e RunProgressEventType) Valid() bool {
+	switch e {
+	case RunProgressEventTypeCycle:
+		return true
+	case RunProgressEventTypeDone:
+		return true
+	case RunProgressEventTypeLine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunProgressLineEmitter.
+const (
+	RunProgressLineEmitterMain     RunProgressLineEmitter = "main"
+	RunProgressLineEmitterSubagent RunProgressLineEmitter = "subagent"
+)
+
+// Valid indicates whether the value is a known member of the RunProgressLineEmitter enum.
+func (e RunProgressLineEmitter) Valid() bool {
+	switch e {
+	case RunProgressLineEmitterMain:
+		return true
+	case RunProgressLineEmitterSubagent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunValidationVerdict.
+const (
+	Failed  RunValidationVerdict = "failed"
+	Passed  RunValidationVerdict = "passed"
+	Skipped RunValidationVerdict = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the RunValidationVerdict enum.
+func (e RunValidationVerdict) Valid() bool {
+	switch e {
+	case Failed:
+		return true
+	case Passed:
+		return true
+	case Skipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskStreamEventType.
 const (
 	TaskStreamEventTypeDone      TaskStreamEventType = "done"
@@ -160,6 +307,24 @@ func (e TaskStreamEventType) Valid() bool {
 	case TaskStreamEventTypeLine:
 		return true
 	case TaskStreamEventTypeTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TimelineEventEmitter.
+const (
+	TimelineEventEmitterMain     TimelineEventEmitter = "main"
+	TimelineEventEmitterSubagent TimelineEventEmitter = "subagent"
+)
+
+// Valid indicates whether the value is a known member of the TimelineEventEmitter enum.
+func (e TimelineEventEmitter) Valid() bool {
+	switch e {
+	case TimelineEventEmitterMain:
+		return true
+	case TimelineEventEmitterSubagent:
 		return true
 	default:
 		return false
@@ -346,6 +511,15 @@ type BuildRequest struct {
 type BuildResponse struct {
 	Failures []InputFailure `json:"failures,omitempty"`
 	Tag      string         `json:"tag,omitempty"`
+}
+
+// BuildRunList A version's milestone runs. `milestoneNumber` is the platform key the tag resolved to through the run rows; a tag with no run rows is a 404, not an empty list.
+type BuildRunList struct {
+	MilestoneNumber int64 `json:"milestoneNumber"`
+
+	// Runs Newest run first. A milestone sees SEQUENTIAL runs across its life — the spec build that created the version, then any later incident adoption into it.
+	Runs []MilestoneRunView `json:"runs"`
+	Tag  string             `json:"tag"`
 }
 
 // BuildStage Build-stage aggregate on ProjectStatus (#184) — the tag being/last built and its task counts, so the overview needs no list-tasks read.
@@ -748,6 +922,37 @@ type Lineage struct {
 	SpecTag   string `json:"specTag,omitempty"`
 }
 
+// MilestoneRunView One run of the milestone loop, with the cycle records that make up its timeline. Loop POSITION is deliberately absent — it renders from the latest cycle, because fix and conflict cycles re-enter earlier phases and a stored phase enum would lie mid-loop.
+type MilestoneRunView struct {
+	// Budgets The run's budget counters as the supervisor wrote them out. Read-model bookkeeping — the loop counts its own budgets and never reads these back.
+	Budgets   RunBudgets `json:"budgets"`
+	CreatedAt time.Time  `json:"createdAt"`
+
+	// Cycles Oldest first — one record per dispatch.
+	Cycles          []RunCycleView `json:"cycles"`
+	EndedAt         *time.Time     `json:"endedAt,omitempty"`
+	ID              string         `json:"id"`
+	MilestoneNumber int64          `json:"milestoneNumber"`
+
+	// MilestoneTitle The milestone's title at creation, equal to the spec tag. Display only — the number is the key.
+	MilestoneTitle string                 `json:"milestoneTitle"`
+	Origin         MilestoneRunViewOrigin `json:"origin"`
+	StartedAt      *time.Time             `json:"startedAt,omitempty"`
+	State          MilestoneRunViewState  `json:"state"`
+
+	// TerminalReason Why a non-succeeded run stopped. Each value names exactly one failure class; empty while the run is non-terminal and on a succeeded run.
+	TerminalReason string `json:"terminalReason,omitempty"`
+
+	// Validation The run's validation outcome. The verdict is a RUN property, not a per-issue one, and this is where the deployment surface reads it.
+	Validation RunValidation `json:"validation"`
+}
+
+// MilestoneRunViewOrigin defines model for MilestoneRunView.Origin.
+type MilestoneRunViewOrigin string
+
+// MilestoneRunViewState defines model for MilestoneRunView.State.
+type MilestoneRunViewState string
+
 // OrganizationList defines model for OrganizationList.
 type OrganizationList struct {
 	Items []OrganizationView `json:"items"`
@@ -791,25 +996,31 @@ type PreflightItemKind string
 
 // ProgressEvent defines model for ProgressEvent.
 type ProgressEvent struct {
-	Branch        string `json:"branch,omitempty"`
-	Command       string `json:"command,omitempty"`
-	CompletedAt   string `json:"completedAt,omitempty"`
-	Error         string `json:"error,omitempty"`
-	Files         int64  `json:"files,omitempty"`
-	Kind          string `json:"kind"`
-	Level         string `json:"level,omitempty"`
-	Message       string `json:"message,omitempty"`
-	Phase         string `json:"phase,omitempty"`
-	SchemaVersion int64  `json:"schemaVersion"`
-	Seq           int64  `json:"seq"`
-	Sha           string `json:"sha,omitempty"`
-	StartedAt     string `json:"startedAt,omitempty"`
-	Status        string `json:"status,omitempty"`
-	Step          string `json:"step,omitempty"`
-	Summary       string `json:"summary,omitempty"`
-	Tool          string `json:"tool,omitempty"`
-	TS            string `json:"ts"`
+	Branch      string `json:"branch,omitempty"`
+	Command     string `json:"command,omitempty"`
+	CompletedAt string `json:"completedAt,omitempty"`
+
+	// Emitter Who produced the line — `subagent` for work the main agent fanned out with the Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+	Emitter       ProgressEventEmitter `json:"emitter,omitempty"`
+	Error         string               `json:"error,omitempty"`
+	Files         int64                `json:"files,omitempty"`
+	Kind          string               `json:"kind"`
+	Level         string               `json:"level,omitempty"`
+	Message       string               `json:"message,omitempty"`
+	Phase         string               `json:"phase,omitempty"`
+	SchemaVersion int64                `json:"schemaVersion"`
+	Seq           int64                `json:"seq"`
+	Sha           string               `json:"sha,omitempty"`
+	StartedAt     string               `json:"startedAt,omitempty"`
+	Status        string               `json:"status,omitempty"`
+	Step          string               `json:"step,omitempty"`
+	Summary       string               `json:"summary,omitempty"`
+	Tool          string               `json:"tool,omitempty"`
+	TS            string               `json:"ts"`
 }
+
+// ProgressEventEmitter Who produced the line — `subagent` for work the main agent fanned out with the Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+type ProgressEventEmitter string
 
 // Project defines model for Project.
 type Project struct {
@@ -934,6 +1145,98 @@ type RcaAgentReportList struct {
 	// NextCursor Cursor for the next page; absent on the last page.
 	NextCursor string `json:"nextCursor,omitempty"`
 }
+
+// RunBudgets The run's budget counters as the supervisor wrote them out. Read-model bookkeeping — the loop counts its own budgets and never reads these back.
+type RunBudgets struct {
+	// BuildRetriggers Run-wide tally of automatic build re-triggers. The authoritative one-per-component-per-SHA guard is derived at the trigger site, not from this number.
+	BuildRetriggers int64 `json:"buildRetriggers"`
+	ConflictCycles  int64 `json:"conflictCycles"`
+
+	// CycleCeiling Snapshotted at start, so a config change cannot retroactively fail a live run.
+	CycleCeiling int64 `json:"cycleCeiling"`
+	CyclesTotal  int64 `json:"cyclesTotal"`
+	FixCycles    int64 `json:"fixCycles"`
+}
+
+// RunCycleView One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
+type RunCycleView struct {
+	// Attempts Dispatches of THIS cycle (the per-cycle re-dispatch budget, which resets at every cycle boundary).
+	Attempts  int64      `json:"attempts"`
+	Branch    string     `json:"branch,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	EndedAt   *time.Time `json:"endedAt,omitempty"`
+	ID        string     `json:"id"`
+
+	// JobRef The dispatched runner Job for the current attempt; replaced on re-dispatch.
+	JobRef   string           `json:"jobRef,omitempty"`
+	Kind     RunCycleViewKind `json:"kind"`
+	MergeSha string           `json:"mergeSha,omitempty"`
+	PrNumber int64            `json:"prNumber,omitempty"`
+}
+
+// RunCycleViewKind defines model for RunCycleView.Kind.
+type RunCycleViewKind string
+
+// RunProgressEvent One SSE frame on the run progress stream. `type` discriminates the payload: `cycle` carries a RunCycleView (client upserts by id and renders one accordion section per cycle), `line` one RunProgressLine attributed to its cycle, and `done` the terminal run state (the server then closes the stream).
+type RunProgressEvent struct {
+	// Cycle One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
+	Cycle RunCycleView `json:"cycle,omitempty"`
+
+	// Line One line of a cycle's agent log: the runner's progress envelope (phase | tool_use | git_commit | git_push | gh_action | log | result) plus the attribution the console groups on — which cycle produced it, and whether the main agent or one of its Task subagents did.
+	Line RunProgressLine `json:"line,omitempty"`
+
+	// State Terminal run state — present only on the `done` frame.
+	State string               `json:"state,omitempty"`
+	Type  RunProgressEventType `json:"type"`
+}
+
+// RunProgressEventType defines model for RunProgressEvent.Type.
+type RunProgressEventType string
+
+// RunProgressLine One line of a cycle's agent log: the runner's progress envelope (phase | tool_use | git_commit | git_push | gh_action | log | result) plus the attribution the console groups on — which cycle produced it, and whether the main agent or one of its Task subagents did.
+type RunProgressLine struct {
+	Branch  string `json:"branch,omitempty"`
+	Command string `json:"command,omitempty"`
+
+	// CycleID Id of the cycle this line belongs to — the accordion section key.
+	CycleID string `json:"cycleId"`
+
+	// CycleIndex 1-based position of that cycle in the run, so the console can label a section without holding the whole cycle list.
+	CycleIndex int64 `json:"cycleIndex"`
+
+	// CycleKind Kind of that cycle (coding | conflict | fix | validation) — the section label.
+	CycleKind string `json:"cycleKind"`
+
+	// Emitter Who produced the line. The runner stamps `subagent` only on lines forwarded from inside a Task tool call; everything else is the main agent.
+	Emitter       RunProgressLineEmitter `json:"emitter"`
+	Error         string                 `json:"error,omitempty"`
+	Files         int64                  `json:"files,omitempty"`
+	Kind          string                 `json:"kind"`
+	Level         string                 `json:"level,omitempty"`
+	Phase         string                 `json:"phase,omitempty"`
+	SchemaVersion int64                  `json:"schemaVersion,omitempty"`
+	Seq           int64                  `json:"seq,omitempty"`
+	Sha           string                 `json:"sha,omitempty"`
+	Status        string                 `json:"status,omitempty"`
+	Summary       string                 `json:"summary,omitempty"`
+	Tool          string                 `json:"tool,omitempty"`
+	TS            string                 `json:"ts,omitempty"`
+}
+
+// RunProgressLineEmitter Who produced the line. The runner stamps `subagent` only on lines forwarded from inside a Task tool call; everything else is the main agent.
+type RunProgressLineEmitter string
+
+// RunValidation The run's validation outcome. The verdict is a RUN property, not a per-issue one, and this is where the deployment surface reads it.
+type RunValidation struct {
+	// ReportPath Repository path of the validation runner's committed report, present once a verdict exists. The console fetches it at HEAD through the files API — there is no dedicated validation endpoint.
+	ReportPath string `json:"reportPath,omitempty"`
+
+	// Verdict Empty until the validation cycle settles. `skipped` covers both "no acceptance criteria" and an incident run, which gets no validation cycle at all.
+	Verdict RunValidationVerdict `json:"verdict,omitempty"`
+}
+
+// RunValidationVerdict Empty until the validation cycle settles. `skipped` covers both "no acceptance criteria" and an incident run, which gets no validation cycle at all.
+type RunValidationVerdict string
 
 // SaveValuesBody defines model for SaveValuesBody.
 type SaveValuesBody struct {
@@ -1113,7 +1416,10 @@ type TimelineEvent struct {
 	Branch      string `json:"branch,omitempty"`
 	Command     string `json:"command,omitempty"`
 	CompletedAt string `json:"completedAt,omitempty"`
-	Error       string `json:"error,omitempty"`
+
+	// Emitter Who produced the line — `subagent` for work the main agent fanned out with the Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+	Emitter TimelineEventEmitter `json:"emitter,omitempty"`
+	Error   string               `json:"error,omitempty"`
 
 	// ExecutionID Id of the execution attempt this line belongs to.
 	ExecutionID string `json:"executionId"`
@@ -1135,6 +1441,9 @@ type TimelineEvent struct {
 	Tool          string `json:"tool,omitempty"`
 	TS            string `json:"ts"`
 }
+
+// TimelineEventEmitter Who produced the line — `subagent` for work the main agent fanned out with the Task tool, absent for the main agent itself. Absence is a positive fact, not an unknown.
+type TimelineEventEmitter string
 
 // TurnConflict create-turn 409 body. turn_in_progress carries the active turn's id; requirements_missing means the design use-case has no requirements to work from.
 type TurnConflict struct {
