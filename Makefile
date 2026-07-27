@@ -46,7 +46,7 @@ LICENSE_HEADER := .github/license-header.txt
 LICENSE_MATCH = grep -E '\.(go|ts|tsx|sh)$$|(^|/)Dockerfile$$' | \
 	grep -vE '\.gen\.(go|ts)$$|_mock\.go$$|/mocks/|/node_modules/|/dist/|/generated/|(^|/)\.(agents|claude)/'
 
-.PHONY: install gen build dev test lint typecheck license license-check tools clean eval cover build-validation-runner deadcode-ts deadcode-ts-check setup-local dev-cluster deploy-local
+.PHONY: install gen build dev test lint typecheck license license-check tools clean eval cover build-runner deadcode-ts deadcode-ts-check setup-local dev-cluster deploy-local
 
 install:
 	$(PNPM) install
@@ -108,11 +108,12 @@ deadcode-ts:
 deadcode-ts-check:
 	$(PNPM) run deadcode-ts:check
 
-# Local-dev helper (not a uniform verb): build + k3d-import the validation-task
-# runner image. setup-aep.sh runs this automatically at setup; use it to force a
-# rebuild after changing Dockerfile.validation — `make build-validation-runner FORCE=1`.
-build-validation-runner:
-	FORCE=$(FORCE) bash deployments/scripts/build-validation-runner.sh
+# Local-dev helper (not a uniform verb): build + k3d-import the runner image
+# (one image, both task kinds). setup-aep.sh runs this automatically at setup;
+# use it to force a rebuild after changing runners/remote-worker/Dockerfile or
+# the runner's TS — `make build-runner FORCE=1`.
+build-runner:
+	FORCE=$(FORCE) bash deployments/scripts/build-runner.sh
 
 # ── Local in-cluster dev (Skaffold + k3d) ────────────────────────────────────
 # Run once per cluster after setup-k3d.sh. Creates K8s Secrets and registers

@@ -62,6 +62,9 @@ func codingDispatch(row *delivery.Execution) delivery.DispatchRequest {
 			OrgID: "acme", ProjectID: "widgets", Component: "order-service",
 			IssueNumber: 7, IssueURL: "https://github.com/acme/widgets/issues/7",
 		},
+		// §9: a coding run is keyed by its milestone, never by one issue.
+		MilestoneNumber: 4,
+		MilestoneTitle:  "v3",
 	}
 }
 

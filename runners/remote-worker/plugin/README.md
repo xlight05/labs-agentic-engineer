@@ -1,15 +1,19 @@
 # AEP Claude Code plugin
 
-Defines the workflow contract an agent follows when working a component task
-dispatched by the AEP platform. The skill body mirrors `aep-service/services/issue_body.go` —
-read the issue first, work on the task branch, post progress as `gh issue comment`,
-finish with `gh pr ready`, never merge.
+Defines the workflow contract an agent follows for a run dispatched by the AEP
+platform. The dispatch prompt carries only a milestone reference; the whole
+procedure lives here — discover the milestone's open `aep` issues, order them
+by their dependency prose, derive the `aep/m<n>-c<k>` branch, commit one issue
+at a time, and open ONE pull request listing `Resolves #N` per completed issue.
+The platform merges it; no human does.
 
 ## What's inside
 
 - `.claude-plugin/plugin.json` — plugin manifest.
 - `.claude-plugin/marketplace.json` — marketplace metadata (for `claude plugin install`).
-- `skills/aep/SKILL.md` — the workflow skill the agent loads.
+- `skills/aep/SKILL.md` — the milestone coding workflow.
+- `skills/aep-validation/` — the validation workflow (issue-anchored).
+- `skills/playwright-cli/` — vendored from `@playwright/cli` (Apache-2.0).
 
 No MCP server. The agent uses `git` and `gh` directly inside the per-task
 workspace; the platform observes the work via GitHub webhooks.

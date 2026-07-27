@@ -26,16 +26,6 @@ import (
 	"time"
 )
 
-// Coding-agent runner image. The version tag is pinned (never :latest) so a
-// BFF release and the runner image that serves its /internal/v1 callbacks
-// deploy as a matched pair: bump runnerImageVersion and push the image with the
-// same tag together. AGENT_RUNNER_IMAGE overrides the whole string when set.
-const (
-	runnerImageRepo    = "docker.io/xlight05/aep-coding-agent-runner"
-	runnerImageVersion = "v8"
-	defaultRunnerImage = runnerImageRepo + ":" + runnerImageVersion
-)
-
 type configReader struct {
 	errors []error
 }
@@ -153,10 +143,14 @@ func Load() (Config, error) {
 			TaskQueue: r.readOptionalString("TEMPORAL_TASKQUEUE", "aep-devflow"),
 		},
 
-		// Agent runner image + ESO CSS for per-run ExternalSecrets.
-		AgentRunnerImage:           r.readOptionalString("AGENT_RUNNER_IMAGE", defaultRunnerImage),
-		AgentValidationRunnerImage: r.readOptionalString("VALIDATION_RUNNER_IMAGE", ""),
-		AgentClusterSecretStore:    r.readOptionalString("AGENT_CLUSTER_SECRET_STORE", "default"),
+		// Runner image + ESO CSS for per-run ExternalSecrets. There is
+		// deliberately NO built-in default: the image must be pinned by the
+		// deployment (Helm codingAgentRunner.image / compose AGENT_RUNNER_IMAGE)
+		// so a BFF release and the runner image that serves its /internal/v1
+		// callbacks deploy as a matched pair. Empty disables dispatch, which
+		// fails loudly, rather than silently running an unpinned image.
+		AgentRunnerImage:        r.readOptionalString("AGENT_RUNNER_IMAGE", ""),
+		AgentClusterSecretStore: r.readOptionalString("AGENT_CLUSTER_SECRET_STORE", "default"),
 	}
 
 	if len(r.errors) > 0 {

@@ -61,6 +61,60 @@ func jobEnv(t *testing.T, job map[string]any) map[string]string {
 	return out
 }
 
+// jobImage extracts the runner container's image from a built Job manifest.
+func jobImage(t *testing.T, job map[string]any) string {
+	t.Helper()
+	spec, _ := job["spec"].(map[string]any)
+	tmpl, _ := spec["template"].(map[string]any)
+	podSpec, _ := tmpl["spec"].(map[string]any)
+	containers, _ := podSpec["containers"].([]map[string]any)
+	if len(containers) == 0 {
+		t.Fatalf("no containers in job manifest: %+v", job)
+	}
+	img, _ := containers[0]["image"].(string)
+	return img
+}
+
+// TestBuild_OneImageServesBothTaskKinds pins the collapsed image selection: an
+// implementation Job and a validation Job render the SAME image and differ only
+// in AEP_TASK_KIND (plus the component sentinel and deadline the executor sets).
+// The retired split had a second, Playwright-only image because the alpine
+// coding image could not run chromium; the one Debian image can.
+func TestBuild_OneImageServesBothTaskKinds(t *testing.T) {
+	const image = "ghcr.io/wso2/aep/remote-worker:1.2.3"
+
+	impl := validJobInputs()
+	impl.RunnerImage = image
+
+	val := validJobInputs()
+	val.RunnerImage = image
+	val.TaskKind = "validation"
+	val.ComponentName = "aep-validation"
+	val.ActiveDeadlineSeconds = 7200
+
+	implJob, err := Build(impl)
+	if err != nil {
+		t.Fatalf("Build(implementation): %v", err)
+	}
+	valJob, err := Build(val)
+	if err != nil {
+		t.Fatalf("Build(validation): %v", err)
+	}
+
+	if got := jobImage(t, implJob); got != image {
+		t.Errorf("implementation image = %q, want %q", got, image)
+	}
+	if got := jobImage(t, valJob); got != image {
+		t.Errorf("validation image = %q, want the same image %q", got, image)
+	}
+	if got := jobEnv(t, implJob)["AEP_TASK_KIND"]; got != "implementation" {
+		t.Errorf("AEP_TASK_KIND (implementation) = %q, want %q", got, "implementation")
+	}
+	if got := jobEnv(t, valJob)["AEP_TASK_KIND"]; got != "validation" {
+		t.Errorf("AEP_TASK_KIND (validation) = %q, want %q", got, "validation")
+	}
+}
+
 // TestBuild_StampsSkillsRepoURLWhenSet pins the new optional AEP_SKILLS_REPO_URL
 // env: present with the clone URL when the org's skills repo resolved.
 func TestBuild_StampsSkillsRepoURLWhenSet(t *testing.T) {

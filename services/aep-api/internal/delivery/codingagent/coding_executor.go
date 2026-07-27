@@ -75,11 +75,6 @@ type CodingExecutor struct {
 	runnerImage        string
 	clusterSecretStore string
 
-	// validationImage is the Playwright-capable runner image for ClassValidation
-	// tasks (Dockerfile.validation). Empty → validation dispatch fails loudly
-	// (the alpine coding image cannot run chromium). Set via WithValidationImage.
-	validationImage string
-
 	// Build-secret staging (nil → unauthenticated clone, correct for public
 	// repos). buildSecrets pre-stages the org's build git credential so a build's
 	// checkout-source step can clone a private repo; authRetryBudget bounds the
@@ -140,8 +135,10 @@ func NewCodingExecutor(
 }
 
 // WithProxy enables the cluster-gateway-proxy coding-agent dispatch path (the
-// `ca-…` Job path the local plane uses). idp may be nil (publisher-cc skipped —
-// required only on the cloud gateway, i.e. an https platform URL).
+// `ca-…` Job path the local plane uses). runnerImage is THE runner image — one
+// image serves both task kinds (it bakes Playwright + chromium), so nothing
+// swaps it per kind. idp may be nil (publisher-cc skipped — required only on
+// the cloud gateway, i.e. an https platform URL).
 func (e *CodingExecutor) WithProxy(proxy *Dispatcher, idp OrgPublisherProvisioner, runnerImage, clusterSecretStore string) *CodingExecutor {
 	e.proxy = proxy
 	e.idp = idp
@@ -150,12 +147,14 @@ func (e *CodingExecutor) WithProxy(proxy *Dispatcher, idp OrgPublisherProvisione
 	return e
 }
 
-// WithValidationImage sets the Playwright-capable runner image used for
-// ClassValidation tasks (the same executor serves both classes; validation
-// swaps the image, sets AEP_TASK_KIND=validation, and skips the coding-only
-// component-ensure/wiring pre-flight). Returns the receiver for chaining.
-func (e *CodingExecutor) WithValidationImage(image string) *CodingExecutor {
-	e.validationImage = image
+// WithValidationImage is a no-op.
+//
+// Deprecated: both task kinds dispatch the single runner image set by
+// WithProxy — a validation run differs only by AEP_TASK_KIND, the component
+// sentinel and its longer deadline. This method survives only until the
+// composition root drops its call; delete it together with
+// config.Config.AgentValidationRunnerImage and the VALIDATION_RUNNER_IMAGE env.
+func (e *CodingExecutor) WithValidationImage(string) *CodingExecutor {
 	return e
 }
 
@@ -266,6 +265,15 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 	t := req.Task
 	isValidation := t.Class == taskmeta.ClassValidation
 
+	// §9: a coding run is keyed by a MILESTONE, not an issue — the runner
+	// discovers its own working set from the live issues API and the `aep`
+	// skill carries the whole procedure. Refuse before any side effect rather
+	// than dispatch a prompt that names no milestone. (Validation stays
+	// issue-anchored.)
+	if !isValidation && req.MilestoneNumber <= 0 {
+		return fmt.Errorf("coding dispatch requires a milestone reference: DispatchRequest.MilestoneNumber/MilestoneTitle must be set by the run supervisor")
+	}
+
 	// Coding pre-flight (skipped for validation, which has no component to build):
 	// provision the OpenChoreo Component CR from the design facts BEFORE the coding
 	// run, so the PR it opens has a Component to build when it merges (otherwise
@@ -313,13 +321,13 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 	// on any failure, the runner then degrades to the base plugin.
 	skillsRepoURL := e.resolveSkillsRepoURL(ctx, t.OrgID)
 
-	// Per-class dispatch shape: validation swaps the Playwright image, the
-	// project-scoped component sentinel, AEP_TASK_KIND=validation, a longer
-	// deadline (browser boot + e2e authoring), and skips the coding-only wiring.
+	// Per-class dispatch shape. Both classes run the SAME runner image; a
+	// validation run differs only by the project-scoped component sentinel,
+	// AEP_TASK_KIND=validation, a longer deadline (browser boot + e2e
+	// authoring), and skipping the coding-only wiring.
 	disp := dispatchShape{
-		prompt:        buildPrompt(t.IssueURL, t.IssueNumber),
+		prompt:        buildPrompt(req.MilestoneNumber, req.MilestoneTitle),
 		componentName: t.Component,
-		image:         e.runnerImage,
 		taskKind:      "",
 		deadline:      0,
 	}
@@ -327,7 +335,6 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 		disp = dispatchShape{
 			prompt:        buildValidationPrompt(t.IssueURL, t.IssueNumber),
 			componentName: validationComponentSentinel,
-			image:         e.validationImage,
 			taskKind:      string(taskmeta.ClassValidation),
 			deadline:      validationDeadlineSeconds,
 		}
@@ -354,11 +361,13 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 		return nil
 	}
 
-	// Validation has no non-proxy fallback — it requires the proxy path
-	// (Playwright image + AEP_TASK_KIND). Fail loudly rather than launch a
-	// browserless coding agent via the K8s Job path.
+	// Validation has no non-proxy fallback. The image is no longer the reason
+	// (one image serves both kinds); K8sJobInput is: it carries no TaskKind and
+	// no deadline override, so the direct path would launch a runner that never
+	// preloads the `aep-validation` skill and dies at the 1h default. Fail
+	// loudly rather than launch a run that cannot do the job.
 	if isValidation {
-		return fmt.Errorf("validation dispatch requires the cluster-gateway-proxy path and a VALIDATION_RUNNER_IMAGE; the direct K8s Job fallback does not support validation")
+		return fmt.Errorf("validation dispatch requires the cluster-gateway-proxy path; the direct K8s Job fallback carries no AEP_TASK_KIND or deadline override")
 	}
 
 	// Direct K8s Job path: creates the org's data-plane namespace, SA, Anthropic
@@ -403,7 +412,7 @@ func (e *CodingExecutor) runCoding(ctx context.Context, req delivery.DispatchReq
 // execution id — the re-keyed runner contract (§9.2).
 func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.DispatchRequest, repo *sourcecontrol.GitRepository, name, email, login, bearer string, disp dispatchShape, mcpToken, skillsRepoURL string) (bool, string, error) {
 	t := req.Task
-	if e.proxy == nil || disp.image == "" || e.clusterSecretStore == "" {
+	if e.proxy == nil || e.runnerImage == "" || e.clusterSecretStore == "" {
 		return false, "", nil
 	}
 	anthropicRow, err := e.anthropicCreds.GetByOrg(ctx, t.OrgID)
@@ -465,7 +474,7 @@ func (e *CodingExecutor) dispatchViaProxy(ctx context.Context, req delivery.Disp
 		OrgID:                 t.OrgID,
 		ProjectID:             t.ProjectID,
 		ComponentName:         disp.componentName,
-		RunnerImage:           disp.image,
+		RunnerImage:           e.runnerImage,
 		TaskKind:              disp.taskKind,
 		ActiveDeadlineSeconds: disp.deadline,
 		RepoURL:               repo.RepoURL,
@@ -667,10 +676,14 @@ func deriveTokenURLFromJWKS(jwksURL string) string {
 	return strings.TrimSuffix(j, suffix) + "/oauth2/token"
 }
 
-// buildPrompt is the coding-agent directive: work the issue and open a PR that
-// closes it (so the pull_request webhook links the PR back to the Task).
-func buildPrompt(issueURL string, issueNumber int) string {
-	return fmt.Sprintf("Work on this GitHub issue: %s\n\nWhen you open the pull request, include `Closes #%d` in its body so the platform links the PR back to this task. The full workflow, constraints, and deny-list are in the `aep` skill loaded in your session.", issueURL, issueNumber)
+// buildPrompt is the coding-agent directive (§9): a MILESTONE REFERENCE and
+// nothing else. The agent discovers its own working set from the live issues
+// API and follows the versioned `aep` skill for ordering, fan-out, branch
+// identity, verification and the PR contract — the platform deliberately
+// carries no procedure in the prompt, so the workflow versions with the skill
+// rather than with the BFF binary.
+func buildPrompt(milestoneNumber int, milestoneTitle string) string {
+	return fmt.Sprintf("Work the issues for milestone %d (%q). Follow the `aep` skill loaded in your session — it defines discovery, ordering, fan-out, branch identity, verification, the PR contract and the deny-list.", milestoneNumber, milestoneTitle)
 }
 
 // validationComponentSentinel is the AEP_COMPONENT_NAME a validation Job carries.
@@ -683,12 +696,11 @@ const validationComponentSentinel = "aep-validation"
 const validationDeadlineSeconds int64 = 7200
 
 // dispatchShape carries the per-class knobs runCoding hands to the proxy
-// dispatch: the coding class and the validation class share the executor and
-// the proxy plumbing, differing only in these values.
+// dispatch: the coding class and the validation class share the executor, the
+// proxy plumbing AND the runner image, differing only in these values.
 type dispatchShape struct {
 	prompt        string
 	componentName string
-	image         string
 	taskKind      string // "" (coding) | "validation"
 	deadline      int64  // 0 → job_template's 1h default
 }

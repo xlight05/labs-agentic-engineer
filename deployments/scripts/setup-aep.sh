@@ -103,38 +103,19 @@ else
     echo "✅ ClusterWorkflow 'aep-coding-agent' installed (DEV — /app/plugin overlay live from host)"
 fi
 
-# Pre-pull + import the coding-agent runner image into the k3d node. It's a
-# ~560MB image on a personal Docker Hub repo; on a fresh cluster the FIRST
-# coding-agent Job pulls it cold, which has taken ~17 min — long enough to blow
-# past the Job's activeDeadlineSeconds, so the pod is killed the moment it
-# starts and the task fails with DeadlineExceeded (and any dependent task then
-# sits On Hold forever). Pre-importing makes the first dispatch start instantly.
-# The tag is read from the manifest so it can't drift from what the Job uses.
-RUNNER_IMAGE="$(grep -oE 'image:[[:space:]]*[^[:space:]]*aep-coding-agent-runner:[^[:space:]]+' "$CODING_AGENT_MANIFEST" | head -1 | awk '{print $2}')"
-if [ -n "$RUNNER_IMAGE" ]; then
-    echo ""
-    echo "🐳 Pre-importing coding-agent runner image ($RUNNER_IMAGE)..."
-    if docker image inspect "$RUNNER_IMAGE" &>/dev/null || docker pull "$RUNNER_IMAGE"; then
-        k3d image import "$RUNNER_IMAGE" -c "$CLUSTER_NAME" \
-            && echo "✅ runner image cached on node — first coding-agent dispatch won't cold-pull" \
-            || echo "⚠️  k3d image import failed; first dispatch may cold-pull (see DeadlineExceeded risk above)"
-    else
-        echo "⚠️  Could not pull $RUNNER_IMAGE — first coding-agent Job may exceed its deadline"
-        echo "    on the cold pull. Pre-pull it manually, or raise the Job activeDeadlineSeconds."
-    fi
-else
-    echo "⚠️  Could not determine runner image from $CODING_AGENT_MANIFEST — skipping pre-import."
-fi
-
-# Build + import the validation-task runner image (Playwright/Debian). It has no
-# published counterpart, so it's built locally once per machine and imported into
-# the node — self-contained, no shared registry. Guarded (skips when the image
-# exists); non-fatal so a build hiccup never blocks platform setup. Validation
-# dispatch (proxy path) reads it via compose VALIDATION_RUNNER_IMAGE, defaulted
-# to the same tag. Rebuild manually with `make build-validation-runner`.
+# Build + import the runner image (ONE image, both task kinds: Debian + Go +
+# Playwright + baked chromium). It has no published counterpart on this branch,
+# so it's built locally once per machine and imported into the node —
+# self-contained, no shared registry. Pre-importing also keeps the FIRST
+# dispatch from cold-pulling a multi-GB image, which has taken long enough to
+# blow past the Job's activeDeadlineSeconds (the pod is killed the moment it
+# starts and the task fails with DeadlineExceeded). Guarded (skips when the
+# image exists); non-fatal so a build hiccup never blocks platform setup.
+# Dispatch reads the tag via compose AGENT_RUNNER_IMAGE, defaulted to the same
+# tag. Rebuild manually with `make build-runner`.
 echo ""
-bash "$SCRIPT_DIR/build-validation-runner.sh" \
-    || echo "⚠️  validation runner image build/import failed — validation dispatch stays disabled until fixed (make build-validation-runner)"
+bash "$SCRIPT_DIR/build-runner.sh" \
+    || echo "⚠️  runner image build/import failed — coding + validation dispatch stay disabled until fixed (make build-runner)"
 
 # ============================================================================
 # OpenChoreo infrastructure resources

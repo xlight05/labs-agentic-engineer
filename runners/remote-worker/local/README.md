@@ -33,16 +33,14 @@ under `workspace/<org>/<project>/<taskId>/` for inspection.
 
 ## Validation tasks
 
-Validation runs need the Playwright-capable image variant
-(`../Dockerfile.validation`: Debian base + baked chromium +
-playwright-cli + Go). Point the harness at an alternate env file that
-selects it:
+The same image serves validation runs (it bakes Playwright + chromium),
+so only the dispatch env differs. Point the harness at an alternate env
+file:
 
 ```bash
 cp env.local.example .env.local          # secrets + repo, as usual
 # create .env.validation: sources .env.local, sets
-#   DOCKERFILE="$WORKER_DIR/Dockerfile.validation"
-#   IMAGE_TAG=aep-remote-worker:validation-local
+#   AEP_TASK_KIND=validation
 #   AEP_PROMPT="This is a validation task. Work on this GitHub validation issue: <url> ..."
 ./run-local.sh .env.validation
 ```

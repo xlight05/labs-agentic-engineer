@@ -127,18 +127,12 @@ spec:
           # auto-retry would push duplicate work or open duplicate PRs. Retries
           # are managed at the dispatch-service layer, where idempotency holds.
           container:
-            # Published from runners/remote-worker/ via `docker buildx --platform linux/amd64 --push`.
-            # `:latest` + Always pulls a fresh image on every pod start so dev
-            # iteration is just push-and-redispatch — no YAML bump per change.
-            # Trade-off: every dispatch pulls from Docker Hub (slower cold-start,
-            # counts against the registry's pull rate limits). When stabilising
-            # for a long-lived dev/stage, pin to an immutable SHA tag and switch
-            # to `imagePullPolicy: IfNotPresent`.
-            # Local repin (2026-07-11): v8 carries the scrubber entropy-backstop
-            # fix and is k3d-imported only (not on Docker Hub), so pull IfNotPresent
-            # to use the imported image instead of a doomed registry pull. Revert
-            # to a pushed tag + Always when v8 is published upstream.
-            image: docker.io/xlight05/aep-coding-agent-runner:v8
+            # The one runner image, built + k3d-imported locally by
+            # deployments/scripts/build-runner.sh (`make build-runner`). It is a
+            # local-only tag, hence IfNotPresent — a registry pull would fail.
+            # For a released platform, repin to
+            # ghcr.io/wso2/aep/remote-worker:<version>.
+            image: aep-runner:dev
             imagePullPolicy: IfNotPresent
             # Explicit command/args is the OC convention — every ClusterWorkflow
             # in this directory and Agent-Manager's amp-monitor-evaluation set

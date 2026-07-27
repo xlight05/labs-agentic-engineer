@@ -42,7 +42,14 @@ const PLUGIN_PATH = path.resolve(__dirname, "../../plugin");
 // (see webfetch_guard.ts) — fail-closed, so pod egress to arbitrary
 // fetched pages never reaches internal/private/link-local/metadata
 // addresses or leaks a staged secret in the URL.
-const BASE_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"];
+// Task joins the set for the milestone run loop (docs/design §9.3): a cycle
+// works several issues, and the main agent fans the big, prose-independent,
+// disjoint-App-Path ones out to subagents. The main agent stays the SOLE git
+// writer — subagents Edit/Write only. That split is a SKILL rule, not a tool
+// restriction: the SDK hands a subagent the same allowedTools as its parent,
+// so `aep`'s deny-list is what keeps a subagent off git, and its fan-out
+// section is what keeps small issues inline.
+const BASE_ALLOWED_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Task"];
 
 // The server key the BFF MCP endpoint is registered under. The SDK
 // namespaces MCP tools as `mcp__<serverKey>__<toolName>` (confirmed from

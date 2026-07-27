@@ -74,17 +74,15 @@ services:
       SERVER_PORT: "9090"
       LOG_LEVEL: "debug"
       DATABASE_URL: "postgres://aep:aep@postgres:5432/aep?sslmode=disable"
-      # Empty ⇒ the loader's Docker-Hub default (docker.io/xlight05/aep-coding-
-      # agent-runner:v5, see config_loader.go). Verified (2026-07-08): no
-      # `related-issues` skill (skillPreload is just aep:aep, matching this
-      # repo's own current source), already uses the executions-keyed skills
-      # pull + credentials-refresh routes (tasks-github-native re-key — the
-      # old tasks-keyed routes are retired and would fail every git op), and
-      # pulls natively on arm64. No override needed. Set to a k3d-imported
-      # local tag (e.g. aep-coding-agent-runner:dev — never :latest, which
-      # flips imagePullPolicy to Always and forces a registry pull) to run a
-      # locally-built runner instead.
-      AGENT_RUNNER_IMAGE: "${AGENT_RUNNER_IMAGE:-}"
+      # The one runner image, used by BOTH task kinds (implementation and
+      # validation). Defaults to the locally-built aep-runner:dev, which
+      # setup-aep.sh builds + k3d-imports (`make build-runner`); it has no
+      # published counterpart on this branch, and there is no fallback — an
+      # unset/absent image makes coding dispatch fail loudly. Never :latest
+      # for a local tag (that flips imagePullPolicy to Always and forces a
+      # registry pull). Override to a published ghcr.io/wso2/aep/remote-worker
+      # tag in cloud release bindings.
+      AGENT_RUNNER_IMAGE: "${AGENT_RUNNER_IMAGE:-aep-runner:dev}"
       DEPLOYMENT_TIER: "${DEPLOYMENT_TIER:-dev}"
       # Central per-route tenant gate (§6.1b). ENFORCE by default (404s
       # cross-org); set TENANT_GATE_MODE=log for the observe-only canary
@@ -217,13 +215,6 @@ services:
       # of the cloud services; same client surface in both build configs.
       SECRET_MANAGER_API_URL: "http://secret-manager-api:8082"
       CLUSTER_GATEWAY_PROXY_URL: "http://local-cluster-gateway-proxy:8085"
-      # Validation-runner image (Dockerfile.validation: Debian + Playwright
-      # browsers). Defaults to the locally-built aep-validation-runner:dev, which
-      # setup-aep.sh builds + k3d-imports (it has no published counterpart; the
-      # alpine coding image cannot run chromium, so there is no fallback — an
-      # unset/absent image makes validation dispatch fail loudly). Override to a
-      # published tag in cloud release bindings.
-      VALIDATION_RUNNER_IMAGE: "${VALIDATION_RUNNER_IMAGE:-aep-validation-runner:dev}"
       # Push target for AnthropicCredentialService.pushExternalSecret: on every
       # successful Connect (first-time connect AND rotation), aep-api applies
       # an ExternalSecret here via the proxy above, pointed at the freshly

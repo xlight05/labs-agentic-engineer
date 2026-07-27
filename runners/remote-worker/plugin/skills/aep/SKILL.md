@@ -1,15 +1,20 @@
 ---
 name: aep
-description: Load when working a component task dispatched by WSO2 Labs Agentic Engineer. The cwd is a clone of the project's repo on its default branch; the task is anchored by a GitHub issue passed in your prompt. You create your own working branch and open the PR. Defines the workflow, the mandatory `Closes #N` PR-body link, constraints, deny-list, project-structure conventions, the verify-before-PR step, and the OpenChoreo workload.yaml format. Stack-specific conventions (Go, React, Thunder OIDC, API Management) live in separate project skills the platform also preloads — apply them. Authentication is handled at the workspace level — run `git` and `gh` normally.
+description: Load when working a coding run dispatched by WSO2 Labs Agentic Engineer. The cwd is a clone of the project's repo on its default branch and your prompt names a GitHub MILESTONE and nothing else — you discover that milestone's open issues, order them, derive your own branch, work them, and open ONE pull request whose body carries `Resolves #N` for every issue you completed. Defines discovery, dependency ordering, subagent fan-out, branch identity and crash resume, the verify-before-PR step, the PR contract, the deny-list, project-structure conventions, and the OpenChoreo workload.yaml format. Stack-specific conventions (Go, React, Thunder OIDC, API Management) live in separate project skills the platform also preloads — apply them. Authentication is handled at the workspace level — run `git` and `gh` normally.
 ---
 
-# WSO2 Labs Agentic Engineer component task
+# WSO2 Labs Agentic Engineer coding run
 
-You are working a single component task on the WSO2 Labs Agentic Engineer
-platform. The current working directory is a fresh clone of the
+You are working one **cycle** of a milestone on the WSO2 Labs Agentic
+Engineer platform. The current working directory is a fresh clone of the
 project's GitHub repo on its **default branch** (e.g. `main`); `git` and
-`gh` are already authenticated for that repo. The platform passes you
-the issue URL in your prompt — start there.
+`gh` are already authenticated for that repo.
+
+Your prompt is a **milestone reference and nothing else** — a number and
+a title. Everything else is this skill: which issues are yours, what
+order to work them in, what branch to work on, and what the pull request
+must say. The platform learns your branch and your PR from GitHub
+webhooks; there is nothing to report back to it.
 
 You don't need to handle authentication. `git push` and `gh ...` work
 because the workspace is preconfigured (credential helper for `git`,
@@ -21,11 +26,10 @@ provisioning and refreshes them on every call.
 > (`claude plugin install <repo>/remote-worker/plugin`), then use your own
 > `gh auth login`. The workflow below is identical.
 
-> **Validation tasks**: if your prompt says this is a **validation task**
-> (issue labelled `aep` + `validation`), the `aep-validation` skill's
-> workflow REPLACES the implementation workflow below — load it. The
-> authentication model, git/gh conventions, and the deny-list here still
-> apply.
+> **Validation runs**: if your prompt says this is a **validation task**
+> and points at a single validation issue, the `aep-validation` skill's
+> workflow REPLACES the workflow below — load it. The authentication
+> model, git/gh conventions, and the deny-list here still apply.
 
 ## Active project skills
 
@@ -41,87 +45,203 @@ project):
 - `thunder-authentication` — OIDC + PKCE, generic `<DEP>_<OUTPUT>` runtime keys.
 - `api-management` — gateway JWT validation, `X-User-Id` header, CORS.
 
-When the issue body's Scope section says something like "Wire upstream
+When an issue body's Scope section says something like "Wire upstream
 X via window._env_.X_URL", that's a `react-webapp` requirement — read
 that skill's body for the exact pattern. When it says "Use modernc.org/sqlite",
 that's a `go` requirement. The skills are the authoritative source for
 those conventions — do not re-derive them from training data.
 
-## Find the issue
+## The cycle, at a glance
 
-The platform passes you the GitHub issue URL in the user prompt — read it
-WITH ITS COMMENTS:
+1. **Discover** the working set from the live issues API.
+2. **Order** it by the dependency prose in the issue bodies.
+3. **Establish branch identity** — resume, adopt a conflict PR's branch,
+   or mint a new one — *before* you write anything.
+4. **Work the issues** in order, one commit + push per finished issue.
+   Fan big independent ones out to subagents; you stay the only git writer.
+5. **Verify** every touched component compiles before you open the PR.
+6. **Finish**: one pull request, `Resolves #N` for every issue you
+   completed. The platform merges it — you never do.
 
-```bash
-gh issue view <url> --comments
-```
+---
 
-The body has the task-specific spec (rationale, Overview, Scope,
-Acceptance criteria, References, Task dependencies, Component Reference
-card).
+## 1. Discovery — the working set
 
-**The platform does NOT pre-create your branch or your PR — you create
-both.**
-
-If you ever need to discover the issue from scratch (e.g. running
-locally without a prompt), the issue is labelled `aep` +
-`implementation`:
+Ask the **issues API**, live, once per pick:
 
 ```bash
-gh issue list --label aep --label implementation --state open \
-  --json number,title,url
+gh issue list --milestone "<milestone title>" --state open \
+  --json number,title,labels,url --limit 200
 ```
 
-## Workflow
+**Never use the search API** (`gh search issues`, `gh api /search/...`).
+Its index lags by up to a minute, so a fix issue the platform minted
+seconds ago — exactly the issue this cycle exists to work — is invisible
+to it.
 
-1. **Read the issue** (`gh issue view <url> --comments`). The body is the
-   spec. Capture the issue number — you'll need it in your PR body.
-2. **Post a brief opening comment** so the platform shows your task is
-   in flight:
-   ```bash
-   gh issue comment <issue-number> --body "Starting: <one-line plan>"
-   ```
-3. **Create a feature branch with a descriptive, kebab-case name.** Do
-   NOT work on the default branch.
-   ```bash
-   git checkout -b feature/<short-slug>      # e.g. feature/hello-api-endpoint
-   ```
-4. **Apply the project's attached skills.** Patterns for `window._env_`,
-   OIDC, protected handlers, etc. live in the per-skill bodies — see
-   "Active project skills" above. The base `aep` skill carries
-   workflow + workload.yaml grammar + the deny-list; everything stack-
-   specific is in another skill.
-5. **Edit, commit, push.** Standard `git add`, `git commit -m "..."`,
-   `git push -u origin HEAD`. The committer identity is already set in
-   `.git/config` — don't override it. The first push creates the remote
-   branch.
-6. **Build verification** (see "Build verification" below). Run the
-   local toolchain check for your stack BEFORE opening the PR. If the
-   check fails, read the error, fix the source, re-commit, and rerun.
-   Only proceed once the toolchain check exits 0.
-7. **Post progress comments** at meaningful milestones (after
-   exploration, before committing, on completion). Keep them short.
-8. **Open the PR with `Closes #<issue-number>` in the body.** This is
-   how the platform links your PR back to the task — without it, the
-   task is orphaned and never moves out of `in_progress`.
-   ```bash
-   gh pr create \
-     --title "<short PR title>" \
-     --body $'Closes #<issue-number>\n\n<short summary of changes>'
-   ```
-   `gh pr create` opens the PR ready-for-review by default. Pass
-   `--draft` only if you genuinely have more work to do; in that case
-   you must come back later and run `gh pr ready <pr-number>` yourself.
-   After the PR is open and ready, **a human reviews and merges. You
-   do not merge.**
+From that list, your **working set** is every issue that:
 
-## Build verification
+- **carries the `aep` label** — this is what marks an issue as agent work; and
+- does **not** carry `aep:provision` (a platform gate; the run does not
+  start while one is open, and you never touch them); and
+- does **not** carry `aep:validation` (a separate validation run works those).
 
-Before opening the PR, you MUST verify your component compiles +
-lockfile-resolves with the local language toolchain. The runner
-sandbox ships `go`, `node` + `npm`, and the standard alpine
-toolchain. This catches the failure modes that would otherwise burn a
-PR + merge + dispatch round-trip:
+Any open issue in the milestone **without** the `aep` label is a
+**ledger** issue — a human's note filed against the milestone (it may
+carry their own labels like `bug`, or none). **Never touch a ledger
+issue**: don't work it, don't comment on it, don't reference it in your
+PR body. A human adopts it by adding `aep` (or `aep:codingagent`, which
+the platform converts), at which point it joins the working set on your
+next re-list.
+
+**Re-list before you pick each next issue.** A cycle is long enough for
+a human to adopt a ledger issue, or for the platform to mint a fix
+issue, mid-flight. Re-listing is what lets that work join *this* cycle
+instead of waiting for the next one.
+
+> ⚠ `gh issue list --milestone` resolves the milestone **by title**,
+> **case-insensitively**, and it only sees **OPEN** milestones. Once the
+> platform closes a milestone at settle, the flag stops resolving and
+> `gh` fails with "no milestone found". That is **not** an error to work
+> around — it means this milestone is finished. Do not fall back to the
+> search API, do not guess issue numbers: treat the working set as empty
+> and go to §6's idempotent finish.
+
+## 2. Ordering
+
+Issue bodies state their dependencies in **prose**, e.g.
+`Depends on #41`. **Nothing parses this platform-side — ordering is your
+job.** Read the bodies of your whole working set up front:
+
+```bash
+gh issue view <number> --json number,title,body,labels
+```
+
+Then:
+
+- Order the set **topologically** on those `Depends on #N` lines.
+- A dependency on an issue that is **not in your working set** (already
+  closed, or a ledger issue) is **already satisfied** — ignore it.
+- **Ties, and any issue with no dependency prose, sort by issue number
+  ascending.** Same for breaking a cycle if the prose contains one.
+
+The order matters because a dependent issue's code must compile against
+the provider's code, and you commit as you go.
+
+## 3. Branch identity — you derive it
+
+The platform never pre-creates your branch and never tells you its name.
+Work it out in this order, **before writing any file**:
+
+**a. A conflict issue in the working set names a pull request.** The
+platform mints a conflict issue when a cycle's PR could not merge; its
+body names the PR. That PR's branch is your branch — the work is already
+there and only needs rebasing:
+
+```bash
+gh pr view <pr-number> --json headRefName,body
+git fetch origin
+git checkout <headRefName>
+git rebase origin/main          # resolve conflicts SEMANTICALLY, not by
+                                # picking a side — read both changes
+# re-run §5 verification, then:
+git push --force-with-lease
+```
+
+This is the **only** situation in which you may force-push, and only
+onto this `aep/m*` branch. See the deny-list.
+
+**b. Otherwise, look for an unmerged branch of this milestone** — a
+previous cycle that crashed:
+
+```bash
+git fetch origin
+git ls-remote --heads origin "aep/m<milestone#>-*"
+# for each candidate, is it already on main?
+git merge-base --is-ancestor "origin/<branch>" origin/main && echo merged
+```
+
+An **unmerged** candidate is a **crash resume**: check it out, and read
+its history for what the crashed cycle already finished:
+
+```bash
+git checkout <branch>
+git log origin/main..HEAD --oneline    # each commit ends with "(#N)"
+```
+
+**Skip every issue whose number appears in a `(#N)` attribution** — that
+work is done and committed. Continue with the rest of the ordered set on
+that same branch.
+
+**c. Nothing to resume → mint a fresh branch:**
+
+```bash
+git checkout -b aep/m<milestone#>-c<k>
+```
+
+where `<k>` is one higher than the highest `-c<k>` already present among
+this milestone's remote branches (1 if there are none). The
+`aep/m<milestone#>-…` prefix is load-bearing: it is how the platform maps
+your PR back to this run.
+
+## 4. Working the issues
+
+Work the ordered set. For **each** issue:
+
+1. Read it in full, including comments — a "Platform-resolved
+   dependencies" comment carries the `dependencies:` block you must copy
+   into `workload.yaml` verbatim:
+   ```bash
+   gh issue view <number> --comments
+   ```
+2. Apply the project's attached skills (see "Active project skills").
+   Everything stack-specific lives there; this skill carries workflow,
+   workload.yaml grammar, and the deny-list.
+3. Write the code under that issue's **App Path** (see "Project
+   structure").
+4. **Commit that issue's work on its own, attributed to it, and push:**
+   ```bash
+   git add <that issue's App Path>
+   git commit -m "<type>: <short summary> (#<number>)"
+   git push -u origin HEAD          # -u only needed on the first push
+   ```
+   The `(#N)` suffix is not decoration: it is what a crash resume reads
+   to know this issue is done. One commit per issue, pushed as you go, so
+   a crash never loses more than the issue in flight.
+5. Re-list (§1) and pick the next issue.
+
+### Fan-out to subagents
+
+You have the **Task** tool. Use it to work more than one issue at a
+time — but **you** decide what is safe to parallelise, and the bar is
+higher than "they don't conflict":
+
+- **Necessary**: the issues are independent in the dependency prose,
+  **and** their App Paths are disjoint (no shared file, no shared
+  module).
+- **Also necessary**: the issue is a **big enough portion of work** to
+  be worth a subagent. A one-file change, a config tweak, a small fix
+  issue — run those **inline**. Spawning a subagent for small work costs
+  more than it saves and makes the run harder to follow.
+- If either test fails, work the issue inline, in order.
+
+**Subagents Edit/Write only. A subagent never runs `git` and never runs
+`gh`** — no commit, no push, no branch, no comment, no PR. Say so
+explicitly in every Task prompt you write, and give the subagent its
+issue's body, its App Path, and the relevant project skills' conventions.
+It reports back what it changed; you inspect the result.
+
+**You are the sole git writer.** When a subagent reports done, *you*
+stage that issue's App Path, commit it with its `(#N)` attribution, and
+push. History stays linear and every commit belongs to exactly one
+issue. **No worktrees** — one workspace, one branch.
+
+## 5. Build verification
+
+Before you open the pull request, every component you touched MUST
+compile and lockfile-resolve with the local language toolchain. The
+runner ships `go`, `node` + `npm`, and a Debian userland. This catches
+the failure modes that would otherwise burn a merge + build round-trip:
 
 - Hallucinated `go.sum` / `package-lock.json` hashes
 - Missing imports, syntax errors, unresolved type errors
@@ -132,38 +252,113 @@ The exact verification commands for each stack are in the stack's
 project skill — e.g. the `go` skill's "Build verification" section,
 the `react-webapp` skill's "Build verification" section.
 
+**You do not build Docker images here** — there is no container runtime
+in this pod, and that is deliberate. A component's `Dockerfile` is
+verified by the platform's build after your PR merges; if it is broken,
+that build goes red and the platform mints a fix issue that a later
+cycle works. Write the `Dockerfile` carefully (the stack skill pins the
+base image), and don't try to install a builder.
+
 ### If verification keeps failing
 
 You have discretion to give up after a reasonable number of attempts
-(suggested: **3 tries** for a given root cause). If verification
-still fails:
+(suggested: **3 tries** for a given root cause). If verification still
+fails:
 
-1. Open the PR as a **draft** with `--draft` and a title prefix
-   `[build-failed]`:
+1. Open the pull request as a **draft** with a `[build-failed]` title
+   prefix. A draft is the platform's signal that you are not finished —
+   it is never auto-merged. Still list `Resolves #N` for the issues that
+   DID complete, so the diff is attributable:
    ```bash
    gh pr create --draft \
      --title "[build-failed] <short title>" \
-     --body $'Closes #<issue-number>\n\n**⚠️ Build verification failed.** The agent ran the local toolchain check but exhausted its retry budget. Pasting the last error output below for operator review.\n\n## Error\n```\n<tail of the failing command output, ~40 lines>\n```\n\n## What the agent tried\n- <bullet 1: what was attempted>\n- <bullet 2>'
+     --body $'Resolves #<n1>\nResolves #<n2>\n\n**⚠️ Build verification failed.** The local toolchain check exhausted its retry budget on <component>. Last error output below for operator review.\n\n## Error\n```\n<tail of the failing command output, ~40 lines>\n```\n\n## What was tried\n- <bullet 1>\n- <bullet 2>'
    ```
-2. Post the same diagnostic on the issue:
-   ```bash
-   gh issue comment <issue-number> --body "Build verification failed after N attempts. PR opened as draft for operator review. See PR #<n> for log."
-   ```
+2. Comment the same diagnostic on the issue that could not be finished,
+   and leave that issue **open**.
 3. Do NOT call the platform's `/verification-failed` endpoint — that
-   path is for the dependency-integration verifier, not the
-   self-build verifier. The draft PR + issue comment is the operator
-   signal here.
+   path is for the dependency-integration verifier, not the self-build
+   verifier. The draft PR + issue comment is the operator signal here.
+
+## 6. Finish — one pull request
+
+Open **one** pull request for the cycle, whose body lists **`Resolves #N`
+on its own line for every issue you completed** — task issues, fix
+issues and conflict issues alike:
+
+```bash
+gh pr create \
+  --title "<short summary of the cycle>" \
+  --body $'Resolves #12\nResolves #14\nResolves #17\n\n<what changed, per issue>'
+```
+
+Why every one of them matters:
+
+- The platform's **auto-merge predicate** needs **at least one**
+  `Resolves` reference to an agent-work issue in this milestone. A PR
+  that lists none is treated as somebody else's work and is left alone.
+- GitHub closes each referenced issue **when the PR merges**, so a
+  closed issue means "landed on main" — the platform's whole notion of
+  progress. An issue you finished but didn't list stays open and gets
+  worked again next cycle.
+
+`gh pr create` opens the PR ready-for-review by default — leave it that
+way. **The platform merges it automatically. You never merge, and no
+human is waiting to.** Pass `--draft` only for the `[build-failed]` case
+in §5.
+
+**Leave every issue you did not finish open**, with a comment saying
+why. The platform re-lists it and a later cycle picks it up.
+
+### Be idempotent
+
+You may be a restart of a cycle that already got part-way. Before doing
+anything expensive, check the world:
+
+- **Work pushed on the branch but no PR open** → open the PR (§6) with a
+  `Resolves` line for each `(#N)` in `git log origin/main..HEAD`.
+- **A PR is already open for this branch and the working set is empty**
+  → verify its `Resolves` list covers every `(#N)` on the branch, add any
+  that are missing with `gh pr edit --body ...`, and exit. Do not open a
+  second PR.
+- **Empty working set and nothing pushed** → there is nothing to do.
+  Exit cleanly; say so.
+
+## Do not
+
+- **Push to the default branch (`main`).** Always the run's own
+  `aep/m<milestone#>-…` branch.
+- **Force-push anywhere except the run's own `aep/m*` branch during a
+  conflict rebase (§3a)** — and then only with `--force-with-lease`.
+  Never `main`. Never another branch. Never to "clean up" your own
+  history.
+- Open a pull request without at least one `Resolves #<issue-number>`
+  line — the platform cannot link it and will not merge it.
+- Open more than one pull request for this cycle.
+- Run `gh pr merge`, `gh pr close`, `gh repo create`, `gh repo delete`,
+  `gh repo fork`, or `gh repo edit`.
+- Touch a ledger issue (an issue in the milestone with no labels), an
+  `aep:provision` gate, or an `aep:validation` issue.
+- Let a subagent run `git` or `gh` (§4).
+- Add CORS middleware in any service component (see the `api-management`
+  skill).
+- Delete remote branches (`git push --delete`, `git push origin :branch`).
+- Modify branch protection, secrets, repository settings, collaborators,
+  or webhooks.
+- Touch repos other than this one, or work outside the current working
+  directory.
 
 ## Project structure
 
-Create a production-ready project structure under your component's
+Create a production-ready project structure under each component's
 **App Path** (from the issue's Component Reference card). The App Path
 is a **folder name** relative to the repo root (e.g. `user-api`,
-`services/auth`) — it is NOT an HTTP route. All of this component's
+`services/auth`) — it is NOT an HTTP route. All of that component's
 files (source, `Dockerfile`, `workload.yaml`) must live under that
 directory and nowhere else; the platform watches that path to decide
 which component to rebuild on a push, so a file committed outside it
-will not trigger your build.
+will not trigger its build. It is also what makes two issues safe to
+fan out in parallel (§4).
 
 Stack-specific layout, Dockerfile shape, and library choices live in
 the relevant project skill (`go`, `react-webapp`, etc.) — do not
@@ -201,37 +396,21 @@ for you.
   sibling web-app that depends on this service (a `dependencies` entry of
   `kind: component`).
 
-## Do not
-
-- Push directly to the default branch (`main`). Always work on the
-  feature branch you created. Never force-push (`git push --force`).
-- Open a PR without `Closes #<issue-number>` in the body — the platform
-  uses that to link your PR to the task.
-- Open more than one PR for this task.
-- Run `gh pr merge`, `gh pr close`, `gh repo create`, `gh repo delete`,
-  `gh repo fork`, or `gh repo edit`.
-- Add CORS middleware in any service component (see the `api-management`
-  skill).
-- Delete remote branches (`git push --delete`, `git push origin :branch`).
-- Modify branch protection, secrets, repository settings, collaborators,
-  or webhooks.
-- Touch repos other than this one, or work outside the current working
-  directory.
-
 ## OpenChoreo Workload Configuration
 
 Every component must have a `workload.yaml` at its root. This file uses
 the **flat WorkloadDescriptor** format — **not** a Kubernetes CR. Do
 **not** use `kind: Workload`, `spec:`, `autoBuild`, or `autoDeploy`.
 
-Declare your component's **`endpoints`** (provider-side). When your issue
+Declare your component's **`endpoints`** (provider-side). When an issue
 has a **"Platform-resolved dependencies"** comment with a `dependencies:`
-block, you **MUST** also add that block to your `workload.yaml`
-(consumer-side) — the platform has already resolved the targets and the
-env-var bindings, so copy it **verbatim** (merging into any existing
-`dependencies:`). OpenChoreo injects the resolved addresses/outputs into
-your pod env at runtime. **This instruction overrides the legacy guidance
-in any other skill that says not to add a `dependencies` block.**
+block, you **MUST** also add that block to that component's
+`workload.yaml` (consumer-side) — the platform has already resolved the
+targets and the env-var bindings, so copy it **verbatim** (merging into
+any existing `dependencies:`). OpenChoreo injects the resolved
+addresses/outputs into your pod env at runtime. **This instruction
+overrides the legacy guidance in any other skill that says not to add a
+`dependencies` block.**
 
 ### Format
 
@@ -267,7 +446,7 @@ is mintable and reachable from the dependent's browser. The platform
 will fail loudly with a §1.3 invariant error at the dependent's dispatch
 time if a deployed dep has no external URL.
 
-**Org-published services (P3).** If THIS component's design frontmatter has
+**Org-published services (P3).** If a component's design frontmatter has
 `exposesAPI.orgPublished: true`, the service is meant to be consumed by
 components in OTHER projects of the org. In that case ALSO add `namespace`
 to the endpoint's `visibility` list — e.g. `visibility: [external, namespace]`
@@ -277,10 +456,10 @@ Add `namespace` only when `orgPublished` is set in the design.
 
 ### Consumer-side dependencies (`dependencies:`)
 
-When this component consumes another service or an external connection,
+When a component consumes another service or an external connection,
 the platform resolves the wiring and posts it as a **"Platform-resolved
-dependencies"** comment on your issue (read it with
-`gh issue view <url> --comments`). Add that `dependencies:` block to your
+dependencies"** comment on that component's issue (read it with
+`gh issue view <number> --comments`). Add that `dependencies:` block to the
 `workload.yaml` exactly as given — do not invent, rename, or omit fields:
 
 ```yaml
@@ -302,8 +481,8 @@ Read each injected value from its env var at startup (no hardcoded
 fallback). An injected `address` can end with a `/` (the provider
 endpoint's base path), so build request URLs by joining the path onto it
 rather than concatenating strings — a doubled slash (`//path`) misroutes
-the request. If your issue has **no** "Platform-resolved dependencies"
-comment, your component has no consumer-side dependencies — add no
+the request. If an issue has **no** "Platform-resolved dependencies"
+comment, that component has no consumer-side dependencies — add no
 `dependencies:` block. The build's `generate-workload-cr` step propagates
 this block into the OpenChoreo `Workload` CR, and OpenChoreo resolves +
 injects the addresses; you never hardcode an upstream URL.

@@ -26,7 +26,8 @@ import { buildMcpOptions, resolveBaseAgentConfig } from "./runner.js";
 // the PreToolUse DLP hook wired in runClaudeQuery; see websearch_dlp.ts).
 // WebFetch joins it too (see webfetch_guard.ts's PreToolUse SSRF + secret
 // guard, wired the same way) — fail-closed, so this is safe to enable.
-const BASE_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"];
+// Task joins it for the milestone run loop's subagent fan-out (design §9.3).
+const BASE_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Task"];
 const MCP_TOOLS = [
   "mcp__aep__list_org_component_endpoints",
   "mcp__aep__get_remote_git_file_contents",
@@ -79,6 +80,25 @@ test("buildMcpOptions: allowedTools includes both WebSearch and WebFetch (D9)", 
 
   assert.ok(result.allowedTools.includes("WebSearch"));
   assert.ok(result.allowedTools.includes("WebFetch"));
+});
+
+// The milestone run loop fans big, independent issues out to subagents; without
+// Task in allowedTools the `aep` skill's fan-out section is unexecutable.
+test("buildMcpOptions: allowedTools includes Task, with and without MCP", () => {
+  assert.ok(buildMcpOptions(undefined, undefined).allowedTools.includes("Task"));
+  assert.ok(
+    buildMcpOptions("https://bff.example.com/internal/v1/mcp", "mcp-token-xyz").allowedTools.includes("Task"),
+  );
+});
+
+// Subagents inherit the parent's allowedTools, so the git tools stay in the set
+// and the main-agent-is-sole-git-writer rule is enforced by the skill's
+// deny-list, not by the tool list. Pinned so a future "just drop Bash for
+// subagents" idea has to confront that the seam does not exist here.
+test("buildMcpOptions: Bash stays in the base set alongside Task", () => {
+  const tools = buildMcpOptions(undefined, undefined).allowedTools;
+  assert.ok(tools.includes("Bash"));
+  assert.ok(tools.includes("Task"));
 });
 
 // --- resolveBaseAgentConfig: the defaults are pinned byte-identical to the

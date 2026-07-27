@@ -65,9 +65,9 @@ export AEP_TASK_KIND="${AEP_TASK_KIND:-implementation}"
 STUB_PORT="${STUB_PORT:-8377}"
 STUB_BIND="${STUB_BIND:-127.0.0.1}"
 IMAGE_TAG="${IMAGE_TAG:-aep-remote-worker:local}"
-# Alternate image recipe, e.g. Dockerfile.validation for validation
-# tasks (Playwright browsers + Go on a Debian base). Pair it with a
-# distinct IMAGE_TAG so the two variants don't clobber each other.
+# One image serves both task kinds. Override only to try an experimental
+# recipe; pair it with a distinct IMAGE_TAG so the variants don't clobber
+# each other.
 DOCKERFILE="${DOCKERFILE:-$WORKER_DIR/Dockerfile}"
 # The container reaches the host-side stub via host.docker.internal.
 export AEP_GIT_SERVICE_URL="http://host.docker.internal:${STUB_PORT}"

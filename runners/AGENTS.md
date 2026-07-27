@@ -10,5 +10,10 @@ edits (see `deployments/scripts/setup-k3d.sh`).
 
 ## Conventions
 
-- One public entry point (`src/index.ts`).
+- One entry point per pod (`src/oneshot.ts`); everything reachable from it.
 - Self-contained: all agent and SDK-specific wiring lives here.
+- **One image**, `remote-worker/Dockerfile`, serves BOTH task kinds
+  (`AEP_TASK_KIND=implementation` and `=validation`). It is Debian-based
+  because Playwright's browsers are glibc-linked; do not reintroduce a second,
+  slimmer image without moving the Helm/compose/release/`AGENT_RUNNER_IMAGE`
+  consumers with it. Build + k3d-import it locally with `make build-runner`.

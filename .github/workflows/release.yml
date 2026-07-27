@@ -45,11 +45,10 @@ jobs:
           - name: aep-mcp-server
             dockerfile: services/aep-mcp-server/Dockerfile
             context: .
+          # One runner image serves both task kinds (implementation and
+          # validation) — see runners/remote-worker/Dockerfile.
           - name: remote-worker
             dockerfile: runners/remote-worker/Dockerfile
-            context: runners/remote-worker
-          - name: remote-worker-validation
-            dockerfile: runners/remote-worker/Dockerfile.validation
             context: runners/remote-worker
           - name: console
             dockerfile: apps/console/Dockerfile
@@ -146,7 +145,6 @@ jobs:
           yq -i '.console.image.pullPolicy = "IfNotPresent"' /tmp/platform/values.yaml
           yq -i '.codingAgentDispatch.clusterGatewayProxy.image = "${{ env.IMAGE_PREFIX }}/cluster-gateway-proxy:${{ inputs.version }}"' /tmp/platform/values.yaml
           yq -i '.codingAgentRunner.image = "${{ env.IMAGE_PREFIX }}/remote-worker:${{ inputs.version }}"' /tmp/platform/values.yaml
-          yq -i '.validationRunner.image = "${{ env.IMAGE_PREFIX }}/remote-worker-validation:${{ inputs.version }}"' /tmp/platform/values.yaml
 
           helm package /tmp/platform --destination /tmp/charts
 
@@ -194,7 +192,6 @@ jobs:
           - \`ghcr.io/wso2/aep/collab:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/aep-mcp-server:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/remote-worker:${{ inputs.version }}\`
-          - \`ghcr.io/wso2/aep/remote-worker-validation:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/console:${{ inputs.version }}\`
           - \`ghcr.io/wso2/aep/cluster-gateway-proxy:${{ inputs.version }}\`"
 

@@ -4,7 +4,7 @@ This skill is vendored verbatim from Microsoft's `@playwright/cli` npm
 package, version `0.1.15` (the `skills/playwright-cli/` directory it
 ships for agent installation), under the Apache-2.0 license in
 `LICENSE`. Do not edit these files — refresh them from the package when
-bumping `PLAYWRIGHT_CLI_VERSION` in `Dockerfile.validation`:
+bumping `PLAYWRIGHT_CLI_VERSION` in `Dockerfile`:
 
 ```bash
 npm pack @playwright/cli@<version>

@@ -19,6 +19,7 @@ package codingagent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
@@ -172,6 +173,90 @@ func TestRetryAuthFailedBuild_ReMintsAndReTriggersAtCommit(t *testing.T) {
 	}
 	if stager.calls() != 1 {
 		t.Errorf("retry must re-mint the secret once, got %d", stager.calls())
+	}
+}
+
+// --- §9 runner contract: the milestone-keyed dispatch prompt ----------------
+
+// TestBuildPrompt_IsAMilestoneReferenceOnly pins the §9 contract: the dispatch
+// prompt names the milestone and defers EVERY step to the versioned `aep`
+// skill. It must not name an issue, a branch, or a PR-body token — those would
+// version with the BFF binary instead of with the skill.
+func TestBuildPrompt_IsAMilestoneReferenceOnly(t *testing.T) {
+	got := buildPrompt(12, "v3")
+
+	if !strings.Contains(got, "milestone 12") {
+		t.Errorf("prompt must name the milestone number, got %q", got)
+	}
+	if !strings.Contains(got, `"v3"`) {
+		t.Errorf("prompt must name the milestone title (quoted, as gh --milestone matches it), got %q", got)
+	}
+	if !strings.Contains(got, "`aep` skill") {
+		t.Errorf("prompt must defer the procedure to the aep skill, got %q", got)
+	}
+	for _, banned := range []string{"issue:", "issues/", "Closes #", "Resolves #", "git checkout", "gh pr create"} {
+		if strings.Contains(got, banned) {
+			t.Errorf("prompt must carry no procedure/issue anchor, but contains %q: %q", banned, got)
+		}
+	}
+}
+
+// TestRunCoding_WithoutMilestone_RefusesBeforeAnySideEffect pins the fail-fast:
+// a coding dispatch with no milestone reference is refused before the
+// component-ensure pre-flight runs, so a mis-wired caller cannot provision
+// anything or launch a runner whose prompt names milestone 0.
+func TestRunCoding_WithoutMilestone_RefusesBeforeAnySideEffect(t *testing.T) {
+	ensurer := &fakeEnsurer{}
+	row := codingRow("c1")
+	e := codingExecutorFor(t, ensurer, &ocmocks.ComponentClientMock{}, row)
+
+	req := codingDispatch(row)
+	req.MilestoneNumber = 0
+	req.MilestoneTitle = ""
+
+	err := e.Run(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "milestone reference") {
+		t.Fatalf("a coding dispatch without a milestone must be refused, got %v", err)
+	}
+	if len(ensurer.calls()) != 0 {
+		t.Errorf("refusal must precede the component-ensure pre-flight, got %v", ensurer.calls())
+	}
+}
+
+// TestBuildValidationPrompt_StaysIssueAnchored pins the other half of §9: the
+// validation dispatch is NOT re-keyed — one validation issue, one run.
+func TestBuildValidationPrompt_StaysIssueAnchored(t *testing.T) {
+	got := buildValidationPrompt("https://github.com/acme/widgets/issues/9", 9)
+
+	if !strings.Contains(got, "https://github.com/acme/widgets/issues/9") {
+		t.Errorf("validation prompt must name its issue URL, got %q", got)
+	}
+	if !strings.Contains(got, "Closes #9") {
+		t.Errorf("validation prompt must keep its Closes #N link contract, got %q", got)
+	}
+	if strings.Contains(got, "milestone") {
+		t.Errorf("validation dispatch must stay issue-anchored, got %q", got)
+	}
+}
+
+// TestRunCoding_ValidationWithoutProxy_RefusesWithTheRealReason pins the
+// deliberate keep: with one runner image the refusal is no longer about the
+// image, it is about K8sJobInput carrying no AEP_TASK_KIND or deadline.
+func TestRunCoding_ValidationWithoutProxy_RefusesWithTheRealReason(t *testing.T) {
+	row := codingRow("v1")
+	row.Component = ""
+	e := codingExecutorFor(t, &fakeEnsurer{}, &ocmocks.ComponentClientMock{}, row)
+
+	req := codingDispatch(row)
+	req.Task.Class = taskmeta.ClassValidation
+	req.MilestoneNumber, req.MilestoneTitle = 0, "" // validation is issue-anchored
+
+	err := e.Run(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "cluster-gateway-proxy path") {
+		t.Fatalf("validation without the proxy path must be refused, got %v", err)
+	}
+	if strings.Contains(err.Error(), "VALIDATION_RUNNER_IMAGE") {
+		t.Errorf("the refusal must no longer blame a second image, got %v", err)
 	}
 }
 

@@ -106,16 +106,12 @@ console:
     scopes: "openid profile email"
 
 codingAgentRunner:
-  # Docker image for the coding-agent runner Job. Dispatched directly as a
-  # K8s Job in the org's data-plane remote-worker namespace.
+  # Docker image for the runner Job — ONE image for both task kinds
+  # (implementation and validation; it bakes Playwright + chromium).
+  # Dispatched as a K8s Job in the org's data-plane remote-worker namespace.
+  # The release pipeline pins this to ghcr.io/wso2/aep/remote-worker:<version>;
+  # empty disables coding dispatch (it fails loudly).
   image: "ghcr.io/wso2/aep/remote-worker:latest"
-
-validationRunner:
-  # Docker image for the validation-task runner Job (Playwright + baked
-  # chromium). Empty disables validation dispatch (fails loudly at dispatch
-  # time). The release pipeline pins this to the released
-  # ghcr.io/wso2/aep/remote-worker-validation:<version>.
-  image: ""
 
 # Coding-agent dispatch + live-streaming wiring.
 #

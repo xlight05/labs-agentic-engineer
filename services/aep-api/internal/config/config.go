@@ -208,9 +208,11 @@ type Config struct {
 	RCAAgentAnthropicPushNamespace  string
 	RCAAgentAnthropicPushSecretName string
 
-	// AgentRunnerImage is the docker image the per-task coding-agent
-	// Job uses. Pinned at deploy time; `:latest` is OK in dev but the
-	// cloud release-binding should resolve to a digest.
+	// AgentRunnerImage is the docker image the runner Job uses — ONE image
+	// for BOTH task kinds (implementation and validation; it bakes
+	// Playwright + chromium). Pinned at deploy time, no built-in default;
+	// `:latest` is OK in dev but the cloud release-binding should resolve to
+	// a digest. Empty ⇒ dispatch is off and fails loudly.
 	AgentRunnerImage string
 
 	// Temporal holds the workflow-engine connection settings for the devflow
@@ -218,11 +220,10 @@ type Config struct {
 	// functional with the workflow endpoints answering 503.
 	Temporal TemporalConfig
 
-	// AgentValidationRunnerImage is the docker image a VALIDATION Job uses:
-	// the Playwright-capable runner variant (Dockerfile.validation — Debian
-	// base + baked chromium + playwright-cli). Empty disables validation
-	// dispatch (the validation executor fails loudly), since the alpine coding
-	// image cannot run chromium.
+	// Deprecated: the validation task kind now dispatches AgentRunnerImage —
+	// one runner image serves both kinds. This field is read by nothing and
+	// survives only until the composition root drops its
+	// CodingExecutor.WithValidationImage call; delete both together.
 	AgentValidationRunnerImage string
 
 	// AgentClusterSecretStore is the ESO ClusterSecretStore that backs
