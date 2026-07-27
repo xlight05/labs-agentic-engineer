@@ -39,16 +39,20 @@ type RegisterFunc func(event, action string, h func(ctx context.Context, event, 
 // its detection and its GitHub writes, and simply has nobody to tell — which
 // is exactly the state before a supervisor exists.
 type Ports struct {
-	Runs     RunStore
-	Cycles   CycleStore
-	Issues   IssueClient
-	PRs      PRReader
-	Merger   PRMerger
-	Repos    RepoLookup
-	Design   DesignReader
-	Builds   BuildTrigger
-	Signaler RunSignaler
-	Starter  RunStarter
+	Runs   RunStore
+	Cycles CycleStore
+	Issues IssueClient
+	PRs    PRReader
+	Merger PRMerger
+	Repos  RepoLookup
+	Design DesignReader
+	Builds BuildTrigger
+	// Components provisions a component's OpenChoreo Component CR immediately
+	// before its first build. Optional — an unwired ensurer means a first-ever
+	// component's build fails "Component not found".
+	Components ComponentEnsurer
+	Signaler   RunSignaler
+	Starter    RunStarter
 	// PlatformSender is the platform's own GitHub login (the App bot,
 	// "<slug>[bot]"). Empty disables echo suppression — correct for a dev
 	// install with no App, where every write comes from a human PAT.
@@ -62,6 +66,12 @@ type Events struct {
 
 // New wires the event plane.
 func New(p Ports) *Events { return &Events{p: p} }
+
+// SetComponentEnsurer wires the pre-build component provisioning after
+// construction. It is a setter rather than a Ports field for one reason: the
+// runtime-config emitter it composes with is built AFTER the event plane at the
+// composition root, and a half-wired ensurer would silently skip the emit.
+func (e *Events) SetComponentEnsurer(c ComponentEnsurer) { e.p.Components = c }
 
 // Compile-time proof the event plane is the build-terminal observer the
 // watcher reports to (the root port that keeps them peer sub-packages).

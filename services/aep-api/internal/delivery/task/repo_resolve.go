@@ -45,13 +45,3 @@ func resolveProjectRepo(ctx context.Context, repos RepoResolver, orgID, projectI
 	}
 	return repo, owner, name, nil
 }
-
-// resolveRepoFullName is resolveProjectRepo reduced to the "owner/name" full
-// name the funnel and the executions rows key on.
-func resolveRepoFullName(ctx context.Context, repos RepoResolver, orgID, projectID string) (string, error) {
-	_, owner, name, err := resolveProjectRepo(ctx, repos, orgID, projectID)
-	if err != nil {
-		return "", err
-	}
-	return owner + "/" + name, nil
-}

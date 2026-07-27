@@ -84,8 +84,7 @@ type IssueOps interface {
 	// and aep:attention flags.
 	AddIssueLabels(ctx context.Context, owner, repo string, cred secrets.Credential, number int, labels []string) error
 	// RemoveIssueLabel removes one label from an issue. A 404 (already absent)
-	// is treated as success. Used to consume the aep:execute command label and
-	// clear stale aep:status/* projections.
+	// is treated as success.
 	RemoveIssueLabel(ctx context.Context, owner, repo string, cred secrets.Credential, number int, label string) error
 	// SetIssueLabels replaces the issue's entire label set (labels absent from
 	// the slice are removed). Used by block-repair projection when the full set

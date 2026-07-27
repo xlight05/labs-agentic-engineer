@@ -19,27 +19,30 @@ package execution
 import (
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
-// The stream closes ONLY on a deployed Task. "abandoned" must NOT settle: during
-// the merge→build handoff the issue auto-closes ~2s before the build Execution
-// row is admitted, so the Task derives a transient "abandoned" in that window —
-// closing on it froze the detail page and dropped the build/OC logs.
-func TestIsTaskSettled_OnlyDeployedCloses(t *testing.T) {
-	if !isTaskSettled(string(taskmeta.StatusDeployed)) {
-		t.Error("deployed must settle the stream (nothing more will happen)")
+// The stream closes when the Task's issue is CLOSED, and only then: an open
+// issue may still gain a pull request, a merge and a deployment, and closing
+// the stream on it would freeze the detail page.
+//
+// The old rule waited for `deployed` and had to explicitly refuse to settle on
+// the transient `abandoned` the merge→build handoff produced. Neither status is
+// derivable any more — the vocabulary is open/closed — so the rule is now the
+// fact itself.
+func TestIsTaskSettled_ClosedIssueSettles(t *testing.T) {
+	if !isTaskSettled(delivery.DerivedStatusMerged) {
+		t.Error("a closed issue must settle the stream — nothing more will arrive on it")
 	}
-	if isTaskSettled(string(taskmeta.StatusAbandoned)) {
-		t.Error("abandoned must NOT settle — it is transient during the merge→build handoff")
+	if isTaskSettled(delivery.DerivedStatusPending) {
+		t.Error("an open issue must keep the stream open")
 	}
-	for _, s := range []taskmeta.DerivedStatus{
-		taskmeta.StatusFailed, taskmeta.StatusRejected, taskmeta.StatusBuilding,
-		taskmeta.StatusMerged, taskmeta.StatusInProgress, taskmeta.StatusReadyForReview,
-		taskmeta.StatusPending, taskmeta.StatusOnHold,
-	} {
-		if isTaskSettled(string(s)) {
-			t.Errorf("%q must keep the stream open, not settle", s)
+	// A status this build does not emit must never settle the stream: an
+	// unrecognised value means the producer changed and the reader did not, and
+	// holding a cheap stream open is the safe direction.
+	for _, s := range []string{"", "deployed", "building", "abandoned", "on_hold"} {
+		if isTaskSettled(s) {
+			t.Errorf("%q is not an emitted status and must not settle the stream", s)
 		}
 	}
 }

@@ -324,19 +324,15 @@ func toExecView(e *delivery.Execution) *execView {
 	}
 }
 
-// isTaskSettled reports when the stream may send `done` and close: ONLY a
-// deployed Task is truly finished.
+// isTaskSettled reports when the stream may send `done` and close: the Task's
+// issue is closed, so nothing further will arrive on it.
 //
-// "abandoned" is deliberately NOT settled. During the normal merge→build
-// handoff the issue auto-closes (GitHub closes it on a "Closes #N" merge) a
-// beat BEFORE the build Execution row is admitted, so the Task derives a
-// TRANSIENT "abandoned" (closed issue + a PR that still looks open, because no
-// build row exists yet) for that ~2s window. Closing on it froze the detail
-// page on "abandoned" and dropped the build/OC logs that appeared moments
-// later. Every non-deployed status keeps the stream open (as failed/rejected
-// already did): a transient abandoned then advances to building→deployed and
-// closes there, and a genuinely abandoned Task just holds a cheap open stream
-// until the tab closes.
+// It reads the degraded derived status (delivery.DerivedStatusMerged), which is
+// exactly "the issue is closed". The old rule waited for `deployed` and had to
+// tolerate a transient `abandoned` in the ~2s window between GitHub closing the
+// issue on a "Closes #N" merge and the build execution row being admitted. That
+// window is gone with the per-issue execution rows: a closed issue is terminal
+// for this stream, and the deployment's own progress lives on the run surface.
 func isTaskSettled(derived string) bool {
-	return taskmeta.DerivedStatus(derived) == taskmeta.StatusDeployed
+	return derived == delivery.DerivedStatusMerged
 }

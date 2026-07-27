@@ -175,6 +175,25 @@ type BuildTrigger interface {
 	ListBuildRuns(ctx context.Context, orgID, projectID, component string) ([]BuildRun, error)
 }
 
+// ComponentEnsurer provisions a component's OpenChoreo Component CR from the
+// design facts, idempotently, and emits any runtime config that rides on it.
+//
+// It is called by the merged-PR fan-out, immediately before the component's
+// build is triggered. That is the ONLY moment left that knows a specific
+// component is about to be built: a cycle is scoped to a MILESTONE and may
+// touch several components, so the dispatch path — which used to run this as a
+// per-component pre-flight — no longer has a component to name. Without it a
+// first-ever component's build fails with "Component not found".
+//
+// Satisfied by an app-root adapter over the projects component service plus the
+// runtime-config emitter; the event plane names neither.
+type ComponentEnsurer interface {
+	// EnsureComponent creates or updates the component's CR. An error blocks
+	// that component's build — triggering a build for a component that does not
+	// exist would only fail later and less clearly.
+	EnsureComponent(ctx context.Context, orgID, projectID, component string) error
+}
+
 // RunSignaler delivers a signal to a milestone RUN.
 //
 // It is a port rather than the root Signaler because the root Signaler routes

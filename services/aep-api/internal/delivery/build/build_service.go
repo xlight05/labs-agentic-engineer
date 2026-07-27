@@ -15,12 +15,13 @@
 // under the License.
 
 // Package build is the public build surface (contract: build-project /
-// get-project-build). POST validates the whole spec, cuts the single `v<N>`
-// version tag, claims the version (supersede the previous milestone, mint this
-// one, admit the run row that is the spec-run mutex) and returns the tag, then
-// plans the version's Tasks into its milestone detached from the request — the
-// one button that turns an approved spec into a delivery increment. GET maps
-// the run's live status onto the contract's BuildStatus.
+// list-project-builds / get-build-preflight). POST validates the whole spec,
+// cuts the single `v<N>` version tag, claims the version (supersede the
+// previous milestone, mint this one, admit the run row that is the spec-run
+// mutex) and returns the tag, then plans the version's Tasks into its milestone
+// detached from the request — the one button that turns an approved spec into a
+// delivery increment. The list read is the version ledger, straight from the
+// run rows.
 package build
 
 import (
@@ -28,7 +29,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
@@ -51,19 +51,16 @@ type EdgeError struct {
 
 func (e *EdgeError) Error() string { return e.Message }
 
-// ErrBuildAlreadyRunning is the "a dev workflow is already running for this
-// project" sentinel the core build sequence returns. The HTTP edge maps it
-// to a 409; the non-HTTP StartProjectBuild entry point treats it as success
-// (idempotent trigger).
+// ErrBuildAlreadyRunning is the "a spec run is already live for this project"
+// sentinel the core build sequence returns. The HTTP edge maps it to a 409; the
+// non-HTTP StartProjectBuild entry point treats it as success (idempotent
+// trigger).
 var ErrBuildAlreadyRunning = errors.New("a build is already running for this project")
 
 // Service backs the build endpoints (strict entry points in strict.go).
 type Service struct {
-	runner WorkflowRunner
-	store  RunStore
 	repos  RepoLookup
 	tagger SpecTagger
-	tasks  TaskReader
 	coord  *InputsCoordinator
 	design PreflightDesignReader
 	// plan is the milestone plan path (milestone_plan.go), wired separately via
@@ -74,11 +71,8 @@ type Service struct {
 
 // Deps carries the service's ports.
 type Deps struct {
-	Runner WorkflowRunner
-	Store  RunStore
 	Repos  RepoLookup
 	Tagger SpecTagger
-	Tasks  TaskReader
 	// Coord runs the drawer inputs' pre-tag work + provision-payload assembly.
 	// Nil-safe: a build with no coordinator (and no inputs) behaves exactly as
 	// before this feature.
@@ -96,7 +90,7 @@ type Deps struct {
 
 // NewService wires the build service.
 func NewService(d Deps) *Service {
-	return &Service{runner: d.Runner, store: d.Store, repos: d.Repos, tagger: d.Tagger, tasks: d.Tasks, coord: d.Coord, design: d.Design}
+	return &Service{repos: d.Repos, tagger: d.Tagger, coord: d.Coord, design: d.Design}
 }
 
 // --- wire shapes (names drive the generated schema names — keep them exactly
@@ -152,44 +146,21 @@ type BuildResponse struct {
 	Failures []InputFailure `json:"failures,omitempty"`
 }
 
-// BuildStatusTask is one task's progress inside a build. IssueNumber links the
-// row to its GitHub issue (and the task-log stream) — the identity that
-// replaced the old title-join.
-type BuildStatusTask struct {
-	IssueNumber int64  `json:"issueNumber"`
-	Title       string `json:"title"`
-	Status      string `json:"status" enum:"started,in_progress,completed,failed"`
-}
-
-// BuildStatus is the get-project-build response.
-type BuildStatus struct {
-	Status         string `json:"status" enum:"started,in_progress,completed,failed"`
-	WorkflowStatus string `json:"workflow_status"`
-	// Reason is the failure detail for a failed build (empty otherwise) — the
-	// devflow's recorded error, so the console can show WHY it failed.
-	Reason string            `json:"reason,omitempty"`
-	Tasks  []BuildStatusTask `json:"tasks,omitempty"`
-}
-
-// BuildTally is one build's frozen task counts (the dev run's own tally,
-// written by the workflow — not a live task recount).
-type BuildTally struct {
-	Total  int64 `json:"total"`
-	Done   int64 `json:"done"`
-	Failed int64 `json:"failed"`
-	Active int64 `json:"active"`
-}
-
-// BuildSummary is one entry of list-project-builds: the newest run for a spec
-// version tag. Status shares get-project-build's vocabulary; a list read has
-// no live workflow query, so "started" never occurs here.
+// BuildSummary is one entry of list-project-builds: a spec version tag and the
+// state of the newest milestone run that has worked it. It is a DB-only row —
+// no GitHub, no cluster — which is what lets the console poll the ledger while
+// a run is live without spending GitHub rate. Task counts are deliberately
+// absent: their only honest source is GitHub, and the console already has them
+// from the /tasks response on screen.
 type BuildSummary struct {
-	Tag    string `json:"tag"`
-	Status string `json:"status" enum:"started,in_progress,completed,failed"`
-	// Reason is the failure detail for a failed build (empty otherwise) — the
-	// devflow's recorded error, surfaced beside the Failed badge in the console.
+	Tag string `json:"tag"`
+	// MilestoneNumber is the platform key the tag resolves to — the handle the
+	// version's run story (list-build-runs) is read by.
+	MilestoneNumber int    `json:"milestoneNumber"`
+	Status          string `json:"status" enum:"started,in_progress,completed,failed"`
+	// Reason is the run's terminal reason for a failed version (empty
+	// otherwise), surfaced beside the Failed badge in the console.
 	Reason      string     `json:"reason,omitempty"`
-	Tasks       BuildTally `json:"tasks"`
 	StartedAt   time.Time  `json:"startedAt"`
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 }
@@ -202,10 +173,10 @@ type BuildList struct {
 // StartProjectBuild is the non-HTTP entry point that starts a project build with
 // NO drawer inputs — the provider-build auto-kick behind provisioning's
 // ProviderBuildTrigger (issue #164, Task 4). It reuses the exact build sequence
-// (Ready → mutexes → repo → pre-tag → dependency gate → tag → claim → plan) and
+// (mutex → repo → pre-tag → dependency gate → tag → claim → plan) and
 // is idempotent: a build already in flight already satisfies the trigger, so
 // ErrBuildAlreadyRunning is treated as success (nil). Any other failure
-// propagates so the funnel logs it and the sweep heals later.
+// propagates so the caller logs it and the reconcile sweep heals later.
 func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string) error {
 	_, failures, err := s.Run(ctx, orgID, projectID, nil)
 	if err != nil {
@@ -235,16 +206,6 @@ func (s *Service) StartProjectBuild(ctx context.Context, orgID, projectID string
 // inputs are applied but before the tag is cut — see the inline comment at
 // its call site for why that ordering matters.
 func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []BuildInputItem) (string, []InputFailure, error) {
-	// An unstartable workflow must never claim a version tag — probe first.
-	if err := s.runner.Ready(); err != nil {
-		return "", nil, &EdgeError{Status: 503, Message: "temporal_unavailable"}
-	}
-	// One dev workflow per project at a time.
-	if running, lerr := s.store.RunningDevByProject(ctx, orgID, projectID); lerr != nil {
-		return "", nil, &EdgeError{Status: 500, Message: "lookup running build"}
-	} else if running != nil {
-		return "", nil, ErrBuildAlreadyRunning
-	}
 	// One live SPEC RUN per project — the milestone model's mutex (§5). The
 	// partial unique index behind TryAdmit is the authority; this read is what
 	// turns the race into a conflict that names itself, and it runs BEFORE the
@@ -322,65 +283,6 @@ func (s *Service) Run(ctx context.Context, orgID, projectID string, inputs []Bui
 	slog.InfoContext(ctx, "build started",
 		"org", orgID, "project", projectID, "tag", res.Tag, "specStatus", res.Status)
 	return res.Tag, nil, nil
-}
-
-// taskStatuses builds the version's task list, DURABLE-first: the source is the
-// lineage-tag read (every task stamped with this build's tag), so an archived
-// run still answers with its full list and every row carries its issueNumber.
-// The live workflow refs (empty for an archived/failed query) then REFINE the
-// status of tasks still in flight. A durable-read hiccup degrades to whatever
-// the workflow refs carry (numbered placeholders) — build status must never
-// 500 because a GitHub read stumbled.
-func (s *Service) taskStatuses(ctx context.Context, orgID, projectID, tag string, refs []delivery.DevTaskRef) []BuildStatusTask {
-	byIssue := map[int]*BuildStatusTask{}
-	order := make([]int, 0)
-
-	// 1. Durable base: the tasks stamped with this build's lineage tag. The
-	// aep:spec/<tag> label scopes the read server-side, so every returned row
-	// already belongs to this version.
-	if s.tasks != nil {
-		views, err := s.tasks.ListByTag(ctx, orgID, projectID, "all", tag)
-		if err != nil {
-			slog.WarnContext(ctx, "build status: durable task read failed",
-				"org", orgID, "project", projectID, "error", err)
-		}
-		for _, v := range views {
-			bt := BuildStatusTask{
-				IssueNumber: int64(v.IssueNumber),
-				Title:       v.Title,
-				Status:      statusFromDerived(v.DerivedStatus),
-			}
-			byIssue[v.IssueNumber] = &bt
-			order = append(order, v.IssueNumber)
-		}
-	}
-
-	// 2. In-flight refinement: the running workflow's own view of each task
-	// wins while it is live; a ref for an issue the durable read has not yet
-	// surfaced is appended as a numbered placeholder.
-	for _, ref := range refs {
-		if bt, ok := byIssue[ref.Issue]; ok {
-			bt.Status = taskStatus(ref)
-			continue
-		}
-		bt := BuildStatusTask{
-			IssueNumber: int64(ref.Issue),
-			Title:       fmt.Sprintf("Task #%d", ref.Issue),
-			Status:      taskStatus(ref),
-		}
-		byIssue[ref.Issue] = &bt
-		order = append(order, ref.Issue)
-	}
-
-	if len(order) == 0 {
-		return nil
-	}
-	sort.Ints(order)
-	out := make([]BuildStatusTask, 0, len(order))
-	for _, n := range order {
-		out = append(out, *byIssue[n])
-	}
-	return out
 }
 
 // mapPreTagError maps the coordinator's pre-tag failures onto the edge

@@ -2,9 +2,10 @@
 
 > **L2 · a domain.** Part of the [aep-api architecture](../../README.md).
 
-Take a versioned Spec end-to-end: plan the Tasks, route every Execution through the ONE funnel, dispatch
-coding agents, build/deploy the components, and run validation. **Single write-authority over the
-executions store and the Temporal dev/task/validation workflows.**
+Take a versioned Spec end-to-end: cut the version, plan its Tasks into a GitHub MILESTONE, and run one
+supervised loop that dispatches the coding agent at that milestone until it settles — merging, building,
+deploying and validating along the way. **Single write-authority over the milestone-run store and the one
+Temporal workflow that drives it.**
 
 ```mermaid
 flowchart LR
@@ -12,22 +13,20 @@ flowchart LR
   INT(["/internal/v1"]) -.-> VAL
   GH[["GitHub webhooks"]] --> EVENT
   subgraph delivery
-    HTTP["httpapi — build · task · execution handlers"]
+    HTTP["httpapi — build · task · execution · runread handlers"]
     subgraph ROOT["root (shared kernel — types + ports + Temporal infra, no gorm)"]
-      K1["Executor · DispatchRequest · TaskFacts · TaskStreamHub"]
-      K2["Runtime · Signaler · signals · workflow I/O vocab (DevFlowInput/Status, DevPhase*…)"]
+      K1["Runtime · TaskStreamHub · ProvisionInput"]
+      K2["milestone model — labels · run signals · StartRunRequest · RunStatus · workflow id"]
       K3["read DTOs — TaskView · ExecutionView · Lineage · TaskDetail"]
-      K4["milestone model — labels · run signals · StartRunRequest · RunStatus · workflow id"]
-      K5["merge→builds contract — DiffComponents · BuildRunName · BuildTerminalObserver · MilestoneDispatcher"]
+      K4["merge→builds contract — DiffComponents · BuildRunName · BuildTerminalObserver · MilestoneDispatcher"]
     end
     BUILD["build (buildpipe)"] --> ROOT
     TASK["task (taskflow)"] --> ROOT
-    EXEC["execution — funnel/registry/sweep/TaskStreamService"] --> ROOT
+    EXEC["execution — the executions READ surface + task-log stream"] --> ROOT
     EVENT["eventcore — merge policy · build fan-out · issue minting · sweep"] --> ROOT
-    RUN["run — the milestone run supervisor (one Temporal workflow)"] --> ROOT
+    RUN["run — the milestone run supervisor (one Temporal workflow + its worker)"] --> ROOT
     RREAD["runread — the run read surface: version runs · progress SSE · cancel"] --> ROOT
     CODE["codingagent"] --> ROOT
-    DEV["devflow — Temporal workflows/activities/worker"] --> ROOT
     VAL["validation — S2S context/credentials · report verdict"] --> ROOT
     HTTP --> BUILD & TASK & EXEC & RREAD
     RREAD -.->|RunCanceller| RUN
@@ -39,17 +38,18 @@ flowchart LR
     BUILD -.->|SpecPlanner| TASK
     RUN -.->|ValidationCoordinator| VAL
   end
-  EXEC --> EXECS[("executions · workflow_runs")]
+  EXEC --> EXECS[("executions")]
   EVENT --> RUNS[("milestone_runs · run_cycles · run_cycle_logs")]
   RREAD --> RUNS
   BUILD --> RUNS
+  TASK --> RUNS
   RUN --> RUNS
-  DEV --> TMPRL[["Temporal"]]
-  RUN --> TMPRL
+  RUN --> TMPRL[["Temporal"]]
   BUILD -->|SpecTagger · SaveSpec| SPEC[[spec]]
   BUILD -->|repo full-name · milestones · supersede| SC[[sourcecontrol]]
   BUILD -->|GateResolver| DEP[[dependencies/provisioning]]
-  EVENT -->|issues · merges · builds| SC
+  EVENT -->|issues · merges · builds · component CRs| SC
+  TASK -->|milestone membership| SC
   CODE -->|org keys · git tokens| SEC[[platform/secrets]]
   EXEC -->|ExecutionReader| OPS[[ops]]
 ```
@@ -57,23 +57,22 @@ flowchart LR
 ## Internal shape — kernel-root + feature sub-packages
 
 Delivery is **not** the flat-root-of-services layout spec/organization/ops use, and **not** per-op slices.
-Its absorbed features are densely cross-coupled AND carry the load-bearing `task ⊥ execution` split, which
-the ordinary rules (`root ⊥ slice`, `slice ⊥ sibling`) cannot satisfy flat. The resolution: **anything
-referenced across a feature boundary is a TYPE or PORT that lives in the ROOT; the feature logic that uses
-it lives in a sub-package importing only the root.** `task` and `execution` are then peer sub-packages that
-never import each other (the split survives as an internal boundary, re-asserted by `TestTaskExecutionSplit`),
-and every former feature→feature edge becomes a legal slice→root type reference.
+Its absorbed features are densely cross-coupled AND carry a load-bearing split — the GitHub-facing Task
+surface must never reach the dispatcher — which the ordinary rules (`root ⊥ slice`, `slice ⊥ sibling`)
+cannot satisfy flat. The resolution: **anything referenced across a feature boundary is a TYPE or PORT
+that lives in the ROOT; the feature logic that uses it lives in a sub-package importing only the root.**
+`task` and `run` are then peer sub-packages that never import each other (`TestTaskRunSplit` re-asserts
+it), and every former feature→feature edge becomes a legal slice→root type reference.
 
 | Sub-package | Owns | Reaches the root for |
 |---|---|---|
-| `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, **the milestone plan path** (supersede the previous version, mint `v<N>`'s milestone, admit the run row, then plan its Tasks and mint its gates), builds history, dep-drawer preflight | `Runtime`, the workflow I/O vocab, `MilestoneRun`/`StartRunRequest`, `TaskView` (via `TaskReader`) and the planner (via `SpecPlanner`) |
-| `task` (taskflow) | GitHub-native Task Commands/Reads/Plan + list/get/promote handlers. The plan turn mints one **prose** issue per Task **into the version's milestone**, assigned at creation | the read DTOs and the label vocabulary; reaches the funnel via the `Dispatcher` port |
-| `execution` | the ONE funnel (admit/finish/reevaluate), registry, sweep, `TaskStreamService`, `OpsExecutionReader` | `Executor`/`DispatchRequest`/`TaskFacts`, `Signaler`, `TaskStreamHub` |
+| `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, **the milestone plan path** (supersede the previous version, mint `v<N>`'s milestone, admit the run row, then plan its Tasks and mint its gates), the version ledger, dep-drawer preflight | `MilestoneRun`/`StartRunRequest`, and the planner via `SpecPlanner` |
+| `task` (taskflow) | the GitHub-native Task READ surface (list/get, scoped to a version by milestone membership) + the plan turn, which mints one **prose** issue per Task **into the version's milestone**, assigned at creation; plus the SRE/RCA handoff's adoption leg | the read DTOs, the milestone label vocabulary, and the run rows (via `MilestoneResolver`) |
+| `execution` | the executions READ surface: the per-Task progress endpoint, the task-log SSE stream, `OpsExecutionReader`. It writes nothing and dispatches nothing — the only execution rows left are the provisioning gates' | `TaskStreamHub`, the executions kernel |
 | `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals), `DiffComponents`/`BuildRunName` and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
 | `run` | the milestone run SUPERVISOR: the wait state + dispatch predicate, the cycle loop, the four budgets + no-progress + ceiling, the validation cycle, settle, and cancel. Plus the `Supervisor` handle the event plane and the build click signal and start runs through | `Runtime`, the milestone model, `RunStatus`/`MilestoneRunWorkflowID`, `MilestoneDispatch`, `DiffComponents`/`BuildRunNamePrefix`; **no GitHub client, no gorm** |
 | `runread` | the run READ surface: a version's runs + their cycles, ONE SSE stream stitching the per-cycle agent logs, and cancel. Owns no state and decides nothing | the run/cycle entities and `IsTerminalRunState`; reaches the pod log through `CycleLogReader` and the supervisor through `RunCanceller`, so it drags in neither a cluster client nor a workflow engine |
-| `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler`, `MilestoneDispatcher` |
-| `devflow` | the Temporal dev/task/validation workflows, activities, worker — and the worker itself, which the supervisor rides through `AlsoRegister` | `Runtime`, `Signaler`, the workflow I/O vocab |
+| `codingagent` | the CodingExecutor (ONE dispatch entry point: launch a cycle's agent Job), the build-auth retry, the job watchers and the Job templates | `MilestoneDispatch`/`MilestoneDispatcher`, `TaskStreamHub`, `BuildTerminalObserver` |
 | `validation` | the two S2S validation runner callbacks (context / test-credentials), the validation issue, and the report → verdict rule | — (no cross-edges; least entangled) |
 | `httpapi` | the aggregator: embeds build/task/execution/runread handlers; **holds `Deps`** (see below) | imports the sub-packages (the exempt aggregator) |
 
@@ -84,14 +83,15 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 ## Ports
 | Port | Dir | Peer · contract |
 |---|---|---|
-| `Dispatcher` / `Reevaluator` | offers | `task` → the funnel's single dispatch door (root type, satisfied by `execution`) |
-| `TaskReader` (returns root `TaskView`) | needs | `build` → the durable GitHub⋈executions read (satisfied by `*task.Reads` at the root) |
+| `Adopter` (`AdoptIssue`) | needs | `task` → the event plane. The handoff's dispatch leg: file a bare issue under the deployed version's milestone and start an incident run over it |
+| `MilestoneResolver` (`MilestoneNumberForTag`) | needs | `task` → the root run repository. A `?tag=` query is milestone membership, resolved through the platform's own rows |
 | `SpecTagger` (`*spec.SpecSaveResult`) · `SpecCollector` · `AuthDeriver` | needs | `spec` — the whole-spec gate + tag cut + design reads |
 | `RepoLookup` (`owner/name`) | needs | `sourcecontrol` — repo full-name resolution |
 | org-credential reads · `AnthropicKeyResolver` | needs | `platform/secrets` / P3a org repositories — coding-agent runner secrets |
 | `ExecutionReader` (`ops.ExecutionFact`) | offers | `ops` — latest-execution-per-kind correlation (`execution.OpsExecutionReader`, P6-retired the app bridge) |
 | `BuildTerminalObserver` (root) | offers | the OpenChoreo watcher → the event plane: a settled build reported outwards, so watcher and event plane stay peer sub-packages |
-| `MilestoneDispatcher` (root, over `MilestoneDispatch`) | offers | the coding agent → the supervisor: launch one agent run at a milestone and answer with its Job ref. The dispatch prompt is a milestone reference; the runner discovers its own working set. Satisfied by `*codingagent.CodingExecutor`, which launches the cycle's Job through the SAME chain as a funnel dispatch and writes no execution row |
+| `MilestoneDispatcher` (root, over `MilestoneDispatch`) | offers | the coding agent → the supervisor: launch one agent run at a milestone and answer with its Job ref. The dispatch prompt is a milestone reference; the runner discovers its own working set. Satisfied by `*codingagent.CodingExecutor`, which writes no execution row — the cycle record is the supervisor's bookkeeping |
+| `ComponentEnsurer` | needs | `eventcore` → the projects component service + the runtime-config emitter. Provision a component's OpenChoreo CR immediately before its first build; see the invariant below |
 | `RunReader` · `CycleReader` · `CycleLogReader` · `RunCanceller` | needs | `runread` → the root run/cycle repositories, `codingagent`'s pod-log reader, and `*run.Supervisor`. Four reads and one write, which is the whole dependency surface of the read model |
 | `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, and `*run.Supervisor` satisfies both |
 | `RunStore` · `CycleStore` · `MilestoneReader` · `PRReader` · `DesignReader` · `BuildReader` · `ValidationCoordinator` | needs | `run` → the root repositories, `sourcecontrol`, the design reader, `clients/openchoreo` and `delivery/validation`. Every I/O the loop performs, named once; `BuildReader` is read-ONLY because the supervisor never triggers a build |
@@ -104,9 +104,8 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | `ValidationContext` · `ValidationCredentials` | offers | the S2S runner callbacks (`/internal/v1`, via the internalServer — not the public edge) |
 
 ## Owns
-- The **executions** write-API (admit/finish/reevaluate through the funnel) and **workflow_runs**; the
-  Temporal `Runtime`, `Signaler`, and the dev/task/validation workflows.
-- The **build click's whole sequence** (`build`): probe → repo → drawer pre-tag work → dependency hard
+- The **executions** store (now provisioning gates only) and the Temporal `Runtime` + the one workflow on it.
+- The **build click's whole sequence** (`build`): mutex → repo → drawer pre-tag work → dependency hard
   gate → whole-spec gate + `v<N>` tag cut → supersede → milestone → run row → plan. The ORDER is the
   domain fact `build` owns; the two halves it does not own (the planning turn, the gate resolvers) are
   root ports.
@@ -123,16 +122,16 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   owns the four budgets, the no-progress rule, the cycle ceiling, the validation cycle and settle — and
   nothing else: it detects no event and writes no issue.
 - **Persistence**: every gorm in this domain sits at the ROOT (the fence `TestGormFencedToDomainRepository`
-  draws), as single write-authority — `repository_execution.go` · `repository_workflow_run.go` ·
-  `repository_coding_agent_log.go` · `repository_run.go` · `repository_cycle.go` ·
-  `repository_run_cycle_log.go` over the `execution.go` / `workflow_run.go` / `coding_agent_log.go` /
-  `milestone_run.go` / `run_cycle.go` / `run_cycle_log.go` entities. Their tables are `executions` ·
-  `workflow_runs` · `coding_agent_logs` · `milestone_runs` · `run_cycles` · `run_cycle_logs`.
+  draws), as single write-authority — `repository_execution.go` · `repository_coding_agent_log.go` ·
+  `repository_run.go` · `repository_cycle.go` · `repository_run_cycle_log.go` over the `execution.go` /
+  `coding_agent_log.go` / `milestone_run.go` / `run_cycle.go` / `run_cycle_log.go` entities. Their tables
+  are `executions` · `coding_agent_logs` · `milestone_runs` · `run_cycles` · `run_cycle_logs`.
 
 ## Invariants — don't break
-- **`task ⊥ execution`.** The GitHub-facing half (`task`) and the platform-owned half (`execution`) are
-  peer sub-packages that never import each other; `task` reaches the funnel only through the root
-  `Dispatcher` port. `TestTaskExecutionSplit` + `slice ⊥ sibling` both enforce it.
+- **`task ⊥ run`.** The GitHub-facing Task surface and the run supervisor are peer sub-packages that never
+  import each other, in either direction. Dispatch has exactly ONE door — a run works a milestone — so a
+  `task` that could reach the supervisor would be a second door with the run's budgets bypassed.
+  `TestTaskRunSplit` + `slice ⊥ sibling` both enforce it.
 - **One active spec run per project.** At most one non-terminal (`waiting`/`running`) `spec-build` milestone
   run exists per (org, project) — a partial unique index (`ux_milestone_runs_spec_active`, created by the
   `milestone_runs` migration; AutoMigrate cannot express one) that admission hits with
@@ -150,19 +149,25 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   recorded on a run row, never by matching titles against GitHub (titles are renamable, and title filters
   are case-insensitive while create-uniqueness is not). This is what keeps the reconcile sweep sound: a
   superseded milestone holds no open `aep` issue, so the sweep's trigger never fires on it.
-- **A planned Task's body is prose; nothing parses it.** The milestone is the version pin, the `aep` label
-  is the working-set marker, and ordering is the "Depends on #N" lines the AGENT honours. Dedupe on
-  re-plan is `taskmeta.TitleSlug` against the milestone's own issues, which makes reconcile additive-only
-  and a crash re-run a no-op. Gates (`aep:provision`) and the validation issue (`aep:validation`) are
-  minted elsewhere and deliberately do NOT carry `aep` — a gate is a dispatch hold, never agent work.
+- **Every issue body is prose; nothing platform-side parses one.** That holds for planned Tasks, for
+  dispatch gates and for the validation issue alike: the milestone is the version pin, LABELS carry every
+  routable fact, and ordering is the "Depends on #N" lines the AGENT honours. Dedupe on re-plan is the
+  title slug against the milestone's own issues, which makes reconcile additive-only and a crash re-run a
+  no-op. Gates (`aep:provision` + `aep:dep/<slug>`, minted by `dependencies/provisioning`) and the
+  validation issue (`aep:validation`) deliberately do NOT carry `aep` — a gate is a dispatch hold and the
+  validation issue is a phase of the run, and neither may hold the settle predicate open.
 - **Milestone assignment rides issue creation.** A plan costs `1+N` content-generating requests against
   GitHub's 80-per-minute ceiling: one milestone create plus one issue create per Task. Never
   create-then-PATCH, and never a label pre-create per issue (`sourcecontrol` memoises the ensure).
 - **Settled rows are never resurrected.** Every run and cycle mutator is a guarded update — fenced on the
   run not being terminal, or the cycle not being closed — and returns `(nil, nil)` when it changes no row,
   so a duplicate webhook or signal is a no-op rather than a rewrite of a recorded outcome.
-- **One funnel door.** Every Execution (coding, build, validation, provisioning) is admitted/finished/
-  reevaluated through `execution`'s funnel — the single place org-fencing, dedup, and dep-gating live.
+- **A component's CR is provisioned immediately before its first build, by the FAN-OUT.** A cycle is
+  scoped to a milestone and may touch several components, so no dispatch knows which component is about to
+  be built; the merged-PR fan-out is the last point that does. It ensures the OpenChoreo Component CR (and
+  emits any web-app runtime config) per component, then triggers — without it a first-ever component's
+  build fails "Component not found". An unensurable component is not built: triggering a build for a CR
+  that does not exist only fails later, and less clearly.
 - **Every event-plane handler keys off a milestone run row.** It resolves the run first — by the agent's
   `aep/m<milestone#>-…` branch, by the milestone a payload embeds, by the cycle that landed a commit, or
   (for incidents and adoption) by the deployed version's run — and returns having written nothing when
@@ -190,10 +195,9 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   milestones still accept new issues, and a failed or cancelled increment leaves its milestone OPEN
   because the way forward from it is more work in the same version. A stray gate never blocks settle:
   gates hold dispatch, and with an empty working set they hold nothing.
-- **One task queue, one worker.** The supervisor and the dying dev/task/validation workflows are
-  registered on the SAME Temporal worker (`devflow.WorkerWatcher.AlsoRegister`, supplied by the
-  composition root because a slice may not import a sibling). Two workers polling one queue with disjoint
-  registrations would fail whichever tasks each picked up by accident.
+- **One task queue, one worker.** `run.WorkerWatcher` owns it: a task queue must be served by ONE worker
+  that knows every workflow on it, and the run supervisor is the only workflow left. Two workers polling
+  one queue with disjoint registrations would fail whichever tasks each picked up by accident.
 - **Cancel is a signal, not a Temporal cancellation.** A cancelled context could not run the activities
   that record the outcome, so the run settles its own row and closes its own cycle on the ordinary path.
 - **Echo suppression is `issues.*`-only.** Every label, comment and milestone assignment the platform
@@ -207,8 +211,9 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   state is derived from OpenChoreo on read, never stored, which is why a counter column would be wrong.
 - **The kernel names no feature.** The root holds only types/ports/Temporal infra; it never imports a
   sub-package (`root ⊥ slice`), and the domain never imports `internal/feature/*`.
-- **`Signaler` stays a nil-safe concrete type**, not an interface — its nil-safety (no-op when Temporal is
-  unavailable) is load-bearing for tests and degraded runs.
+- **`*run.Supervisor` stays a nil-safe concrete type**, not an interface, at the composition root — the
+  event plane and the build click both hold it unconditionally, and a degraded boot (Temporal down) has to
+  be a logged no-op rather than a nil check at each call site.
 - **The run progress stream is ONE connection over every cycle, and only a terminal run settles it.**
   `stream-run-progress` (`GET .../runs/{runId}/progress`, `text/event-stream`) carries a `cycle` frame per
   cycle record and a `line` frame per agent-log entry, each line stamped with its cycle id, its 1-based
@@ -229,18 +234,19 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   (`GET .../tasks/{issueNumber}/log`, `text/event-stream`) carries a Task's whole live state — `task` /
   `execution` / `line` / `done` frames, the frame kind in a `type` field inside the `data:` payload so it
   rides the shared agent-stream parser. The server buffers no history and keeps no cursor; the client
-  dedups and a reconnect re-derives. It settles/closes only on `deployed` — a transient `abandoned` during
-  the merge→build handoff keeps it open.
-- **Validation is the last devflow phase and never builds.** It starts only after every coding task
-  succeeds and an OpenChoreo Ready-deployment check passes, then spawns `ValidationFlowWorkflow` → one
-  `ValidationTaskWorkflow` lane per method (e2e only today). A validation Task is project-scoped, swaps to
-  `AEP_TASK_KIND=validation` on the single runner image, and its merged PR spawns **no build** — a
-  completed validation derives to `deployed`/"Done". The acceptance oracle
+  dedups and a reconnect re-derives. It settles when the Task's ISSUE closes, because nothing further will
+  arrive on it. It is the per-ISSUE view; a run's own feed is `stream-run-progress`.
+- **`derivedStatus` is the issue's own state, and only that.** Two values — `pending` (open) and `merged`
+  (closed) — both deliberately members of the retired ten-value vocabulary, because the console consumes
+  the field UNTYPED and a chip keyed on an unknown string renders as nothing. Anything richer belongs on
+  the run's cycle timeline, which is where the loop's real position lives.
+- **Validation is the run's last CYCLE and never builds.** The supervisor mints the validation issue at
+  deployed-green (never at plan time — an issue nothing can work until every component deploys would hold
+  every cycle boundary open), dispatches one cycle at it with `AEP_TASK_KIND=validation`, and reads the
+  committed report back as the run's VERDICT. The acceptance oracle
   `specs/validation/validation-criteria.json` is read-only input authored in the design phase (spec domain).
-- **Task LIST reads exclude the validation task** (`task/reads.go` `ListByTag`, the read-model boundary):
-  it is a phase of the run, not an implementation task, so the console tasks page, the build's per-version
-  task list, and the devflow planned-task graph never show it. Its state rides `deploy.validation`
-  (+ `validationIssue`, `validationUrl`); `get-task` and `stream-task-log` still serve it by issue number —
-  the pair the console validation log page consumes. `TaskView.prUrl` (recovered from the succeeded coding
-  Execution's `pr#N` reason, no live PR query) links each Task's PR.
+- **Task LIST reads exclude the validation issue** (`task/reads.go` `ListByTag`, the read-model boundary):
+  it is a phase of the run, not an implementation task. Its verdict rides `deploy.validation` on the
+  project status and the version's run story; `get-task` and `stream-task-log` still serve it by issue
+  number.
 - Platform-wide rules (tenant gate, secrets fence, persistence-in-domain) → [../../README.md](../../README.md).

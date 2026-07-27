@@ -55,7 +55,6 @@ type IssueService interface {
 	// to stamp aep:status/* and aep:attention projections.
 	AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error
 	// RemoveLabel removes one label from an issue (404 = already absent = ok).
-	// Used to consume the aep:execute command label after dispatch.
 	RemoveLabel(ctx context.Context, orgID, projectID string, number int, label string) error
 	// SetLabels replaces the issue's entire label set. Used when the projection
 	// must be authoritative (clearing stale aep:status/* in one call).

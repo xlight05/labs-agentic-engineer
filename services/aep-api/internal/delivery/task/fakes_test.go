@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
@@ -261,109 +260,89 @@ func (f *fakeExecReader) ListByIssueScoped(_ context.Context, _, _ string, numbe
 	return f.history[number], nil
 }
 
-// fakeDispatcher records funnel calls (thread-safe — Execute/Unhold dispatch on
-// a detached goroutine) and signals each on a channel so tests can await them.
-type fakeDispatcher struct {
-	mu           sync.Mutex
-	executeCalls []int // issue numbers
-	reevalCalls  int
-	signal       chan struct{}
+// fakeMilestones resolves a `?tag=` to a milestone number, standing in for the
+// run rows. A tag it does not know is "this platform never built that version".
+type fakeMilestones map[string]int
+
+func (f fakeMilestones) MilestoneNumberForTag(_ context.Context, _, _, tag string) (int, bool, error) {
+	n, ok := f[tag]
+	return n, ok, nil
 }
 
-func newFakeDispatcher() *fakeDispatcher {
-	return &fakeDispatcher{signal: make(chan struct{}, 8)}
+// fakeAdopter records the issues handed to the coding agent.
+type fakeAdopter struct {
+	adopted []int
+	err     error
 }
 
-func (f *fakeDispatcher) OnExecuteIntent(_ context.Context, _ string, number int) error {
-	f.mu.Lock()
-	f.executeCalls = append(f.executeCalls, number)
-	f.mu.Unlock()
-	f.signal <- struct{}{}
+func (f *fakeAdopter) AdoptIssue(_ context.Context, _, _ string, issueNumber int) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.adopted = append(f.adopted, issueNumber)
 	return nil
 }
 
-func (f *fakeDispatcher) Reevaluate(context.Context) error {
-	f.mu.Lock()
-	f.reevalCalls++
-	f.mu.Unlock()
-	f.signal <- struct{}{}
+// fakeEnsurer is a ComponentEnsurer that knows a fixed component set.
+type fakeEnsurer struct {
+	known map[string]bool
+	calls []string
+}
+
+func (f *fakeEnsurer) EnsureComponent(_ context.Context, _, _, component string) error {
+	f.calls = append(f.calls, component)
+	if !f.known[component] {
+		return fmt.Errorf("component %q not found in the design", component)
+	}
 	return nil
 }
 
-func (f *fakeDispatcher) executed() []int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]int{}, f.executeCalls...)
-}
-
-func (f *fakeDispatcher) reevaluated() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.reevalCalls
-}
-
-// fakeRepoLocator resolves any full name to one org/project.
-type fakeRepoLocator struct{}
-
-func (fakeRepoLocator) ByFullName(context.Context, string) (string, string, error) {
-	return "org1", "proj1", nil
-}
-
-// fakeDesign is an in-memory DesignReader: per-component provision + org-service
-// dependency names (keys lowercased, as the design adapter emits them).
-type fakeDesign struct {
-	provision  map[string][]string
-	orgService map[string][]string
-}
-
-func (f fakeDesign) ProvisionDepNames(context.Context, string, string) (map[string][]string, error) {
-	return f.provision, nil
-}
-
-func (f fakeDesign) OrgServiceDepNames(context.Context, string, string) (map[string][]string, error) {
-	return f.orgService, nil
-}
-
-// validationIssue builds the project's seeded aep:validation Task, mirroring
-// the minted shape (feature/validation EnsureValidationIssue): an operation
-// block stamped with the spec tag, classed aep:validation + the aep:spec/<tag>
-// label — so it would match the same state/tag list filters as coding Tasks.
-func validationIssue(number int, specTag string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{
-		Operation: "validate",
-		Origin:    taskmeta.OriginSpecPlan,
-		SpecTag:   specTag,
-		DesignTag: specTag,
-	}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "validate the deployed system"})
-	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassValidation, taskmeta.OriginSpecPlan), taskmeta.SpecTagLabel(specTag))
+// agentIssue builds a seeded Task issue as the plan tap writes one: prose body,
+// the `aep` working-set label, and nothing else.
+func agentIssue(number int, title, body string) sourcecontrol.IssueInfo {
 	return sourcecontrol.IssueInfo{
 		Number: number,
-		Title:  "Validate deployed system against acceptance criteria",
+		Title:  title,
 		Body:   body,
 		State:  "open",
 		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
-		Labels: labels,
+		Labels: []string{delivery.LabelAgentWork},
 	}
 }
 
-// provisionGateIssue builds a seeded aep:provision gate issue whose machine-block
-// component IS the dependency name it gates (dependency-management §3.6) — the
-// exact shape the read path indexes into provisionByDep.
-func provisionGateIssue(number int, depName string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{
-		Component: depName,
-		GateKind:  taskmeta.GateConfigCollection,
-		Origin:    taskmeta.OriginSpecPlan,
-		DesignTag: "design-v1",
-	}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "gate"})
+// gateIssue builds a seeded dispatch gate: the aep:provision label, no `aep`.
+func gateIssue(number int, depName string) sourcecontrol.IssueInfo {
 	return sourcecontrol.IssueInfo{
 		Number: number,
-		Title:  "Provision " + depName,
-		Body:   body,
+		Title:  "Provide configuration: " + depName,
+		Body:   "Provide this dependency's configuration values in the architecture drawer.",
 		State:  "open",
 		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
-		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginSpecPlan),
+		Labels: []string{delivery.LabelProvisionGate},
+	}
+}
+
+// validationIssue builds the project's seeded validation issue: one label, and
+// deliberately NOT the `aep` working-set one.
+func validationIssue(number int) sourcecontrol.IssueInfo {
+	return sourcecontrol.IssueInfo{
+		Number: number,
+		Title:  "Validate the deployed system against its acceptance criteria",
+		Body:   "Author e2e tests and run them against the deployed system.",
+		State:  "open",
+		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
+		Labels: []string{delivery.LabelValidationWork},
+	}
+}
+
+// ledgerIssue is a bare human issue: no aep label at all, so it is never worked
+// and never listed as a Task.
+func ledgerIssue(number int, title string) sourcecontrol.IssueInfo {
+	return sourcecontrol.IssueInfo{
+		Number: number,
+		Title:  title,
+		Body:   "Filed by a human.",
+		State:  "open",
+		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
 	}
 }

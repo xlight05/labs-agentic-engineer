@@ -33,8 +33,6 @@ import (
 	"strings"
 	"time"
 
-	"go.temporal.io/sdk/worker"
-
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/oauth"
@@ -44,11 +42,9 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/secretmanagersvc/providers/secretmanagerapi"
 	"github.com/wso2/aep/aep-api/internal/clients/thundersvc"
 	"github.com/wso2/aep/aep-api/internal/config"
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
 	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/delivery/eventcore"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
@@ -123,7 +119,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	executionRepo := delivery.NewExecutionRepository(db)
 	configRepo := projects.NewConfigRepository(db)
 	repoRepo := sourcecontrol.NewRepoRepository(db)
-	workflowRunRepo := delivery.NewWorkflowRunRepository(db)
 	milestoneRunRepo := delivery.NewMilestoneRunRepository(db)
 	runCycleRepo := delivery.NewRunCycleRepository(db)
 	orgRepo := organization.NewOrganizationRepository(db)
@@ -140,14 +135,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// suppresses its user line (issue #239 — see specAuthorship).
 	specAuthored := &specAuthorship{}
 
-	// Temporal devflow runtime. Constructed always, but connects lazily in the
-	// worker watcher's retry loop (never at Build time), so aep-api boots and
-	// serves everything else when Temporal is down. Its worker watcher is
-	// appended to the watcher slice below only when Temporal is configured.
-	// The signaler is nil-safe and no-ops while the runtime is not connected,
-	// so webhook handlers/watchers hold it unconditionally.
-	devflowRuntime := delivery.NewRuntime(cfg.Temporal)
-	devflowSignaler := delivery.NewSignaler(devflowRuntime, workflowRunRepo)
+	// Temporal runtime for the milestone run supervisor. Constructed always, but
+	// connects lazily in the worker watcher's retry loop (never on the build
+	// click), so aep-api boots and serves everything else when Temporal is down.
+	// Its worker watcher is appended to the watcher slice below only when
+	// Temporal is configured.
+	temporalRuntime := delivery.NewRuntime(cfg.Temporal)
 
 	// Token provider for service-to-service auth. OC authorizes requests by
 	// the service client subject (aep-api-client), so every OC API call
@@ -405,10 +398,10 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// configService can call back into it to mirror env-var edits onto
 	// the OC Component's workflow params.
 	projectService := projects.NewProjectService(projectClient, repoService, webhookRegService, artifactSvcGit, executionRepo)
-	// Build/deploy stage sources for the status poll (#184): the
-	// workflow_runs index (one row read) + the org-scoped release-binding
-	// list — consumer-side ports wired here so project imports neither.
-	projectService.SetStageSources(workflowRunRepo, componentClient)
+	// Build/deploy stage sources for the status poll (#184): the milestone-run
+	// index (one row read) + the org-scoped release-binding list —
+	// consumer-side ports wired here so projects imports neither.
+	projectService.SetStageSources(projectRunRows{runs: milestoneRunRepo, cycles: runCycleRepo}, componentClient)
 	organizationService := organization.NewOrganizationService(orgRepo, namespaceClient)
 	// componentService takes repoSvc + buildCredSvc so TriggerBuild can
 	// pre-stage the per-WorkflowRun build Secret in workflows-<orgID>
@@ -426,7 +419,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// half (funnel, coding executor, watchers) is wired below, after
 	// asServiceIdentity. repoService/artifactStore/artifactSvcGit/gitOpsService
 	// satisfy the task consumer ports directly.
-	taskReads := task.NewReads(issueService, repoService, executionRepo, artifactSvcGit, designComponents{store: artifactStore})
+	taskReads := task.NewReads(issueService, repoService, executionRepo, milestoneRunRepo)
 	taskPlan := task.NewPlanService(repoService, artifactSvcGit, gitOpsService,
 		anthropicKeyForGenAI, agentsvcClient, issueService, workspaceEngine, task.SkillsRepoResolver(skillsRepoForTurns))
 
@@ -559,17 +552,9 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	deliveryStore := sourcecontrol.NewDeliveryStore(db)
 	webhookRouter := webhook.NewRouter()
 
-	// The reactive engine (tasks-github-native §5): the executions repository +
-	// an executor registry + THE single funnel. The execute endpoint, the
-	// webhook handlers, and the reconciliation sweep all call into the funnel —
-	// there is no imperative second door, so gates cannot be bypassed.
-	registry := execution.NewRegistry()
-	funnel := execution.NewFunnel(executionRepo, issueService, repoLocator{db: db}, designComponents{store: artifactStore}, registry)
-
-	// The coding-class executor (feature/codingagent) is the one wired executor.
-	// It dispatches the coding-agent run and the post-merge build, writing
-	// execution rows. The ops class has no executor yet (§11 — the funnel flags
-	// aep:attention for it).
+	// The coding executor: it launches one milestone cycle's agent Job for the
+	// run supervisor (delivery.MilestoneDispatcher) and the post-merge build
+	// re-try the exec watcher asks for.
 	codingExecutor := codingagent.NewCodingExecutor(
 		componentClient, repoService, identities{cred: credService},
 		anthropicProvisioner{svc: anthropicCredService}, taskTokens, executionRepo,
@@ -609,57 +594,24 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// per-org build GitSecret stager feature/component uses for manual builds.
 	codingExecutor.WithBuildSecrets(buildStager, 0)
 	slog.Info("coding executor: build-secret staging enabled (private-repo builds)")
-	// Coding-dispatch pre-flight: provision the OpenChoreo Component CR from the
-	// design facts before the coding run, so the merged-PR build has a Component
-	// to build (else "Component not found"). Ported from the legacy dispatch
-	// service's ensureOCComponent; componentService reads the design facts.
-	codingExecutor.WithComponentEnsurer(componentService)
-	registry.Register(taskmeta.ClassCoding, codingExecutor)
-	// The same executor serves ClassValidation: its runCoding branch stamps
-	// AEP_TASK_KIND=validation (one image serves both kinds) and skips the
-	// coding-only component-ensure/wiring pre-flight (validation-phase).
-	registry.Register(taskmeta.ClassValidation, codingExecutor)
 
-	// The milestone RUN SUPERVISOR — the same nil-safe-concrete-type shape as
-	// the devflow signaler, and for the same reason: the event plane and the
-	// build click both hold it unconditionally, and a degraded boot (Temporal
-	// down) has to be a logged no-op rather than a nil check at each call site.
+	// The milestone RUN SUPERVISOR — a nil-safe concrete type, because the event
+	// plane and the build click both hold it unconditionally and a degraded boot
+	// (Temporal down) has to be a logged no-op rather than a nil check at each
+	// call site.
 	//
 	// It is constructed HERE, after the coding executor, because the executor IS
 	// its agent dispatcher (delivery.MilestoneDispatcher): a supervisor with no
 	// dispatcher refuses to start runs, so the two must be wired together.
-	runSupervisor := run.NewSupervisor(devflowRuntime, runRuns{runs: milestoneRunRepo}, codingExecutor)
+	runSupervisor := run.NewSupervisor(temporalRuntime, runRuns{runs: milestoneRunRepo}, codingExecutor)
 
-	// Command surface calls into the funnel; webhook handling splits across the
-	// two package halves: issues.* (task birth / block repair / command labels)
-	// in feature/task, pull_request.* (end coding / spawn build) in feature/execution.
-	taskCommands := task.NewCommands(issueService, repoService, funnel, componentService)
 	platformSender := githubBotLogin(cfg.GitHubAppSlug)
 	registerWebhook := func(event, action string, h func(ctx context.Context, event, action string, payload []byte) error) {
 		webhookRouter.Register(event, action, webhook.EventHandlerFunc(h))
 	}
-	task.NewWebhookEvents(issueService, repoLocator{db: db}, funnel, platformSender).RegisterHandlers(registerWebhook)
-	// pull_request.* handlers apply NO echo suppression (the platform authors no
-	// PRs; in App mode the runner's PR opens as <slug>[bot] and must be acted on).
-	execEvents := execution.NewEvents(executionRepo, funnel, registry, issueService).
-		WithWorkflowSignaler(devflowSignaler).
-		WithTaskNotifier(taskStreamHub).
-		// Path-based build fan-out: a merged PR rebuilds every component whose
-		// appPath its diff touched (issueService lists the PR's changed files;
-		// designComponents maps appPaths → components), not just the Task's own.
-		WithDesignReader(designComponents{store: artifactStore}).
-		// Flag-gated auto-merge (AUTO_MERGE_CODING_PRS, default false): when on,
-		// squash-merge a coding-agent PR on open so the fix deploys end-to-end
-		// without a human. Off by default — it auto-deploys unreviewed code.
-		WithAutoMerge(cfg.AutoMergeCodingPRs, repoLocator{db: db}, issueService)
-	execEvents.RegisterHandlers(registerWebhook)
-	// The event plane: the milestone-run half of webhook handling. Its handlers
-	// share the pull_request and issues routing keys with the ones above (the
-	// router runs every handler registered for a key), and they stay inert by
-	// construction — each resolves a milestone RUN ROW first and returns without
-	// a write when there is none. Nothing creates run rows until the plan path
-	// mints them, so this is wired, exercised by its tests, and does nothing in
-	// production until the milestone model is switched on.
+	// The event plane: THE webhook half of the milestone loop. Every handler
+	// resolves a milestone RUN ROW first and returns without a write when there
+	// is none, so a project with no live run costs nothing.
 	eventPlane := eventcore.New(eventcore.Ports{
 		Runs:     eventcoreRuns{runs: milestoneRunRepo},
 		Cycles:   eventcoreCycles{cycles: runCycleRepo},
@@ -671,21 +623,27 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		Builds:   eventcoreBuilds{oc: componentClient, repos: repoRepo, stager: buildStager},
 		Signaler: runSupervisor,
 		Starter:  runSupervisor,
+		// A first-ever component has no OpenChoreo Component CR, and a merged
+		// PR's build would fail "Component not found" — so the fan-out ensures
+		// the CR from the design facts immediately before it triggers.
+		// Components is SET below, once the runtime-config emitter it composes
+		// with exists (SetComponentEnsurer).
 		// Echo suppression (issues.* only) uses the same platform identity the
 		// task handlers do.
 		PlatformSender: platformSender,
 	})
 	eventPlane.RegisterHandlers(registerWebhook)
+	// The SRE/RCA handoff's dispatch leg (promote-task-from-issue): adopt a
+	// freshly filed issue into the deployed version's milestone and start an
+	// incident run over it.
+	taskCommands := task.NewCommands(componentService, eventcoreAdopter{events: eventPlane})
 	webhook.RegisterInstallationHandlers(webhookRouter, credService, issueService, trashWorkspaceOrg)
 	webhookCtrl := webhook.NewWebhookController(webhookVerifier, deliveryStore, webhookRouter, routingLookup, routingCache)
 
-	// Reconciliation sweep (missed webhooks / requeue gating / PR-state healing /
-	// disaster recovery, §5) + the exec watcher (OC WorkflowRun → execution-row
-	// outcomes; build success re-evaluates the funnel).
-	sweep := execution.NewSweep(funnel, execEvents, executionRepo, repoLister{repos: repoRepo}, issueService, 0)
+	// The reconcile sweep (missed webhooks / disaster recovery) + the exec
+	// watcher (OC WorkflowRun → execution-row outcomes + build terminals).
 	eventPlaneSweep := eventcore.NewSweep(eventPlane, eventcoreRepoLister{repos: repoRepo}, 0)
-	execWatcher := codingagent.NewExecWatcher(componentClient, executionRepo, funnel, asServiceIdentity, 0).
-		WithWorkflowSignaler(devflowSignaler).
+	execWatcher := codingagent.NewExecWatcher(componentClient, executionRepo, asServiceIdentity, 0).
 		WithTaskNotifier(taskStreamHub).
 		// Build terminals reach the milestone-run loop through the root observer
 		// port — the watcher stays with the executor whose classification helpers
@@ -951,11 +909,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// external-config secrets to SM-API through externalProvisioner before the
 	// tag-cut, carrying the resulting provision payload into the dev workflow.
 	buildSvc := build.NewService(build.Deps{
-		Runner: build.NewTemporalRunner(devflowRuntime),
-		Store:  workflowRunRepo,
 		Repos:  repoFullNameLookup{repos: repoRepo},
 		Tagger: buildSpecTagger{art: artifactSvcGit},
-		Tasks:  taskReads,
 		Coord: build.NewInputsCoordinator(
 			designService,                        // SpecCollector (CollectSpec)
 			buildAuthDeriver{svc: designService}, // AuthDeriver (sentinel translation)
@@ -973,7 +928,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	provisioningSvc := provisioning.NewService(provisioning.Deps{
 		Issues:    issueService,
 		Execs:     executionRepo,
-		Reeval:    funnel,
 		Design:    designComponents{store: artifactStore},
 		Repos:     repoNamer{repos: repoRepo, db: db},
 		RTCatalog: externalResourceRTCatalog,
@@ -1035,17 +989,13 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		return nil, fmt.Errorf("assemble delivery domain: %w", err)
 	}
 	params.Deps.Delivery = deliveryHandlers
-	// Mint the project's single aep:validation Task in the PLANNING pass: the
-	// plan session mints it right after the plan tap creates the implementation
-	// issues, so it is born in the same phase as them (and never pollutes the
-	// plan turn's existing-task context). It dependsOn every component, so the
-	// funnel holds it until they all deploy (validation-phase).
+	// The project's single aep:validation issue. The RUN mints it, at
+	// deployed-green: minting it at plan time would put an issue in the working
+	// set that nothing can work until every component is deployed.
 	validationSvc := validation.NewService(validation.Deps{
 		Issues:   issueService,
-		Design:   designComponents{store: artifactStore},
 		Criteria: validationCriteria{files: filesSvc},
 	})
-	taskPlan.SetValidationIssueMinter(validationSvc)
 	// A planned Task's prose body names the App Path the agent works in — the
 	// same component → appPath read the merged-PR build fan-out matches against.
 	taskPlan.SetComponentPaths(designComponents{store: artifactStore})
@@ -1088,22 +1038,15 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	projectService.SetResourceDeprovisioner(provisioningSvc)
 	resourceWatcher := provisioning.NewResourceWatcher(provisioningSvc, asServiceIdentity, 0)
 
-	// ADR-0004 declarative wiring: at coding dispatch the platform resolves the
-	// component's dependency targets (org-service + sibling endpoints, external +
-	// platform-resource binding outputs) and posts them as a comment the coding
-	// agent copies into workload.yaml — the platform never patches the CR.
-	codingExecutor.WithDependencyWiring(provisioning.NewWiringResolver(
-		designComponents{store: artifactStore}, orgEndpointCatalog, resourceClient, issueService))
 	// Mount the component's external-resource secrets into the coding runner so
 	// the agent can integration-test against the live service.
 	codingExecutor.WithRunnerSecrets(runnerSecretResolver{svc: provisioningSvc})
 
 	// Runtime-config (env-config.js) emission — the SPA's `window._env_` (API URLs
 	// + generic <DEP>_<OUTPUT> keys for its platform-resource deps) is materialised
-	// onto each web-app ReleaseBinding.
-	// Two triggers, mirroring the retired dispatch cascade:
-	//   - ensure-time: at the coding-dispatch pre-flight, emit for the just-ensured
-	//     component (self-no-ops for non-web-apps);
+	// onto each web-app ReleaseBinding. Two triggers:
+	//   - ensure-time: in the merged-PR build fan-out, right after the component's
+	//     CR is ensured (self-no-ops for non-web-apps);
 	//   - deploy-time: when ANY component deploys, re-emit across every SPA in the
 	//     project (a backend's deploy can resolve a SPA's dep URL).
 	runtimeConfigSvc := runtimeconfig.NewRuntimeConfigService(componentClient, resourceClient, artifactStore)
@@ -1115,7 +1058,10 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// this fails OPEN (defer + retry) when the catalog is unreachable: emission is
 	// a retried cascade hook, not a user-facing save gate.
 	runtimeConfigSvc.SetResourceCatalog(resourceTypeCatalog)
-	codingExecutor.WithComponentRuntimeConfig(runtimeConfigSvc)
+	// The ensure-time half of the pair above rides the event plane's pre-build
+	// component ensure; it is set here because runtimeConfigSvc is built after
+	// the event plane.
+	eventPlane.SetComponentEnsurer(eventcoreComponents{comp: componentService, runtime: runtimeConfigSvc})
 	// Fan the build-success deploy event out to both the cross-project access grant
 	// AND env-config.js re-emission. Best-effort + error-isolated: one observer
 	// failing never stops the other (matching the old cascade's warn-and-continue).
@@ -1141,7 +1087,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// execution-row terminals; the trait-sync + credential-validator watchers
 	// are unchanged.
 	watchers := []Watcher{
-		sweep,
 		// The event plane's reconcile backstop: a milestone with open work and no
 		// live run gets one. It heals a webhook GitHub never delivered and the
 		// adoption-versus-settle race, and walks only milestones the platform has
@@ -1180,7 +1125,6 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// reads job status + logs through the proxy stub regardless of dispatcher.
 	if cgwClient != nil {
 		jobWatcher := codingagent.NewJobWatcher(codingAgentLogRepo, orgRepo, cgwClient, executionRepo).
-			WithWorkflowSignaler(devflowSignaler).
 			WithTaskNotifier(taskStreamHub).
 			// The milestone-run half: capture a run cycle's agent log when its Job
 			// goes terminal, so the run progress stream can serve history after the
@@ -1196,30 +1140,11 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		slog.Info("codingagent.JobWatcher: enabled (cluster-gateway-proxy configured)",
 			"externalSecretCleanup", cfg.SecretManagerAPIURL != "")
 	}
-	// Temporal devflow worker. Registered only when Temporal is configured
-	// (TEMPORAL_HOSTPORT set). The watcher dials in a retry loop, so a Temporal
-	// server that is down at boot is not fatal — the worker connects when it
-	// comes up and the devflow endpoints answer 503 until then. Activities are
-	// thin adapters over the funnel (dispatch) + issue service (merge).
+	// The milestone run supervisor's Temporal worker. Registered only when
+	// Temporal is configured (TEMPORAL_HOSTPORT set). The watcher dials in a
+	// retry loop, so a Temporal server that is down at boot is not fatal — the
+	// worker connects when it comes up.
 	if cfg.Temporal.Enabled() {
-		devflowActs := devflow.NewActivities(devflow.Deps{
-			Runs:               workflowRunRepo,
-			Dispatcher:         codingDispatcher{funnel: funnel, execs: executionRepo},
-			Merger:             prMerger{issues: issueService},
-			Spec:               devflowSpecValidator{art: artifactSvcGit},
-			Planner:            devflowPlanner{plan: taskPlan, reads: taskReads},
-			Validator:          devflowValidator{store: artifactStore, comp: componentService},
-			ValidationResolver: devflowValidationResolver{svc: validationSvc, art: artifactSvcGit},
-			Provisioner:        buildProvisioner{prov: provisioningSvc},
-			Recorder:           devflowActivityRecorder{svc: activitySvc},
-			Titles:             devflowTitles{reads: taskReads},
-		})
-		// The milestone run supervisor rides the SAME worker. One task queue must
-		// be served by one worker that knows every workflow on it — a second
-		// worker polling `aep-devflow` with a disjoint registration would fail
-		// whichever tasks it happened to pick up — and the supervisor cannot be
-		// registered inside devflow, which may not import a sibling slice. So the
-		// composition root hands the registration across.
 		runActs := run.NewActivities(run.Deps{
 			Runs:       runRuns{runs: milestoneRunRepo},
 			Cycles:     runCycles{cycles: runCycleRepo},
@@ -1234,13 +1159,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 				milestone: issueService,
 			},
 			// The coding executor launches the cycle's runner Job and answers with
-			// its Job ref. It mints no execution row on this path — the cycle
-			// record is the supervisor's own bookkeeping.
+			// its Job ref. It mints no execution row — the cycle record is the
+			// supervisor's own bookkeeping.
 			Dispatcher: codingExecutor,
 		})
-		watchers = append(watchers, devflow.NewWorkerWatcher(devflowRuntime, devflowActs).
-			AlsoRegister(func(wk worker.Worker) { run.Register(wk, runActs) }))
-		slog.Info("devflow: temporal worker watcher registered", "hostPort", cfg.Temporal.HostPort)
+		watchers = append(watchers, run.NewWorkerWatcher(temporalRuntime, runActs))
+		slog.Info("run: temporal worker watcher registered", "hostPort", cfg.Temporal.HostPort)
 	}
 
 	return &App{
@@ -1313,44 +1237,9 @@ func computeDegradations(cfg config.Config, in Infra) []Degradation {
 		off("rca-agent-key-push", "RCA_AGENT_ANTHROPIC_PUSH_* not set — org Anthropic key not pushed to a consumer ExternalSecret")
 	}
 	if !cfg.Temporal.Enabled() {
-		off("devflow-temporal", "TEMPORAL_HOSTPORT not set — devflow worker watcher not registered")
+		off("run-temporal", "TEMPORAL_HOSTPORT not set — milestone run worker watcher not registered")
 	}
 	return d
-}
-
-// codingDispatcher adapts the execution funnel + repository onto the devflow
-// CodingDispatcher port: trigger a coding attempt (funnel admission + gating +
-// coding executor), then read the admitted coding execution's id back for the
-// workflow's status. Wired at the composition root so devflow does not import
-// the execution package.
-type codingDispatcher struct {
-	funnel *execution.Funnel
-	execs  delivery.ExecutionRepository
-}
-
-func (d codingDispatcher) DispatchCoding(ctx context.Context, orgID, projectID, repo string, issue int) (string, error) {
-	if err := d.funnel.OnExecuteIntent(ctx, repo, issue); err != nil {
-		return "", err
-	}
-	execs, err := d.execs.LatestPerKind(ctx, repo, issue)
-	if err != nil {
-		return "", err
-	}
-	if coding := execs[string(taskmeta.KindCoding)]; coding != nil {
-		return coding.ID, nil
-	}
-	// No coding row admitted (e.g. closed issue / provision gate) — not an
-	// error; the workflow proceeds and the PR-wait times out if nothing runs.
-	return "", nil
-}
-
-// prMerger adapts the issue service onto the devflow PRMerger port.
-type prMerger struct {
-	issues sourcecontrol.IssueService
-}
-
-func (m prMerger) MergePR(ctx context.Context, orgID, projectID string, prNumber int) error {
-	return m.issues.MergePullRequest(ctx, orgID, projectID, prNumber)
 }
 
 // buildSecretStagerAdapter maps the concrete *organization.BuildCredentialsService

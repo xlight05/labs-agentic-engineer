@@ -27,8 +27,6 @@ package taskplan
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 )
 
 // TaskRef targets a Task in an updateTask call: {issueNumber} for a pre-existing
@@ -67,13 +65,13 @@ type UpdateTaskSet struct {
 
 // PlanTaskOk is a successful planTask result (origin default-filled by the agent).
 type PlanTaskOk struct {
-	OK        bool            `json:"ok"` // always true
-	Op        string          `json:"op"` // "plan"
-	Component string          `json:"component"`
-	Title     string          `json:"title"`
-	DependsOn []string        `json:"dependsOn"`
-	Origin    taskmeta.Origin `json:"origin"`
-	Rationale string          `json:"rationale"`
+	OK        bool     `json:"ok"` // always true
+	Op        string   `json:"op"` // "plan"
+	Component string   `json:"component"`
+	Title     string   `json:"title"`
+	DependsOn []string `json:"dependsOn"`
+	Origin    string   `json:"origin"`
+	Rationale string   `json:"rationale"`
 }
 
 // UpdateTaskOk is a successful updateTask result. Ref is RESOLVED by the agent:

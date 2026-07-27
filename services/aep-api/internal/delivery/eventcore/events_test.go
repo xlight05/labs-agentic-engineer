@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -48,6 +50,7 @@ type harness struct {
 	prs    *fakePRs
 	merger *fakeMerger
 	builds *fakeBuilds
+	comps  *fakeComponents
 	sup    *fakeSupervisor
 }
 
@@ -62,6 +65,7 @@ func newHarness(t *testing.T, rows ...delivery.MilestoneRun) *harness {
 		prs:    &fakePRs{},
 		merger: &fakeMerger{},
 		builds: newFakeBuilds(),
+		comps:  &fakeComponents{},
 		sup:    &fakeSupervisor{},
 	}
 	h.events = New(Ports{
@@ -73,6 +77,7 @@ func newHarness(t *testing.T, rows ...delivery.MilestoneRun) *harness {
 		Repos:          fakeRepoLookup{},
 		Design:         fakeDesign{paths: map[string]string{"order-service": "services/order", "web": "apps/web"}},
 		Builds:         h.builds,
+		Components:     h.comps,
 		Signaler:       h.sup,
 		Starter:        h.sup,
 		PlatformSender: platformBot,
@@ -250,6 +255,46 @@ func TestPullRequestMerged_BuildsEveryTouchedComponentAtTheMergeSHA(t *testing.T
 	}
 	if sigs := h.sup.named(delivery.SigRunPRMerged); len(sigs) != 1 || sigs[0].MergeSHA != "abc123def456789" {
 		t.Fatalf("the supervisor must be told the PR merged, got %+v", sigs)
+	}
+}
+
+// A component the design gained THIS cycle has never been built, so its
+// OpenChoreo Component CR does not exist and the build would fail "Component
+// not found". The fan-out is the last point that knows which component is about
+// to be built — a cycle spans a whole milestone, so no dispatch can do it — and
+// it therefore ensures the CR immediately before triggering.
+func TestPullRequestMerged_EnsuresEachComponentBeforeItsBuild(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.prs.files = []string{"services/order/main.go", "apps/web/src/app.tsx"}
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	sort.Strings(h.comps.ensured)
+	if !reflect.DeepEqual(h.comps.ensured, []string{"order-service", "web"}) {
+		t.Fatalf("every component about to build must be ensured first, got %v", h.comps.ensured)
+	}
+}
+
+// A component the platform cannot provision must NOT be built: triggering a
+// build for a CR that does not exist only fails later, and less clearly. Its
+// siblings still build — the fan-out is per component.
+func TestPullRequestMerged_UnensurableComponentIsNotBuilt(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.prs.files = []string{"services/order/main.go", "apps/web/src/app.tsx"}
+	h.comps.failFor = "web"
+
+	err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123def456789"))
+	if err == nil {
+		t.Fatal("a component that cannot be ensured must surface as an error, not a silent skip")
+	}
+	if got := h.builds.triggeredFor("web"); len(got) != 0 {
+		t.Fatalf("the unensurable component must not be built, got %v", got)
+	}
+	if got := h.builds.triggeredFor("order-service"); len(got) != 1 {
+		t.Fatalf("its sibling must still build, got %v", got)
 	}
 }
 
@@ -446,6 +491,9 @@ func TestNoRunRow_EveryHandlerIsInert(t *testing.T) {
 	}
 	if len(h.builds.triggered) != 0 {
 		t.Errorf("no run row must mean no build, got %v", h.builds.triggered)
+	}
+	if len(h.comps.ensured) != 0 {
+		t.Errorf("no run row must mean no component provisioned, got %v", h.comps.ensured)
 	}
 	if len(h.sup.signals) != 0 || len(h.sup.started) != 0 {
 		t.Errorf("no run row must mean nothing signalled or started, got %+v / %+v", h.sup.signals, h.sup.started)

@@ -22,7 +22,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -89,13 +88,11 @@ func (s *Service) componentDeclaringOrgService(ctx context.Context, orgID, proje
 	return "", dependencies.ErrDepNotFound
 }
 
-// ensureConsumerVisibilityGate mints the CONSUMER-side aep:provision gate issue
-// for an org-service dep — block Component = the dep name, so the funnel indexes
-// it in provisionByDep and holds the consumer's coding task until this gate
-// derives deployed (the grant cascade completes a provision run on it). Deduped
-// like openProvisionDeps: an open aep:provision gate already keyed to this dep is
-// not re-minted (idempotent across re-clicks of Build). Mirrors
-// EnsureProvisionIssues' mint shape (Block + ComposeBody + provision labels).
+// ensureConsumerVisibilityGate mints the CONSUMER-side gate issue for an
+// org-service dep. Its aep:dep/<slug> label keys it to the dependency, so an
+// open gate holds the consumer's next dispatch until the grant cascade closes
+// it. Deduped like every other gate: an open gate already keyed to this dep is
+// not re-minted, so re-clicking Build is idempotent.
 func (s *Service) ensureConsumerVisibilityGate(ctx context.Context, orgID, consumerProjectID, dep string) error {
 	existing, err := s.openProvisionDeps(ctx, orgID, consumerProjectID)
 	if err != nil {
@@ -105,23 +102,16 @@ func (s *Service) ensureConsumerVisibilityGate(ctx context.Context, orgID, consu
 		return nil // an open visibility/provision gate already holds this dep
 	}
 	title := fmt.Sprintf("Awaiting org-service `%s`: provider must publish org-wide", dep)
-	block := taskmeta.Block{
-		Component: dep,
-		GateKind:  taskmeta.GateOrgServiceVisibility,
-		Origin:    taskmeta.OriginManual,
-		Key:       taskmeta.Key(consumerProjectID, "", dep, title),
-	}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{
-		Rationale: fmt.Sprintf("This project consumes `%s` cross-project; it must be published org-wide before dependent components can deploy.", dep),
-		Body: fmt.Sprintf("## Awaiting `%s` org-wide visibility\n\nThis component depends on `%s` as a cross-project "+
-			"org-service that is not yet published org-wide. The platform has notified the provider project and kicked its "+
-			"build. This gate closes automatically once the provider publishes (namespace visibility) — no manual action "+
-			"is needed here.", dep, dep),
-	})
+	body := fmt.Sprintf("This project consumes `%s` cross-project; it must be published org-wide before dependent "+
+		"components can deploy.\n\n## Awaiting `%s` org-wide visibility\n\nThis component depends on `%s` as a "+
+		"cross-project org-service that is not yet published org-wide. The platform has notified the provider project "+
+		"and kicked its build. This gate closes automatically once the provider publishes (namespace visibility) — no "+
+		"manual action is needed here.", dep, dep, dep)
 	req := sourcecontrol.CreateIssueRequest{
-		Title:  title,
-		Body:   body,
-		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginManual),
+		Title:     title,
+		Body:      body,
+		Labels:    gateLabels(dep),
+		DedupeKey: "gate:visibility:" + consumerProjectID + ":" + strings.ToLower(dep),
 	}
 	if _, err := s.issues.CreateIssue(ctx, orgID, consumerProjectID, req); err != nil {
 		return fmt.Errorf("provisioning: create org-service visibility gate: %w", err)

@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
@@ -88,7 +87,7 @@ func TestPlanTap_PlanMintsProseIssueIntoTheMilestone(t *testing.T) {
 	if got.Milestone == nil || *got.Milestone != 5 {
 		t.Errorf("milestone = %v, want 5 assigned at creation (1+N, not create-then-patch)", got.Milestone)
 	}
-	if _, _, err := taskmeta.ParseBody(got.Body); err == nil {
+	if strings.Contains(got.Body, "aep:task/v1") {
 		t.Errorf("created body still carries a machine block — bodies are prose:\n%s", got.Body)
 	}
 	for _, want := range []string{"**Component:** `order-service`", "**App Path:** `src/order-service`", "do it"} {
@@ -208,7 +207,7 @@ func TestPlanTap_UpdateByTitle_SetsBody(t *testing.T) {
 
 func TestPlanTap_UpdateByIssueNumber_PreExisting(t *testing.T) {
 	issues := newFakeIssues()
-	issues.seed(gitrepoIssue(42, "user-service", "design-v1"))
+	issues.seed(agentIssue(42, "Implement user-service", "brief"))
 	tap := newTestTap(issues)
 	tap.state[42] = plannedTask{Component: "user-service", Rationale: "orig"}
 	tap.contextNumbers[42] = true // #42 was preloaded into the turn's context
@@ -305,7 +304,7 @@ func TestPlanTap_Dedupe_SamePlanTwice(t *testing.T) {
 func TestPlanTap_DedupesAgainstTheMilestonesExistingTitles(t *testing.T) {
 	issues := newFakeIssues()
 	tap := newTestTap(issues)
-	tap.existingSlugs[taskmeta.TitleSlug("Implement order-service")] = true
+	tap.existingSlugs[titleSlug("Implement order-service")] = true
 	var buf bytes.Buffer
 
 	tap.Stream(stream(
@@ -322,9 +321,13 @@ func TestPlanTap_DedupesAgainstTheMilestonesExistingTitles(t *testing.T) {
 	}
 }
 
-func TestPlanTap_WriteFailure_FlagsAttention(t *testing.T) {
+// A write the tap could not land is recorded twice: as a comment on the issue
+// whose brief is now incomplete, and in the failure count the plan path reads
+// back — a short plan settles the run it was filling rather than supervising a
+// milestone that is missing work.
+func TestPlanTap_WriteFailure_CommentsAndCounts(t *testing.T) {
 	issues := newFakeIssues()
-	issues.seed(gitrepoIssue(42, "user-service", "design-v1"))
+	issues.seed(agentIssue(42, "Implement user-service", "brief"))
 	tap := newTestTap(issues)
 	tap.state[42] = plannedTask{Component: "user-service"}
 	tap.contextNumbers[42] = true // in-context; the failure is at the GitHub write
@@ -336,8 +339,8 @@ func TestPlanTap_WriteFailure_FlagsAttention(t *testing.T) {
 		"data: [DONE]\n\n",
 	), &buf, func() {})
 
-	if !issueHasAll(issues.labelsOf(42), []string{taskmeta.LabelAttention}) {
-		t.Errorf("expected aep:attention flagged on write failure, got %v", issues.labelsOf(42))
+	if len(issues.comments[42]) != 1 || !strings.Contains(issues.comments[42][0], "failed to apply") {
+		t.Errorf("expected one write-failure comment on the issue, got %v", issues.comments[42])
 	}
 	if tap.failures != 1 {
 		t.Errorf("expected 1 recorded failure, got %d", tap.failures)
@@ -406,36 +409,5 @@ func TestPlanTap_IdleDeadline_AbortsHungDrain(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "aep-plan-write-failures 1") {
 		t.Errorf("expected terminal in-band failure surface, got %q", buf.String())
-	}
-}
-
-// gitrepoIssue builds a seeded pre-existing Task issue with a valid block.
-func gitrepoIssue(number int, component, designTag string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, DesignTag: designTag}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "orig"})
-	return sourcecontrol.IssueInfo{
-		Number: number,
-		Title:  "Implement " + component,
-		Body:   body,
-		State:  "open",
-		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
-		Labels: taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan),
-	}
-}
-
-// taggedIssue builds a seeded Task issue stamped with a spec version, exactly as
-// plan_tap writes it: the aep:spec/<tag> label plus the specTag in its machine
-// block.
-func taggedIssue(number int, component, specTag string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, SpecTag: specTag, DesignTag: "design-v1"}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "orig"})
-	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), taskmeta.SpecTagLabel(specTag))
-	return sourcecontrol.IssueInfo{
-		Number: number,
-		Title:  "Implement " + component,
-		Body:   body,
-		State:  "open",
-		URL:    fmt.Sprintf("https://github.com/o/r/issues/%d", number),
-		Labels: labels,
 	}
 }

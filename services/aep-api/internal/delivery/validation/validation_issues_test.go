@@ -22,9 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // ---- fakes ------------------------------------------------------------------
@@ -41,16 +40,6 @@ func (f *fakeIssues) ListIssues(_ context.Context, _, _ string, _ []string) ([]s
 func (f *fakeIssues) CreateIssue(_ context.Context, _, _ string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error) {
 	f.created = append(f.created, req)
 	return &sourcecontrol.IssueResult{Number: 42, URL: "https://example/issues/42"}, nil
-}
-
-type fakeDesign struct{ names []string }
-
-func (f fakeDesign) ReadDesignComponents(_ context.Context, _, _ string) ([]spec.DesignComponent, error) {
-	comps := make([]spec.DesignComponent, len(f.names))
-	for i, n := range f.names {
-		comps[i] = spec.DesignComponent{Name: n}
-	}
-	return comps, nil
 }
 
 type fakeCriteria struct {
@@ -74,15 +63,15 @@ const sampleCriteria = `{
   ]
 }`
 
-func newSvc(iss *fakeIssues, names []string, crit fakeCriteria) *Service {
-	return NewService(Deps{Issues: iss, Design: fakeDesign{names: names}, Criteria: crit})
+func newSvc(iss *fakeIssues, crit fakeCriteria) *Service {
+	return NewService(Deps{Issues: iss, Criteria: crit})
 }
 
 // ---- tests ------------------------------------------------------------------
 
 func TestEnsureValidationIssue_CreatesFormattedIssue(t *testing.T) {
 	iss := &fakeIssues{}
-	svc := newSvc(iss, []string{"hello-web", "hello-api"}, fakeCriteria{raw: []byte(sampleCriteria), found: true})
+	svc := newSvc(iss, fakeCriteria{raw: []byte(sampleCriteria), found: true})
 
 	if err := svc.EnsureValidationIssue(context.Background(), "org", "proj", "design-v3"); err != nil {
 		t.Fatalf("EnsureValidationIssue: %v", err)
@@ -92,63 +81,50 @@ func TestEnsureValidationIssue_CreatesFormattedIssue(t *testing.T) {
 	}
 	got := iss.created[0]
 
-	// Labels: marker + validation class + spec-plan origin. No aep:execute —
-	// dispatch is driven by the dev workflow's validating phase, not the sweep.
-	// Carries the aep:spec/<tag> label (flat mirror of block.SpecTag) so the
-	// validation Task is filterable by version like coding Tasks.
-	wantLabels := []string{"aep:task", "aep:validation", "aep:origin/spec-plan", "aep:spec/design-v3"}
+	// ONE label, and deliberately not the `aep` working-set one: the validation
+	// cycle is dispatched at this issue by number, and working-set membership
+	// would hold the run's settle predicate open forever.
+	wantLabels := []string{delivery.LabelValidationWork}
 	if !reflect.DeepEqual(got.Labels, wantLabels) {
 		t.Errorf("labels = %v; want %v", got.Labels, wantLabels)
 	}
 	if got.Title != validationTitle {
 		t.Errorf("title = %q; want %q", got.Title, validationTitle)
 	}
-
-	// Machine block: project-scoped identity (operation "validate"), dependsOn
-	// every component, lineage designTag.
-	block, human, err := taskmeta.ParseBody(got.Body)
-	if err != nil {
-		t.Fatalf("ParseBody: %v", err)
+	if got.DedupeKey == "" {
+		t.Error("a dedupe key is what makes a re-entered validation cycle idempotent")
 	}
-	if block.Operation != "validate" || block.Component != "" {
-		t.Errorf("block identity = {component:%q operation:%q}; want operation=validate", block.Component, block.Operation)
-	}
-	if !reflect.DeepEqual(block.DependsOn, []string{"hello-web", "hello-api"}) {
-		t.Errorf("dependsOn = %v; want [hello-web hello-api]", block.DependsOn)
-	}
-	if block.DesignTag != "design-v3" {
-		t.Errorf("designTag = %q; want design-v3", block.DesignTag)
-	}
-	if block.SpecTag != "design-v3" {
-		t.Errorf("specTag = %q; want design-v3", block.SpecTag)
-	}
-	if block.Key == "" {
-		t.Error("block Key must be set for dedup")
+	if got.Milestone != nil {
+		t.Errorf("the minter assigns no milestone — the run's adapter files it: %v", got.Milestone)
 	}
 
-	// Human body: the consumer-contract sections the aep-validation skill reads,
-	// and NO deployed-endpoints/credentials (those come from validation-context).
+	// The body is PROSE: the consumer contract the aep-validation skill reads,
+	// with no machine block, and NO deployed endpoints or credentials (the
+	// runner fetches those from the secure validation-context endpoint).
+	if strings.Contains(got.Body, "aep:task/v1") {
+		t.Errorf("a validation issue body must carry no machine block:\n%s", got.Body)
+	}
 	for _, want := range []string{"## Acceptance oracle", "## Test layout", "## Report", "AC-001-a", "specs/validation/validation-criteria.json"} {
-		if !strings.Contains(human.Body, want) {
+		if !strings.Contains(got.Body, want) {
 			t.Errorf("body missing %q", want)
 		}
 	}
-	if strings.Contains(human.Body, "## Deployed endpoints") {
+	if strings.Contains(got.Body, "## Deployed endpoints") {
 		t.Error("body must NOT carry a Deployed endpoints section (runner fetches endpoints from validation-context)")
 	}
 	// e2e count reflects the oracle (2 e2e). Coverage is no longer a field —
 	// it is derived from committed-spec presence, so the oracle summary just
 	// counts by method.
-	if !strings.Contains(human.Body, "`e2e` — 2 criteria") {
-		t.Errorf("acceptance-oracle counts wrong; body:\n%s", human.Body)
+	if !strings.Contains(got.Body, "`e2e` — 2 criteria") {
+		t.Errorf("acceptance-oracle counts wrong; body:\n%s", got.Body)
 	}
 }
 
 func TestEnsureValidationIssue_DedupSkipsWhenOpenExists(t *testing.T) {
 	iss := &fakeIssues{existing: []sourcecontrol.IssueInfo{
-		{Number: 7, State: "open", Labels: []string{"aep:task", "aep:validation", "aep:origin/spec-plan"}},
+		{Number: 7, State: "open", Labels: []string{delivery.LabelValidationWork}},
 	}}
-	svc := newSvc(iss, []string{"hello-web"}, fakeCriteria{raw: []byte(sampleCriteria), found: true})
+	svc := newSvc(iss, fakeCriteria{raw: []byte(sampleCriteria), found: true})
 
 	if err := svc.EnsureValidationIssue(context.Background(), "org", "proj", "design-v3"); err != nil {
 		t.Fatalf("EnsureValidationIssue: %v", err)
@@ -160,7 +136,7 @@ func TestEnsureValidationIssue_DedupSkipsWhenOpenExists(t *testing.T) {
 
 func TestEnsureValidationIssue_SkipsWhenCriteriaAbsent(t *testing.T) {
 	iss := &fakeIssues{}
-	svc := newSvc(iss, []string{"hello-web"}, fakeCriteria{found: false})
+	svc := newSvc(iss, fakeCriteria{found: false})
 
 	if err := svc.EnsureValidationIssue(context.Background(), "org", "proj", "design-v3"); err != nil {
 		t.Fatalf("EnsureValidationIssue: %v", err)
@@ -172,7 +148,7 @@ func TestEnsureValidationIssue_SkipsWhenCriteriaAbsent(t *testing.T) {
 
 func TestEnsureValidationIssue_SkipsWhenCriteriaMalformed(t *testing.T) {
 	iss := &fakeIssues{}
-	svc := newSvc(iss, []string{"hello-web"}, fakeCriteria{raw: []byte(`{"requirements": []}`), found: true})
+	svc := newSvc(iss, fakeCriteria{raw: []byte(`{"requirements": []}`), found: true})
 
 	if err := svc.EnsureValidationIssue(context.Background(), "org", "proj", "design-v3"); err != nil {
 		t.Fatalf("EnsureValidationIssue (malformed should skip, not error): %v", err)

@@ -27,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/taskplan"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -80,7 +79,7 @@ type planTap struct {
 	contextNumbers map[int]bool
 
 	titleToNumber map[string]int // normalized this-run title → created issue number
-	// existingSlugs is the TitleSlug of every issue already in the milestone;
+	// existingSlugs is the titleSlug of every issue already in the milestone;
 	// createdSlugs the ones minted this run. Together they are the whole dedupe
 	// primitive — there is no machine-block key to compare any more.
 	existingSlugs map[string]bool
@@ -240,11 +239,11 @@ func (t *planTap) consume(line []byte) {
 }
 
 // handlePlan mints one Task issue into the version's milestone for a planTask
-// result. Dedupe is the TitleSlug of the title against the milestone's existing
+// result. Dedupe is the titleSlug of the title against the milestone's existing
 // issues and this run's creations — so a re-plan is additive-only and a crash
 // re-run converges to no-ops.
 func (t *planTap) handlePlan(out *taskplan.PlanTaskOk) {
-	slug := taskmeta.TitleSlug(out.Title)
+	slug := titleSlug(out.Title)
 	norm := normalizeTitle(out.Title)
 	if slug != "" && (t.existingSlugs[slug] || t.createdSlugs[slug]) {
 		return
@@ -334,7 +333,7 @@ func (t *planTap) handleUpdate(out *taskplan.UpdateTaskOk) {
 			delete(t.titleToNumber, normalizeTitle(*out.Ref.Title))
 		}
 		t.titleToNumber[normalizeTitle(*set.Title)] = number
-		if s := taskmeta.TitleSlug(*set.Title); s != "" {
+		if s := titleSlug(*set.Title); s != "" {
 			t.createdSlugs[s] = true
 		}
 	}
@@ -375,13 +374,18 @@ func (t *planTap) resolveRef(ref taskplan.TaskRef) (int, bool) {
 	return 0, false
 }
 
-// recordFlag records a mid-stream write failure and flags aep:attention on the
-// affected issue (§6, the OPEN surfacing item — the minimal honest thing).
+// recordFlag records a mid-stream write failure and says so on the affected
+// issue, so a human reading the milestone can see that this Task's brief is
+// incomplete. The count also reaches the caller: a plan whose writes did not
+// all land settles the run it was filling rather than supervising a short
+// milestone.
 func (t *planTap) recordFlag(number int, err error) {
 	t.failures++
 	slog.WarnContext(t.ctx, "plan tap: update issue failed", "issue", number, "error", err)
-	flagAttention(t.ctx, t.issues, t.orgID, t.projectID, number,
-		"A plan update to this Task failed to apply. Re-run planning or edit it by hand.")
+	if cerr := t.issues.CommentIssue(t.ctx, t.orgID, t.projectID, number,
+		"⚠️ A plan update to this Task failed to apply. Re-run the build's planning pass, or edit it by hand."); cerr != nil {
+		slog.WarnContext(t.ctx, "plan tap: write-failure comment failed", "issue", number, "error", cerr)
+	}
 }
 
 // normalizeTitle matches the agents-service title normalization (trim + lower)

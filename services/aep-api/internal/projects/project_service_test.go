@@ -583,18 +583,12 @@ func TestDeleteProject_RepoCleanupFailureIsSwallowed(t *testing.T) {
 // fakeRunReader / fakeBindingsReader fake the stage-source ports
 // (status_stages.go) — the build/deploy inputs of the status poll.
 type fakeRunReader struct {
-	rows          []delivery.DevflowRun
-	err           error
-	validationRun *delivery.DevflowRun
-	validationErr error
+	rows []delivery.MilestoneRun
+	err  error
 }
 
-func (f fakeRunReader) ListByProject(context.Context, string, string, string) ([]delivery.DevflowRun, error) {
+func (f fakeRunReader) ListByProject(context.Context, string, string) ([]delivery.MilestoneRun, error) {
 	return f.rows, f.err
-}
-
-func (f fakeRunReader) ValidationRunByParent(context.Context, string, string, string) (*delivery.DevflowRun, error) {
-	return f.validationRun, f.validationErr
 }
 
 func (f fakeRunReader) DeleteByProject(context.Context, string, string) error { return nil }
@@ -608,21 +602,18 @@ func (f fakeBindingsReader) ListProjectReleaseBindings(context.Context, string, 
 	return f.items, f.err
 }
 
-// statusFixture builds a Service wired for GetProjectStatus tests: a
-// ready repo row + the three poll sources (git snapshot, dev run rows, dev
-// bindings) as fakes.
+// statusFixture builds a Service wired for GetProjectStatus tests: a ready repo
+// row + the three poll sources (git snapshot, milestone run rows, dev bindings)
+// as fakes.
 type statusFixture struct {
-	snap          spec.StatusSnapshot
-	snapErr       error
-	counts        map[string]int // ComponentCountAtTag fixture, keyed by tag
-	countErr      error
-	runs          []delivery.DevflowRun
-	runsErr       error
-	bindings      []openchoreo.ReleaseBindingSummary
-	bindingsErr   error
-	validationRun *delivery.DevflowRun         // validation child of the newest dev run (nil = none)
-	validationErr error                        // ValidationRunByParent error
-	execs         delivery.ExecutionRepository // nil = no PR lookup (validationUrl falls back to the issue)
+	snap        spec.StatusSnapshot
+	snapErr     error
+	counts      map[string]int // ComponentCountAtTag fixture, keyed by tag
+	countErr    error
+	runs        []delivery.MilestoneRun
+	runsErr     error
+	bindings    []openchoreo.ReleaseBindingSummary
+	bindingsErr error
 }
 
 func (fx statusFixture) service() *Service {
@@ -650,9 +641,9 @@ func (fx statusFixture) service() *Service {
 			return &sourcecontrol.GitRepository{Status: "ready", RepoURL: "https://github.com/o/r.git"}, nil
 		},
 	}
-	svc := NewProjectService(nil, repoSvc, nil, fakeArtifacts, fx.execs)
+	svc := NewProjectService(nil, repoSvc, nil, fakeArtifacts, nil)
 	svc.SetStageSources(
-		fakeRunReader{rows: fx.runs, err: fx.runsErr, validationRun: fx.validationRun, validationErr: fx.validationErr},
+		fakeRunReader{rows: fx.runs, err: fx.runsErr},
 		fakeBindingsReader{items: fx.bindings, err: fx.bindingsErr})
 	return svc
 }
@@ -707,7 +698,7 @@ func TestGetProjectStatus_StrictSourceFailures(t *testing.T) {
 
 	// The deploy denominator read joins strictly too.
 	cnt := base
-	cnt.runs = []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusCompleted}}
+	cnt.runs = []delivery.MilestoneRun{specRun("v1", delivery.RunStateSucceeded)}
 	cnt.countErr = errors.New("tag missing from mirror")
 	if _, err := cnt.service().GetProjectStatus(context.Background(), "acme", "web"); err == nil {
 		t.Fatal("component-count failure must fail the status read")

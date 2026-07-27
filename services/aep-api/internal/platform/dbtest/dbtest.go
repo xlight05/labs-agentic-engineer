@@ -92,7 +92,7 @@ const (
 	// per process), so a stale template can never outlive a run — this only
 	// needs to be stable within a run. Bump it when internal/migrate's step list
 	// or base-model set changes, purely as documentation of intent.
-	schemaVersion = "7"
+	schemaVersion = "8"
 )
 
 // container holds the process-wide testcontainers Postgres, started once by

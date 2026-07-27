@@ -20,7 +20,7 @@ import "time"
 
 // MilestoneRun origins, states, terminal reasons and validation verdicts
 // (plain strings, matching the model convention — canonical values here, no
-// separate enum package; the DevflowRun precedent).
+// separate enum package).
 const (
 	// RunOriginSpecBuild is a run started by the build click: the plan path cut
 	// a v<N> tag, minted the milestone, and started the supervisor. At most one

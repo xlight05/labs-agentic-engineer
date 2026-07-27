@@ -43,9 +43,9 @@ type stubCred struct{}
 func (stubCred) Token(context.Context) (string, time.Time, error) {
 	return "test-token", time.Time{}, nil
 }
-func (stubCred) Identity() secrets.Identity                   { return secrets.Identity{} }
-func (stubCred) RepoOwner() string                            { return "acme" }
-func (stubCred) WebhookStrategy() secrets.WebhookStrategy     { return secrets.WebhookPerRepo }
+func (stubCred) Identity() secrets.Identity               { return secrets.Identity{} }
+func (stubCred) RepoOwner() string                        { return "acme" }
+func (stubCred) WebhookStrategy() secrets.WebhookStrategy { return secrets.WebhookPerRepo }
 
 type stubResolver struct{}
 
@@ -70,9 +70,9 @@ func (stubRepoRepo) ListAll(context.Context) ([]sourcecontrol.GitRepository, err
 func (stubRepoRepo) ListByOrg(context.Context, string) ([]sourcecontrol.GitRepository, error) {
 	return nil, nil
 }
-func (stubRepoRepo) Create(context.Context, *sourcecontrol.GitRepository) error         { return nil }
-func (stubRepoRepo) Update(context.Context, *sourcecontrol.GitRepository) error         { return nil }
-func (stubRepoRepo) DeleteByOrgAndProjectID(context.Context, string, string) error      { return nil }
+func (stubRepoRepo) Create(context.Context, *sourcecontrol.GitRepository) error    { return nil }
+func (stubRepoRepo) Update(context.Context, *sourcecontrol.GitRepository) error    { return nil }
+func (stubRepoRepo) DeleteByOrgAndProjectID(context.Context, string, string) error { return nil }
 
 // A plan of N Tasks costs N issue creates: the milestone rides each CREATE, so
 // there is no follow-up PATCH, and the one shared `aep` label is ensured once

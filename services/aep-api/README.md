@@ -53,7 +53,7 @@ datastore · `(["/surface"])` = an inbound HTTP surface.
 |---|---|---|---|
 | **organization** | tenant onboarding + every per-org config (GitHub / Anthropic / IDP), behind `/config` | flat-root | [→](internal/organization/README.md) |
 | **spec** | git-committed requirements+design spec, `v<N>` version tags, agent turns, the org Skill library | flat-root | [→](internal/spec/README.md) |
-| **delivery** | the one execution **funnel** + the Temporal build/task/validation/coding workflows | kernel-root | [→](internal/delivery/README.md) |
+| **delivery** | the version's **milestone run loop**: plan, dispatch the coding agent, merge, build, validate | kernel-root | [→](internal/delivery/README.md) |
 | **dependencies** | resource-type catalog + provisioning + runtime-config convergence | kernel-root | [→](internal/dependencies/README.md) |
 | **projects** | OpenChoreo `Project`/`Component` write-authority + the whole-pipeline Stage aggregate read | flat-root | [→](internal/projects/README.md) |
 | **sourcecontrol** | repos / issues / webhooks over a provider-neutral `Host`, + the bare-mirror workspace | flat-root | [→](internal/sourcecontrol/README.md) |
@@ -100,7 +100,7 @@ datastore · `(["/surface"])` = an inbound HTTP surface.
 | **kernel-root** | domain shape: root holds only shared types + ports; feature logic in sub-packages importing only the root |
 | **edge** | the surface composer / composition root — wires all domains, mounts surfaces, runs the tenant gate |
 | **aggregator** | a domain's `httpapi` package that embeds its slice handlers and declares no methods of its own |
-| **funnel** | delivery's single execution dispatch door — every execution (coding, build, validation, provisioning) is admitted / finished / re-evaluated through it |
+| **milestone run** | delivery's single dispatch door — one supervised loop over one GitHub milestone, dispatching the coding agent cycle by cycle until the version settles |
 
 *Product & platform terms (committed-truth, phantom-OU, tenant gate) → [`docs/glossary.md`](../../docs/glossary.md).*
 

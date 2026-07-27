@@ -40,30 +40,6 @@ func (e BuildInputItemKind) Valid() bool {
 	}
 }
 
-// Defines values for BuildStatusTaskStatus.
-const (
-	BuildStatusTaskStatusCompleted  BuildStatusTaskStatus = "completed"
-	BuildStatusTaskStatusFailed     BuildStatusTaskStatus = "failed"
-	BuildStatusTaskStatusInProgress BuildStatusTaskStatus = "in_progress"
-	BuildStatusTaskStatusStarted    BuildStatusTaskStatus = "started"
-)
-
-// Valid indicates whether the value is a known member of the BuildStatusTaskStatus enum.
-func (e BuildStatusTaskStatus) Valid() bool {
-	switch e {
-	case BuildStatusTaskStatusCompleted:
-		return true
-	case BuildStatusTaskStatusFailed:
-		return true
-	case BuildStatusTaskStatusInProgress:
-		return true
-	case BuildStatusTaskStatusStarted:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for BuildSummaryStatus.
 const (
 	BuildSummaryStatusCompleted  BuildSummaryStatus = "completed"
@@ -270,19 +246,19 @@ func (e RunProgressLineEmitter) Valid() bool {
 
 // Defines values for RunValidationVerdict.
 const (
-	Failed  RunValidationVerdict = "failed"
-	Passed  RunValidationVerdict = "passed"
-	Skipped RunValidationVerdict = "skipped"
+	RunValidationVerdictFailed  RunValidationVerdict = "failed"
+	RunValidationVerdictPassed  RunValidationVerdict = "passed"
+	RunValidationVerdictSkipped RunValidationVerdict = "skipped"
 )
 
 // Valid indicates whether the value is a known member of the RunValidationVerdict enum.
 func (e RunValidationVerdict) Valid() bool {
 	switch e {
-	case Failed:
+	case RunValidationVerdictFailed:
 		return true
-	case Passed:
+	case RunValidationVerdictPassed:
 		return true
-	case Skipped:
+	case RunValidationVerdictSkipped:
 		return true
 	default:
 		return false
@@ -478,7 +454,7 @@ type BuildInputItem struct {
 // BuildInputItemKind defines model for BuildInputItem.Kind.
 type BuildInputItemKind string
 
-// BuildList list-project-builds response — one entry per built spec version tag, newest first.
+// BuildList list-project-builds response — the version ledger, one entry per built spec version tag, newest first.
 type BuildList struct {
 	Builds []BuildSummary `json:"builds"`
 }
@@ -539,51 +515,22 @@ type BuildStage struct {
 	Version string `json:"version"`
 }
 
-// BuildStatus defines model for BuildStatus.
-type BuildStatus struct {
-	// Reason Failure detail for a failed build (empty otherwise) — the devflow's recorded error, so the console can show WHY it failed.
-	Reason         string            `json:"reason,omitempty"`
-	Status         string            `json:"status"`
-	Tasks          []BuildStatusTask `json:"tasks,omitempty"`
-	WorkflowStatus string            `json:"workflow_status"`
-}
-
-// BuildStatusTask defines model for BuildStatusTask.
-type BuildStatusTask struct {
-	// IssueNumber GitHub issue number of the Task — links a build-status row to its issue (and to the task-log stream); replaces the old title-join.
-	IssueNumber int64                 `json:"issueNumber,omitempty"`
-	Status      BuildStatusTaskStatus `json:"status"`
-	Title       string                `json:"title"`
-}
-
-// BuildStatusTaskStatus defines model for BuildStatusTask.Status.
-type BuildStatusTaskStatus string
-
-// BuildSummary One entry of list-project-builds — a spec version tag's newest run. A list read has no live workflow query, so "started" never occurs here.
+// BuildSummary One entry of the version ledger — a spec version tag and the state of the newest milestone run that has worked it. A ledger read has no live workflow query, so "started" never occurs here.
 type BuildSummary struct {
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 
-	// Reason Failure detail for a failed build (empty otherwise) — the devflow's recorded error, surfaced beside the Failed badge in the console.
+	// MilestoneNumber The GitHub milestone this version's work lives in — the platform key the tag resolves to, and the handle list-build-runs is read by.
+	MilestoneNumber int64 `json:"milestoneNumber"`
+
+	// Reason The run's terminal reason for a failed version (empty otherwise), surfaced beside the Failed badge in the console.
 	Reason    string             `json:"reason,omitempty"`
 	StartedAt time.Time          `json:"startedAt"`
 	Status    BuildSummaryStatus `json:"status"`
 	Tag       string             `json:"tag"`
-	Tasks     BuildTally         `json:"tasks"`
-
-	// Usage Actual token usage for one unit of agent work or an aggregate (#245). Tokens + model are the persisted truth; costUsd is derived at read time from the configured model rates (ADR-0011) and null when no rate is configured for the model.
-	Usage Usage `json:"usage,omitempty"`
 }
 
 // BuildSummaryStatus defines model for BuildSummary.Status.
 type BuildSummaryStatus string
-
-// BuildTally defines model for BuildTally.
-type BuildTally struct {
-	Active int64 `json:"active"`
-	Done   int64 `json:"done"`
-	Failed int64 `json:"failed"`
-	Total  int64 `json:"total"`
-}
 
 // ClientSecretOutputBody defines model for ClientSecretOutputBody.
 type ClientSecretOutputBody struct {
@@ -1645,7 +1592,7 @@ type ListTasksParams struct {
 	// State Which Tasks to return (default open)
 	State ListTasksParamsState `form:"state,omitempty" json:"state,omitempty"`
 
-	// Tag Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns all versions.
+	// Tag Filter to the Tasks of one spec/build version tag (e.g. v3). The tag is resolved to a milestone number through the platform's run rows and the filter is milestone MEMBERSHIP — never a title match against GitHub. Empty returns every version.
 	Tag string `form:"tag,omitempty" json:"tag,omitempty"`
 }
 

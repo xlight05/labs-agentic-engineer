@@ -61,7 +61,6 @@ func BaseModels() []any {
 		&organization.Organization{},
 		&delivery.Execution{},
 		&spec.AgentTurn{},
-		&delivery.DevflowRun{},
 		&projects.ActivityEvent{},
 		&delivery.MilestoneRun{},
 		&delivery.RunCycle{},
@@ -126,8 +125,10 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		// no component_tasks ALTER (dependency gating lives on aep:provision GitHub
 		// issues + the funnel depsGate, not DB columns).
 		ctxStep("phase9_dependency_mgmt", RunPhase9DependencyMgmt),
-		// workflow_runs (Temporal devflow lookup index, AutoMigrated from the
-		// model) gains its one-running-task-per-issue partial unique index.
+		// workflow_runs: the retired devflow lookup index. Its model is gone and
+		// nothing creates the table any more, so on a fresh schema this step is a
+		// no-op; it stays in the ordered list because the list is frozen and
+		// because an existing deployment's abandoned table keeps its index.
 		ctxStep("workflow_runs", RunWorkflowRuns),
 		// coding_agent_logs (GitHub-native): create the JobWatcher's final-log
 		// sidecar keyed to executions(id). Runs after `executions` (FK target) and

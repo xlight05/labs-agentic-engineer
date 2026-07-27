@@ -19,6 +19,7 @@ package eventcore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -81,6 +82,17 @@ func (e *Events) fanOutBuilds(ctx context.Context, orgID, projectID string, run 
 		wg.Add(1)
 		go func(component string) {
 			defer wg.Done()
+			// Provision the Component CR first. A component the design gained this
+			// cycle has never been built, so its CR does not exist yet and the
+			// build would fail "Component not found". This is the last point that
+			// knows which component is about to be built — a cycle spans the whole
+			// milestone, so the dispatch path cannot do it.
+			if cerr := e.ensureComponent(ctx, orgID, projectID, component); cerr != nil {
+				mu.Lock()
+				errs = append(errs, cerr)
+				mu.Unlock()
+				return
+			}
 			attempt, berr := e.ensureBuildRun(ctx, orgID, projectID, component, mergeSHA, mergeBuildLimit)
 			if berr != nil {
 				mu.Lock()
@@ -96,6 +108,20 @@ func (e *Events) fanOutBuilds(ctx context.Context, orgID, projectID string, run 
 	}
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// ensureComponent provisions a component's OpenChoreo Component CR before its
+// build. Unwired (a boot without the projects component service) is a
+// documented no-op rather than a failure: the build then behaves exactly as it
+// did before this step existed.
+func (e *Events) ensureComponent(ctx context.Context, orgID, projectID, component string) error {
+	if e.p.Components == nil {
+		return nil
+	}
+	if err := e.p.Components.EnsureComponent(ctx, orgID, projectID, component); err != nil {
+		return fmt.Errorf("ensure component %q before build: %w", component, err)
+	}
+	return nil
 }
 
 // ensureBuildRun triggers the next build attempt for (component, commit)

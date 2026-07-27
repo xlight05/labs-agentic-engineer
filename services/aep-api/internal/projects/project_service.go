@@ -55,7 +55,7 @@ type Service struct {
 	execs          delivery.ExecutionRepository
 	skillsProv     skillsProvisioner
 	deprovisioner  resourceDeprovisioner // dependency provisioning teardown; may be nil
-	runReader      devRunRows            // build/deploy stage reads + delete purge (status_stages.go)
+	runReader      milestoneRunRows      // build/deploy stage reads + delete purge (status_stages.go)
 	bindingsReader bindingsReader        // deploy stage: OC release bindings (status_stages.go)
 }
 
@@ -240,12 +240,12 @@ func (s *Service) DeleteProject(ctx context.Context, orgName, projectName string
 		}
 	}
 
-	// Purge the workflow_runs index too — a recreated same-named project
-	// must not resurrect stale runs (the status poll would chase spec tags
-	// the fresh repo never had).
+	// Purge the milestone runs (and their cycle records) too — a recreated
+	// same-named project must not resurrect stale runs, or the status poll would
+	// chase versions the fresh repo never had.
 	if s.runReader != nil {
 		if err := s.runReader.DeleteByProject(ctx, orgName, projectName); err != nil {
-			slog.ErrorContext(ctx, "failed to purge workflow runs for project", "org", orgName, "project", projectName, "error", err)
+			slog.ErrorContext(ctx, "failed to purge milestone runs for project", "org", orgName, "project", projectName, "error", err)
 		}
 	}
 

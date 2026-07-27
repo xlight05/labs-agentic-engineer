@@ -19,9 +19,9 @@ package delivery
 import "fmt"
 
 // How a milestone run is ADDRESSED, and what it answers when asked. It lives at
-// the root for the same reason DevFlowWorkflowName does: starting, signalling
-// and querying a run is a contract between the supervisor and everything that
-// reaches it, not a private detail of the supervisor.
+// the root because starting, signalling and querying a run is a contract
+// between the supervisor and everything that reaches it, not a private detail
+// of the supervisor.
 
 // MilestoneRunWorkflowName is the registered workflow type of the run
 // supervisor.

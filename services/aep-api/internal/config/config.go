@@ -352,10 +352,10 @@ type PlatformAPIConfig struct {
 	HostHeader string
 }
 
-// TemporalConfig holds connection settings for the Temporal server that
-// drives the devflow workflows (internal/delivery/devflow). HostPort empty ⇒
-// the feature is disabled: no worker starts and the devflow endpoints
-// return 503 temporal_unavailable.
+// TemporalConfig holds connection settings for the Temporal server that runs
+// the milestone run supervisor (internal/delivery/run). HostPort empty ⇒ no
+// worker starts, so a claimed version's run settles itself with a plan-failed
+// reason rather than waiting for a supervisor that will never arrive.
 type TemporalConfig struct {
 	HostPort  string // TEMPORAL_HOSTPORT, e.g. host.docker.internal:7233
 	Namespace string // TEMPORAL_NAMESPACE, default "default"

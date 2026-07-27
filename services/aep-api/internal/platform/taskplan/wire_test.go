@@ -19,8 +19,6 @@ package taskplan
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 )
 
 func TestToolResultDecoders(t *testing.T) {
@@ -33,7 +31,7 @@ func TestToolResultDecoders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodePlanTaskOk: %v", err)
 	}
-	if p.Component != "svc" || p.Origin != taskmeta.OriginSpecPlan {
+	if p.Component != "svc" || p.Origin != OriginSpecPlan {
 		t.Fatalf("planOk fields: %+v", p)
 	}
 

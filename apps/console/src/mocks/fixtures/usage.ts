@@ -142,9 +142,3 @@ export const projectUsage: Record<
   "repo-error": noUsageRollup,
 };
 
-// Build totals shared with fixtures/project.ts so the builds list agrees with
-// the rollup above.
-export const buildUsageByScenario = {
-  running: buildingBuildUsage,
-  completed: doneBuildUsage,
-} as const;

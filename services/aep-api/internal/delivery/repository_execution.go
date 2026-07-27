@@ -332,26 +332,6 @@ func (r *executionRepository) DistinctDeployedProjects(ctx context.Context) ([]D
 	return refs, nil
 }
 
-// ExecutionFacts projects latest-per-kind Execution rows into the minimal
-// facts the taskmeta derive algebra consumes (Derive / PRStateFromFacts). It
-// lives with the executions rows — the shared kernel — so both halves of the
-// Task/Execution split project ONE way without importing each other.
-func ExecutionFacts(execs map[string]*Execution) []taskmeta.ExecutionFact {
-	out := make([]taskmeta.ExecutionFact, 0, len(execs))
-	for _, e := range execs {
-		if e == nil {
-			continue
-		}
-		out = append(out, taskmeta.ExecutionFact{
-			Kind:      taskmeta.ExecutionKind(e.Kind),
-			Status:    taskmeta.ExecutionStatus(e.Status),
-			Reason:    e.Reason,
-			CreatedAt: e.CreatedAt,
-		})
-	}
-	return out
-}
-
 func (r *executionRepository) getByID(ctx context.Context, id string) (*Execution, error) {
 	var e Execution
 	err := r.db.WithContext(ctx).First(&e, "id = ?", id).Error

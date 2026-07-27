@@ -56,27 +56,6 @@ func (f *fakeStager) calls() int {
 	return len(f.runs)
 }
 
-// fakeEnsurer records EnsureComponent pre-flight calls and can be scripted to
-// fail (a provisioning failure must block the coding dispatch).
-type fakeEnsurer struct {
-	err  error
-	mu   sync.Mutex
-	args [][3]string // (org, project, component) per call
-}
-
-func (f *fakeEnsurer) EnsureComponent(_ context.Context, org, project, component string) error {
-	f.mu.Lock()
-	f.args = append(f.args, [3]string{org, project, component})
-	f.mu.Unlock()
-	return f.err
-}
-
-func (f *fakeEnsurer) calls() [][3]string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([][3]string{}, f.args...)
-}
-
 // fakeRuntimeConfig records EmitForComponent calls at the ensure pre-flight and
 // can be scripted to fail (emission is best-effort — a failure must not block the
 // coding dispatch). Satisfies codingagent.ComponentRuntimeConfigEmitter.
@@ -114,21 +93,6 @@ func (fakeTokens) Issue(string, string, string) (string, error) { return "bearer
 func (fakeTokens) IssueServiceToken(string, string, time.Duration) (string, error) {
 	return "mcp-token-xyz", nil
 }
-
-// fakeReeval records Reevaluate calls (the build-success release path).
-type fakeReeval struct {
-	mu    sync.Mutex
-	calls int
-}
-
-func (f *fakeReeval) Reevaluate(context.Context) error {
-	f.mu.Lock()
-	f.calls++
-	f.mu.Unlock()
-	return nil
-}
-
-func (f *fakeReeval) count() int { f.mu.Lock(); defer f.mu.Unlock(); return f.calls }
 
 // fakeRetrier records RetryAuthFailedBuild calls and returns a scripted result.
 type fakeRetrier struct {
@@ -266,3 +230,10 @@ func (f *fakeExecRepo) DeleteByProject(context.Context, string, string) error { 
 func (f *fakeExecRepo) DistinctDeployedProjects(context.Context) ([]delivery.DeployedProjectRef, error) {
 	return nil, nil
 }
+
+// noDispatchPathErr is the error launchAgent returns once it clears credential
+// resolution and reaches the dispatch stage with no path wired (proxy and
+// k8sJob both unset). The dispatch tests assert it to prove control reached
+// that stage: they exercise the SHAPE of a launch, not any particular dispatch
+// mechanism (the K8s Job / proxy paths need cluster infra to unit-test).
+const noDispatchPathErr = "no coding-agent dispatch path configured"

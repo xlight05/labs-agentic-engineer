@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -237,26 +236,20 @@ func (s *Service) OnIssueClosed(ctx context.Context, _, _ string, payload []byte
 	return nil
 }
 
-// createOrgPublishIssue mints the provider-side aep:provision org-publish gate
-// issue. It carries no secrets — only the component name being published.
+// createOrgPublishIssue mints the provider-side org-publish gate issue. It
+// carries no secrets — only the component name being published, on its
+// aep:dep/<slug> label and in its prose.
 func (s *Service) createOrgPublishIssue(ctx context.Context, orgID, providerProjectID, providerComponent, orgServiceName string) (*sourcecontrol.IssueResult, error) {
 	title := fmt.Sprintf("Publish %s org-wide: add namespace visibility", providerComponent)
-	block := taskmeta.Block{
-		Component: providerComponent,
-		GateKind:  taskmeta.GateOrgPublish,
-		Origin:    taskmeta.OriginManual,
-	}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{
-		Rationale: fmt.Sprintf("Another project requested access to `%s`.", orgServiceName),
-		Body: fmt.Sprintf("## Publish `%s` org-wide\n\nA consumer project depends on this component as an "+
-			"org-service. Publish it (set `exposesAPI.orgPublished` + redeploy with namespace visibility) so the "+
-			"consumer can resolve it. The platform closes this issue and grants the request once the component is "+
-			"published.", providerComponent),
-	})
+	body := fmt.Sprintf("Another project requested access to `%s`.\n\n## Publish `%s` org-wide\n\nA consumer "+
+		"project depends on this component as an org-service. Publish it (set `exposesAPI.orgPublished` + redeploy "+
+		"with namespace visibility) so the consumer can resolve it. The platform closes this issue and grants the "+
+		"request once the component is published.", orgServiceName, providerComponent)
 	issue, err := s.issues.CreateIssue(ctx, orgID, providerProjectID, sourcecontrol.CreateIssueRequest{
-		Title:  title,
-		Body:   body,
-		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginManual),
+		Title:     title,
+		Body:      body,
+		Labels:    gateLabels(providerComponent),
+		DedupeKey: "gate:publish:" + providerProjectID + ":" + strings.ToLower(providerComponent),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provisioning: create org-publish issue: %w", err)

@@ -35,7 +35,6 @@ import { SectionTitle } from "../../../components/SectionTitle";
 import { StatusChip, type StatusTone } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
 import { TasksList } from "../../tasks/components/TasksList";
-import { UsageChip } from "../../usage/components/UsageChip";
 import { useBuilds } from "../api/queries";
 
 type BuildSummary = components["schemas"]["BuildSummary"];
@@ -157,36 +156,6 @@ export function BuildsPage({
   );
 }
 
-// Segmented progress: done (success) then failed (error) fill from the left
-// over a neutral track — a glanceable read of how far the build has gotten.
-function BuildProgressBar({
-  done,
-  failed,
-  total,
-}: {
-  done: number;
-  failed: number;
-  total: number;
-}) {
-  if (total <= 0) return null;
-  const pct = (n: number) => `${Math.min(100, (n / total) * 100)}%`;
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        width: 200,
-        height: 6,
-        borderRadius: 3,
-        overflow: "hidden",
-        bgcolor: "action.hover",
-      }}
-    >
-      <Box sx={{ width: pct(done), bgcolor: "success.main" }} />
-      <Box sx={{ width: pct(failed), bgcolor: "error.main" }} />
-    </Box>
-  );
-}
-
 // Status chip vocabulary mirrors the overview's build stage (#183); a list
 // read has no live query, so "started" barely occurs (treated as running).
 function buildStatusChip(status: BuildSummary["status"]): {
@@ -205,10 +174,6 @@ function buildStatusChip(status: BuildSummary["status"]): {
 
 function BuildSummaryCard({ build }: { build: BuildSummary }) {
   const chip = buildStatusChip(build.status);
-  const { total, done, failed } = build.tasks;
-  // total is written once the plan step finishes, so a running build with no
-  // tasks is still planning — say so instead of "0/0 tasks done".
-  const planning = chip.label === "Running" && total === 0;
   const started = new Date(build.startedAt).toLocaleString(undefined, {
     day: "numeric",
     month: "short",
@@ -228,55 +193,11 @@ function BuildSummaryCard({ build }: { build: BuildSummary }) {
           <Typography variant="body2" color="text.secondary">
             Started {started}
           </Typography>
-          {/* Actual build cost (#245): the run's aggregate coding-execution
-              usage — accrues on the existing poll while the build runs.
-              Absent for runs that predate usage capture. */}
-          {build.usage && (
-            <UsageChip
-              usage={build.usage}
-              context={`Agent spend — build ${build.tag}`}
-            />
-          )}
           <Box sx={{ flexGrow: 1 }} />
-          {planning ? (
-            // Subtle "planning" signal for the selected tag: the run has started
-            // but hasn't emitted its task plan yet (total === 0 while Running).
-            <Stack
-              direction="row"
-              spacing={0.75}
-              sx={{ alignItems: "center" }}
-            >
-              <CircularProgress
-                size={12}
-                thickness={5}
-                aria-label="Generating tasks"
-              />
-              <Typography variant="body2" color="text.secondary">
-                Generating tasks…
-              </Typography>
-            </Stack>
-          ) : (
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-              <BuildProgressBar done={done} failed={failed} total={total} />
-              <Typography variant="body2" color="text.secondary">
-                <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>
-                  {done}/{total} done
-                </Box>
-                {failed > 0 && (
-                  <>
-                    {" · "}
-                    <Box component="span" sx={{ color: "error.main", fontWeight: 600 }}>
-                      {failed} failed
-                    </Box>
-                  </>
-                )}
-              </Typography>
-            </Stack>
-          )}
         </Stack>
         {build.status === "failed" && build.reason && (
-          // Surface WHY a build failed (the devflow's recorded error) instead of
-          // a bare "Failed" badge — otherwise the reason is buried in Temporal.
+          // Surface WHY a version failed — the run's terminal reason, which
+          // names exactly one failure class — instead of a bare "Failed" badge.
           <Typography
             variant="caption"
             color="error.main"

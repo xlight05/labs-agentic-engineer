@@ -22,13 +22,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
@@ -51,8 +49,19 @@ func mustStatus(t *testing.T, fx statusFixture) *gen.ProjectStatus {
 	return st
 }
 
+// specRun builds a spec-build milestone run for the version `tag` in `state`.
+// A version's delivery IS its run, so these rows are the whole build stage.
+func specRun(tag, state string) delivery.MilestoneRun {
+	return delivery.MilestoneRun{
+		MilestoneNumber: len(tag),
+		MilestoneTitle:  tag,
+		Origin:          delivery.RunOriginSpecBuild,
+		State:           state,
+	}
+}
+
 // TestStageDerivation_FullPipeline drives all three aggregates at once: a v2
-// build running over a deployed v1 — the mid-flight overview.
+// run in flight over a deployed v1 — the mid-flight overview.
 func TestStageDerivation_FullPipeline(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
@@ -62,9 +71,9 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 			SpecVersion: "v2",
 			SpecDirty:   true,
 		},
-		runs: []delivery.DevflowRun{
-			{Tag: "v2", Status: delivery.WorkflowStatusRunning, TasksTotal: 5, TasksDone: 2, TasksFailed: 1},
-			{Tag: "v1", Status: delivery.WorkflowStatusCompleted, TasksTotal: 3, TasksDone: 3},
+		runs: []delivery.MilestoneRun{
+			specRun("v2", delivery.RunStateRunning),
+			specRun("v1", delivery.RunStateSucceeded),
 		},
 		bindings: []openchoreo.ReleaseBindingSummary{
 			devBinding("api", "True", "Ready"),
@@ -82,12 +91,15 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 	if st.Build.Version != "v2" || st.Build.Status != "running" {
 		t.Errorf("build = %s/%s, want v2/running", st.Build.Version, st.Build.Status)
 	}
-	if st.Build.Tasks.Total != 5 || st.Build.Tasks.Done != 2 || st.Build.Tasks.Failed != 1 || st.Build.Tasks.Active != 2 {
-		t.Errorf("build tasks = %+v, want 5/2/1 active 2", st.Build.Tasks)
+	// The task tally is deliberately zero: its only honest source is GitHub, and
+	// this endpoint is polled at 5s. The console renders counts from the
+	// list-tasks response it already holds.
+	if st.Build.Tasks.Total != 0 || st.Build.Tasks.Done != 0 || st.Build.Tasks.Failed != 0 || st.Build.Tasks.Active != 0 {
+		t.Errorf("build tasks = %+v, want an all-zero tally (no GitHub in the poll path)", st.Build.Tasks)
 	}
 
 	if st.Deploy.Version != "v1" {
-		t.Errorf("deploy version = %q, want v1 (newest COMPLETED run, not the running v2)", st.Deploy.Version)
+		t.Errorf("deploy version = %q, want v1 (newest SUCCEEDED run, not the running v2)", st.Deploy.Version)
 	}
 	if st.Deploy.Status != "deploying" {
 		t.Errorf("deploy status = %q, want deploying (one dev binding not ready)", st.Deploy.Status)
@@ -97,147 +109,79 @@ func TestStageDerivation_FullPipeline(t *testing.T) {
 	}
 }
 
-// TestBuildStage_RowMapping pins the row→enum mapping and the frozen tally,
-// including the active clamp (a lost total write must never render negative).
-func TestBuildStage_RowMapping(t *testing.T) {
+// TestBuildStage_RunStateMapping pins the run-state → BuildStage enum table. A
+// version is "running" for as long as its run is live — waiting between cycles
+// included, because the version is still being delivered.
+func TestBuildStage_RunStateMapping(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name       string
-		runs       []delivery.DevflowRun
+		runs       []delivery.MilestoneRun
 		wantVer    string
 		wantStatus string
-		wantActive int64
 	}{
 		{name: "no rows → idle", wantStatus: "idle"},
-		{
-			name:       "completed → succeeded, tally frozen",
-			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusCompleted, TasksTotal: 4, TasksDone: 4}},
-			wantVer:    "v3",
-			wantStatus: "succeeded",
-		},
-		{
-			name:       "failed → failed",
-			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusFailed, TasksTotal: 2, TasksFailed: 2}},
-			wantVer:    "v3",
-			wantStatus: "failed",
-		},
-		{
-			name:       "canceled → failed",
-			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusCanceled}},
-			wantVer:    "v3",
-			wantStatus: "failed",
-		},
-		{
-			name:       "active clamps at zero when the total write was lost",
-			runs:       []delivery.DevflowRun{{Tag: "v3", Status: delivery.WorkflowStatusRunning, TasksDone: 2}},
-			wantVer:    "v3",
-			wantStatus: "running",
-			wantActive: 0,
-		},
+		{name: "succeeded", runs: []delivery.MilestoneRun{specRun("v3", delivery.RunStateSucceeded)}, wantVer: "v3", wantStatus: "succeeded"},
+		{name: "failed", runs: []delivery.MilestoneRun{specRun("v3", delivery.RunStateFailed)}, wantVer: "v3", wantStatus: "failed"},
+		{name: "cancelled → failed", runs: []delivery.MilestoneRun{specRun("v3", delivery.RunStateCancelled)}, wantVer: "v3", wantStatus: "failed"},
+		{name: "running", runs: []delivery.MilestoneRun{specRun("v3", delivery.RunStateRunning)}, wantVer: "v3", wantStatus: "running"},
+		{name: "waiting between cycles is still running", runs: []delivery.MilestoneRun{specRun("v3", delivery.RunStateWaiting)}, wantVer: "v3", wantStatus: "running"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// A completed run becomes deploy.version → the denominator read
+			// A succeeded run becomes deploy.version → the denominator read
 			// runs; give it a count so this test stays about the build row.
 			st := mustStatus(t, statusFixture{runs: tc.runs, counts: map[string]int{"v3": 4}})
 			if st.Build.Version != tc.wantVer || st.Build.Status != tc.wantStatus {
 				t.Errorf("build = %s/%s, want %s/%s", st.Build.Version, st.Build.Status, tc.wantVer, tc.wantStatus)
 			}
-			if st.Build.Tasks.Active != tc.wantActive {
-				t.Errorf("active = %d, want %d", st.Build.Tasks.Active, tc.wantActive)
-			}
-			if len(tc.runs) > 0 {
-				row := tc.runs[0]
-				if st.Build.Tasks.Total != int64(row.TasksTotal) || st.Build.Tasks.Done != int64(row.TasksDone) || st.Build.Tasks.Failed != int64(row.TasksFailed) {
-					t.Errorf("tally = %+v, want the row's %d/%d/%d verbatim", st.Build.Tasks, row.TasksTotal, row.TasksDone, row.TasksFailed)
-				}
-			}
 		})
 	}
 }
 
-// TestBuildStage_ValidationFailureAttribution pins the carve-out: a dev run
-// that failed BECAUSE its validation phase failed (every coding task done,
-// none failed, the validation child row failed) reports build=succeeded — the
-// failure belongs to validation and already rides deploy.validation=failed.
-// Every other failure shape keeps the raw failed mapping, including the
-// stale-row rebuild hazard: a same-tag rebuild reuses the dev workflow ID, so
-// an OLD failed validation row can match ValidationRunByParent while the
-// fresh execution failed in provisioning (tally 0/0/0) or coding
-// (TasksFailed > 0) — the tally guards defeat both.
+// A run that failed BECAUSE its validation cycle failed reports build=succeeded:
+// every coding cycle landed, and the failure already rides
+// deploy.validation=failed. The carve-out keys on the run's own terminal
+// reason, which names exactly one failure class — so no tally guard or recency
+// heuristic is needed any more.
 func TestBuildStage_ValidationFailureAttribution(t *testing.T) {
 	t.Parallel()
-	base := time.Unix(1700000000, 0)
-	devRun := func(status string, total, done, failed int) []delivery.DevflowRun {
-		return []delivery.DevflowRun{{
-			Tag: "v1", WorkflowID: "wf-dev", Status: status,
-			TasksTotal: total, TasksDone: done, TasksFailed: failed,
-			CreatedAt: base,
-		}}
+	failedFor := func(reason string) []delivery.MilestoneRun {
+		run := specRun("v1", delivery.RunStateFailed)
+		run.TerminalReason = reason
+		run.ValidationVerdict = delivery.ValidationVerdictFailed
+		return []delivery.MilestoneRun{run}
 	}
-	// child is THIS execution's validation row: recorded after the dev row
-	// (the child spawns mid-run). staleChild predates the dev row — a leftover
-	// from a previous same-tag execution (rebuilds reuse the dev workflow ID).
-	childAt := func(status string, createdAt time.Time) *delivery.DevflowRun {
-		return &delivery.DevflowRun{
-			Kind: delivery.WorkflowKindValidation,
-			Repo: "o/r", IssueNumber: 9, ParentWorkflowID: "wf-dev", Status: status,
-			CreatedAt: createdAt,
-		}
-	}
-	child := func(status string) *delivery.DevflowRun { return childAt(status, base.Add(time.Hour)) }
-	staleChild := func(status string) *delivery.DevflowRun { return childAt(status, base.Add(-time.Hour)) }
 	cases := []struct {
 		name           string
-		runs           []delivery.DevflowRun
-		child          *delivery.DevflowRun
+		runs           []delivery.MilestoneRun
 		wantBuild      string
 		wantValidation string
 	}{
 		{
-			name: "validation-attributed failure → build succeeded",
-			runs: devRun(delivery.WorkflowStatusFailed, 3, 3, 0), child: child(delivery.WorkflowStatusFailed),
+			name:      "validation-attributed failure → build succeeded",
+			runs:      failedFor(delivery.RunReasonValidationFailed),
 			wantBuild: "succeeded", wantValidation: "failed",
 		},
 		{
-			name: "coding failure (stale validation row) → build failed",
-			runs: devRun(delivery.WorkflowStatusFailed, 3, 1, 2), child: child(delivery.WorkflowStatusFailed),
+			name:      "a budget failure is the build's own",
+			runs:      failedFor(delivery.RunReasonRedispatchBudget),
 			wantBuild: "failed", wantValidation: "failed",
 		},
 		{
-			name: "provisioning failure (stale validation row, empty tally) → build failed",
-			runs: devRun(delivery.WorkflowStatusFailed, 0, 0, 0), child: child(delivery.WorkflowStatusFailed),
+			name:      "a plan failure is the build's own",
+			runs:      failedFor(delivery.RunReasonPlanFailed),
 			wantBuild: "failed", wantValidation: "failed",
 		},
 		{
-			// A rebuild whose tasks all succeeded but which failed BETWEEN the
-			// quality bar and respawning validation (validate-gate rejection /
-			// consistency check): tally is green, but the failed validation row
-			// is the PREVIOUS execution's — only a child recorded after this
-			// dev row may attribute the failure.
-			name: "green tally with a stale validation row → build failed (recency guard)",
-			runs: devRun(delivery.WorkflowStatusFailed, 3, 3, 0), child: staleChild(delivery.WorkflowStatusFailed),
-			wantBuild: "failed", wantValidation: "failed",
-		},
-		{
-			name: "failed without a validation child → build failed",
-			runs: devRun(delivery.WorkflowStatusFailed, 3, 3, 0), child: nil,
+			name:      "a cancelled run is never carved out",
+			runs:      []delivery.MilestoneRun{specRun("v1", delivery.RunStateCancelled)},
 			wantBuild: "failed", wantValidation: "none",
-		},
-		{
-			name: "canceled run is not carved out",
-			runs: devRun(delivery.WorkflowStatusCanceled, 3, 3, 0), child: child(delivery.WorkflowStatusFailed),
-			wantBuild: "failed", wantValidation: "failed",
-		},
-		{
-			name: "validation still running → build failed (only a FAILED child attributes)",
-			runs: devRun(delivery.WorkflowStatusFailed, 3, 3, 0), child: child(delivery.WorkflowStatusRunning),
-			wantBuild: "failed", wantValidation: "running",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			st := mustStatus(t, statusFixture{runs: tc.runs, validationRun: tc.child})
+			st := mustStatus(t, statusFixture{runs: tc.runs, counts: map[string]int{"v1": 1}})
 			if st.Build.Status != tc.wantBuild {
 				t.Errorf("build status = %q, want %q", st.Build.Status, tc.wantBuild)
 			}
@@ -330,7 +274,7 @@ func TestDeployStage_ConditionMatrix(t *testing.T) {
 func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
-		runs:     []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusCompleted}},
+		runs:     []delivery.MilestoneRun{specRun("v1", delivery.RunStateSucceeded)},
 		countErr: fmt.Errorf("wrapped: %w", spec.ErrSpecTagNotFound),
 		bindings: []openchoreo.ReleaseBindingSummary{devBinding("api", "True", "Ready")},
 	}
@@ -349,98 +293,61 @@ func TestDeployStage_VanishedTagDegrades(t *testing.T) {
 func TestDeployStage_VersionlessSkipsDenominator(t *testing.T) {
 	t.Parallel()
 	fx := statusFixture{
-		runs: []delivery.DevflowRun{{Tag: "v1", Status: delivery.WorkflowStatusRunning}},
+		runs: []delivery.MilestoneRun{specRun("v1", delivery.RunStateRunning)},
 	}
 	st := mustStatus(t, fx)
 	if st.Deploy.Version != "" {
-		t.Errorf("deploy version = %q, want \"\" (no completed run)", st.Deploy.Version)
+		t.Errorf("deploy version = %q, want \"\" (no succeeded run)", st.Deploy.Version)
 	}
 	if st.Deploy.Components.Total != 0 || st.Deploy.Components.Ready != 0 {
 		t.Errorf("components = %+v, want 0/0", st.Deploy.Components)
 	}
 }
 
-// TestDeployStage_ValidationDerivation pins deploy.validation + validationUrl:
-// the coarse run state of the newest build's validation child, and the PR link
-// (the validation issue as a fallback before a PR exists) — all from cheap DB
-// reads (no GitHub in the poll path).
+// deploy.validation is the newest run's own VERDICT — a column on the row the
+// build stage already read, so the poll costs nothing extra. The report and the
+// per-cycle detail behind it live on the version's run story, which is why
+// there is no validationUrl or validationIssue here any more.
 func TestDeployStage_ValidationDerivation(t *testing.T) {
 	t.Parallel()
 
-	// A dev run must exist for the builder to look up its validation child; keep
-	// it running (no completed run) so this test stays about validation, not the
-	// deploy denominator.
-	devRuns := []delivery.DevflowRun{{Tag: "v1", WorkflowID: "wf-dev", Status: delivery.WorkflowStatusRunning}}
-	child := func(status string) *delivery.DevflowRun {
-		return &delivery.DevflowRun{
-			Kind: delivery.WorkflowKindValidation,
-			Repo: "o/r", IssueNumber: 9, ParentWorkflowID: "wf-dev", Status: status,
-		}
-	}
-	// A succeeded coding execution stamped with the open PR number (pr#42) is how
-	// the PR link is recovered without a live PR query.
-	prExecs := &fakeExecs{
-		LatestPerKindScopedFunc: func(context.Context, string, string, int) (map[string]*delivery.Execution, error) {
-			return map[string]*delivery.Execution{
-				string(taskmeta.KindCoding): {
-					Kind:   string(taskmeta.KindCoding),
-					Status: string(taskmeta.ExecSucceeded),
-					Reason: taskmeta.ReasonPROpenPrefix + "42",
-				},
-			}, nil
-		},
+	// Keep the run live (not succeeded) so this test stays about validation
+	// rather than the deploy denominator.
+	withVerdict := func(state, verdict string) []delivery.MilestoneRun {
+		run := specRun("v1", state)
+		run.ValidationVerdict = verdict
+		return []delivery.MilestoneRun{run}
 	}
 
 	cases := []struct {
 		name       string
-		child      *delivery.DevflowRun
-		execs      delivery.ExecutionRepository
+		runs       []delivery.MilestoneRun
 		wantStatus string
-		wantURL    string
-		wantIssue  int64
 	}{
-		{name: "no child → none, no link", wantStatus: "none", wantURL: ""},
+		{name: "no run at all → none", wantStatus: "none"},
 		{
-			name:       "running before a PR → running, issue link",
-			child:      child(delivery.WorkflowStatusRunning),
+			name:       "live run, no verdict yet → running",
+			runs:       withVerdict(delivery.RunStateRunning, ""),
 			wantStatus: "running",
-			wantURL:    "https://github.com/o/r/issues/9",
-			wantIssue:  9,
 		},
 		{
-			name:       "completed with an open PR → completed, PR link",
-			child:      child(delivery.WorkflowStatusCompleted),
-			execs:      prExecs,
-			wantStatus: "completed",
-			wantURL:    "https://github.com/o/r/pull/42",
-			wantIssue:  9,
+			name:       "settled run that never validated → none",
+			runs:       withVerdict(delivery.RunStateFailed, ""),
+			wantStatus: "none",
 		},
+		{name: "passed → completed", runs: withVerdict(delivery.RunStateRunning, delivery.ValidationVerdictPassed), wantStatus: "completed"},
+		{name: "failed → failed", runs: withVerdict(delivery.RunStateRunning, delivery.ValidationVerdictFailed), wantStatus: "failed"},
 		{
-			name:       "failed → failed, issue link (no succeeded coding row)",
-			child:      child(delivery.WorkflowStatusFailed),
-			wantStatus: "failed",
-			wantURL:    "https://github.com/o/r/issues/9",
-			wantIssue:  9,
-		},
-		{
-			name:       "canceled → failed",
-			child:      child(delivery.WorkflowStatusCanceled),
-			wantStatus: "failed",
-			wantURL:    "https://github.com/o/r/issues/9",
-			wantIssue:  9,
+			name:       "skipped (no acceptance criteria) → none, never failed",
+			runs:       withVerdict(delivery.RunStateRunning, delivery.ValidationVerdictSkipped),
+			wantStatus: "none",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			st := mustStatus(t, statusFixture{runs: devRuns, validationRun: tc.child, execs: tc.execs})
+			st := mustStatus(t, statusFixture{runs: tc.runs})
 			if string(st.Deploy.Validation) != tc.wantStatus {
 				t.Errorf("validation = %q, want %q", st.Deploy.Validation, tc.wantStatus)
-			}
-			if st.Deploy.ValidationURL != tc.wantURL {
-				t.Errorf("validationUrl = %q, want %q", st.Deploy.ValidationURL, tc.wantURL)
-			}
-			if st.Deploy.ValidationIssue != tc.wantIssue {
-				t.Errorf("validationIssue = %d, want %d", st.Deploy.ValidationIssue, tc.wantIssue)
 			}
 		})
 	}

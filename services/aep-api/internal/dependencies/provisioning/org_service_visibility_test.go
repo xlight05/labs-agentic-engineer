@@ -18,6 +18,7 @@ package provisioning
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -48,11 +49,21 @@ type visibilitySpies struct {
 	build  *fakeProviderBuild
 }
 
+// A gate issue no longer declares its kind: it is prose with the aep:provision
+// marker and its aep:dep/<slug> label, and no platform code branches on which
+// flavour of gate it is (resolving one is always the same act). The two
+// flavours are told apart here by the platform-authored TITLE — which is what a
+// human reading the milestone sees too.
+const (
+	visibilityGateTitlePrefix = "Awaiting org-service"
+	orgPublishGateTitlePrefix = "Publish "
+)
+
 // consumerGateMinted counts minted org-service-visibility gate issues.
 func (s visibilitySpies) consumerGateMinted() int {
 	n := 0
 	for _, req := range s.issues.created {
-		if block, err := taskmeta.ParseBlock(req.Body); err == nil && block.GateKind == taskmeta.GateOrgServiceVisibility {
+		if strings.HasPrefix(req.Title, visibilityGateTitlePrefix) {
 			n++
 		}
 	}
@@ -63,7 +74,7 @@ func (s visibilitySpies) consumerGateMinted() int {
 func (s visibilitySpies) providerTaskCreated() int {
 	n := 0
 	for _, req := range s.issues.created {
-		if block, err := taskmeta.ParseBlock(req.Body); err == nil && block.GateKind == taskmeta.GateOrgPublish {
+		if strings.HasPrefix(req.Title, orgPublishGateTitlePrefix) {
 			n++
 		}
 	}
@@ -172,7 +183,7 @@ func TestGrantByProviderComponent_ResolvesConsumerVisibilityGate(t *testing.T) {
 	// The consumer gate issue number (the org-service-visibility gate).
 	var consumerGate int
 	for _, i := range spies.issues.list {
-		if block, err := taskmeta.ParseBlock(i.Body); err == nil && block.GateKind == taskmeta.GateOrgServiceVisibility {
+		if strings.HasPrefix(i.Title, visibilityGateTitlePrefix) {
 			consumerGate = i.Number
 		}
 	}

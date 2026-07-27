@@ -14,21 +14,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package execution is the platform-owned half of the Task/Execution split
-// (docs/design/tasks-github-native.md §1, §10.1). A Task is a GitHub issue,
-// owned by GitHub (feature/task); an Execution is one platform attempt at one
-// kind of work for that Task, owned by Postgres. This package holds THE single
-// dispatch path (the funnel), the executor registry, the reconciliation sweep,
-// the pull_request webhook handlers that end coding attempts and spawn builds,
-// the unified progress endpoint, and the runner-scoped skills read.
+// Package execution is the READ side of the executions rows: the per-Task
+// progress endpoint, the task-log SSE stream, and the ops-report projection.
 //
-// The §1 split is a package boundary: this package never imports feature/task
-// and vice-versa (arch-locked). The two halves speak the pure taskmeta encoding
-// and the executions rows (a shared kernel: models/ + repositories/), nothing
-// else. There is exactly one door into dispatch — the funnel — so gates cannot
-// be bypassed (§5).
+// It writes nothing and dispatches nothing. Agent work is dispatched by the run
+// supervisor over a MILESTONE and its bookkeeping is the cycle record, so the
+// only execution rows left are the provisioning gates' — which is what these
+// reads still surface. The task-log stream is the pre-milestone per-issue view
+// of that data; the milestone loop's own feed is the per-run progress stream in
+// `delivery/runread`.
 //
-// As a delivery-domain sub-package it imports only the delivery root for the
-// executions write-API kernel it builds on — the Executor port, DispatchRequest,
-// TaskFacts, the TaskStreamHub, and the Signaler/signal vocabulary (§10.3.1).
+// As a delivery-domain sub-package it imports only the delivery root (the
+// executions kernel and the TaskStreamHub), never a sibling slice.
 package execution

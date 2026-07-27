@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package devflow
+package run
 
 import (
 	"context"
@@ -30,15 +30,18 @@ import (
 // Temporal server is unreachable.
 const dialRetryInterval = 15 * time.Second
 
-// WorkerWatcher implements the app.Watcher contract: it blocks on its
-// context, dialing Temporal in a retry loop and then running the devflow
-// worker until shutdown. aep-api boots normally with Temporal down — the
-// watcher just keeps retrying and the devflow endpoints answer 503 until the
-// first successful dial.
+// WorkerWatcher implements the app.Watcher contract: it blocks on its context,
+// dialing Temporal in a retry loop and then running the run-supervisor worker
+// until shutdown. aep-api boots normally with Temporal down — the watcher just
+// keeps retrying, and a build click that lands meanwhile settles its run row
+// with a plan-failed reason rather than wedging the project's spec mutex.
+//
+// There is ONE worker on the task queue and it belongs to this package now: a
+// task queue must be served by one worker that knows every workflow on it, and
+// the run supervisor is the only workflow left.
 type WorkerWatcher struct {
-	rt    *delivery.Runtime
-	acts  *Activities
-	extra []func(worker.Worker)
+	rt   *delivery.Runtime
+	acts *Activities
 }
 
 // NewWorkerWatcher builds the watcher; nothing connects until Run.
@@ -46,31 +49,12 @@ func NewWorkerWatcher(rt *delivery.Runtime, acts *Activities) *WorkerWatcher {
 	return &WorkerWatcher{rt: rt, acts: acts}
 }
 
-// AlsoRegister adds a registration step that runs on every worker this watcher
-// builds, including the ones it rebuilds after a re-dial.
-//
-// One task queue must be served by ONE worker that knows every workflow on it:
-// a second worker polling the same queue with a disjoint registration would
-// fail whichever tasks it happened to pick up. So a workflow that lives in
-// another package — the milestone run supervisor, which this package may not
-// import (slices never import siblings) — joins the worker through this seam,
-// with the composition root supplying the closure.
-//
-// The seam retires with this package: when the devflow workflows go, the
-// remaining registrar owns the worker outright.
-func (w *WorkerWatcher) AlsoRegister(register func(worker.Worker)) *WorkerWatcher {
-	if register != nil {
-		w.extra = append(w.extra, register)
-	}
-	return w
-}
-
 // Run dials until connected, then runs the worker until ctx is cancelled.
 // A worker fatal error tears the client down and re-enters the dial loop.
 func (w *WorkerWatcher) Run(ctx context.Context) {
 	for {
 		if err := w.rt.Dial(); err != nil {
-			slog.Warn("devflow: temporal dial failed, retrying",
+			slog.Warn("run: temporal dial failed, retrying",
 				"hostPort", w.rt.HostPort(), "interval", dialRetryInterval, "error", err)
 			select {
 			case <-ctx.Done():
@@ -96,17 +80,14 @@ func (w *WorkerWatcher) Run(ctx context.Context) {
 				}
 			},
 		})
-		registerAll(wk, w.acts)
-		for _, register := range w.extra {
-			register(wk)
-		}
+		Register(wk, w.acts)
 
 		if err := wk.Start(); err != nil {
-			slog.Error("devflow: worker start failed, re-dialing", "error", err)
+			slog.Error("run: worker start failed, re-dialing", "error", err)
 			w.rt.Close()
 			continue
 		}
-		slog.Info("devflow: temporal worker started",
+		slog.Info("run: temporal worker started",
 			"hostPort", w.rt.HostPort(), "namespace", w.rt.Namespace(), "taskQueue", w.rt.TaskQueue())
 
 		select {
@@ -115,7 +96,7 @@ func (w *WorkerWatcher) Run(ctx context.Context) {
 			w.rt.Close()
 			return
 		case err := <-fatalCh:
-			slog.Error("devflow: temporal worker fatal error, re-dialing", "error", err)
+			slog.Error("run: temporal worker fatal error, re-dialing", "error", err)
 			wk.Stop()
 			w.rt.Close()
 			// loop re-enters the dial retry

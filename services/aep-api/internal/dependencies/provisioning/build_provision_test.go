@@ -19,6 +19,7 @@ package provisioning
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
@@ -223,14 +224,10 @@ func TestProvisionForBuild_OrgServiceApprovedStartsVisibility(t *testing.T) {
 	// One consumer visibility gate + one provider org-publish issue minted.
 	var haveVisibility, haveOrgPublish bool
 	for _, req := range issues.created {
-		block, berr := taskmeta.ParseBlock(req.Body)
-		if berr != nil {
-			continue
-		}
-		switch block.GateKind {
-		case taskmeta.GateOrgServiceVisibility:
+		switch {
+		case strings.HasPrefix(req.Title, visibilityGateTitlePrefix):
 			haveVisibility = true
-		case taskmeta.GateOrgPublish:
+		case strings.HasPrefix(req.Title, orgPublishGateTitlePrefix):
 			haveOrgPublish = true
 		}
 	}
@@ -389,14 +386,11 @@ func countProvisionRows(execs *fakeExecStore, depName string) int {
 	return n
 }
 
-// gateNumber finds the minted aep:provision gate issue number for a dep name.
+// gateNumber finds the gate issue for a dep name — by its aep:dep/<slug> label,
+// which is how the platform itself resolves it.
 func gateNumber(issues *fakeIssues, depName string) int {
 	for _, i := range issues.list {
-		block, err := taskmeta.ParseBlock(i.Body)
-		if err != nil {
-			continue
-		}
-		if block.Component == depName {
+		if delivery.HasLabel(i.Labels, delivery.LabelProvisionGate) && gateDepFromLabels(i.Labels) == gateDepFromLabels(gateLabels(depName)) {
 			return i.Number
 		}
 	}

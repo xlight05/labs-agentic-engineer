@@ -19,6 +19,8 @@ package provisioning
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -438,27 +440,26 @@ func TestEnsureProvisionIssues_MintsPerDepDeduped(t *testing.T) {
 	if gateByDep["stripe"] == 0 || gateByDep["orders-db"] == 0 {
 		t.Fatalf("EnsureProvisionIssues must return the minted gate number per dep, got %+v", gateByDep)
 	}
-	// Every gate issue carries the provision class label + a GateKind block field.
-	var haveConfig, haveResource bool
+	// A gate is PROSE plus two labels: the aep:provision marker and the
+	// aep:dep/<slug> that keys it to its dependency. It never carries the `aep`
+	// working-set label — it is a hold on dispatch, never agent work — and its
+	// body carries no machine block, because nothing parses it.
+	var deps []string
 	for _, req := range issues.created {
-		if !contains(req.Labels, taskmeta.LabelProvision) {
+		if !contains(req.Labels, delivery.LabelProvisionGate) {
 			t.Errorf("gate issue missing aep:provision label: %v", req.Labels)
 		}
-		block, err := taskmeta.ParseBlock(req.Body)
-		if err != nil {
-			t.Fatalf("gate issue body has no block: %v", err)
+		if contains(req.Labels, delivery.LabelAgentWork) {
+			t.Errorf("a gate must never be agent work: %v", req.Labels)
 		}
-		switch block.GateKind {
-		case taskmeta.GateConfigCollection:
-			haveConfig = true
-		case taskmeta.GateResourceProvisioning:
-			haveResource = true
-		default:
-			t.Errorf("unexpected gateKind %q", block.GateKind)
+		if strings.Contains(req.Body, "aep:task/v1") {
+			t.Errorf("gate issue body still carries a machine block:\n%s", req.Body)
 		}
+		deps = append(deps, gateDepFromLabels(req.Labels))
 	}
-	if !haveConfig || !haveResource {
-		t.Fatalf("want both config-collection + resource-provisioning gate kinds")
+	sort.Strings(deps)
+	if !reflect.DeepEqual(deps, []string{"orders-db", "stripe"}) {
+		t.Fatalf("gate dep labels = %v, want [orders-db stripe]", deps)
 	}
 
 	// Idempotent: a second call mints nothing new (the deps already have open issues).
@@ -502,7 +503,7 @@ func TestEnsureProvisionIssues_AssignsTheMilestoneAtCreation(t *testing.T) {
 }
 
 func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
-	gate := provisionGateIssue(10, "stripe", taskmeta.GateConfigCollection)
+	gate := provisionGateIssue(10, "stripe")
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
@@ -548,7 +549,7 @@ func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 }
 
 func TestProvision_PlatformIsAsync_LeftRunning(t *testing.T) {
-	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
+	gate := provisionGateIssue(11, "orders-db")
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
@@ -583,7 +584,7 @@ func TestProvision_PlatformIsAsync_LeftRunning(t *testing.T) {
 }
 
 func TestResourceWatcher_ReadyClosesGateAndReleases(t *testing.T) {
-	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
+	gate := provisionGateIssue(11, "orders-db")
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	reeval := &fakeReeval{}
@@ -625,7 +626,7 @@ func TestResourceWatcher_ReadyClosesGateAndReleases(t *testing.T) {
 }
 
 func TestResourceWatcher_StaleFails(t *testing.T) {
-	gate := provisionGateIssue(11, "orders-db", taskmeta.GateResourceProvisioning)
+	gate := provisionGateIssue(11, "orders-db")
 	issues := newFakeIssues([]sourcecontrol.IssueInfo{gate})
 	execs := &fakeExecStore{}
 	bindings := &fakeBindings{byName: map[string]*openchoreo.ResourceReleaseBinding{"o-orders-db-development": {}}}
@@ -750,9 +751,11 @@ func TestRequestAccess_CreatesRequestAndProviderIssue(t *testing.T) {
 	if len(issues.created) != 1 {
 		t.Fatalf("want one provider org-publish issue, got %d", len(issues.created))
 	}
-	block, _ := taskmeta.ParseBlock(issues.created[0].Body)
-	if block.GateKind != taskmeta.GateOrgPublish || block.Component != "inventory" {
-		t.Fatalf("org-publish issue block wrong: %+v", block)
+	if got := gateDepFromLabels(issues.created[0].Labels); got != "inventory" {
+		t.Fatalf("org-publish gate dep label = %q, want inventory", got)
+	}
+	if !contains(issues.created[0].Labels, delivery.LabelProvisionGate) {
+		t.Fatalf("org-publish gate missing the aep:provision marker: %v", issues.created[0].Labels)
 	}
 	if ar.ProviderIssueNumber == 0 {
 		t.Fatalf("access request must link the provider issue number")
@@ -865,14 +868,16 @@ func TestSaveValues_WrongKind400(t *testing.T) {
 
 // ---- helpers ---------------------------------------------------------------
 
-func provisionGateIssue(number int, depName, gateKind string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{Component: depName, GateKind: gateKind, Origin: taskmeta.OriginSpecPlan, DesignTag: "v1-1"}
+// provisionGateIssue builds a seeded gate issue exactly as the platform mints
+// one: prose, the aep:provision marker, and the aep:dep/<slug> label that keys
+// it to its dependency. That label pair IS the index — nothing reads the body.
+func provisionGateIssue(number int, depName string) sourcecontrol.IssueInfo {
 	return sourcecontrol.IssueInfo{
 		Number: number,
 		Title:  "Provision " + depName,
-		Body:   taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "r"}),
+		Body:   "Provide this dependency's values in the architecture drawer.",
 		State:  "open",
-		Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginSpecPlan),
+		Labels: gateLabels(depName),
 	}
 }
 
@@ -921,7 +926,7 @@ func TestSaveValues_DesignReadErrorFails(t *testing.T) {
 // PLAIN is listed FIRST here, so a first-component-wins classification would
 // leak the value into the plain map.
 func TestSaveValues_UnionSecretAcrossComponents(t *testing.T) {
-	gate := provisionGateIssue(10, "stripe", taskmeta.GateConfigCollection)
+	gate := provisionGateIssue(10, "stripe")
 	ext := &fakeExtProv{}
 	comps := []spec.DesignComponent{
 		{Name: "webhook-worker", Dependencies: []spec.Dependency{
@@ -956,7 +961,7 @@ func TestSaveValues_UnionSecretAcrossComponents(t *testing.T) {
 // ErrNotRegistered here), SaveValues still succeeds and the external
 // provisioner receives a design-sourced ExternalResource.
 func TestSaveValues_AuthorsDefinitionFromDesign(t *testing.T) {
-	gate := provisionGateIssue(10, "stripe", taskmeta.GateConfigCollection)
+	gate := provisionGateIssue(10, "stripe")
 	ext := &fakeExtProv{}
 	svc := newTestService(newFakeIssues([]sourcecontrol.IssueInfo{gate}), &fakeExecStore{}, &fakeReeval{},
 		fakeDesign{comps: designWithDeps()}, ext, &fakePlatProv{}, &fakeBindings{}) // empty catalog

@@ -24,7 +24,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/build"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
 	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -107,44 +106,14 @@ func (b buildProvisionStatus) Ready(ctx context.Context, orgID, projectID, depNa
 	return st.Status != "unknown", nil
 }
 
-// buildProvisioner adapts the provisioning feature onto devflow's
-// BuildProvisioner port (issue #164) — the dev workflow's provisioning step.
-// devflow does not import provisioning (that would cycle), so the mapping
-// between devflow.ProvisionInput ⇄ provisioning.BuildProvisionInput and their
-// failure twins lives here at the composition root. ProvisionForBuild authors
-// each external's RT-binding straight off the project's committed design (the
-// external_resources pre-registration step is gone). orgID doubles as the OC
-// org handle == the SM-API org id (the build path stages secrets under the org
-// handle — Task 2/3 precedent).
-type buildProvisioner struct {
-	prov *provisioning.Service
-}
-
-func (b buildProvisioner) ProvisionForBuild(ctx context.Context, orgID, projectID, tag string, inputs []delivery.ProvisionInput) ([]devflow.ProvisionFailure, error) {
-	// No milestone: this port is the dev workflow's, which predates the
-	// milestone model. The build's own plan path passes the version's milestone
-	// through buildGateResolver below.
-	fails, err := b.prov.ProvisionForBuild(ctx, orgID, orgID, projectID, tag, 0, mapProvisionInputs(inputs))
-	if err != nil {
-		return nil, err
-	}
-	out := make([]devflow.ProvisionFailure, 0, len(fails))
-	for _, f := range fails {
-		out = append(out, devflow.ProvisionFailure{Component: f.Component, Dependency: f.Dependency, Reason: f.Reason})
-	}
-	return out, nil
-}
-
 // buildGateResolver adapts the provisioning feature onto the build plan path's
 // GateResolver port: author the version's dependencies and mint its
 // aep:provision gates INTO the version's milestone, so the run's dispatch
 // predicate sees them.
 //
 // It collapses provisioning's per-dependency failure list into one error on
-// purpose. The devflow port returned the failures as data because a workflow
-// could branch on them; the plan path cannot — a gate that could not be authored
-// means the version's run would wait on a hold that will never lift, so the run
-// settles instead.
+// purpose: a gate that could not be authored means the version's run would wait
+// on a hold that will never lift, so the run settles instead.
 type buildGateResolver struct {
 	prov *provisioning.Service
 }
@@ -167,7 +136,7 @@ func (b buildGateResolver) ProvisionForBuild(ctx context.Context, orgID, project
 // mapProvisionInputs maps the delivery-root payload onto the provisioning
 // feature's twin. The two structs are field-identical by design — delivery must
 // not import the provisioning feature — so the copy lives here at the
-// composition root, once for both ports.
+// composition root.
 func mapProvisionInputs(inputs []delivery.ProvisionInput) []provisioning.BuildProvisionInput {
 	mapped := make([]provisioning.BuildProvisionInput, 0, len(inputs))
 	for _, in := range inputs {

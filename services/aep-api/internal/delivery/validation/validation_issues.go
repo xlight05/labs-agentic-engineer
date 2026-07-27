@@ -22,49 +22,46 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // criteriaFilePath is the acceptance-oracle path in the project repo, authored
 // by the validation-criteria skill and read by the runner.
 const criteriaFilePath = "specs/validation/validation-criteria.json"
 
-// validationTitle is the fixed title of the project's validation Task. Stable
-// so the idempotency Key (project, designTag, "validate", title) is stable and
-// the minter creates exactly one validation issue per project+designTag.
+// validationTitle is the fixed title of the project's validation issue. Stable
+// so a human reading the milestone always sees the same entry, and so the
+// open-issue dedupe below never has to guess.
 const validationTitle = "Validate the deployed system against its acceptance criteria"
-
-// validationOperation is the machine-block Operation for a validation Task — its
-// project-scoped identity (no component; Block.Target() returns it).
-const validationOperation = "validate"
 
 // Service mints the project's validation Task issue. It holds only consumer
 // ports; concrete providers are wired at the composition root.
 type Service struct {
 	issues   IssueClient
-	design   DesignReader
 	criteria CriteriaReader
 }
 
 // Deps is the validation service's collaborator set.
 type Deps struct {
 	Issues   IssueClient
-	Design   DesignReader
 	Criteria CriteriaReader
 }
 
 // NewService wires the validation service from its collaborator set.
 func NewService(d Deps) *Service {
-	return &Service{issues: d.Issues, design: d.Design, criteria: d.Criteria}
+	return &Service{issues: d.Issues, criteria: d.Criteria}
 }
 
-// EnsureValidationIssue mints the single aep:validation Task for the project if
-// the acceptance oracle exists and no open validation issue exists yet. It is
-// idempotent and best-effort: called after every design tag-cut, right after
-// provisioning's EnsureProvisionIssues. A missing/malformed criteria file or a
-// dedup hit is a clean no-op (never fails the design save).
+// EnsureValidationIssue mints the project's single aep:validation issue if the
+// acceptance oracle exists and no open one does yet. It is idempotent: the run
+// supervisor calls it at deployed-green, and a re-entered validation cycle must
+// find the same issue rather than mint a second. A missing or malformed
+// criteria file is a clean no-op — there is nothing to validate.
+//
+// The issue is PROSE with ONE label. It deliberately does NOT carry the `aep`
+// working-set label: the validation cycle is dispatched at it by number, and
+// working-set membership would hold the run's settle predicate open forever.
 func (s *Service) EnsureValidationIssue(ctx context.Context, orgID, projectID, designTag string) error {
 	raw, found, err := s.criteria.ReadValidationCriteria(ctx, orgID, projectID)
 	if err != nil {
@@ -91,58 +88,26 @@ func (s *Service) EnsureValidationIssue(ctx context.Context, orgID, projectID, d
 		return nil // one validation issue per project until it terminates
 	}
 
-	comps, err := s.design.ReadDesignComponents(ctx, orgID, projectID)
-	if err != nil {
-		return fmt.Errorf("validation: read design: %w", err)
-	}
-	deps := componentNames(comps)
-
-	block := taskmeta.Block{
-		Operation: validationOperation,
-		DependsOn: deps,
-		Origin:    taskmeta.OriginSpecPlan,
-		// One tag family post-build (plan.go): the spec tag `v<N>` is both the
-		// lineage stamp and the idempotency baseline. Stamp SpecTag too (mirrors
-		// coding Tasks) so the validation Task carries the version it validates.
-		// (It no longer appears in any task LIST — the list read model excludes
-		// the validation class — but the lineage stamp still versions the issue.)
-		SpecTag:   designTag,
-		DesignTag: designTag,
-	}
-	block.Key = taskmeta.Key(projectID, designTag, block.Target(), validationTitle)
-
-	body := taskmeta.ComposeBody(block, taskmeta.Human{
-		Rationale: rationale(doc.summarize()),
-		Body:      renderScope(doc),
-	})
-	// No aep:execute stamp: validation dispatch is driven by the dev workflow's
-	// validating phase (after every component deploys), not the reactive sweep.
-	// Without Temporal, a human clicks Execute on the issue (same as a coding
-	// task); either way the funnel's deps-gate holds the run until all
-	// components deploy.
-	labels := taskmeta.NewTaskLabels(taskmeta.ClassValidation, taskmeta.OriginSpecPlan)
-	// Flat mirror of block.SpecTag so the Task is filterable by version like
-	// coding Tasks (the aep:spec/<tag> label).
-	if l := taskmeta.SpecTagLabel(designTag); l != "" {
-		labels = append(labels, l)
-	}
 	req := sourcecontrol.CreateIssueRequest{
 		Title:  validationTitle,
-		Body:   body,
-		Labels: labels,
+		Body:   rationale(doc.summarize()) + "\n\n" + renderScope(doc),
+		Labels: []string{delivery.LabelValidationWork},
+		// The version is the MILESTONE the caller files this under, not a label
+		// and not a line in the body — the run supervisor's adapter assigns it.
+		DedupeKey: "validation:" + projectID + ":" + designTag,
 	}
 	if _, cerr := s.issues.CreateIssue(ctx, orgID, projectID, req); cerr != nil {
 		return fmt.Errorf("validation: create issue: %w", cerr)
 	}
-	slog.InfoContext(ctx, "validation: minted validation issue", "project", projectID, "dependsOn", len(deps))
+	slog.InfoContext(ctx, "validation: minted validation issue", "project", projectID, "designTag", designTag)
 	return nil
 }
 
-// ResolveValidationTask ensures the project's validation Task exists (idempotent
-// — covers acceptance criteria authored after the initial design approval) and
-// returns its open issue number, or 0 when there are no criteria (nothing to
-// validate). The dev workflow's validating phase calls this before running the
-// validation child.
+// ResolveValidationTask ensures the project's validation issue exists
+// (idempotent — it also covers acceptance criteria authored after the design
+// was first approved) and returns its open issue number, or 0 when there are no
+// criteria and nothing to validate. The run supervisor calls it at
+// deployed-green, before dispatching the validation cycle.
 func (s *Service) ResolveValidationTask(ctx context.Context, orgID, projectID, designTag string) (int, error) {
 	if err := s.EnsureValidationIssue(ctx, orgID, projectID, designTag); err != nil {
 		return 0, err
@@ -150,41 +115,26 @@ func (s *Service) ResolveValidationTask(ctx context.Context, orgID, projectID, d
 	return s.findOpenValidationIssue(ctx, orgID, projectID)
 }
 
-// hasOpenValidationIssue reports whether an open aep:validation Task already
-// exists for the project (dedup — mirrors provisioning's openProvisionDeps).
+// hasOpenValidationIssue reports whether an open aep:validation issue already
+// exists for the project.
 func (s *Service) hasOpenValidationIssue(ctx context.Context, orgID, projectID string) (bool, error) {
 	number, err := s.findOpenValidationIssue(ctx, orgID, projectID)
 	return number > 0, err
 }
 
-// findOpenValidationIssue returns the open aep:validation Task's issue number,
-// or 0 when none exists.
+// findOpenValidationIssue returns the open aep:validation issue's number, or 0
+// when none exists. The LABEL is the whole query — nothing parses a body.
 func (s *Service) findOpenValidationIssue(ctx context.Context, orgID, projectID string) (int, error) {
-	issues, err := s.issues.ListIssues(ctx, orgID, projectID, []string{taskmeta.LabelMarker})
+	issues, err := s.issues.ListIssues(ctx, orgID, projectID, []string{delivery.LabelValidationWork})
 	if err != nil {
 		return 0, fmt.Errorf("validation: list issues: %w", err)
 	}
 	for _, issue := range issues {
-		if !strings.EqualFold(issue.State, "open") {
-			continue
-		}
-		if taskmeta.ParseLabels(issue.Labels).Class == taskmeta.ClassValidation {
+		if strings.EqualFold(issue.State, "open") {
 			return issue.Number, nil
 		}
 	}
 	return 0, nil
-}
-
-// componentNames returns the design component names (the validation task's
-// dependsOn set), skipping empties.
-func componentNames(comps []spec.DesignComponent) []string {
-	out := make([]string, 0, len(comps))
-	for i := range comps {
-		if n := strings.TrimSpace(comps[i].Name); n != "" {
-			out = append(out, n)
-		}
-	}
-	return out
 }
 
 // rationale is the one-line blockquote summary in the issue body.

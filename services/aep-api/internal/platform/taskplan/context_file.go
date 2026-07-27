@@ -19,25 +19,28 @@ package taskplan
 import (
 	"fmt"
 	"strings"
-
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 )
+
+// OriginSpecPlan is the default `origin` a context file carries: the Task came
+// from a spec planning turn. It is a cross-language wire value (the TS side's
+// parseTaskContextFile reads it back), so it is a plain string here rather than
+// a domain type — this package is a pure encoding and imports no domain.
+const OriginSpecPlan = "spec-plan"
 
 // TaskContextFile is the projection of an existing Task rendered into the
 // plan-turn read-only context as tasks/<issueNumber>.md (§6). It is the Go
 // counterpart of @aep/agent-stream's parseTaskContextFile: YAML frontmatter +
 // markdown body. issueNumber/component/title are required; dependsOn defaults to
-// [], origin to spec-plan; derivedStatus/specTag/designTag are optional.
+// [], origin to spec-plan; specTag/designTag are optional.
 type TaskContextFile struct {
-	IssueNumber   int
-	Component     string
-	Title         string
-	DependsOn     []string
-	Origin        taskmeta.Origin
-	DerivedStatus taskmeta.DerivedStatus // optional (context signal for the planner)
-	SpecTag       string                 // optional lineage
-	DesignTag     string                 // optional lineage
-	Body          string                 // optional task body markdown (after the fence)
+	IssueNumber int
+	Component   string
+	Title       string
+	DependsOn   []string
+	Origin      string
+	SpecTag     string // optional lineage
+	DesignTag   string // optional lineage
+	Body        string // optional task body markdown (after the fence)
 }
 
 // Path returns the context-file path (tasks/<issueNumber>.md), matching the
@@ -57,12 +60,9 @@ func (f TaskContextFile) Render() string {
 	fmt.Fprintf(&sb, "dependsOn: %s\n", yamlFlowList(f.DependsOn))
 	origin := f.Origin
 	if origin == "" {
-		origin = taskmeta.OriginSpecPlan
+		origin = OriginSpecPlan
 	}
-	fmt.Fprintf(&sb, "origin: %s\n", yamlQuote(string(origin)))
-	if f.DerivedStatus != "" {
-		fmt.Fprintf(&sb, "derivedStatus: %s\n", yamlQuote(string(f.DerivedStatus)))
-	}
+	fmt.Fprintf(&sb, "origin: %s\n", yamlQuote(origin))
 	if f.SpecTag != "" {
 		fmt.Fprintf(&sb, "specTag: %s\n", yamlQuote(f.SpecTag))
 	}

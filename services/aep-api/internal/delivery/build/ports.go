@@ -25,10 +25,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
-// ErrTemporalUnavailable is the runner's "cannot start/observe workflows right
-// now" — mapped to a 503 at the edge, BEFORE any tag is cut.
-var ErrTemporalUnavailable = errors.New("temporal unavailable")
-
 // ErrEndUserAuthConflict and ErrResourceCatalogUnavailable are the build-local
 // pre-tag sentinels the handler maps to 409 / 503. build cannot import the
 // design feature (arch allowlist), so the AuthDeriver adapter wired at the
@@ -61,18 +57,6 @@ type SecretStager interface {
 	StageExternalSecrets(ctx context.Context, orgID, ocOrgID, projectID, depName string, secretsByEnv map[string]map[string]string) (refByEnv map[string]string, err error)
 }
 
-// RunStore is the workflow_runs surface the build endpoints need: the
-// one-run-per-project guard and the reads behind the build status and history
-// endpoints (the row is also the org fence for a status read). Satisfied by
-// delivery.WorkflowRunRepository.
-type RunStore interface {
-	RunningDevByProject(ctx context.Context, orgID, projectID string) (*delivery.DevflowRun, error)
-	GetByWorkflowID(ctx context.Context, orgID, workflowID string) (*delivery.DevflowRun, error)
-	// ListByProject enumerates a project's run rows newest-first, optionally
-	// filtered to one kind — the builds-history read behind list-project-builds.
-	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]delivery.DevflowRun, error)
-}
-
 // RepoLookup resolves a project's "owner/name" repo full name. Satisfied by
 // the app-root repoFullNameLookup adapter.
 type RepoLookup interface {
@@ -84,17 +68,6 @@ type RepoLookup interface {
 // handler unwraps *spec.SpecValidationError into the 422 detail.
 type SpecTagger interface {
 	TagSpec(ctx context.Context, orgID, projectID string) (*spec.SpecSaveResult, error)
-}
-
-// WorkflowRunner probes and observes the workflow engine. The real
-// implementation wraps the Temporal runtime; tests fake it.
-type WorkflowRunner interface {
-	// Ready reports whether workflows can be started right now
-	// (ErrTemporalUnavailable while the Temporal client is down) — probed
-	// BEFORE the tag is cut, so a build that could never be supervised claims
-	// no version.
-	Ready() error
-	BuildStatus(ctx context.Context, workflowID string) (delivery.DevFlowStatus, error)
 }
 
 // --- the milestone plan path's ports ------------------------------------------
@@ -173,16 +146,4 @@ type GateResolver interface {
 // increment behind the same seam the event plane already uses.
 type RunStarter interface {
 	StartRun(ctx context.Context, req delivery.StartRunRequest) error
-}
-
-// TaskReader is the DURABLE task source behind a build's task list: the live
-// GitHub ⋈ executions read (the same one behind GET /tasks), scoped by the build
-// to its own lineage tag via the aep:spec/<tag> label. It survives an archived
-// Temporal run — the workflow query only refines in-flight status on top of it.
-// Returns implementation Tasks only: the aep:validation Task is excluded at the
-// read-model boundary, matching the build tally that never counts it.
-// Satisfied by *task.Reads (the taskflow sub-package), wired at the composition
-// root; build names only the root DTO delivery.TaskView, never the sibling.
-type TaskReader interface {
-	ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]delivery.TaskView, error)
 }

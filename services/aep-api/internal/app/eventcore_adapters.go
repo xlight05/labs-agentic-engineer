@@ -213,3 +213,78 @@ func (l eventcoreRepoLister) ListAll(ctx context.Context) ([]eventcore.RepoRef, 
 	}
 	return out, nil
 }
+
+// eventcoreComponents is the pre-build component provisioning the merged-PR
+// fan-out runs: create or update the component's OpenChoreo Component CR from
+// the design facts, then emit any runtime config that rides on it.
+//
+// It is a COMPOSITE because the two used to run together as the coding
+// dispatch's per-component pre-flight, and the fan-out is where that pair now
+// belongs — a cycle is scoped to a milestone and may touch several components,
+// so no dispatch knows which component is about to be built.
+//
+// The CR is required (its absence fails the build); the runtime-config emit is
+// best-effort and self-no-ops for anything but a web app, exactly as before.
+type eventcoreComponents struct {
+	comp    componentEnsurer
+	runtime componentRuntimeConfigEmitter
+}
+
+// componentEnsurer / componentRuntimeConfigEmitter are the two narrow verbs the
+// composite needs. projects.ComponentService and
+// *runtimeconfig.RuntimeConfigService satisfy them structurally.
+type componentEnsurer interface {
+	EnsureComponent(ctx context.Context, orgName, projectName, componentName string) error
+}
+
+type componentRuntimeConfigEmitter interface {
+	EmitForComponent(ctx context.Context, orgID, projectID, componentName string) error
+}
+
+func (a eventcoreComponents) EnsureComponent(ctx context.Context, orgID, projectID, component string) error {
+	if a.comp == nil {
+		return nil
+	}
+	if err := a.comp.EnsureComponent(ctx, orgID, projectID, component); err != nil {
+		return err
+	}
+	if a.runtime != nil {
+		if err := a.runtime.EmitForComponent(ctx, orgID, projectID, component); err != nil {
+			slog.WarnContext(ctx, "eventcore: env-config.js emit failed (best-effort)",
+				"component", component, "error", err)
+		}
+	}
+	return nil
+}
+
+// eventcoreAdopter adapts the event plane onto the task feature's Adopter port:
+// the SRE/RCA handoff's promote-from-issue leg hands a freshly filed issue to
+// the coding agent. It passes a BARE target — the caller just created the
+// issue, so it belongs to no milestone yet and adoption files it under the
+// deployed version's.
+type eventcoreAdopter struct{ events *eventcore.Events }
+
+func (a eventcoreAdopter) AdoptIssue(ctx context.Context, orgID, projectID string, issueNumber int) error {
+	return a.events.AdoptIssue(ctx, orgID, projectID, eventcore.AdoptTarget{Number: issueNumber})
+}
+
+// projectRunRows adapts the milestone-run + cycle repositories onto the
+// projects domain's status/purge port. The read half is the run index the
+// overview's build + deploy stages render from; the purge half deletes the
+// CYCLES before their runs, so a recreated same-named project cannot inherit
+// orphaned cycle records.
+type projectRunRows struct {
+	runs   delivery.MilestoneRunRepository
+	cycles delivery.RunCycleRepository
+}
+
+func (a projectRunRows) ListByProject(ctx context.Context, orgID, projectID string) ([]delivery.MilestoneRun, error) {
+	return a.runs.ListByProject(ctx, orgID, projectID)
+}
+
+func (a projectRunRows) DeleteByProject(ctx context.Context, orgID, projectID string) error {
+	if err := a.cycles.DeleteByProject(ctx, orgID, projectID); err != nil {
+		return err
+	}
+	return a.runs.DeleteByProject(ctx, orgID, projectID)
+}

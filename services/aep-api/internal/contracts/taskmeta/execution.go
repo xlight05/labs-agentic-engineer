@@ -14,13 +14,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package taskmeta is the pure, IO-free encoding of an EXECUTION — one
+// platform attempt at one kind of work, owned entirely by Postgres.
+//
+// It is what remains of the encoding the Task/Execution split once shared. The
+// milestone model retired the GitHub-facing half of that encoding: issue bodies
+// are prose, issue structure is labels plus milestone membership, nothing
+// platform-side parses an issue any more, and agent work is accounted for by
+// the run's cycle records rather than execution rows. What survives is the
+// vocabulary the PROVISIONING gates and the execution reads still speak: the
+// kinds and the lifecycle.
+//
+// It stays pure: no IO, no domain imports. `internal/arch`'s
+// TestTaskmetaIsPure is the executable form of that rule.
 package taskmeta
-
-import (
-	"strconv"
-	"strings"
-	"time"
-)
 
 // ExecutionKind is the kind of work one Execution attempts for a Task (§7). No
 // Execution spans a human gate: a merged PR ends nothing — it spawns a build.
@@ -65,77 +72,14 @@ func (s ExecutionStatus) IsTerminal() bool {
 
 // IsActive reports whether the status still holds the admission mutex
 // (queued/running) — i.e. it blocks a second Execution of the same kind (§5).
+//
+// The AUTHORITY on this in production is the partial unique index the
+// executions migration creates (`WHERE status IN ('queued','running')`), so no
+// production Go path evaluates it; this is the same rule stated once in Go, for
+// the in-memory stores that stand in for that index in tests. Inlining it at
+// each of them would duplicate the mutex's definition three ways.
+//
+//deadcode:keep the Go mirror of the admission mutex's partial unique index — the index is production's authority, so only the fakes that reproduce it call this.
 func (s ExecutionStatus) IsActive() bool {
 	return s == ExecQueued || s == ExecRunning
-}
-
-// ExecutionFact is the minimal Execution projection the derived-status algebra
-// consumes (derive.go): kind, status, reason, and creation time for recency.
-// The full persisted row lives in delivery.Execution; derive stays pure by
-// taking only these facts (delivery.ExecutionFacts is the row projector).
-type ExecutionFact struct {
-	Kind      ExecutionKind
-	Status    ExecutionStatus
-	Reason    string
-	CreatedAt time.Time
-}
-
-// ReasonPRClosedUnmerged is the reason sentinel feature/execution stamps on a
-// synthetic terminal coding row appended when a linked PR is closed without
-// merging (§4 rejected). No existing execution row is mutated — a new terminal
-// row is appended, so history stays monotonic and the derived status flips to
-// rejected. It is the shared convention that lets both halves of the
-// Task/Execution split reconstruct GitHub PR state from the executions rows
-// without a live PR query (§8), so the sentinel and the reconstruction
-// (PRStateFromFacts) live here in the shared encoding.
-const ReasonPRClosedUnmerged = "pr_closed_unmerged"
-
-// ReasonPROpenPrefix + the PR number is stamped on a succeeded coding row when
-// its linked PR opens ("pr#123"), so the read path can recover the PR number
-// from the executions rows without a live PR query (§8). Shared here so both
-// feature/execution (which stamps it) and the project status builder (which
-// links to the validation PR) use one encoding.
-const ReasonPROpenPrefix = "pr#"
-
-// OpenPRNumber parses the PR number from a coding row's PR-open reason
-// ("pr#123" → 123), or 0 when the reason carries no pr# marker. Callers confirm
-// the row is a succeeded coding Execution before trusting the number.
-func OpenPRNumber(reason string) int {
-	rest, ok := strings.CutPrefix(reason, ReasonPROpenPrefix)
-	if !ok {
-		return 0
-	}
-	n, _ := strconv.Atoi(rest)
-	return n
-}
-
-// PRStateFromFacts reconstructs the latest linked PR's state from the
-// latest-per-kind execution facts (documented §13 default — no live PR query,
-// §8). The mapping follows the Execution lifecycle (§7): a coding Execution
-// ends (succeeds) only at PR-open, a merged PR spawns a build Execution, and a
-// PR closed unmerged appends a terminal coding row tagged
-// ReasonPRClosedUnmerged.
-//
-//   - a build Execution exists              → PR was merged (PRMerged);
-//   - latest coding failed, closed-unmerged → PRClosedUnmerged;
-//   - latest coding succeeded               → PR is open (PROpen);
-//   - otherwise                             → no linked PR yet (PRNone).
-func PRStateFromFacts(execs []ExecutionFact) PRState {
-	if latestOfKind(execs, KindBuild) != nil {
-		return PRMerged
-	}
-	coding := latestOfKind(execs, KindCoding)
-	if coding == nil {
-		return PRNone
-	}
-	switch coding.Status {
-	case ExecFailed:
-		if coding.Reason == ReasonPRClosedUnmerged {
-			return PRClosedUnmerged
-		}
-		return PRNone
-	case ExecSucceeded:
-		return PROpen
-	}
-	return PRNone
 }

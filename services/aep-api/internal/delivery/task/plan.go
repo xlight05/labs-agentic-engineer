@@ -31,7 +31,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/taskplan"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -65,39 +64,11 @@ type PlanService struct {
 	issues     IssueClient
 	snapshots  sourcecontrol.SnapshotProvider
 	skillsRepo SkillsRepoResolver
-	// validationMinter mints the project's single aep:validation Task right
-	// after the plan tap drains — the validation task is born in the SAME
-	// planning pass as the implementation tasks (validation-phase). Consumer-
-	// side port wired via SetValidationIssueMinter; nil is a documented no-op.
-	//
-	// It runs for a plan with NO milestone only. A milestone run mints its
-	// validation issue at deployed-green, from the supervisor — minting it at
-	// plan time would put an issue in the working set that nothing can work
-	// until every component is deployed.
-	validationMinter validationIssueMinter
 	// paths resolves each component's appPath for the planned Task's body.
 	// Optional; nil omits the App Path line.
 	paths ComponentPathReader
 
 	inflight sync.Map // projectKey → struct{}
-}
-
-// validationIssueMinter is the plan service's narrow consumer port for the
-// validation feature: after a plan turn creates the implementation issues, it
-// ensures the project's aep:validation Task exists (idempotent — dedups on the
-// open issue; no-op when specs/validation/validation-criteria.json is absent).
-// *validation.Service satisfies it; wired at the composition root. Minting
-// here (not at design approval) keeps the validation issue OUT of the plan
-// turn's existing-task context.
-type validationIssueMinter interface {
-	EnsureValidationIssue(ctx context.Context, orgID, projectID, designTag string) error
-}
-
-// SetValidationIssueMinter wires the validation feature so the plan session
-// mints the project's aep:validation Task after the tap drains. A nil minter
-// is a documented no-op.
-func (s *PlanService) SetValidationIssueMinter(m validationIssueMinter) {
-	s.validationMinter = m
 }
 
 // SetComponentPaths wires the design's component → appPath reader so a planned
@@ -111,39 +82,24 @@ func NewPlanService(repos RepoResolver, versions VersionReader, git GitReader, k
 	return &PlanService{repos: repos, versions: versions, git: git, keys: keys, client: client, issues: issues, snapshots: snapshots, skillsRepo: skillsRepo}
 }
 
-// PlanSession is a started plan turn: the raw upstream SSE body, the tap that
-// executes tool frames against GitHub, a release for the in-flight lock, and
-// the (optional) validation minter that runs once the tap drains.
-type PlanSession struct {
-	body      io.ReadCloser
-	tap       *planTap
-	release   func()
-	minter    validationIssueMinter
-	designTag string
+// planSession is a started plan turn: the raw upstream SSE body, the tap that
+// executes tool frames against GitHub, and a release for the in-flight lock.
+type planSession struct {
+	body    io.ReadCloser
+	tap     *planTap
+	release func()
 }
 
-// Stream forwards the turn to w verbatim while the tap performs the GitHub
-// writes, then mints the project's aep:validation Task (best-effort — the
-// implementation issues now exist, so the validation task is born in the same
-// planning pass; the devflow validating phase re-ensures idempotently as the
-// safety net), then releases the per-project in-flight lock. Survives client
-// disconnect (the tap drains upstream).
-func (s *PlanSession) Stream(w io.Writer, flush func()) {
-	defer s.release()
-	s.tap.Stream(s.body, w, flush)
-	if s.minter != nil {
-		if err := s.minter.EnsureValidationIssue(s.tap.ctx, s.tap.orgID, s.tap.projectID, s.designTag); err != nil {
-			slog.WarnContext(s.tap.ctx, "plan: validation issue minting after plan failed", "project", s.tap.projectID, "error", err)
-		}
-	}
-}
-
-// Drain runs the turn to completion with no client attached and reports how
-// many GitHub writes the tap could not land. It is the plan path's entry: the
-// build click has no SSE consumer, so the turn is driven to the end here and
+// drain runs the turn to completion and reports how many GitHub writes the tap
+// could not land. The build click has no SSE consumer — planning is the
+// detached half of the plan path — so the turn is driven to the end here and
 // the failure count decides whether the run it just planned is honest.
-func (s *PlanSession) Drain() int {
-	s.Stream(io.Discard, func() {})
+//
+// It survives a caller that walks away: the tap keeps reading upstream so every
+// write lands, and the in-flight lock releases when this returns.
+func (s *planSession) drain() int {
+	defer s.release()
+	s.tap.Stream(s.body, io.Discard, func() {})
 	return s.tap.failures
 }
 
@@ -155,30 +111,23 @@ func (s *PlanSession) Drain() int {
 // is an error rather than a warning: the run this plan feeds is about to be
 // supervised against the milestone's contents, so a silently short plan would
 // become a run that settles early.
+// Pre-stream failures are typed errors (ErrNoSpecVersion, ErrNoAnthropicKey,
+// ErrProjectRepoNotFound, ErrPlanInProgress, ErrSkillsRepoUnavailable) or an
+// *agentsvc.UpstreamError.
 func (s *PlanService) PlanIntoMilestone(ctx context.Context, orgID, projectID string, milestoneNumber int) error {
 	session, err := s.startPlan(ctx, orgID, projectID, milestoneNumber)
 	if err != nil {
 		return err
 	}
-	if failures := session.Drain(); failures > 0 {
+	if failures := session.drain(); failures > 0 {
 		return fmt.Errorf("plan: %d issue write(s) failed for milestone %d", failures, milestoneNumber)
 	}
 	return nil
 }
 
-// StartPlan assembles context and starts the plan turn. Pre-stream failures are
-// typed errors (ErrNoSpecVersion, ErrNoAnthropicKey, ErrProjectRepoNotFound,
-// ErrPlanInProgress) or an *agentsvc.UpstreamError; on any pre-stream failure
-// the in-flight lock is released before returning.
-func (s *PlanService) StartPlan(ctx context.Context, orgID, projectID string) (*PlanSession, error) {
-	return s.startPlan(ctx, orgID, projectID, 0)
-}
-
-// startPlan takes the per-project plan lock and starts one turn. milestoneNumber
-// is the milestone every minted issue joins; zero means the caller planned no
-// milestone (the pre-milestone dev-workflow path), and creations are left
-// unassigned.
-func (s *PlanService) startPlan(ctx context.Context, orgID, projectID string, milestoneNumber int) (*PlanSession, error) {
+// startPlan takes the per-project plan lock and starts one turn. Every minted
+// issue joins milestoneNumber at creation, so the plan costs 1+N calls.
+func (s *PlanService) startPlan(ctx context.Context, orgID, projectID string, milestoneNumber int) (*planSession, error) {
 	key := orgID + "/" + projectID
 	if _, loaded := s.inflight.LoadOrStore(key, struct{}{}); loaded {
 		return nil, ErrPlanInProgress
@@ -192,7 +141,7 @@ func (s *PlanService) startPlan(ctx context.Context, orgID, projectID string, mi
 	return session, nil
 }
 
-func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID string, milestoneNumber int, release func()) (*PlanSession, error) {
+func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID string, milestoneNumber int, release func()) (*planSession, error) {
 	// Resolved directly (not via resolveProjectRepo): the plan turn keys on
 	// the workspace ref, so it needs no owner/name split — only a ready row.
 	repo, err := s.repos.GetRepo(ctx, orgID, projectID)
@@ -218,7 +167,6 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	if err != nil || len(reqVersions) == 0 {
 		return nil, ErrNoSpecVersion
 	}
-	currentSpecTag := reqVersions[0].Tag
 
 	apiKey, err := s.keys(ctx, orgID)
 	if err != nil {
@@ -236,20 +184,13 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	// Existing Tasks → instruction context + tap preload + dedupe slugs. These
 	// are platform state (GitHub issues), not repository files, so they ride in
 	// the instruction — the snapshot carries only committed content.
+	//
+	// A version plans FRESH from the new spec (§6: supersede, no carry-over), so
+	// the only context is the milestone's OWN issues — empty on a first pass and
+	// non-empty only on a re-plan or a crash re-run, exactly the cases dedupe
+	// exists for.
 	contextFiles := map[string]string{}
-	var preload map[int]plannedTask
-	var slugs map[string]bool
-	if milestoneNumber > 0 {
-		// A milestone plans FRESH from the new spec (§6: supersede, no
-		// carry-over), so the only context is the milestone's OWN issues — which
-		// is empty on a first pass and non-empty only on a re-plan or a crash
-		// re-run, exactly the cases dedupe exists for.
-		preload, slugs = s.assembleMilestoneTasks(ctx, orgID, projectID, milestoneNumber, contextFiles)
-	} else {
-		var olderTags map[string]bool
-		preload, slugs, olderTags = s.assembleExistingTasks(ctx, orgID, projectID, currentSpecTag, contextFiles)
-		s.appendLineageDiffs(ctx, ref, currentSpecTag, olderTags, contextFiles)
-	}
+	preload, slugs := s.assembleMilestoneTasks(ctx, orgID, projectID, milestoneNumber, contextFiles)
 	// Freeze the set of issue numbers the agent actually received as context: an
 	// updateTask{issueNumber} ref is fenced to it (a hallucinated / out-of-context
 	// number must never be written — plan_tap.resolveRef).
@@ -315,13 +256,7 @@ func (s *PlanService) startPlanLocked(ctx context.Context, orgID, projectID stri
 	tap.existingSlugs = slugs
 	tap.contextNumbers = contextNumbers
 
-	session := &PlanSession{body: body, tap: tap, release: release, designTag: currentSpecTag}
-	if milestoneNumber == 0 {
-		// The validation issue is born at plan time only on the pre-milestone
-		// path. A milestone run mints it at deployed-green instead.
-		session.minter = s.validationMinter
-	}
-	return session, nil
+	return &planSession{body: body, tap: tap, release: release}, nil
 }
 
 // componentPaths reads each component's appPath, lowercased for lookup.
@@ -360,7 +295,7 @@ func (s *PlanService) assembleMilestoneTasks(ctx context.Context, orgID, project
 		return preload, slugs
 	}
 	for _, issue := range issues {
-		if slug := taskmeta.TitleSlug(issue.Title); slug != "" {
+		if slug := titleSlug(issue.Title); slug != "" {
 			slugs[slug] = true
 		}
 		// Gates and the validation issue are not the planner's to touch, and a
@@ -385,87 +320,9 @@ func (s *PlanService) assembleMilestoneTasks(ctx context.Context, orgID, project
 	return preload, slugs
 }
 
-// assembleExistingTasks is the PRE-MILESTONE context assembler: it renders each
-// open Task as a tasks/<n>.md context file, preloads the tap state for
-// updateTask{issueNumber}, collects the title-slug dedupe set, and reports the
-// distinct older lineage tags (spec `v<N>` or legacy design `v<N>-<M>`) whose
-// lineage diff the assembler should include (§6). Milestone plans use
-// assembleMilestoneTasks instead — membership, not a label query.
-func (s *PlanService) assembleExistingTasks(ctx context.Context, orgID, projectID, currentSpecTag string, files map[string]string) (map[int]plannedTask, map[string]bool, map[string]bool) {
-	preload := map[int]plannedTask{}
-	slugs := map[string]bool{}
-	olderTags := map[string]bool{}
-
-	issues, err := s.issues.ListIssues(ctx, orgID, projectID, []string{taskmeta.LabelMarker})
-	if err != nil {
-		slog.WarnContext(ctx, "plan: list existing tasks failed", "error", err)
-		return preload, slugs, olderTags
-	}
-	for _, issue := range issues {
-		if !strings.EqualFold(issue.State, "open") {
-			continue
-		}
-		// The validation task is not plan context: it is platform-minted after
-		// the plan turn (component-less, dependsOn everything), so showing it
-		// would only confuse the component-based planning skill — and preloading
-		// it into contextNumbers would let an updateTask clobber it.
-		if taskmeta.ParseLabels(issue.Labels).Class == taskmeta.ClassValidation {
-			continue
-		}
-		block, human, berr := taskmeta.ParseBody(issue.Body)
-		if berr != nil {
-			continue // mangled/missing block — the events handler flags it
-		}
-		cf := taskplan.TaskContextFile{
-			IssueNumber: issue.Number,
-			Component:   block.Component,
-			Title:       issue.Title,
-			DependsOn:   block.DependsOn,
-			Origin:      block.Origin,
-			SpecTag:     block.SpecTag,
-			DesignTag:   block.DesignTag,
-			Body:        human.Body,
-		}
-		path, content := taskplan.RenderTaskContextFile(cf)
-		files[path] = content
-
-		preload[issue.Number] = plannedTask{
-			Component: block.Component,
-			DependsOn: block.DependsOn,
-			Rationale: human.Rationale,
-			Body:      human.Body,
-		}
-		if slug := taskmeta.TitleSlug(issue.Title); slug != "" {
-			slugs[slug] = true
-		}
-		if block.DesignTag != "" && block.DesignTag != currentSpecTag {
-			olderTags[block.DesignTag] = true
-		}
-	}
-	return preload, slugs, olderTags
-}
-
-// appendLineageDiffs includes the spec delta between each older lineage tag
-// (spec or legacy design — both are real git tags) and the current spec tag so
-// incremental planning reasons over the real change (§6 — Workspace.Diff on
-// the local mirror, was GitHub CompareRefs).
-func (s *PlanService) appendLineageDiffs(ctx context.Context, ref sourcecontrol.RepoRef, currentSpecTag string, olderTags map[string]bool, files map[string]string) {
-	if s.git == nil || len(olderTags) == 0 {
-		return
-	}
-	for oldTag := range olderTags {
-		cmp, cerr := s.git.Workspace().Diff(ctx, ref, oldTag, currentSpecTag)
-		if cerr != nil {
-			slog.WarnContext(ctx, "plan: lineage compare failed", "from", oldTag, "to", currentSpecTag, "error", cerr)
-			continue
-		}
-		files["context/lineage-diff-"+oldTag+".md"] = renderCompare(oldTag, currentSpecTag, cmp)
-	}
-}
-
-// renderPlanContext renders the existing-task + lineage-diff context files as
-// deterministic instruction sections. They keep their historical
-// tasks/<n>.md / context/… names so the model's mental layout is unchanged.
+// renderPlanContext renders the milestone's existing-task context files as
+// deterministic instruction sections. They keep their historical tasks/<n>.md
+// names so the model's mental layout is unchanged.
 func renderPlanContext(files map[string]string) string {
 	if len(files) == 0 {
 		return ""
@@ -476,33 +333,9 @@ func renderPlanContext(files map[string]string) string {
 	}
 	sort.Strings(paths)
 	var sb strings.Builder
-	sb.WriteString("\n\n## Existing open Tasks and lineage diffs (reference)\n")
+	sb.WriteString("\n\n## Existing open Tasks in this version (reference)\n")
 	for _, p := range paths {
 		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", p, files[p])
-	}
-	return sb.String()
-}
-
-// renderCompare renders a compare result as a compact markdown summary for the
-// planner's context (changed files + hunks).
-func renderCompare(from, to string, cmp *sourcecontrol.CompareResult) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "# Lineage diff: %s → %s\n\n", from, to)
-	fmt.Fprintf(&sb, "Status: %s (%d commit(s), +%d/-%d)\n\n", cmp.Status, cmp.TotalCommits, cmp.AheadBy, cmp.BehindBy)
-	if cmp.Truncated {
-		sb.WriteString("> NOTE: this compare was capped at a file limit — the change list below is INCOMPLETE. Treat components not shown as possibly-changed and re-verify against the current design rather than assuming they are untouched.\n\n")
-	}
-	for _, f := range cmp.Files {
-		fmt.Fprintf(&sb, "## %s (%s, +%d/-%d)\n", f.Filename, f.Status, f.Additions, f.Deletions)
-		if f.Patch != "" {
-			sb.WriteString("```diff\n")
-			sb.WriteString(f.Patch)
-			if !strings.HasSuffix(f.Patch, "\n") {
-				sb.WriteByte('\n')
-			}
-			sb.WriteString("```\n")
-		}
-		sb.WriteByte('\n')
 	}
 	return sb.String()
 }

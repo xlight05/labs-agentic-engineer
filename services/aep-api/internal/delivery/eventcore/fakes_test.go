@@ -416,3 +416,18 @@ func (f *fakeSupervisor) named(name string) []delivery.RunSignal {
 	}
 	return out
 }
+
+// fakeComponents records the pre-build component ensures the fan-out runs, and
+// can be scripted to refuse one.
+type fakeComponents struct {
+	ensured []string
+	failFor string
+}
+
+func (f *fakeComponents) EnsureComponent(_ context.Context, _, _, component string) error {
+	f.ensured = append(f.ensured, component)
+	if component == f.failFor {
+		return fmt.Errorf("design has no component %q", component)
+	}
+	return nil
+}

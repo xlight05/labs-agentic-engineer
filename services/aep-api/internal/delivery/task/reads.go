@@ -18,73 +18,73 @@ package task
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 )
 
 // The task read DTOs (Lineage, ExecutionView, TaskView, TaskDetail) live in the
-// delivery ROOT (delivery.read_views.go) so the build sub-package can name
-// TaskView through its TaskReader port without importing taskflow. This service
-// produces them; both it and build import only the root (§10.3.1).
+// delivery ROOT (delivery/read_views.go) so the build sub-package can name
+// TaskView through a port without importing this one. This service produces
+// them; both it and build import only the root.
 
-// Reads is the live read path (§8): no cache, no read model.
-type Reads struct {
-	issues   IssueClient
-	repos    RepoResolver
-	execs    ExecutionReader
-	versions VersionReader // optional (stale-design attention)
-	design   DesignReader  // optional (dependency-gated on_hold reconciliation)
-}
-
-// NewReads wires the read path. versions may be nil (then the stale-design
-// attention flag is not computed). design may be nil (then the dependency-gated
-// on_hold reconciliation degrades to component-dep gating only — provision /
-// org-service dep resolution is skipped).
-func NewReads(issues IssueClient, repos RepoResolver, execs ExecutionReader, versions VersionReader, design DesignReader) *Reads {
-	return &Reads{issues: issues, repos: repos, execs: execs, versions: versions, design: design}
-}
-
-// List returns the project's implementation Tasks filtered by state ("open" |
-// "closed" | "all"; default "open"). FE groups by derivedStatus client-side
-// (§8). The aep:validation Task is excluded (see ListByTag).
-func (r *Reads) List(ctx context.Context, orgID, projectID, state string) ([]delivery.TaskView, error) {
-	return r.ListByTag(ctx, orgID, projectID, state, "")
-}
-
-// ListByTag is List additionally scoped to a single spec/build version tag: it
-// returns only Tasks whose machine block carries that specTag. The filter runs
-// on the parsed block, NOT the aep:spec/<tag> label — the block is the durable
-// truth and the label only its flat mirror, absent on Tasks planned before the
-// label existed (#182), which a label-scoped GitHub query would silently drop.
-// Same single marker-scoped fetch either way. An empty tag returns every Task
-// (== List). This is the read behind GET /tasks?tag=v3 and the build's
-// per-version task list.
+// Reads is the live read path: GitHub issues, read now, with no cache and no
+// read model.
 //
-// List reads return implementation Tasks ONLY: the project's aep:validation
-// Task is a phase of the dev run, not an implementation task — its state is
-// surfaced via /status deploy.validation (+ validationUrl), and it stays
-// reachable via Get by issue number. Excluding it here (the read-model
-// boundary) keeps every list consumer consistent: the console tasks page, the
-// build's per-version task list (whose tally already excludes it), and the
-// devflow's planned-task graph.
+// What it reads is MILESTONE MEMBERSHIP plus LABELS, and nothing else. Issue
+// bodies are prose — the platform authors them for the agent and never parses
+// them back — so a Task view carries the facts GitHub holds (number, title,
+// state, labels, body) joined with the execution rows the platform still owns
+// for provisioning gates. Everything the retired machine block used to supply
+// (component, dependsOn, lineage, origin, the ten-value derived status) is
+// either gone or now a property of the RUN, which is read from the run rows.
+type Reads struct {
+	issues IssueClient
+	repos  RepoResolver
+	execs  ExecutionReader
+	runs   MilestoneResolver
+}
+
+// NewReads wires the read path. runs may be nil — a `?tag=` query then cannot
+// be resolved to a milestone and answers empty rather than guessing.
+//
+// The repo row is still read on every call: it is the tenant fence (a project
+// with no repository has no Tasks) and it names the executions rows' repo key.
+func NewReads(issues IssueClient, repos RepoResolver, execs ExecutionReader, runs MilestoneResolver) *Reads {
+	return &Reads{issues: issues, repos: repos, execs: execs, runs: runs}
+}
+
+// ListByTag returns a project's Tasks, filtered by GitHub state ("open" |
+// "closed" | "all"; default "open") and optionally scoped to one spec/build
+// version tag.
+//
+// THE TAG IS MILESTONE MEMBERSHIP. It resolves `v<N>` to a milestone NUMBER
+// through the platform's own run rows and then lists that milestone — never by
+// matching titles against GitHub, whose milestone titles are renamable and
+// whose title filters are case-insensitive while its create-uniqueness is not.
+// An unknown tag is an empty list, not an error: a version this platform never
+// built has no Tasks by definition.
+//
+// An empty tag returns every version, which costs two label-scoped queries
+// because GitHub's `labels=` is AND-semantics and the two populations (agent
+// work, dispatch gates) carry disjoint labels.
+//
+// The validation issue is excluded at this boundary, as it always was: it is a
+// phase of the run, not an implementation Task, and it surfaces on the
+// deployment surface with the run's verdict.
 func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag string) ([]delivery.TaskView, error) {
-	repo, owner, name, err := resolveProjectRepo(ctx, r.repos, orgID, projectID)
+	_, owner, name, err := resolveProjectRepo(ctx, r.repos, orgID, projectID)
 	if err != nil {
 		return nil, err
 	}
 	repoFullName := owner + "/" + name
-	repoBase := strings.TrimSuffix(repo.RepoURL, ".git")
-	issues, err := r.issues.ListIssues(ctx, orgID, projectID, []string{taskmeta.LabelMarker})
+
+	issues, specTag, err := r.taskIssues(ctx, orgID, projectID, tag)
 	if err != nil {
 		return nil, err
 	}
-	latestSpecTag := r.latestSpecTag(ctx, orgID, projectID)
 
 	// One batch query for the whole repo's latest-per-kind rows (not one per
 	// issue); a load failure degrades to empty executions, as before.
@@ -99,221 +99,40 @@ func (r *Reads) ListByTag(ctx context.Context, orgID, projectID, state, tag stri
 		if !matchesState(issue.State, state) {
 			continue
 		}
-		view, ok := buildView(issue, latestSpecTag, repoBase, execsByIssue[issue.Number])
+		view, ok := buildView(issue, specTag, execsByIssue[issue.Number])
 		if !ok {
-			continue
-		}
-		// Phase, not implementation task (see the doc comment above).
-		if view.ExecutorClass == string(taskmeta.ClassValidation) {
-			continue
-		}
-		if tag != "" && view.Lineage.SpecTag != tag {
 			continue
 		}
 		out = append(out, view)
 	}
-	// Second pass: reconcile dependency-gated coding Tasks to on_hold + BlockedBy.
-	// This needs every sibling's derived status, so it runs after the per-issue
-	// loop over the whole set (issue #164 follow-up).
-	r.reconcileBlocked(ctx, orgID, projectID, out)
 	return out, nil
 }
 
-// reconcileBlocked is the read path's dependency-gated on_hold pass (issue #164
-// follow-up). A coding Task waiting on unresolved dependencies today derives a
-// misleading status — in_progress (a queued-not-running execution → board
-// "Ongoing") or pending (no execution → "Pending") — and records nothing about
-// WHY. Gating lives at two write-side layers (the funnel's depsGate for
-// provisioning deps, the Temporal task graph for sibling-component deps), neither
-// of which annotates the Task, so the read path — which already derived every
-// Task's status — is the reliable place to compute "is this waiting, and on
-// what". It mirrors funnel.depsGate/depDeployed, but resolves "deployed" from the
-// already-derived sibling views instead of re-loading each dep's executions.
-//
-// It overrides ONLY a not-started coding Task (absent or queued coding
-// execution): a genuinely running Task keeps in_progress. A met dep is one whose
-// resolving view derives deployed; an unmet dep is one whose resolver is missing
-// or not deployed. Provision + org-service deps gate CONDITIONALLY — only when a
-// consumer-side aep:provision gate exists for the dep — so a resolved/ready dep
-// with no gate never becomes a phantom forever-hold (the same conditional rule
-// the funnel applies to org-service deps).
-func (r *Reads) reconcileBlocked(ctx context.Context, orgID, projectID string, views []delivery.TaskView) {
-	// Resolution maps over the derived views (mirror the funnel's projectView):
-	// coding/ops Tasks index by component; aep:provision gates index by dependency
-	// name (a provision gate's Component field IS the dep name). Highest issue
-	// number wins, matching the funnel's latest-per-component rule.
-	latestByComponent := map[string]delivery.TaskView{}
-	provisionByDep := map[string]delivery.TaskView{}
-	for _, v := range views {
-		key := strings.ToLower(v.Component)
-		if key == "" {
-			continue
-		}
-		if v.ExecutorClass == string(taskmeta.ClassProvision) {
-			if cur, ok := provisionByDep[key]; !ok || v.IssueNumber > cur.IssueNumber {
-				provisionByDep[key] = v
-			}
-			continue
-		}
-		if cur, ok := latestByComponent[key]; !ok || v.IssueNumber > cur.IssueNumber {
-			latestByComponent[key] = v
-		}
-	}
-
-	// Per-component provision + org-service deps from the design at HEAD. A nil
-	// design reader or a read error degrades to component-dep gating only (the
-	// block's dependsOn still resolves), never blocks the list.
-	var provisionDeps, orgServiceDeps map[string][]string
-	if r.design != nil {
-		if deps, err := r.design.ProvisionDepNames(ctx, orgID, projectID); err != nil {
-			slog.WarnContext(ctx, "reads: read provision deps failed", "project", projectID, "error", err)
-		} else {
-			provisionDeps = deps
-		}
-		if deps, err := r.design.OrgServiceDepNames(ctx, orgID, projectID); err != nil {
-			slog.WarnContext(ctx, "reads: read org-service deps failed", "project", projectID, "error", err)
-		} else {
-			orgServiceDeps = deps
-		}
-	}
-
-	// depMet mirrors funnel.depDeployed: a dep resolves via its component Task,
-	// falling back to its aep:provision gate; it is met iff that view derives
-	// deployed. An unresolvable name is not met.
-	depMet := func(dep string) bool {
-		key := strings.ToLower(dep)
-		v, ok := latestByComponent[key]
-		if !ok {
-			v, ok = provisionByDep[key]
-		}
-		if !ok {
-			return false
-		}
-		return v.DerivedStatus == string(taskmeta.StatusDeployed)
-	}
-
-	for i := range views {
-		v := &views[i]
-		if v.ExecutorClass != string(taskmeta.ClassCoding) {
-			continue
-		}
-		if !nonTerminalForHold(v.DerivedStatus) || !codingNotStarted(v) {
-			continue
-		}
-		compKey := strings.ToLower(v.Component)
-		seen := map[string]bool{}
-		var unmet []string
-		check := func(dep string) {
-			key := strings.ToLower(dep)
-			if key == "" || seen[key] {
-				return
-			}
-			seen[key] = true
-			if !depMet(dep) {
-				unmet = append(unmet, dep)
-			}
-		}
-		// Sibling-component deps (the block's dependsOn) gate unconditionally.
-		for _, dep := range v.DependsOn {
-			check(dep)
-		}
-		// Provision + org-service deps gate ONLY when an aep:provision gate exists
-		// for the dep (indexed in provisionByDep): a resolved/ready dep with no gate
-		// is not blocking.
-		for _, dep := range provisionDeps[compKey] {
-			if _, gated := provisionByDep[strings.ToLower(dep)]; gated {
-				check(dep)
-			}
-		}
-		for _, dep := range orgServiceDeps[compKey] {
-			if _, gated := provisionByDep[strings.ToLower(dep)]; gated {
-				check(dep)
-			}
-		}
-		if len(unmet) > 0 {
-			v.DerivedStatus = string(taskmeta.StatusOnHold)
-			v.BlockedBy = unmet
-		}
-	}
-}
-
-// nonTerminalForHold reports whether a derived status is one the dependency
-// reconciler may override to on_hold: a Task still waiting to run (pending /
-// in_progress / on_hold). Every terminal or past-dispatch status (deployed,
-// building, merged, ready_for_review, rejected, abandoned, failed) is left
-// untouched.
-func nonTerminalForHold(status string) bool {
-	switch taskmeta.DerivedStatus(status) {
-	case taskmeta.StatusPending, taskmeta.StatusInProgress, taskmeta.StatusOnHold:
-		return true
-	}
-	return false
-}
-
-// codingNotStarted reports whether a coding Task has NOT begun running: its
-// latest coding execution is absent or still queued (a dependency-gated Task
-// queues behind the funnel's gate). A running coding execution means the Task was
-// dispatched — genuinely in_progress — and must not be overridden to on_hold. The
-// view's Executions map carries the latest status per kind.
-func codingNotStarted(v *delivery.TaskView) bool {
-	e, ok := v.Executions[string(taskmeta.KindCoding)]
-	if !ok {
-		return true
-	}
-	return e.Status == string(taskmeta.ExecQueued)
-}
-
-// Get returns one Task with its full Execution history. It derives the target's
-// status through the SAME whole-project reconcile the list uses (buildView over
-// every sibling → reconcileBlocked), not a lone buildView — otherwise a
-// dependency-gated coding Task shows the misleading raw status (pending /
-// in_progress) on its detail page while the list correctly shows on_hold (issue
-// #164 follow-up). The gating overlay needs every sibling's derived status and
-// the project's provision gates, so the whole set is built before picking one.
+// Get returns one Task with its full Execution history. The issue is fetched by
+// number (O(1)); a number that is not a Task of this project is
+// ErrTaskNotFound.
 func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber int) (*delivery.TaskDetail, error) {
-	repo, owner, name, err := resolveProjectRepo(ctx, r.repos, orgID, projectID)
+	_, owner, name, err := resolveProjectRepo(ctx, r.repos, orgID, projectID)
 	if err != nil {
 		return nil, err
 	}
 	repoFullName := owner + "/" + name
-	repoBase := strings.TrimSuffix(repo.RepoURL, ".git")
-	issues, err := r.issues.ListIssues(ctx, orgID, projectID, []string{taskmeta.LabelMarker})
-	if err != nil {
-		return nil, err
-	}
-	if !containsIssue(issues, issueNumber) {
+
+	issue, err := r.issues.GetIssue(ctx, orgID, projectID, issueNumber)
+	if err != nil || issue == nil {
 		return nil, ErrTaskNotFound
 	}
-	latestSpecTag := r.latestSpecTag(ctx, orgID, projectID)
 
-	// One batch query for the whole repo's latest-per-kind rows (mirrors
-	// ListByTag); a load failure degrades to empty executions.
-	execsByIssue, err := r.execs.LatestPerKindForRepoScoped(ctx, orgID, repoFullName)
+	execs, err := r.execs.LatestPerKindScoped(ctx, orgID, repoFullName, issueNumber)
 	if err != nil {
 		slog.WarnContext(ctx, "reads: load executions failed", "repo", repoFullName, "error", err)
-		execsByIssue = map[int]map[string]*delivery.Execution{}
+		execs = map[string]*delivery.Execution{}
 	}
-
-	views := make([]delivery.TaskView, 0, len(issues))
-	for _, issue := range issues {
-		if view, ok := buildView(issue, latestSpecTag, repoBase, execsByIssue[issue.Number]); ok {
-			views = append(views, view)
-		}
-	}
-	// Same on_hold + BlockedBy reconcile as the list — the detail page must not
-	// disagree with the list on a gated Task's status.
-	r.reconcileBlocked(ctx, orgID, projectID, views)
-
-	var view *delivery.TaskView
-	for i := range views {
-		if views[i].IssueNumber == issueNumber {
-			view = &views[i]
-			break
-		}
-	}
-	if view == nil {
-		return nil, ErrTaskNotFound
-	}
+	// Get serves the validation issue and a bare ledger issue too: the list hides
+	// them, but a detail page reached by number must still answer, so the
+	// population filter is deliberately not applied here.
+	view := bareView(*issue, "")
+	view.Executions = latestViews(execs)
 
 	history, err := r.execs.ListByIssueScoped(ctx, orgID, repoFullName, issueNumber)
 	if err != nil {
@@ -323,101 +142,117 @@ func (r *Reads) Get(ctx context.Context, orgID, projectID string, issueNumber in
 	for i := range history {
 		hv = append(hv, executionView(&history[i]))
 	}
-	return &delivery.TaskDetail{TaskView: *view, ExecutionHistory: hv}, nil
+	return &delivery.TaskDetail{TaskView: view, ExecutionHistory: hv}, nil
 }
 
-// containsIssue reports whether the task-marker issue set includes issueNumber.
-func containsIssue(issues []sourcecontrol.IssueInfo, issueNumber int) bool {
-	for i := range issues {
-		if issues[i].Number == issueNumber {
-			return true
+// taskIssues resolves the requested population, and the version tag every
+// returned issue belongs to (empty when the query spans versions).
+func (r *Reads) taskIssues(ctx context.Context, orgID, projectID, tag string) ([]sourcecontrol.IssueInfo, string, error) {
+	if tag == "" {
+		issues, err := r.allVersionIssues(ctx, orgID, projectID)
+		return issues, "", err
+	}
+	if r.runs == nil {
+		return nil, tag, nil
+	}
+	number, found, err := r.runs.MilestoneNumberForTag(ctx, orgID, projectID, tag)
+	if err != nil {
+		return nil, tag, err
+	}
+	if !found {
+		return nil, tag, nil // a version this platform never built has no Tasks
+	}
+	issues, err := r.issues.ListMilestoneIssues(ctx, orgID, projectID, sourcecontrol.MilestoneIssuesFilter{
+		Number: number,
+		State:  "all", // state filtering is matchesState's job, so "closed" works too
+	})
+	return issues, tag, err
+}
+
+// allVersionIssues is the untagged query: agent work plus dispatch gates across
+// every milestone. Two calls, because the two populations carry disjoint labels
+// and GitHub's label filter is AND-semantics.
+func (r *Reads) allVersionIssues(ctx context.Context, orgID, projectID string) ([]sourcecontrol.IssueInfo, error) {
+	work, err := r.issues.ListIssues(ctx, orgID, projectID, []string{delivery.LabelAgentWork})
+	if err != nil {
+		return nil, err
+	}
+	gates, err := r.issues.ListIssues(ctx, orgID, projectID, []string{delivery.LabelProvisionGate})
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[int]bool, len(work))
+	out := make([]sourcecontrol.IssueInfo, 0, len(work)+len(gates))
+	for _, group := range [][]sourcecontrol.IssueInfo{work, gates} {
+		for _, issue := range group {
+			if seen[issue.Number] {
+				continue
+			}
+			seen[issue.Number] = true
+			out = append(out, issue)
 		}
 	}
-	return false
+	return out, nil
 }
 
-// buildView fuses one live issue with its latest-per-kind executions into a
-// TaskView. ok is false when the issue is not a Task (no marker) — the caller
-// skips it. repoBase is the repo's HTML URL (clone URL sans ".git"), the base
-// the PR link is built from.
-func buildView(issue sourcecontrol.IssueInfo, latestSpecTag, repoBase string, execs map[string]*delivery.Execution) (delivery.TaskView, bool) {
-	labels := taskmeta.ParseLabels(issue.Labels)
-	if !labels.IsTask {
+// buildView projects one live issue onto a TaskView. ok is false when the issue
+// is not part of a Task population — a ledger-only human issue, or the
+// validation issue, which the list hides.
+func buildView(issue sourcecontrol.IssueInfo, specTag string, execs map[string]*delivery.Execution) (delivery.TaskView, bool) {
+	if delivery.HasLabel(issue.Labels, delivery.LabelValidationWork) {
 		return delivery.TaskView{}, false
 	}
-	block, human, blockErr := taskmeta.ParseBody(issue.Body)
-
-	execFacts := delivery.ExecutionFacts(execs)
-	facts := taskmeta.GitHubFacts{
-		IssueOpen:   strings.EqualFold(issue.State, "open"),
-		HoldPresent: labels.Hold,
-		PR:          taskmeta.PRStateFromFacts(execFacts),
+	if !delivery.HasLabel(issue.Labels, delivery.LabelAgentWork) &&
+		!delivery.HasLabel(issue.Labels, delivery.LabelProvisionGate) {
+		return delivery.TaskView{}, false
 	}
-	derived := taskmeta.Derive(facts, execFacts)
-
-	// Validation Tasks run coding→PR→merge with NO post-merge build (the devflow's
-	// validating phase: dispatch → PR → merge, no build/deploy). Derive infers a
-	// merge only from a following build Execution, so it never sees a validation
-	// merge and reads the closed, merged issue as abandoned → the console renders
-	// "Failed" for a validation that actually completed. Surface a completed
-	// validation (issue closed with a succeeded coding run) as deployed → "Done".
-	// A genuinely failed validation run (coding failed) is untouched, staying Failed.
-	if labels.Class == taskmeta.ClassValidation && derived == taskmeta.StatusAbandoned {
-		if c := execs[string(taskmeta.KindCoding)]; c != nil && c.Status == string(taskmeta.ExecSucceeded) {
-			derived = taskmeta.StatusDeployed
-		}
-	}
-
-	view := delivery.TaskView{
-		IssueNumber:   issue.Number,
-		Title:         issue.Title,
-		IssueURL:      issue.URL,
-		ExecutorClass: string(labels.Class),
-		Origin:        string(block.Origin),
-		Component:     block.Component,
-		Operation:     block.Operation,
-		DependsOn:     nonNil(block.DependsOn),
-		Rationale:     human.Rationale,
-		Body:          human.Body,
-		Lineage:       delivery.Lineage{SpecTag: block.SpecTag, DesignTag: block.DesignTag},
-		DerivedStatus: string(derived),
-		Hold:          labels.Hold,
-		Attention:     computeAttention(labels, block, blockErr, latestSpecTag),
-		Executions:    latestViews(execs),
-	}
-	// The PR link rides the succeeded coding row's "pr#N" reason (coding success
-	// == PR opened) — a running/failed row's reason is never trusted, mirroring
-	// the /status validationUrl recovery.
-	if c := execs[string(taskmeta.KindCoding)]; c != nil && c.Status == string(taskmeta.ExecSucceeded) {
-		if n := taskmeta.OpenPRNumber(c.Reason); n > 0 && repoBase != "" {
-			view.PRURL = fmt.Sprintf("%s/pull/%d", repoBase, n)
-		}
-	}
+	view := bareView(issue, specTag)
+	// A dispatch gate's provisioning run still keeps an execution row; agent work
+	// has none — its pull request lives on the run's cycle record instead.
+	view.Executions = latestViews(execs)
 	return view, true
 }
 
-// computeAttention derives the standing attention flags for a Task: a mangled
-// machine block, an ambiguous executor class, a stale lineage vs the current
-// spec version, or a platform-set aep:attention with no more-specific reason.
-func computeAttention(labels taskmeta.ParsedLabels, block taskmeta.Block, blockErr error, latestSpecTag string) []string {
-	// Never nil: TaskView.attention is contractually "[] when clean" (the console
-	// maps over it directly). A nil slice would marshal as JSON null and crash a
-	// consumer that trusts the contract — which is exactly what the task-log
-	// stream's `task` frame does.
-	flags := []string{}
-	if blockErr != nil && !errors.Is(blockErr, taskmeta.ErrNoBlock) {
-		flags = append(flags, "mangled-block")
+// bareView is the projection every Task shares: what GitHub holds about the
+// issue, and nothing inferred.
+func bareView(issue sourcecontrol.IssueInfo, specTag string) delivery.TaskView {
+	return delivery.TaskView{
+		IssueNumber:   issue.Number,
+		Title:         issue.Title,
+		IssueURL:      issue.URL,
+		ExecutorClass: taskKind(issue.Labels),
+		Body:          issue.Body,
+		DependsOn:     []string{},
+		Lineage:       delivery.Lineage{SpecTag: specTag},
+		DerivedStatus: derivedStatus(issue.State),
+		// attention is contractually "[] when clean" — the console maps over it
+		// directly, and a nil slice would marshal as JSON null.
+		Attention:  []string{},
+		Executions: map[string]delivery.ExecutionView{},
 	}
-	if labels.ClassAmbiguous {
-		flags = append(flags, "ambiguous-class")
+}
+
+// taskKind is the label-derived kind chip: a dispatch gate, the validation
+// issue, or ordinary agent work.
+func taskKind(labels []string) string {
+	switch {
+	case delivery.HasLabel(labels, delivery.LabelProvisionGate):
+		return "provision"
+	case delivery.HasLabel(labels, delivery.LabelValidationWork):
+		return "validation"
+	default:
+		return "coding"
 	}
-	if latestSpecTag != "" && block.DesignTag != "" && block.DesignTag != latestSpecTag {
-		flags = append(flags, "stale-design")
+}
+
+// derivedStatus is the whole derived-status algebra now: the issue is open, or
+// it is closed. See delivery.DerivedStatusPending for why the vocabulary is a
+// subset of the retired ten rather than two new strings.
+func derivedStatus(issueState string) string {
+	if strings.EqualFold(issueState, "open") {
+		return delivery.DerivedStatusPending
 	}
-	if labels.Attention && len(flags) == 0 {
-		flags = append(flags, "flagged")
-	}
-	return flags
+	return delivery.DerivedStatusMerged
 }
 
 func latestViews(execs map[string]*delivery.Execution) map[string]delivery.ExecutionView {
@@ -444,18 +279,6 @@ func executionView(e *delivery.Execution) delivery.ExecutionView {
 	}
 }
 
-// latestSpecTag returns the newest spec version tag, or "" when unavailable.
-// Best-effort — used only for the stale-design attention flag, so it reads
-// the local mirror WITHOUT a fetch (VersionReader.LatestSpecTag) rather than
-// forcing a live ListRequirementsVersions round-trip on every task-list call
-// (docs/design/gitfs-fetch-on-read-followup.md §2).
-func (r *Reads) latestSpecTag(ctx context.Context, orgID, projectID string) string {
-	if r.versions == nil {
-		return ""
-	}
-	return r.versions.LatestSpecTag(ctx, orgID, projectID)
-}
-
 func matchesState(issueState, filter string) bool {
 	open := strings.EqualFold(issueState, "open")
 	switch strings.ToLower(filter) {
@@ -468,11 +291,4 @@ func matchesState(issueState, filter string) bool {
 	default:
 		return open
 	}
-}
-
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }

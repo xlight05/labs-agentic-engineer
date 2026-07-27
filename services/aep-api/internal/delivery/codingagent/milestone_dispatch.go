@@ -16,21 +16,17 @@
 
 package codingagent
 
-// milestone_dispatch.go — the run supervisor's half of the executor.
+// milestone_dispatch.go — the executor's ONE dispatch entry point.
 //
-// The funnel's Executor.Run and this Dispatch launch the SAME pod through the
-// same chain (launchAgent); they differ in what accounts for the launch. Run
-// serves ONE issue and keeps an execution row for it. Dispatch serves one CYCLE
-// of a milestone run and writes NOTHING: the cycle record is the supervisor's,
-// and the executions table dies with the funnel. That is the whole reason this
-// is a second entry point rather than a call into runCoding.
+// A dispatch serves one CYCLE of a milestone run and writes NOTHING: the cycle
+// record is the supervisor's bookkeeping, and no execution row is minted for
+// agent work any more.
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
@@ -97,7 +93,7 @@ func milestoneDispatchShape(req delivery.MilestoneDispatch, repoURL string) (dis
 		return dispatchShape{
 			prompt:        buildValidationPrompt(issueURL(repoURL, req.IssueNumber), req.IssueNumber),
 			componentName: validationComponentSentinel,
-			taskKind:      string(taskmeta.ClassValidation),
+			taskKind:      validationTaskKind,
 			deadline:      validationDeadlineSeconds,
 		}, nil
 	}

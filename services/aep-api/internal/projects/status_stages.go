@@ -19,22 +19,20 @@ package projects
 // The #184 stage aggregates: one GET /projects/{name}/status cheap enough to
 // poll at 5s serves the whole overview pipeline. Poll-path budget: no GitHub
 // API, no Temporal query, no origin git fetch — the git source is the local
-// mirror snapshot (spec.StatusSnapshot), the build source is one
-// workflow_runs row read, the deploy source is one org-scoped OpenChoreo
-// call. See internal/projects/README.md.
+// mirror snapshot (spec.StatusSnapshot), the build source is one milestone_runs
+// row read, the deploy source is one org-scoped OpenChoreo call. See
+// internal/projects/README.md.
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
@@ -51,21 +49,22 @@ const (
 	deployDeployed  = "deployed"
 	deployFailed    = "failed"
 
-	// Coarse validation-run state (the deploy.validation contract enum): none
-	// (no validation child — not reached, or no acceptance criteria), running,
-	// completed (ran to completion), failed (mechanical failure).
+	// Coarse validation state (the deploy.validation contract enum): none (the
+	// run has not reached validation, or the project has no acceptance
+	// criteria), running, completed, failed.
 	validationNone      = "none"
 	validationRunning   = "running"
 	validationCompleted = "completed"
 	validationFailed    = "failed"
 )
 
-// devRunRows is the narrow port over the workflow_runs lookup index: the
-// status read plus the project-delete purge.
-// delivery.WorkflowRunRepository satisfies it.
-type devRunRows interface {
-	ListByProject(ctx context.Context, orgID, projectID, kind string) ([]delivery.DevflowRun, error)
-	ValidationRunByParent(ctx context.Context, orgID, projectID, parentWorkflowID string) (*delivery.DevflowRun, error)
+// milestoneRunRows is the narrow port over the milestone_runs index: the status
+// read plus the project-delete purge. An app-root adapter over
+// delivery.MilestoneRunRepository (which also purges the cycle records) is what
+// satisfies it.
+type milestoneRunRows interface {
+	// ListByProject returns the project's runs newest-first.
+	ListByProject(ctx context.Context, orgID, projectID string) ([]delivery.MilestoneRun, error)
 	DeleteByProject(ctx context.Context, orgID, projectID string) error
 }
 
@@ -78,7 +77,7 @@ type bindingsReader interface {
 // SetStageSources wires the build/deploy stage inputs at the composition
 // root. On a ready repo GetProjectStatus fails when either is missing — the
 // stages are contract-required and never silently fabricated (D7).
-func (s *Service) SetStageSources(runs devRunRows, bindings bindingsReader) {
+func (s *Service) SetStageSources(runs milestoneRunRows, bindings bindingsReader) {
 	s.runReader = runs
 	s.bindingsReader = bindings
 }
@@ -93,13 +92,11 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	}
 
 	var (
-		snap          *spec.StatusSnapshot
-		runs          []delivery.DevflowRun
-		bindings      []openchoreo.ReleaseBindingSummary
-		deployVer     string
-		deployTotal   int64
-		validationRun *delivery.DevflowRun
-		validationPR  int
+		snap        *spec.StatusSnapshot
+		runs        []delivery.MilestoneRun
+		bindings    []openchoreo.ReleaseBindingSummary
+		deployVer   string
+		deployTotal int64
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -111,40 +108,17 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	})
 	g.Go(func() error {
 		var err error
-		if runs, err = s.runReader.ListByProject(gctx, orgName, projectName, delivery.WorkflowKindDev); err != nil {
-			return fmt.Errorf("list dev runs: %w", err)
-		}
-		// Validation-run state for the newest dev run — cheap DB reads (no
-		// GitHub), so it stays within the poll budget. Read here, before the
-		// deploy-version early return below, so a first build that has reached
-		// its validating phase (no completed run yet) still reports validation.
-		if len(runs) > 0 {
-			vr, verr := s.runReader.ValidationRunByParent(gctx, orgName, projectName, runs[0].WorkflowID)
-			if verr != nil {
-				return fmt.Errorf("validation run: %w", verr)
-			}
-			validationRun = vr
-			// The validation PR number is recovered from the executions rows (the
-			// succeeded coding row's "pr#" reason) — no live PR query.
-			if vr != nil && s.execs != nil {
-				byKind, eerr := s.execs.LatestPerKindScoped(gctx, orgName, vr.Repo, vr.IssueNumber)
-				if eerr != nil {
-					return fmt.Errorf("validation pr lookup: %w", eerr)
-				}
-				if coding := byKind[string(taskmeta.KindCoding)]; coding != nil &&
-					coding.Status == string(taskmeta.ExecSucceeded) {
-					validationPR = taskmeta.OpenPRNumber(coding.Reason)
-				}
-			}
+		if runs, err = s.runReader.ListByProject(gctx, orgName, projectName); err != nil {
+			return fmt.Errorf("list milestone runs: %w", err)
 		}
 		// The deploy denominator depends only on the rows, so read it here —
 		// overlapped with the OC call instead of serial after the join.
-		// deploy.version = the newest COMPLETED dev run's tag: what the
-		// platform last finished building (a running v2 does not unseat a
+		// deploy.version = the newest SUCCEEDED spec run's version: what the
+		// platform last finished delivering (a running v2 does not unseat a
 		// live v1).
-		for _, r := range runs {
-			if r.Status == delivery.WorkflowStatusCompleted {
-				deployVer = r.Tag
+		for i := range runs {
+			if runs[i].Origin == delivery.RunOriginSpecBuild && runs[i].State == delivery.RunStateSucceeded {
+				deployVer = runs[i].MilestoneTitle
 				break
 			}
 		}
@@ -186,26 +160,23 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	}
 	applyFlatArtifactFields(status, snap)
 
-	// Build stage: the newest dev run row (ListByProject is newest-first).
-	// Counts are the run's own tally, written by the workflow and frozen at
-	// terminal; `active` is computed, clamped so a lost total write can
-	// never render negative.
+	// Build stage: the newest milestone run (ListByProject is newest-first).
+	//
+	// The task tally is deliberately ZERO. Its only honest source is the
+	// version's milestone on GitHub, and this endpoint is polled at 5s — a
+	// per-poll GitHub read is exactly what the #184 budget forbids. The console
+	// renders per-version counts from the list-tasks response it already holds.
+	var latest *delivery.MilestoneRun
 	if len(runs) > 0 {
-		row := runs[0]
-		status.Build.Version = row.Tag
-		status.Build.Status = buildStageStatus(row.Status)
-		// A validation-phase failure is not a BUILD failure: every coding task
-		// landed, and the failure already rides deploy.validation=failed below.
-		// Without this the overview says "build failed · N/N" while the tally
-		// and the validation chip contradict it.
-		if validationAttributedFailure(row, validationRun) {
+		latest = &runs[0]
+		status.Build.Version = latest.MilestoneTitle
+		status.Build.Status = buildStageStatus(latest.State)
+		// A failed VALIDATION cycle is not a build failure: every coding cycle
+		// landed and the failure already rides deploy.validation=failed below.
+		// Without this the overview says "build failed" while the validation chip
+		// contradicts it.
+		if latest.TerminalReason == delivery.RunReasonValidationFailed {
 			status.Build.Status = buildSucceeded
-		}
-		status.Build.Tasks.Total = int64(row.TasksTotal)
-		status.Build.Tasks.Done = int64(row.TasksDone)
-		status.Build.Tasks.Failed = int64(row.TasksFailed)
-		if active := row.TasksTotal - row.TasksDone - row.TasksFailed; active > 0 {
-			status.Build.Tasks.Active = int64(active)
 		}
 	}
 
@@ -227,48 +198,40 @@ func (s *Service) populateStages(ctx context.Context, orgName, projectName strin
 	status.Deploy.Status = deployStageStatus(dev)
 	status.Deploy.Components.Ready = int64(countReady(dev))
 
-	// Validation: the coarse run state of the newest build's validation child,
-	// plus a link to its PR (the validation issue as a fallback before a PR
-	// exists). Both derived from cheap DB reads above — no GitHub in the poll.
-	status.Deploy.Validation = gen.DeployStageValidation(validationStageStatus(validationRun))
-	status.Deploy.ValidationURL = validationURL(status.RepoURL, validationRun, validationPR)
-	// The issue number lets the console open the internal validation log page
-	// (get-task / stream-task-log serve the validation task by issue number).
-	if validationRun != nil {
-		status.Deploy.ValidationIssue = int64(validationRun.IssueNumber)
-	}
+	// Validation: the newest run'"'"'s own verdict — a column on the row already
+	// read above, so the poll costs nothing extra. The report itself, and the
+	// per-cycle detail behind it, live on the version'"'"'s run story
+	// (list-build-runs), which is where the console'"'"'s validation surface reads
+	// them; validationUrl/validationIssue are therefore no longer served here.
+	status.Deploy.Validation = gen.DeployStageValidation(validationStageStatus(latest))
 	return nil
 }
 
-// validationStageStatus maps the validation child run's row status onto the
-// deploy.validation enum. No child row → none (not reached, or no acceptance
-// criteria). An unknown non-terminal status reads as running (in flight).
-func validationStageStatus(run *delivery.DevflowRun) string {
+// validationStageStatus maps the newest run'"'"'s validation verdict onto the
+// deploy.validation enum.
+//
+// The verdict is written exactly once, when the validation cycle settles, so an
+// empty verdict on a LIVE run means the run has not reached validation yet
+// (running), and an empty verdict on a settled run means it never got there —
+// which reads as none, the same as a project with no acceptance criteria.
+// A skipped verdict (no criteria, or a cycle that merged without a report) is
+// also none: nothing was validated, and nothing failed.
+func validationStageStatus(run *delivery.MilestoneRun) string {
 	if run == nil {
 		return validationNone
 	}
-	switch run.Status {
-	case delivery.WorkflowStatusCompleted:
+	switch run.ValidationVerdict {
+	case delivery.ValidationVerdictPassed:
 		return validationCompleted
-	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
+	case delivery.ValidationVerdictFailed:
 		return validationFailed
-	default: // running
-		return validationRunning
+	case delivery.ValidationVerdictSkipped:
+		return validationNone
 	}
-}
-
-// validationURL builds the validation PR link from the repo's clone URL, or the
-// validation issue as a fallback before the PR opens. Empty when there is no
-// validation run or no repo URL to build from.
-func validationURL(repoURL string, run *delivery.DevflowRun, prNumber int) string {
-	if run == nil || repoURL == "" {
-		return ""
+	if delivery.IsTerminalRunState(run.State) {
+		return validationNone
 	}
-	base := strings.TrimSuffix(repoURL, ".git")
-	if prNumber > 0 {
-		return fmt.Sprintf("%s/pull/%d", base, prNumber)
-	}
-	return fmt.Sprintf("%s/issues/%d", base, run.IssueNumber)
+	return validationRunning
 }
 
 // applyFlatArtifactFields recomputes the pre-#184 flat fields from the
@@ -304,38 +267,19 @@ func applyFlatArtifactFields(status *gen.ProjectStatus, snap *spec.StatusSnapsho
 	status.Phase = "tasks"
 }
 
-// buildStageStatus maps a workflow_runs row status onto the BuildStage enum.
-func buildStageStatus(rowStatus string) string {
-	switch rowStatus {
-	case delivery.WorkflowStatusCompleted:
+// buildStageStatus maps a milestone run'"'"'s state onto the BuildStage enum. A
+// version'"'"'s delivery IS its run: it is running while the run is (waiting between
+// cycles included — the version is still being delivered), and it succeeds or
+// fails exactly when the run settles.
+func buildStageStatus(state string) string {
+	switch state {
+	case delivery.RunStateSucceeded:
 		return buildSucceeded
-	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
+	case delivery.RunStateFailed, delivery.RunStateCancelled:
 		return buildFailed
-	default: // running
+	default: // waiting | running
 		return buildRunning
 	}
-}
-
-// validationAttributedFailure reports whether the newest dev run's failure
-// belongs to its VALIDATION phase: the run failed, its validation child
-// failed, and the coding tally is fully green — validation only runs after
-// every planned task succeeded, so a green tally + failed child means the
-// build itself did not fail. Canceled runs (either row) are never attributed.
-//
-// Two guards defeat the stale-row rebuild hazard (a same-tag rebuild reuses
-// the dev workflow ID, so an OLD failed validation row can match
-// ValidationRunByParent while the fresh execution failed elsewhere):
-//   - the tally: a provisioning failure carries 0/0/0 and a coding failure
-//     TasksFailed > 0 — neither shape passes;
-//   - recency: the child must have been recorded AFTER this dev row (a rebuild
-//     inserts a new dev row; its own validation child, if any, is younger) —
-//     this covers the green-tally shape too, a rebuild failing between the
-//     quality bar and respawning validation.
-func validationAttributedFailure(row delivery.DevflowRun, validationRun *delivery.DevflowRun) bool {
-	return row.Status == delivery.WorkflowStatusFailed &&
-		validationRun != nil && validationRun.Status == delivery.WorkflowStatusFailed &&
-		validationRun.CreatedAt.After(row.CreatedAt) &&
-		row.TasksTotal > 0 && row.TasksFailed == 0 && row.TasksDone == row.TasksTotal
 }
 
 // bindingFailureReasons is the aggregate Ready condition's terminal-failure

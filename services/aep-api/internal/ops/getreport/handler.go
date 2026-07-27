@@ -84,8 +84,8 @@ func (h *Handler) correlate(ctx context.Context, orgID string, report *ops.RcaAg
 		report.Dispatched = true
 	}
 	// Deployed = a build execution for this Task has SUCCEEDED (the fix built and
-	// rolled), matching taskmeta.Derive's StatusDeployed threshold — i.e. beyond
-	// merely PR-merged, per issue #156's "Verify Fix" requirement.
+	// rolled) — deliberately beyond merely PR-merged, per issue #156's
+	// "Verify Fix" requirement.
 	if b, ok := execs[string(taskmeta.KindBuild)]; ok && b.Status == string(taskmeta.ExecSucceeded) {
 		report.Deployed = true
 		if report.DeployedAt == nil {

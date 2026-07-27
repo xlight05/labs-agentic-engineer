@@ -24,14 +24,17 @@ import (
 )
 
 // RunWorkflowRuns creates the one-running-task-workflow-per-issue partial
-// unique index on the workflow_runs table (the Temporal devflow lookup
-// index): at most one running task workflow per (repo, issue_number), so a
-// webhook signaler always resolves to a single workflow. AutoMigrate creates
-// the table from the model but cannot express a partial (WHERE-clause)
-// index, so it is added here.
+// unique index on the workflow_runs table.
 //
-// Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS is a no-op on re-run, and
-// the step no-ops entirely if the table is not present yet.
+// The table is RETIRED: the milestone model replaced it with milestone_runs,
+// its gorm model is gone, and nothing creates it any more — so on any fresh
+// schema this step no-ops on the table-presence guard. It survives because the
+// step list is frozen (a removal would break the golden order) and because an
+// existing deployment still carries the abandoned table, which keeps its index
+// rather than silently losing it.
+//
+// Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS is a no-op on re-run, and the
+// step no-ops entirely if the table is not present.
 func RunWorkflowRuns(ctx context.Context, db *gorm.DB) error {
 	if !hasTable(db, "workflow_runs") {
 		return nil

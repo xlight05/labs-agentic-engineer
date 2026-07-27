@@ -646,46 +646,13 @@ paths:
       summary: Compute the build dependency-drawer preflight
       tags:
       - Projects
-  /projects/{projectName}/build/{tag}:
-    get:
-      operationId: get-project-build
-      parameters:
-      - description: Project name (DNS-label slug)
-        in: path
-        name: projectName
-        required: true
-        schema:
-          description: Project name (DNS-label slug)
-          type: string
-      - description: Build tag
-        in: path
-        name: tag
-        required: true
-        schema:
-          description: Build tag
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BuildStatus'
-          description: OK
-        default:
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-          description: Error
-      security:
-      - userJWT: []
-      summary: Get project build status
-      tags:
-      - Projects
   /projects/{projectName}/builds:
     get:
-      description: One entry per built spec version tag, newest first — each the tag's newest run with
-        its frozen task tally.
+      description: The version ledger — one entry per built spec version tag, newest first, each
+        carrying the state of the newest milestone run that has worked it. DB-only (no GitHub, no
+        cluster), so the console may fetch it on demand and poll it while a run is live. Task counts
+        are deliberately absent; the console renders them from the list-tasks response it already
+        holds.
       operationId: list-project-builds
       parameters:
       - description: Project name (DNS-label slug)
@@ -1727,14 +1694,15 @@ paths:
           - closed
           - all
           type: string
-      - description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns
-          all versions.
+      - description: Filter to the Tasks of one spec/build version tag (e.g. v3). The tag is resolved
+          to a milestone number through the platform's run rows and the filter is milestone
+          MEMBERSHIP — never a title match against GitHub. Empty returns every version.
         explode: false
         in: query
         name: tag
         schema:
-          description: Filter to Tasks planned from this spec/build version tag (e.g. v3); empty returns
-            all versions.
+          description: Filter to the Tasks of one spec/build version tag (e.g. v3), by milestone
+            membership. Empty returns every version.
           type: string
       responses:
         '200':
@@ -1754,10 +1722,10 @@ paths:
           description: Error
       security:
       - userJWT: []
-      summary: List a project's implementation Tasks (live GitHub ⋈ executions → derived status),
-        optionally scoped to one spec/build version tag. The aep:validation Task is excluded — it is
-        a phase of the run, surfaced via the project status's deploy.validation; get-task still
-        serves it by number.
+      summary: List a project's Tasks (live GitHub issues), optionally scoped to one spec/build
+        version tag by milestone membership. Provision gates and the aep:validation Task are
+        excluded — they are phases of the run, surfaced on the version's run story; get-task still
+        serves them by number.
       tags:
       - Tasks
   /projects/{projectName}/tasks/{issueNumber}:
@@ -2534,7 +2502,8 @@ components:
       type: object
     BuildList:
       additionalProperties: false
-      description: list-project-builds response — one entry per built spec version tag, newest first.
+      description: list-project-builds response — the version ledger, one entry per built spec version
+        tag, newest first.
       properties:
         builds:
           items:
@@ -2669,66 +2638,25 @@ components:
       - milestoneNumber
       - runs
       type: object
-    BuildStatus:
-      additionalProperties: false
-      properties:
-        reason:
-          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error,
-            so the console can show WHY it failed.
-          type: string
-        status:
-          enum:
-          - started
-          - in_progress
-          - completed
-          - failed
-          type: string
-          x-go-type: string
-        tasks:
-          items:
-            $ref: '#/components/schemas/BuildStatusTask'
-          type: array
-          nullable: true
-        workflow_status:
-          type: string
-      required:
-      - status
-      - workflow_status
-      type: object
-    BuildStatusTask:
-      additionalProperties: false
-      properties:
-        issueNumber:
-          description: GitHub issue number of the Task — links a build-status row to its issue (and to
-            the task-log stream); replaces the old title-join.
-          format: int64
-          type: integer
-        status:
-          enum:
-          - started
-          - in_progress
-          - completed
-          - failed
-          type: string
-        title:
-          type: string
-      required:
-      - title
-      - status
-      type: object
     BuildSummary:
       additionalProperties: false
-      description: One entry of list-project-builds — a spec version tag's newest run. A list read has
-        no live workflow query, so "started" never occurs here.
+      description: One entry of the version ledger — a spec version tag and the state of the newest
+        milestone run that has worked it. A ledger read has no live workflow query, so "started"
+        never occurs here.
       properties:
         completedAt:
           format: date-time
           type: string
           nullable: true
           x-go-type: '*time.Time'
+        milestoneNumber:
+          description: The GitHub milestone this version's work lives in — the platform key the tag
+            resolves to, and the handle list-build-runs is read by.
+          format: int64
+          type: integer
         reason:
-          description: Failure detail for a failed build (empty otherwise) — the devflow's recorded error,
-            surfaced beside the Failed badge in the console.
+          description: The run's terminal reason for a failed version (empty otherwise), surfaced
+            beside the Failed badge in the console.
           type: string
         startedAt:
           format: date-time
@@ -2742,38 +2670,11 @@ components:
           type: string
         tag:
           type: string
-        tasks:
-          $ref: '#/components/schemas/BuildTally'
-        usage:
-          $ref: '#/components/schemas/Usage'
-          description: Aggregate actual usage of the run's coding executions (#245); absent for runs
-            that predate usage capture.
       required:
       - tag
+      - milestoneNumber
       - status
-      - tasks
       - startedAt
-      type: object
-    BuildTally:
-      additionalProperties: false
-      properties:
-        active:
-          format: int64
-          type: integer
-        done:
-          format: int64
-          type: integer
-        failed:
-          format: int64
-          type: integer
-        total:
-          format: int64
-          type: integer
-      required:
-      - total
-      - done
-      - failed
-      - active
       type: object
     ClientSecretOutputBody:
       additionalProperties: false

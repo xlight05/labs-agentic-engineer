@@ -22,39 +22,15 @@ import (
 	"time"
 
 	"github.com/wso2/aep/aep-api/internal/contracts/activityvocab"
-	"github.com/wso2/aep/aep-api/internal/delivery/devflow"
 	"github.com/wso2/aep/aep-api/internal/platform/auth/jwtassertion"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // This file wires the activity-feed producers (issue #239) onto the projects
-// domain's activity service. Two adapters, both app-root twins-mappers:
-// delivery (devflow + the build handler) must not import projects — projects
-// already imports delivery — so each side speaks its own type and the mapping
-// lives here.
-
-// devflowActivityRecorder maps devflow's RecordedActivity twin onto
-// projects.ActivityInput and appends it (best-effort — the service swallows
-// storage errors).
-type devflowActivityRecorder struct{ svc *projects.ActivityService }
-
-func (r devflowActivityRecorder) Record(ctx context.Context, e devflow.RecordedActivity) {
-	r.svc.Record(ctx, projects.ActivityInput{
-		OrgID:      e.OrgID,
-		ProjectID:  e.ProjectID,
-		Type:       e.Type,
-		ActorKind:  e.ActorKind,
-		ActorID:    e.ActorID,
-		ActorName:  e.ActorName,
-		Issue:      e.Issue,
-		Title:      e.Title,
-		Component:  e.Component,
-		Tag:        e.Tag,
-		DedupKey:   e.DedupKey,
-		OccurredAt: e.OccurredAt,
-	})
-}
+// domain's activity service. They are app-root twins-mappers: delivery and spec
+// must not import projects — projects already imports delivery — so each side
+// speaks its own type and the mapping lives here.
 
 // buildActivityRecorder implements build.SpecPublishedRecorder: the user
 // published a spec version and kicked off the build. Actor = the signed-in

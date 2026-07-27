@@ -28,6 +28,28 @@ import "time"
 // task Reads service in the taskflow sub-package builds them from live GitHub
 // facts fused with the executions rows.
 
+// The derived-status vocabulary a Task view can carry.
+//
+// It is DEGRADED, on purpose. The old algebra derived ten values by joining
+// GitHub facts with per-issue execution rows; the milestone model writes no
+// per-issue execution rows, so the only honest facts left about a Task are the
+// ones GitHub holds about its issue. Two values are derivable from those alone:
+// the issue is open, or the issue is closed — and an agent closes an issue by
+// merging a pull request that references it.
+//
+// The two strings are deliberately members of the retired ten-value set. The
+// console consumes derivedStatus through an UNTYPED contract field (there is no
+// enum), so removing values breaks nothing but inventing one would: a chip
+// keyed on an unknown string renders as nothing. Anything richer than this
+// belongs on the run's cycle timeline, which is where the loop's real position
+// lives.
+const (
+	// DerivedStatusPending is an open issue: planned, not finished.
+	DerivedStatusPending = "pending"
+	// DerivedStatusMerged is a closed issue: its work landed.
+	DerivedStatusMerged = "merged"
+)
+
 // Lineage is the spec+design versions a Task was planned from (§2 lineage).
 type Lineage struct {
 	SpecTag   string `json:"specTag,omitempty"`

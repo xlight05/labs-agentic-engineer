@@ -22,9 +22,18 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
+)
+
+// Gate kinds. They shape the gate issue's prose (what a human is being asked
+// for) and nothing else — no code branches on a gate's kind after it is minted,
+// because resolving a gate is always the same act: the drawer submits, the
+// platform provisions, the issue closes.
+const (
+	gateConfigCollection     = "config-collection"
+	gateResourceProvisioning = "resource-provisioning"
 )
 
 // provisionDep is one distinct provisioning dependency discovered in a design.
@@ -45,8 +54,11 @@ type provisionDep struct {
 // milestoneNumber joins each minted gate to the version's milestone AT CREATION
 // (one call, no follow-up PATCH) so the run's dispatch predicate — "no open
 // aep:provision issue in this milestone" — can see it. Zero leaves gates
-// unassigned. A gate deliberately does NOT carry the `aep` working-set label:
-// it is never agent work, only a hold on the next dispatch.
+// unassigned.
+//
+// A gate is PROSE plus two labels (gate_labels.go): the aep:provision marker
+// and aep:dep/<slug>. designTag no longer appears anywhere on the issue — the
+// milestone IS the version.
 func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, designTag string, milestoneNumber int) (map[string]int, error) {
 	comps, err := s.design.ReadDesignComponents(ctx, orgID, projectID)
 	if err != nil {
@@ -79,27 +91,13 @@ func (s *Service) EnsureProvisionIssues(ctx context.Context, orgID, projectID, d
 			continue
 		}
 		title := provisionIssueTitle(dep)
-		block := taskmeta.Block{
-			Component: dep.name,
-			GateKind:  dep.gateKind,
-			Origin:    taskmeta.OriginSpecPlan,
-			// SpecTag mirrors DesignTag: the planner stamps a coding task's SpecTag
-			// and DesignTag to the SAME version tag (plan.go), so a gate carrying the
-			// same tag lets the tag-scoped Builds view (which filters on SpecTag) show
-			// its provision/config gates alongside the coding tasks they gate — and
-			// lets the on_hold reconciler see the gate for that build (issue #164).
-			SpecTag:   designTag,
-			DesignTag: designTag,
-			Key:       taskmeta.Key(projectID, designTag, dep.name, title),
-		}
-		body := taskmeta.ComposeBody(block, taskmeta.Human{
-			Rationale: provisionIssueRationale(dep),
-			Body:      provisionIssueScope(dep),
-		})
 		req := sourcecontrol.CreateIssueRequest{
 			Title:  title,
-			Body:   body,
-			Labels: taskmeta.NewTaskLabels(taskmeta.ClassProvision, taskmeta.OriginSpecPlan),
+			Body:   provisionIssueRationale(dep) + "\n\n" + provisionIssueScope(dep),
+			Labels: gateLabels(dep.name),
+			// Idempotent across a crashed re-run: the same dependency in the same
+			// version mints the same key, and the host dedupes on it.
+			DedupeKey: "gate:" + projectID + ":" + designTag + ":" + strings.ToLower(dep.name),
 		}
 		if milestoneNumber > 0 {
 			n := milestoneNumber
@@ -139,22 +137,23 @@ func distinctProvisionDeps(comps []spec.DesignComponent) map[string]provisionDep
 			}
 			switch d.Kind {
 			case spec.DependencyKindExternal:
-				out[key] = provisionDep{name: d.Name, gateKind: taskmeta.GateConfigCollection}
+				out[key] = provisionDep{name: d.Name, gateKind: gateConfigCollection}
 			case spec.DependencyKindPlatformResource:
-				out[key] = provisionDep{name: d.Name, gateKind: taskmeta.GateResourceProvisioning, resourceType: d.ResourceType}
+				out[key] = provisionDep{name: d.Name, gateKind: gateResourceProvisioning, resourceType: d.ResourceType}
 			}
 		}
 	}
 	return out
 }
 
-// openProvisionDeps returns dependency names (lowercased) that already have an
-// open aep:provision gate issue, mapped to that gate's issue number. Only
-// pre-existing (listable) gates are returned — a JUST-created gate races GitHub's
-// eventually-consistent list, so the build path captures those numbers from the
-// CreateIssue result instead (issue #164).
+// openProvisionDeps returns dependency slugs that already have an open gate
+// issue, mapped to that gate's issue number. The query is the LABEL — one
+// server-side filtered list, then the aep:dep/<slug> label read back off each
+// result. Only pre-existing (listable) gates are returned: a JUST-created gate
+// races GitHub's eventually-consistent list, so the build path captures those
+// numbers from the CreateIssue result instead (issue #164).
 func (s *Service) openProvisionDeps(ctx context.Context, orgID, projectID string) (map[string]int, error) {
-	issues, err := s.issues.ListIssues(ctx, orgID, projectID, []string{taskmeta.LabelMarker})
+	issues, err := s.issues.ListIssues(ctx, orgID, projectID, []string{delivery.LabelProvisionGate})
 	if err != nil {
 		return nil, fmt.Errorf("provisioning: list issues: %w", err)
 	}
@@ -163,22 +162,15 @@ func (s *Service) openProvisionDeps(ctx context.Context, orgID, projectID string
 		if !strings.EqualFold(issue.State, "open") {
 			continue
 		}
-		if taskmeta.ParseLabels(issue.Labels).Class != taskmeta.ClassProvision {
-			continue
-		}
-		block, berr := taskmeta.ParseBlock(issue.Body)
-		if berr != nil {
-			continue
-		}
-		if block.Component != "" {
-			out[strings.ToLower(block.Component)] = issue.Number
+		if dep := gateDepFromLabels(issue.Labels); dep != "" {
+			out[dep] = issue.Number
 		}
 	}
 	return out, nil
 }
 
 func provisionIssueTitle(dep provisionDep) string {
-	if dep.gateKind == taskmeta.GateResourceProvisioning {
+	if dep.gateKind == gateResourceProvisioning {
 		if dep.resourceType != "" {
 			return fmt.Sprintf("Provision resource: %s (%s)", dep.name, dep.resourceType)
 		}
@@ -188,14 +180,14 @@ func provisionIssueTitle(dep provisionDep) string {
 }
 
 func provisionIssueRationale(dep provisionDep) string {
-	if dep.gateKind == taskmeta.GateResourceProvisioning {
+	if dep.gateKind == gateResourceProvisioning {
 		return "A platform resource this project depends on must be provisioned before dependent components can deploy."
 	}
 	return "An external dependency this project consumes needs its configuration/secret values before dependent components can deploy."
 }
 
 func provisionIssueScope(dep provisionDep) string {
-	if dep.gateKind == taskmeta.GateResourceProvisioning {
+	if dep.gateKind == gateResourceProvisioning {
 		return fmt.Sprintf("## Provision `%s`\n\nConfirm the provisioning parameters for this platform resource in the "+
 			"architecture drawer. The platform provisions it and closes this issue once the resource is ready — "+
 			"no manual action on this issue is needed.", dep.name)

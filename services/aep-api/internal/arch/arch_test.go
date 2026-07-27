@@ -136,23 +136,29 @@ func TestFlatPackagesDeleted(t *testing.T) {
 	}
 }
 
-// TestTaskExecutionSplit asserts the §1 Task/Execution split is a package
-// boundary (docs/design/tasks-github-native.md §10): delivery/task (the
-// GitHub-facing half) and delivery/execution (the platform-owned half) never
-// import each other — they communicate only through the pure taskmeta encoding
-// and the executions rows (the shared kernel). task reaches the funnel through
-// the task.Dispatcher consumer port; execution never needs task at all. Now that
-// both are delivery-domain sub-packages this is also enforced by slice⊥sibling,
-// but it is stated explicitly because the split is the design's load-bearing
-// invariant (§10.3.1).
-func TestTaskExecutionSplit(t *testing.T) {
+// TestTaskRunSplit asserts the load-bearing boundary of the milestone model:
+// delivery/task (the GitHub-facing Task surface — reads and the planner) and
+// delivery/run (the run supervisor that dispatches work) never import each
+// other, in either direction.
+//
+// It is the successor to the Task/Execution split. Work is no longer dispatched
+// per issue through a funnel the task surface could call; a RUN works a
+// milestone, and the task surface only ever reads what GitHub holds. The two
+// speak through the domain root — run rows, the milestone label vocabulary, the
+// dispatch port — and never through each other.
+//
+// slice ⊥ sibling already forbids this, but it is stated explicitly because it
+// is the invariant the whole model rests on: if `task` could reach the
+// supervisor, a second dispatch door would exist and the run's budgets could be
+// bypassed.
+func TestTaskRunSplit(t *testing.T) {
 	const task = mod + "/internal/delivery/task"
-	const execution = mod + "/internal/delivery/execution"
-	if imports(t, task, execution) {
-		t.Error("delivery/task imports delivery/execution — the Task/Execution split is a package boundary; reach the funnel through the task.Dispatcher port")
+	const run = mod + "/internal/delivery/run"
+	if imports(t, task, run) {
+		t.Error("delivery/task imports delivery/run — dispatch has exactly one door, the run supervisor; the task surface reads and plans, it never dispatches")
 	}
-	if imports(t, execution, task) {
-		t.Error("delivery/execution imports delivery/task — the Task/Execution split is a package boundary")
+	if imports(t, run, task) {
+		t.Error("delivery/run imports delivery/task — the supervisor reaches everything it needs through the domain root")
 	}
 }
 
@@ -194,10 +200,10 @@ func TestContractsIsLeaf(t *testing.T) {
 	}
 }
 
-// TestTaskmetaIsPure asserts internal/contracts/taskmeta is a pure domain leaf
-// (docs/design/tasks-github-native.md §10): the machine-block codec, label
-// vocabulary, and derived-status algebra that both halves of the Task/Execution
-// split import. Modeled on TestContractsIsLeaf but for the subpackage:
+// TestTaskmetaIsPure asserts internal/contracts/taskmeta is a pure domain leaf:
+// the execution encoding (kinds, statuses, the fact projection, the PR-state
+// reconstruction) that the provisioning gates and the read paths share.
+// Modeled on TestContractsIsLeaf but for the subpackage:
 //
 //   - it imports NOTHING module-internal (features import taskmeta, never the
 //     reverse — the encoding is shared truth, re-implemented nowhere);
@@ -216,7 +222,7 @@ func TestTaskmetaIsPure(t *testing.T) {
 			t.Errorf("taskmeta imports module-internal %s — it must stay a pure domain leaf (features import it, never the reverse)", d)
 		}
 		if strings.Contains(d, "gorm.io/") {
-			t.Errorf("taskmeta pulls in %s — the machine-block/label/derive domain must not depend on gorm", d)
+			t.Errorf("taskmeta pulls in %s — the execution encoding must not depend on gorm", d)
 		}
 		if d == "net/http" {
 			t.Errorf("taskmeta pulls in net/http — the domain layer performs no IO")

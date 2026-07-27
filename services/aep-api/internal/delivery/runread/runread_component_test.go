@@ -90,7 +90,9 @@ func (f fakeRuns) GetByIDScoped(_ context.Context, orgID, id string) (*delivery.
 	return nil, nil
 }
 
-type fakeCycles struct{ byRun map[string][]delivery.RunCycle }
+type fakeCycles struct {
+	byRun map[string][]delivery.RunCycle
+}
 
 func (f fakeCycles) ListByRun(_ context.Context, _, runID string) ([]delivery.RunCycle, error) {
 	return f.byRun[runID], nil
@@ -98,7 +100,9 @@ func (f fakeCycles) ListByRun(_ context.Context, _, runID string) ([]delivery.Ru
 
 // fakeCycleLogs replays a fixed set of lines per cycle. Final=true so one derive
 // drains it — the same shape the captured snapshot has.
-type fakeCycleLogs struct{ byCycle map[string][]contracts.ProgressEvent }
+type fakeCycleLogs struct {
+	byCycle map[string][]contracts.ProgressEvent
+}
 
 func (f fakeCycleLogs) CycleProgress(_ context.Context, c *delivery.RunCycle, since int64) (*contracts.ProgressResponse, error) {
 	if since > 0 {

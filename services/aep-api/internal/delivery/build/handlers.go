@@ -27,8 +27,8 @@ import (
 )
 
 // Handler serves the build feature on the strict interface: build-project /
-// get-project-build / list-project-builds plus the dependency-drawer
-// get-build-preflight. Every operation is org-scoped — the tenant gate bound
+// list-project-builds plus the dependency-drawer get-build-preflight. Every
+// operation is org-scoped — the tenant gate bound
 // the token org before these run, and the handlers pass it to the service
 // explicitly.
 //
@@ -75,18 +75,6 @@ func (h *Handler) BuildProject(ctx context.Context, request gen.BuildProjectRequ
 		h.activity.RecordSpecPublished(ctx, org, request.ProjectName, tag)
 	}
 	return gen.BuildProject200JSONResponse(gen.BuildResponse{Tag: tag}), nil
-}
-
-func (h *Handler) GetProjectBuild(ctx context.Context, request gen.GetProjectBuildRequestObject) (gen.GetProjectBuildResponseObject, error) {
-	org := tenant.BoundOrgFromContext(ctx)
-	st, err := h.svc.Status(ctx, org, request.ProjectName, request.Tag)
-	if err != nil {
-		if errors.Is(err, ErrBuildNotFound) {
-			return nil, apierr.NotFound("build not found")
-		}
-		return nil, apierr.Internal("lookup build")
-	}
-	return gen.GetProjectBuild200JSONResponse(toBuildStatus(st)), nil
 }
 
 func (h *Handler) ListProjectBuilds(ctx context.Context, request gen.ListProjectBuildsRequestObject) (gen.ListProjectBuildsResponseObject, error) {
@@ -197,38 +185,16 @@ func toInputFailures(in []InputFailure) []gen.InputFailure {
 	return out
 }
 
-func toBuildStatus(st BuildStatus) gen.BuildStatus {
-	var tasks []gen.BuildStatusTask
-	for _, t := range st.Tasks {
-		tasks = append(tasks, gen.BuildStatusTask{
-			IssueNumber: t.IssueNumber,
-			Title:       t.Title,
-			Status:      gen.BuildStatusTaskStatus(t.Status),
-		})
-	}
-	return gen.BuildStatus{
-		Status:         st.Status,
-		WorkflowStatus: st.WorkflowStatus,
-		Reason:         st.Reason,
-		Tasks:          tasks,
-	}
-}
-
 func toBuildList(l BuildList) gen.BuildList {
 	// Builds stays non-nil so the JSON body is [] rather than null.
 	builds := make([]gen.BuildSummary, 0, len(l.Builds))
 	for _, b := range l.Builds {
 		s := gen.BuildSummary{
-			Tag:       b.Tag,
-			Status:    gen.BuildSummaryStatus(b.Status),
-			Reason:    b.Reason,
-			StartedAt: b.StartedAt,
-			Tasks: gen.BuildTally{
-				Total:  b.Tasks.Total,
-				Done:   b.Tasks.Done,
-				Failed: b.Tasks.Failed,
-				Active: b.Tasks.Active,
-			},
+			Tag:             b.Tag,
+			MilestoneNumber: int64(b.MilestoneNumber),
+			Status:          gen.BuildSummaryStatus(b.Status),
+			Reason:          b.Reason,
+			StartedAt:       b.StartedAt,
 		}
 		s.CompletedAt = b.CompletedAt // nil while running — omitted on the wire
 		builds = append(builds, s)

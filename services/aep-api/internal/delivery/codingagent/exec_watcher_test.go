@@ -65,7 +65,7 @@ func TestExecWatcher_BuildGitAuthFailure_WithinBudget_ReMintsAndRetries(t *testi
 	row := runningBuild("b1", "run-1", "") // first failure — no retry marker yet
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{newRun: "run-2"}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -90,7 +90,7 @@ func TestExecWatcher_BuildGitAuthFailure_BudgetExhausted_FinishesFailed(t *testi
 	row := runningBuild("b1", "run-3", "build_auth_retry:3") // already at budget
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{newRun: "run-4"}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-3": authFailedRun("run-3")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-3": authFailedRun("run-3")}), repo, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -109,7 +109,7 @@ func TestExecWatcher_BuildGitAuthFailure_ReMintErrorStillMarchesToBudget(t *test
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{err: errors.New("org disconnected")}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": authFailedRun("run-1")}), repo, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -130,7 +130,7 @@ func TestExecWatcher_BuildPlainFailure_FinishesFailed(t *testing.T) {
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
 	retrier := &fakeRetrier{}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": plainFailedRun("run-1")}), repo, nil, nil, 0).
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": plainFailedRun("run-1")}), repo, nil, 0).
 		WithBuildRetrier(retrier, 3)
 
 	if err := w.Sweep(context.Background()); err != nil {
@@ -144,21 +144,17 @@ func TestExecWatcher_BuildPlainFailure_FinishesFailed(t *testing.T) {
 	}
 }
 
-func TestExecWatcher_BuildSuccess_FinishesAndReevaluates(t *testing.T) {
+func TestExecWatcher_BuildSuccess_FinishesSucceeded(t *testing.T) {
 	row := runningBuild("b1", "run-1", "")
 	repo := newFakeExecRepo(row)
-	reeval := &fakeReeval{}
 	ok := &gen.WorkflowRun{Name: "run-1", Completed: true, Status: openchoreo.ReasonWorkflowSucceeded}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": ok}), repo, reeval, nil, 0)
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"run-1": ok}), repo, nil, 0)
 
 	if err := w.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
 	if got := repo.get("b1"); got.Status != string(taskmeta.ExecSucceeded) {
 		t.Errorf("build success must Finish succeeded, got %q", got.Status)
-	}
-	if reeval.count() != 1 {
-		t.Errorf("build success must reevaluate the funnel once, got %d", reeval.count())
 	}
 }
 
@@ -180,7 +176,7 @@ func TestExecWatcher_SkipsProxyJobRuns(t *testing.T) {
 			return &gen.WorkflowRun{Name: runName, Completed: false}, nil // still running
 		},
 	}
-	w := NewExecWatcher(oc, repo, nil, nil, 0)
+	w := NewExecWatcher(oc, repo, nil, 0)
 
 	if err := w.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
@@ -197,7 +193,7 @@ func TestExecWatcher_CodingFailure_FinishesFailed_SuccessRidesPRWebhook(t *testi
 		Kind: string(taskmeta.KindCoding), Status: string(taskmeta.ExecRunning), RunName: "wf-1"}
 	repo := newFakeExecRepo(coding)
 	failed := &gen.WorkflowRun{Name: "wf-1", Completed: true, Status: openchoreo.ReasonWorkflowFailed}
-	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"wf-1": failed}), repo, nil, nil, 0)
+	w := NewExecWatcher(ocRuns(map[string]*gen.WorkflowRun{"wf-1": failed}), repo, nil, 0)
 
 	if err := w.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)

@@ -15,12 +15,14 @@
 // under the License.
 
 // Package validation owns the VALIDATION phase's platform side: it mints the
-// single project-scoped validation Task issue (aep:validation) during the
-// planning phase — the exact sibling of provisioning's gate-issue minting
-// ("planning mints coding issues AND provisioning issues AND the validation
-// issue"). The task dependsOn every design component, so the execution funnel
-// holds it until they all derive deployed, then dispatches the validation
-// runner (validation-phase design).
+// single project-scoped validation issue (aep:validation) that the milestone
+// run's validation cycle is dispatched at.
+//
+// The run supervisor mints it at DEPLOYED-GREEN, not at plan time: an issue
+// that nothing can work until every component is deployed would otherwise sit
+// in the run's working set and hold every cycle boundary open. It is prose
+// carrying one label, and it deliberately does NOT carry the `aep` working-set
+// label for the same reason — the cycle is dispatched at it by number.
 //
 // This feature does the ISSUE side only. Its runtime inputs — deployed endpoint
 // URLs and test credentials — are never written into the (public) issue: the

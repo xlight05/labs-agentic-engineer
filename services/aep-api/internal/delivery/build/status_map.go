@@ -16,81 +16,29 @@
 
 package build
 
-import (
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
-	"github.com/wso2/aep/aep-api/internal/delivery"
-)
+import "github.com/wso2/aep/aep-api/internal/delivery"
 
-// Build status enum values (the contract's BuildStatus.status /
-// BuildStatusTask.status vocabulary).
+// Build status enum values (the contract's BuildSummary.status vocabulary).
 const (
-	statusStarted    = "started"
 	statusInProgress = "in_progress"
 	statusCompleted  = "completed"
 	statusFailed     = "failed"
 )
 
-// statusFromPhase maps a live DevFlowStatus phase onto the contract enum.
-func statusFromPhase(phase string) string {
-	switch phase {
-	case delivery.DevPhaseValidatingSpec:
-		return statusStarted
-	case delivery.DevPhaseDone:
+// statusFromRunState maps a milestone run's state onto the version-ledger enum.
+// A version's story is its run's story: while the run is waiting or running the
+// version is in progress, and it completes or fails exactly when the run
+// settles. A cancelled run reads as failed — the version did not finish.
+//
+// The contract's "started" value never occurs here: it belonged to the retired
+// live workflow query, and a ledger read has none.
+func statusFromRunState(state string) string {
+	switch state {
+	case delivery.RunStateSucceeded:
 		return statusCompleted
-	case delivery.DevPhaseFailed:
+	case delivery.RunStateFailed, delivery.RunStateCancelled:
 		return statusFailed
-	default: // planning / executing / validating
-		return statusInProgress
-	}
-}
-
-// statusFromRow maps a workflow_runs row status onto the contract enum — the
-// fallback when the live query is unavailable (worker gone, run archived).
-func statusFromRow(rowStatus string) string {
-	switch rowStatus {
-	case delivery.WorkflowStatusCompleted:
-		return statusCompleted
-	case delivery.WorkflowStatusFailed, delivery.WorkflowStatusCanceled:
-		return statusFailed
-	default: // running
-		return statusInProgress
-	}
-}
-
-// statusFromDerived maps a Task's live derived status (taskmeta.Derive: GitHub
-// facts ⋈ executions) onto the contract's build enum. This is the DURABLE task
-// status — the source for a build's task list when the Temporal run is archived
-// (no live refs) or the query is unavailable. The workflow's DevTaskRef refines
-// it for tasks still in flight (taskStatus above).
-func statusFromDerived(derived string) string {
-	switch taskmeta.DerivedStatus(derived) {
-	case taskmeta.StatusDeployed:
-		return statusCompleted
-	case taskmeta.StatusFailed, taskmeta.StatusRejected, taskmeta.StatusAbandoned:
-		return statusFailed
-	case taskmeta.StatusPending, taskmeta.StatusOnHold:
-		return statusStarted
-	default: // in_progress / ready_for_review / merged / building
-		return statusInProgress
-	}
-}
-
-// taskStatus maps a DevTaskRef (phase + outcome) onto the contract enum.
-func taskStatus(ref delivery.DevTaskRef) string {
-	if ref.Outcome == delivery.OutcomeFailed || ref.Outcome == delivery.OutcomeSkippedDepFai {
-		return statusFailed
-	}
-	if ref.Outcome == delivery.OutcomeSucceeded {
-		return statusCompleted
-	}
-	switch ref.Phase {
-	case "pending", delivery.TaskPhaseStarting:
-		return statusStarted
-	case delivery.TaskPhaseDone:
-		return statusCompleted
-	case delivery.TaskPhaseFailed:
-		return statusFailed
-	default: // coding / merging / building / deploying
+	default: // waiting | running
 		return statusInProgress
 	}
 }

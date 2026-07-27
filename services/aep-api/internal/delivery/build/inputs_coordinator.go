@@ -89,8 +89,8 @@ func (c *InputsCoordinator) ApplyPreTag(ctx context.Context, orgID, projectID st
 	return failures, nil
 }
 
-// BuildProvisionInputs turns the drawer inputs into the DevFlowInput provision
-// payload. For external-config it splits each input's values into non-secret
+// BuildProvisionInputs turns the drawer inputs into the provision payload the
+// version's gate resolver consumes. For external-config it splits each input's values into non-secret
 // Config and a secret map (keyed by the design's ConfigKey.Secret flag at
 // HEAD), stages the secret map to SM-API, and lands only the returned reference
 // in SecretRefByEnv — a raw secret value never enters a ProvisionInput. For

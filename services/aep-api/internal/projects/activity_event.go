@@ -48,7 +48,7 @@ type ActivityEvent struct {
 	ActorName string `gorm:"type:text;not null" json:"actorName"`
 
 	// Target references — each type populates the subset it needs; the console
-	// renders them into the line. Flat columns (DevflowRun style), not a JSON blob.
+	// renders them into the line. Flat columns, not a JSON blob.
 	Issue       int    `json:"issue,omitempty"`
 	Title       string `gorm:"type:text" json:"title,omitempty"`
 	Component   string `gorm:"type:text" json:"component,omitempty"`

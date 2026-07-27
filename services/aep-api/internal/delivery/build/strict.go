@@ -18,10 +18,7 @@ package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
-
-	"github.com/wso2/aep/aep-api/internal/delivery"
 )
 
 // This file is the strict-server (contract-first) entry surface of the build
@@ -30,84 +27,45 @@ import (
 // with the non-HTTP StartProjectBuild trigger; its edge-mapped failures are
 // *EdgeError values the api-layer mapper copies onto the flat envelope.
 
-// ErrBuildNotFound reports an unknown build tag under the caller's org. The
-// workflow_runs row is the org fence, so a cross-org read lands here too.
-var ErrBuildNotFound = errors.New("build not found")
-
-// Status maps the dev workflow's live status (or its workflow_runs row when
-// the live query is unavailable) onto the contract's BuildStatus — the strict
-// port of the Huma get handler. Unknown tag (or a cross-org read: the
-// workflow_runs row is the org fence) returns ErrBuildNotFound.
-func (s *Service) Status(ctx context.Context, orgID, projectID, tag string) (BuildStatus, error) {
-	workflowID := delivery.DevWorkflowID(orgID, projectID, tag)
-	row, err := s.store.GetByWorkflowID(ctx, orgID, workflowID)
-	if err != nil {
-		return BuildStatus{}, fmt.Errorf("lookup build: %w", err)
-	}
-	if row == nil {
-		return BuildStatus{}, ErrBuildNotFound
-	}
-
-	st, qerr := s.runner.BuildStatus(ctx, workflowID)
-	if qerr != nil {
-		// Live query unavailable (Temporal down, run archived) — degrade the
-		// overall status to the indexed terminal row status, but STILL list the
-		// build's tasks from the durable lineage read (an archived run no longer
-		// answers a query, yet its planned issues are permanent).
-		return BuildStatus{
-			Status:         statusFromRow(row.Status),
-			WorkflowStatus: row.Status,
-			Reason:         row.Reason,
-			Tasks:          s.taskStatuses(ctx, orgID, projectID, tag, nil),
-		}, nil
-	}
-	return BuildStatus{
-		Status:         statusFromPhase(st.Phase),
-		WorkflowStatus: st.Phase,
-		Reason:         row.Reason,
-		Tasks:          s.taskStatuses(ctx, orgID, projectID, tag, st.Tasks),
-	}, nil
-}
-
-// List enumerates the project's builds from the workflow_runs index alone (no
-// live Temporal queries — the list must stay one cheap read). Rows arrive
-// newest-first; a same-tag rebuild writes a second (workflowID, runID) row, so
-// the first row seen per tag — its newest run — represents that build. The
-// strict port of the Huma list handler; Builds is always non-nil so the JSON
-// body is [] rather than null.
+// List is the VERSION LEDGER: one entry per spec version the platform has
+// built, newest first, each carrying the state of the newest milestone run that
+// worked it.
+//
+// It is a single DB read of the run rows — no GitHub, no cluster, no workflow
+// query — which is the whole point: the console's overview version dropdown
+// fetches it on demand and the Builds page may poll it at 5s while a run is
+// live without spending GitHub rate.
+//
+// Rows arrive newest-first, so the FIRST row seen per milestone title is that
+// version's newest run. Keying on the title is not a GitHub title match: it is
+// the `v<N>` tag THIS platform recorded when it cut the version, and the
+// milestone NUMBER travels with it for anything that needs a lookup key.
+//
+// Builds is always non-nil so the JSON body is [] rather than null.
 func (s *Service) List(ctx context.Context, orgID, projectID string) (BuildList, error) {
-	rows, err := s.store.ListByProject(ctx, orgID, projectID, delivery.WorkflowKindDev)
+	if s.plan == nil || s.plan.runs == nil {
+		return BuildList{Builds: []BuildSummary{}}, nil
+	}
+	rows, err := s.plan.runs.ListByProject(ctx, orgID, projectID)
 	if err != nil {
 		return BuildList{}, fmt.Errorf("list builds: %w", err)
 	}
 	seen := make(map[string]bool, len(rows))
 	builds := make([]BuildSummary, 0, len(rows))
-	for _, row := range rows {
-		if row.Tag == "" || seen[row.Tag] {
+	for i := range rows {
+		row := rows[i]
+		if row.MilestoneTitle == "" || seen[row.MilestoneTitle] {
 			continue
 		}
-		seen[row.Tag] = true
-		b := BuildSummary{
-			Tag:       row.Tag,
-			Status:    statusFromRow(row.Status),
-			Reason:    row.Reason,
-			StartedAt: row.CreatedAt,
-			Tasks: BuildTally{
-				Total:  int64(row.TasksTotal),
-				Done:   int64(row.TasksDone),
-				Failed: int64(row.TasksFailed),
-			},
-		}
-		// Active is computed, clamped so a lost total write can never render
-		// negative (same rule as the overview's build stage).
-		if active := row.TasksTotal - row.TasksDone - row.TasksFailed; active > 0 {
-			b.Tasks.Active = int64(active)
-		}
-		if row.Status != delivery.WorkflowStatusRunning {
-			completed := row.UpdatedAt
-			b.CompletedAt = &completed
-		}
-		builds = append(builds, b)
+		seen[row.MilestoneTitle] = true
+		builds = append(builds, BuildSummary{
+			Tag:             row.MilestoneTitle,
+			MilestoneNumber: row.MilestoneNumber,
+			Status:          statusFromRunState(row.State),
+			Reason:          row.TerminalReason,
+			StartedAt:       row.CreatedAt,
+			CompletedAt:     row.EndedAt,
+		})
 	}
 	return BuildList{Builds: builds}, nil
 }

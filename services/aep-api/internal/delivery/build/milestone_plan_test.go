@@ -46,8 +46,8 @@ type planFakeCred struct{}
 func (planFakeCred) Token(context.Context) (string, time.Time, error) {
 	return "test-token", time.Time{}, nil
 }
-func (planFakeCred) Identity() secrets.Identity          { return secrets.Identity{} }
-func (planFakeCred) RepoOwner() string                   { return "acme" }
+func (planFakeCred) Identity() secrets.Identity { return secrets.Identity{} }
+func (planFakeCred) RepoOwner() string          { return "acme" }
 func (planFakeCred) WebhookStrategy() secrets.WebhookStrategy {
 	return secrets.WebhookPerRepo
 }

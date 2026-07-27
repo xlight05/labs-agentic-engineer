@@ -18,7 +18,6 @@ package codingagent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -63,95 +62,14 @@ func buildRow(id string) *delivery.Execution {
 	}
 }
 
-func buildDispatch(row *delivery.Execution) delivery.DispatchRequest {
-	return delivery.DispatchRequest{
-		Execution: row,
-		Task:      delivery.TaskFacts{OrgID: "acme", ProjectID: "widgets", Component: "order-service"},
-		MergeSHA:  "deadbeef",
-	}
-}
-
 func newBuildExecutor(oc openchoreo.ComponentClient, repo *sourcecontrol.GitRepository, execRows *fakeExecRepo) *CodingExecutor {
 	return NewCodingExecutor(oc, fakeRepos{repo: repo}, nil, nil, nil, execRows, "http://git", "http://platform", nil, nil, nil, nil)
 }
 
-func TestRunBuild_StagesSecret_PassesRefToBuild(t *testing.T) {
-	cap := &buildTrigger{}
-	row := buildRow("e1")
-	repoRows := newFakeExecRepo(row)
-	stager := &fakeStager{ref: stagedRef}
-	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, repoRows).
-		WithBuildSecrets(stager, 0)
-
-	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
-		t.Fatalf("Run(build): %v", err)
-	}
-	if !cap.called {
-		t.Fatal("TriggerBuildAtCommit was not called")
-	}
-	if cap.secretRef != stagedRef {
-		t.Errorf("build secretRef = %q, want the staged ref (private-repo clone)", cap.secretRef)
-	}
-	if cap.sha != "deadbeef" || cap.component != "order-service" {
-		t.Errorf("build args wrong: sha=%q component=%q", cap.sha, cap.component)
-	}
-	if stager.calls() != 1 {
-		t.Errorf("StageBuildSecret calls = %d, want 1", stager.calls())
-	}
-	// The row was Started with the returned run name (one discipline).
-	if got := repoRows.get("e1"); got.Status != string(taskmeta.ExecRunning) || got.RunName != cap.runName {
-		t.Errorf("row not started with run name: status=%q run=%q", got.Status, got.RunName)
-	}
-}
-
-func TestRunBuild_StagingRefusal_BlocksBuild(t *testing.T) {
-	cap := &buildTrigger{}
-	row := buildRow("e1")
-	stager := &fakeStager{err: errors.New("org disconnected")}
-	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row)).
-		WithBuildSecrets(stager, 0)
-
-	err := e.Run(context.Background(), buildDispatch(row))
-	if err == nil {
-		t.Fatal("staging refusal must block the build (returned nil)")
-	}
-	if cap.called {
-		t.Error("TriggerBuildAtCommit must not be called when staging is refused")
-	}
-}
-
-func TestRunBuild_NoStager_ClonesUnauthenticated(t *testing.T) {
-	cap := &buildTrigger{}
-	row := buildRow("e1")
-	// No WithBuildSecrets → public-repo path, empty secretRef.
-	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: "acme-widgets"}, newFakeExecRepo(row))
-
-	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
-		t.Fatalf("Run(build): %v", err)
-	}
-	if !cap.called || cap.secretRef != "" {
-		t.Errorf("no stager → empty secretRef; got called=%v ref=%q", cap.called, cap.secretRef)
-	}
-}
-
-func TestRunBuild_NoRepoSlug_Degrades(t *testing.T) {
-	cap := &buildTrigger{}
-	row := buildRow("e1")
-	stager := &fakeStager{ref: "should-not-be-used"}
-	// Repo row present but no slug → cannot stage; degrade to unauthenticated.
-	e := newBuildExecutor(ocWithBuildCapture(cap), &sourcecontrol.GitRepository{RepoSlug: ""}, newFakeExecRepo(row)).
-		WithBuildSecrets(stager, 0)
-
-	if err := e.Run(context.Background(), buildDispatch(row)); err != nil {
-		t.Fatalf("Run(build): %v", err)
-	}
-	if cap.secretRef != "" {
-		t.Errorf("no repo slug → empty secretRef, got %q", cap.secretRef)
-	}
-	if stager.calls() != 0 {
-		t.Errorf("stager must not be called without a repo slug, got %d calls", stager.calls())
-	}
-}
+// The build path that survives the flip is the exec watcher's git-clone-auth
+// RETRY: the post-merge build itself is triggered by the event plane's fan-out,
+// but a build that died at clone-auth is re-minted and re-triggered here. The
+// tests below therefore cover the secret-staging ladder through the retry.
 
 func TestRetryAuthFailedBuild_ReMintsAndReTriggersAtCommit(t *testing.T) {
 	cap := &buildTrigger{}
@@ -201,30 +119,8 @@ func TestBuildPrompt_IsAMilestoneReferenceOnly(t *testing.T) {
 	}
 }
 
-// TestRunCoding_WithoutMilestone_RefusesBeforeAnySideEffect pins the fail-fast:
-// a coding dispatch with no milestone reference is refused before the
-// component-ensure pre-flight runs, so a mis-wired caller cannot provision
-// anything or launch a runner whose prompt names milestone 0.
-func TestRunCoding_WithoutMilestone_RefusesBeforeAnySideEffect(t *testing.T) {
-	ensurer := &fakeEnsurer{}
-	row := codingRow("c1")
-	e := codingExecutorFor(t, ensurer, &ocmocks.ComponentClientMock{}, row)
-
-	req := codingDispatch(row)
-	req.MilestoneNumber = 0
-	req.MilestoneTitle = ""
-
-	err := e.Run(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "milestone reference") {
-		t.Fatalf("a coding dispatch without a milestone must be refused, got %v", err)
-	}
-	if len(ensurer.calls()) != 0 {
-		t.Errorf("refusal must precede the component-ensure pre-flight, got %v", ensurer.calls())
-	}
-}
-
 // TestBuildValidationPrompt_StaysIssueAnchored pins the other half of §9: the
-// validation dispatch is NOT re-keyed — one validation issue, one run.
+// validation cycle stays issue-anchored — one validation issue, one run.
 func TestBuildValidationPrompt_StaysIssueAnchored(t *testing.T) {
 	got := buildValidationPrompt("https://github.com/acme/widgets/issues/9", 9)
 
@@ -236,27 +132,6 @@ func TestBuildValidationPrompt_StaysIssueAnchored(t *testing.T) {
 	}
 	if strings.Contains(got, "milestone") {
 		t.Errorf("validation dispatch must stay issue-anchored, got %q", got)
-	}
-}
-
-// TestRunCoding_ValidationWithoutProxy_RefusesWithTheRealReason pins the
-// deliberate keep: with one runner image the refusal is no longer about the
-// image, it is about K8sJobInput carrying no AEP_TASK_KIND or deadline.
-func TestRunCoding_ValidationWithoutProxy_RefusesWithTheRealReason(t *testing.T) {
-	row := codingRow("v1")
-	row.Component = ""
-	e := codingExecutorFor(t, &fakeEnsurer{}, &ocmocks.ComponentClientMock{}, row)
-
-	req := codingDispatch(row)
-	req.Task.Class = taskmeta.ClassValidation
-	req.MilestoneNumber, req.MilestoneTitle = 0, "" // validation is issue-anchored
-
-	err := e.Run(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "cluster-gateway-proxy path") {
-		t.Fatalf("validation without the proxy path must be refused, got %v", err)
-	}
-	if strings.Contains(err.Error(), "VALIDATION_RUNNER_IMAGE") {
-		t.Errorf("the refusal must no longer blame a second image, got %v", err)
 	}
 }
 

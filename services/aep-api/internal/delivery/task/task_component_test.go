@@ -22,8 +22,8 @@
 // for. The command/plan HTTP operations the retired Huma surface carried
 // (plan-tasks, execute-task, hold-task, unhold-task, promote-task-from-issue)
 // are not in the committed contract, so their route tests are gone; the
-// one-active-plan-turn invariant keeps a service-level test below
-// (PlanService still backs the devflow validator).
+// one-active-plan-turn invariant keeps a service-level test below (the build
+// click's plan path is its caller).
 package task_test
 
 import (
@@ -172,18 +172,25 @@ func hasAll(have, want []string) bool {
 	return true
 }
 
+// taskIssue builds a planned Task as the plan tap writes it: a prose body and
+// the `aep` working-set label.
 func taskIssue(number int, component, state string, extra ...string) sourcecontrol.IssueInfo {
-	block := taskmeta.Block{Component: component, Origin: taskmeta.OriginSpecPlan, SpecTag: "req-v1", DesignTag: "design-v1"}
-	body := taskmeta.ComposeBody(block, taskmeta.Human{Rationale: "r", Body: "## Scope"})
-	labels := append(taskmeta.NewTaskLabels(taskmeta.ClassCoding, taskmeta.OriginSpecPlan), extra...)
-	return sourcecontrol.IssueInfo{Number: number, Title: "Implement " + component, Body: body, State: state, URL: "https://github.com/acme/widgets/issues/1", Labels: labels}
+	labels := append([]string{delivery.LabelAgentWork}, extra...)
+	return sourcecontrol.IssueInfo{
+		Number: number,
+		Title:  "Implement " + component,
+		Body:   "Build it.\n\n**Component:** `" + component + "`",
+		State:  state,
+		URL:    "https://github.com/acme/widgets/issues/1",
+		Labels: labels,
+	}
 }
 
 // ---- harness ---------------------------------------------------------------
 
 func newRig(t *testing.T, iss *fakeIssues, execs fakeExecs) *componenttest.Harness {
 	t.Helper()
-	reads := task.NewReads(iss, fakeRepos{}, execs, nil, nil)
+	reads := task.NewReads(iss, fakeRepos{}, execs, nil)
 	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{
 		Delivery: mustDelivery(deliveryhttpapi.New(deliveryhttpapi.Deps{TaskReads: reads})),
 	}})
@@ -200,18 +207,15 @@ func mustDelivery(h *deliveryhttpapi.Handlers, err error) *deliveryhttpapi.Handl
 
 // ---- tests -----------------------------------------------------------------
 
-func TestList_DerivesStatusShapes(t *testing.T) {
-	iss := newIssues(
-		taskIssue(1, "user-service", "open"),
-		taskIssue(2, "order-service", "open"),
-	)
-	execs := fakeExecs{latest: map[int]map[string]*delivery.Execution{
-		1: {string(taskmeta.KindCoding): row("c1", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", -2), string(taskmeta.KindBuild): row("b1", taskmeta.KindBuild, taskmeta.ExecSucceeded, "", -1)},
-		2: {string(taskmeta.KindCoding): row("c2", taskmeta.KindCoding, taskmeta.ExecRunning, "", 0)},
-	}}
-	h := newRig(t, iss, execs)
+// The list's wire shape: the derived status is the issue's own state, the kind
+// chip is label-derived, and attention is [] rather than null (the console maps
+// over it unconditionally).
+func TestList_WireShape(t *testing.T) {
+	closed := taskIssue(2, "order-service", "closed")
+	iss := newIssues(taskIssue(1, "user-service", "open"), closed)
+	h := newRig(t, iss, fakeExecs{})
 
-	rec := h.AsOrg(org).Get(tasks + "?state=open")
+	rec := h.AsOrg(org).Get(tasks + "?state=all")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("list: code %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -221,22 +225,25 @@ func TestList_DerivesStatusShapes(t *testing.T) {
 	for _, v := range views {
 		byNum[v.IssueNumber] = v
 	}
-	if byNum[1].DerivedStatus != string(taskmeta.StatusDeployed) {
-		t.Errorf("task 1 = %q, want deployed", byNum[1].DerivedStatus)
+	if byNum[1].DerivedStatus != delivery.DerivedStatusPending {
+		t.Errorf("open task = %q, want %q", byNum[1].DerivedStatus, delivery.DerivedStatusPending)
 	}
-	if byNum[2].DerivedStatus != string(taskmeta.StatusInProgress) {
-		t.Errorf("task 2 = %q, want in_progress", byNum[2].DerivedStatus)
+	if byNum[2].DerivedStatus != delivery.DerivedStatusMerged {
+		t.Errorf("closed task = %q, want %q", byNum[2].DerivedStatus, delivery.DerivedStatusMerged)
 	}
-	if byNum[1].Component != "user-service" || byNum[1].ExecutorClass != "coding" {
-		t.Errorf("task 1 shape wrong: %+v", byNum[1])
+	if byNum[1].ExecutorClass != "coding" {
+		t.Errorf("task 1 kind = %q, want coding", byNum[1].ExecutorClass)
+	}
+	if !strings.Contains(rec.Body.String(), `"attention":[]`) {
+		t.Errorf("attention must marshal as [] not null: %s", rec.Body.String())
 	}
 }
 
 func TestGet_IncludesHistory(t *testing.T) {
-	iss := newIssues(taskIssue(5, "order-service", "open"))
+	iss := newIssues(taskIssue(5, "orders-db", "open", delivery.LabelProvisionGate))
 	execs := fakeExecs{
-		latest:  map[int]map[string]*delivery.Execution{5: {string(taskmeta.KindCoding): row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
-		history: map[int][]delivery.Execution{5: {*row("a", taskmeta.KindCoding, taskmeta.ExecFailed, "", -1), *row("b", taskmeta.KindCoding, taskmeta.ExecSucceeded, "", 0)}},
+		latest:  map[int]map[string]*delivery.Execution{5: {string(taskmeta.KindProvision): row("b", taskmeta.KindProvision, taskmeta.ExecSucceeded, "", 0)}},
+		history: map[int][]delivery.Execution{5: {*row("a", taskmeta.KindProvision, taskmeta.ExecFailed, "", -1), *row("b", taskmeta.KindProvision, taskmeta.ExecSucceeded, "", 0)}},
 	}
 	h := newRig(t, iss, execs)
 
@@ -246,8 +253,8 @@ func TestGet_IncludesHistory(t *testing.T) {
 	}
 	var d delivery.TaskDetail
 	_ = json.Unmarshal(rec.Body.Bytes(), &d)
-	if len(d.ExecutionHistory) != 2 || d.DerivedStatus != string(taskmeta.StatusReadyForReview) {
-		t.Fatalf("get shape wrong: status=%q history=%d", d.DerivedStatus, len(d.ExecutionHistory))
+	if len(d.ExecutionHistory) != 2 || d.ExecutorClass != "provision" {
+		t.Fatalf("get shape wrong: kind=%q history=%d", d.ExecutorClass, len(d.ExecutionHistory))
 	}
 
 	miss := h.AsOrg(org).Get(tasks + "/404")
@@ -261,12 +268,11 @@ func TestGet_IncludesHistory(t *testing.T) {
 
 func TestPlan_InProgress_409(t *testing.T) {
 	// The one-active-plan-turn invariant (§6): while a plan turn holds the
-	// per-project in-flight lock (blocked in the upstream Turn), a second
-	// StartPlan for the same project must be rejected with ErrPlanInProgress.
-	// plan-tasks left the public HTTP contract, but PlanService still backs the
-	// devflow validator, so the invariant is asserted at the service seam. The
-	// plan dispatch is workspace-shaped, so the rig runs a real engine over
-	// real file:// origins.
+	// per-project in-flight lock (blocked in the upstream Turn), a second plan
+	// for the same project must be rejected with ErrPlanInProgress. plan-tasks
+	// has no public HTTP route, so the invariant is asserted at the service
+	// seam the build click calls. The plan dispatch is workspace-shaped, so the
+	// rig runs a real engine over real file:// origins.
 	iss := newIssues()
 	bt := &blockingTurn{started: make(chan struct{}), release: make(chan struct{})}
 	fx := workspacetest.New(t, map[string]string{"specs/design/design.md": "# d"})
@@ -285,8 +291,7 @@ func TestPlan_InProgress_409(t *testing.T) {
 
 	firstErr := make(chan error, 1)
 	go func() {
-		_, err := plan.StartPlan(context.Background(), org, proj)
-		firstErr <- err
+		firstErr <- plan.PlanIntoMilestone(context.Background(), org, proj, 7)
 	}()
 	select {
 	case <-bt.started: // the first turn now holds the in-flight lock
@@ -296,7 +301,7 @@ func TestPlan_InProgress_409(t *testing.T) {
 		t.Fatal("first plan never reached the turn dispatch")
 	}
 
-	if _, err := plan.StartPlan(context.Background(), org, proj); !errors.Is(err, task.ErrPlanInProgress) {
+	if err := plan.PlanIntoMilestone(context.Background(), org, proj, 7); !errors.Is(err, task.ErrPlanInProgress) {
 		t.Fatalf("second concurrent plan: err = %v, want ErrPlanInProgress", err)
 	}
 	close(bt.release)

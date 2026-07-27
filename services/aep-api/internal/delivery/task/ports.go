@@ -31,9 +31,8 @@ import (
 // actually uses (the house pattern), so the composition root wires concrete
 // providers and tests supply fakes.
 
-// IssueClient is the GitHub issue surface: create/list/comment/edit and the
-// label stamping the command + projection paths need. sourcecontrol.IssueService
-// satisfies it.
+// IssueClient is the GitHub issue surface the read path and the plan tap use:
+// list, fetch, create and edit. sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
 	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
 	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
@@ -44,7 +43,6 @@ type IssueClient interface {
 	EditIssueBody(ctx context.Context, orgID, projectID string, number int, body string) error
 	EditIssueTitle(ctx context.Context, orgID, projectID string, number int, title string) error
 	AddLabels(ctx context.Context, orgID, projectID string, number int, labels []string) error
-	RemoveLabel(ctx context.Context, orgID, projectID string, number int, label string) error
 	// ListMilestoneIssues reads one milestone's issues (pull requests excluded).
 	// The plan turn reads the milestone it is planning INTO so a re-plan and a
 	// crash re-run dedupe against what is already there — the milestone, not a
@@ -69,10 +67,9 @@ type RepoResolver interface {
 
 // ComponentEnsurer idempotently provisions the OpenChoreo Component CR for a
 // design component, erroring if no design component exists by that name.
-// component.ComponentService satisfies it. PromoteAndExecute calls it
-// synchronously before promoting an ad-hoc issue into a Task, so an unknown
-// componentName (e.g. a caller's prefix-stripping bug) fails the dispatch
-// call itself instead of only surfacing inside the funnel's async goroutine.
+// projects.ComponentService satisfies it. PromoteAndExecute calls it
+// synchronously, so an unknown componentName (e.g. a caller's prefix-stripping
+// bug) fails that call rather than surfacing later inside a cycle.
 type ComponentEnsurer interface {
 	EnsureComponent(ctx context.Context, orgID, projectID, componentName string) error
 }
@@ -114,24 +111,6 @@ type ExecutionReader interface {
 	ListByIssueScoped(ctx context.Context, orgID, repo string, issueNumber int) ([]delivery.Execution, error)
 }
 
-// DesignReader exposes each component's declared dependencies from the design at
-// HEAD, so the read path can compute WHICH provisioning / org-service deps block
-// a coding Task (issue #164 follow-up: the board's "On hold — Waiting for X").
-// It mirrors the slice execution.DesignReader exposes for the funnel's gate; the
-// same app-root designComponents adapter satisfies both. A nil DesignReader
-// degrades the read path to component-dep gating only (provision/org-service dep
-// resolution is skipped).
-type DesignReader interface {
-	// ProvisionDepNames returns, per component (lowercased name), the names of
-	// that component's provisioning dependencies (external + platform-resource).
-	// Returns nil when the project has no design yet.
-	ProvisionDepNames(ctx context.Context, orgID, projectID string) (map[string][]string, error)
-	// OrgServiceDepNames returns, per component (lowercased name), the names of
-	// that component's cross-project org-service dependencies. Returns nil when
-	// the project has no design yet.
-	OrgServiceDepNames(ctx context.Context, orgID, projectID string) (map[string][]string, error)
-}
-
 // AnthropicKeyResolver resolves the org's effective Anthropic key. Empty key +
 // nil error means "org has none" → the plan turn raises ErrNoAnthropicKey.
 type AnthropicKeyResolver func(ctx context.Context, orgID string) (string, error)
@@ -142,20 +121,20 @@ type TurnClient interface {
 	Turn(ctx context.Context, conversationID, orgID, anthropicKey string, req agentsvc.TurnRequest) (io.ReadCloser, error)
 }
 
-// RepoLocator resolves a GitHub "owner/name" to the owning org + project — the
-// issues.* webhook delivers a repo full name; the handlers need org+project to
-// drive the org-scoped issue ops. Wired from repositories at the composition
-// root (the same lookup feature/execution uses).
-type RepoLocator interface {
-	ByFullName(ctx context.Context, fullName string) (orgID, projectID string, err error)
+// Adopter hands an issue to the coding agent: file it under the deployed
+// version's milestone and start an incident run over that milestone unless one
+// is already live. *eventcore.Events satisfies it, wired at the composition
+// root — this package names no sibling slice (the task ⊥ run arch lock).
+//
+// The issue is assumed to be BARE (no milestone): the one caller is the SRE/RCA
+// handoff, which files the issue and immediately promotes it.
+type Adopter interface {
+	AdoptIssue(ctx context.Context, orgID, projectID string, issueNumber int) error
 }
 
-// Dispatcher is the funnel's entry surface (the platform-owned half). The
-// execute endpoint and the hold-release path call INTO it — the design's "no
-// sibling entry points" rule (§5, §10.1). This is a consumer-side port so the
-// Task package imports NOTHING from feature/execution; the funnel satisfies it
-// structurally and is wired at the composition root (task↛execution arch-lock).
-type Dispatcher interface {
-	OnExecuteIntent(ctx context.Context, repoFullName string, issueNumber int) error
-	Reevaluate(ctx context.Context) error
+// MilestoneResolver resolves a `?tag=v<N>` query to the milestone NUMBER the
+// version's Tasks live in, THROUGH THE PLATFORM'S RUN ROWS — never by matching
+// titles against GitHub. delivery.MilestoneRunRepository satisfies it.
+type MilestoneResolver interface {
+	MilestoneNumberForTag(ctx context.Context, orgID, projectID, tag string) (number int, found bool, err error)
 }

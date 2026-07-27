@@ -20,12 +20,11 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
-	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // The consumer ports the validation minter drives. Each is the narrow slice of
 // a larger collaborator; concrete providers are wired at the composition root.
-// The only feature edge is gitrepo (the issue wire types); design + criteria
+// The only feature edge is gitrepo (the issue wire types); criteria
 // reads are adapted from artifacts/files by the composition root so this package
 // imports neither.
 
@@ -35,15 +34,6 @@ import (
 type IssueClient interface {
 	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
 	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
-}
-
-// DesignReader reads the project's authored design components at HEAD — the
-// validation task dependsOn every one of them (component names), so the funnel
-// holds it until all deploy. Returns ONLY models-typed data so this package
-// needs no artifacts edge; the composition root adapts artifacts.ArtifactStore.
-// (Minting runs right after approval, so HEAD == the just-tagged content.)
-type DesignReader interface {
-	ReadDesignComponents(ctx context.Context, orgID, projectID string) ([]spec.DesignComponent, error)
 }
 
 // CriteriaReader reads the acceptance oracle (specs/validation/validation-criteria.json)

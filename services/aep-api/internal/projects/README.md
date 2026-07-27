@@ -63,16 +63,18 @@ delivery's kernel: shared behaviour belongs in the root the slices import.
   JSON `null` 200 when no row exists (not `{}`); get-component-openapi returns 409 *with* the componentType
   body for a non-service component; build-logs 503s when the observability client is unwired.
 - **The Stage aggregate is one cheap poll (5s active / 30s idle), strict-join.** get-project-status runs
-  three sources concurrently — spec from a fetch-free local-mirror snapshot, build from the newest `dev`
-  `workflow_runs` row (task counts denormalized onto it, not a live query), deploy from the project's
-  `development` release bindings — with no GitHub API, Temporal query, or origin fetch. Any source failure
-  fails the whole read (the console keeps last-good); the one carve-out: a deploy tag missing from the
-  local mirror degrades to a 0 denominator, not a 500.
-- **A validation-phase failure is attributed to validation, not the build.** When the newest `dev` run
-  failed but its task tally is fully green and its validation child row failed, the Build stage reports
-  `succeeded` and the failure rides `deploy.validation = failed` (`status_stages.go`
-  `validationAttributedFailure`; a green-tally guard plus a recency guard — the child was recorded after
-  the dev row — defeat stale validation rows from a same-tag rebuild). Other failures (coding,
-  provisioning, canceled) keep the Build card as the catch-all. `deploy.validationIssue` carries the
-  validation Task's issue number so the console can open its log page.
+  three sources concurrently — spec from a fetch-free local-mirror snapshot, build from the newest
+  `milestone_runs` row (a version's delivery IS its run), deploy from the project's `development` release
+  bindings — with no GitHub API, Temporal query, or origin fetch. Any source failure fails the whole read
+  (the console keeps last-good); the one carve-out: a deploy tag missing from the local mirror degrades to
+  a 0 denominator, not a 500.
+- **The build stage carries NO task counts.** Their only honest source is the version's milestone on
+  GitHub, and a 5s poll may not spend GitHub rate — so the tally is zero here and the console renders
+  counts from the list-tasks response it already holds.
+- **A validation failure is attributed to validation, not the build.** A run whose terminal reason is
+  `validation-failed` reports the Build stage `succeeded` and the failure rides `deploy.validation =
+  failed`: every coding cycle landed. The carve-out keys on the run's own terminal reason, which names
+  exactly one failure class, so no tally or recency heuristic is needed. Every other terminal reason keeps
+  the Build card as the catch-all. `deploy.validation` itself is the run row's VERDICT column; the report
+  and the per-cycle detail behind it live on the version's run story (list-build-runs).
 - Platform-wide rules (tenant gate, secrets fence, feature-free domains) → [../../README.md](../../README.md).

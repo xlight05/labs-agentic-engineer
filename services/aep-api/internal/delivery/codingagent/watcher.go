@@ -58,9 +58,6 @@ type JobWatcher struct {
 	// existed. Enabled from the composition root when proxy dispatch is active.
 	cleanupExternalSecrets bool
 
-	// signaler feeds a coding-job failure to a waiting devflow TaskFlow
-	// workflow. Nil-safe (no-op when absent).
-	signaler *delivery.Signaler
 	// notifier wakes any attached task-log stream on the failure. Nil-safe.
 	notifier *delivery.TaskStreamHub
 
@@ -85,13 +82,6 @@ func NewJobWatcher(logs delivery.CodingAgentLogRepository, orgs organization.Org
 		panic("codingagent.JobWatcher: logs + orgs + proxy + execRows are required")
 	}
 	return &JobWatcher{logs: logs, orgs: orgs, proxy: proxy, execRows: execRows, pollInterval: 30 * time.Second}
-}
-
-// WithWorkflowSignaler wires the devflow signaler so a coding-job failure
-// reaches a waiting TaskFlow workflow. Optional. Returns the receiver.
-func (w *JobWatcher) WithWorkflowSignaler(s *delivery.Signaler) *JobWatcher {
-	w.signaler = s
-	return w
 }
 
 // WithExternalSecretCleanup enables per-run ExternalSecret teardown on terminal
@@ -281,10 +271,6 @@ func (w *JobWatcher) finishFailed(ctx context.Context, row *delivery.Execution, 
 		return
 	}
 	slog.InfoContext(ctx, "codingagent.JobWatcher: coding execution failed", "execution", row.ID, "reason", reason)
-	// Tell any waiting TaskFlow workflow the coding attempt failed.
-	w.signaler.SignalTask(ctx, row.Repo, row.IssueNumber, delivery.SigJobStatus, delivery.RunStatusSignal{
-		ExecutionID: row.ID, Phase: delivery.PhaseFailed, Message: reason,
-	})
 	w.notifier.Notify(row.Repo, row.IssueNumber)
 }
 

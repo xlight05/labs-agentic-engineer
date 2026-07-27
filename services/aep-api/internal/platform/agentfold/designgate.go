@@ -56,7 +56,7 @@ var (
 		"kind": true, "name": true, "description": true,
 		"style": true, "package": true, "specPath": true,
 		"candidates": true,
-		"config": true, "resourceType": true, "parameters": true,
+		"config":     true, "resourceType": true, "parameters": true,
 	}
 	// externalOnlyDependencyKeys are meaningful only on kind="external" — a
 	// platform-resource is catalog-picked, an org-service is catalog-resolved,

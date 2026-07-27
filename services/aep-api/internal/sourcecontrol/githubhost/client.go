@@ -601,9 +601,9 @@ func (c *Client) AddIssueLabels(ctx context.Context, owner, repo string, cred se
 
 // RemoveIssueLabel removes one label from an issue via DELETE
 // /repos/{owner}/{repo}/issues/{number}/labels/{name}. The label name is
-// path-escaped (aep:status/* contains ':' and '/'). A 404 is treated as success
-// — the label is already absent, which is the desired post-state (idempotent).
-// Used to consume the aep:execute command label and clear stale projections.
+// path-escaped (an aep: label contains ':' and may contain '/'). A 404 is
+// treated as success — the label is already absent, which is the desired
+// post-state (idempotent).
 func (c *Client) RemoveIssueLabel(ctx context.Context, owner, repo string, cred secrets.Credential, number int, label string) error {
 	url := fmt.Sprintf(c.apiBase+"/repos/%s/%s/issues/%d/labels/%s", owner, repo, number, urlpkg.PathEscape(label))
 	// 404 is success: the label is already absent, the desired post-state.

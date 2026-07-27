@@ -19,8 +19,6 @@ package taskplan
 import (
 	"strings"
 	"testing"
-
-	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
 )
 
 func TestRenderTaskContextFilePath(t *testing.T) {
@@ -34,15 +32,14 @@ func TestRenderTaskContextFilePath(t *testing.T) {
 // populated context file.
 func TestRenderFull(t *testing.T) {
 	f := TaskContextFile{
-		IssueNumber:   7,
-		Component:     "order-service",
-		Title:         "Implement order-service",
-		DependsOn:     []string{"user-service", "catalog"},
-		Origin:        taskmeta.OriginSpecPlan,
-		DerivedStatus: taskmeta.StatusReadyForReview,
-		SpecTag:       "requirements-v3",
-		DesignTag:     "design-v5",
-		Body:          "## Scope\ndo the thing",
+		IssueNumber: 7,
+		Component:   "order-service",
+		Title:       "Implement order-service",
+		DependsOn:   []string{"user-service", "catalog"},
+		Origin:      OriginSpecPlan,
+		SpecTag:     "requirements-v3",
+		DesignTag:   "design-v5",
+		Body:        "## Scope\ndo the thing",
 	}
 	got := f.Render()
 	want := "---\n" +
@@ -51,7 +48,6 @@ func TestRenderFull(t *testing.T) {
 		`title: "Implement order-service"` + "\n" +
 		`dependsOn: ["user-service", "catalog"]` + "\n" +
 		`origin: "spec-plan"` + "\n" +
-		`derivedStatus: "ready_for_review"` + "\n" +
 		`specTag: "requirements-v3"` + "\n" +
 		`designTag: "design-v5"` + "\n" +
 		"---\n\n## Scope\ndo the thing\n"

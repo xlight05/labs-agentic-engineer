@@ -42,11 +42,13 @@ type mergeDecision struct {
 // decideAutoMerge IS the merge policy: a pull request whose Resolves list
 // references at least one agent-work issue in the run's milestone squash-merges.
 //
-// There is deliberately no other verification. The agent runs the build gate
-// inside its own pod before it ever opens the pull request — every Dockerfile
-// under a touched App Path must build to completion — and that is the sole
-// quality gate by design. The platform re-running a build to decide whether to
-// merge would gate the merge on the same thing the merge exists to trigger.
+// There is deliberately no verification BEFORE the merge. The verification is
+// the POST-MERGE build: the merge is what triggers it, so gating the merge on a
+// build would gate it on the thing it exists to cause. A red build is not a
+// dead end either — it mints a fix issue into the same milestone, the run works
+// it in the next cycle, and the loop converges. The agent's own compile-level
+// checks (go build / tsc, lockfile resolution) run before it opens the pull
+// request and catch the cheap failures; the cluster catches the rest.
 //
 // What the predicate DOES buy is scope: a pull request that claims nothing in
 // this milestone is not this run's work and is left alone for a human. Review

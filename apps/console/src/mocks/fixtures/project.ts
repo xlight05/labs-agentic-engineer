@@ -1,5 +1,5 @@
 import type { components } from "../../generated/aep-api";
-import { buildUsageByScenario, taskUsage } from "./usage";
+import { taskUsage } from "./usage";
 
 type ProjectStatus = components["schemas"]["ProjectStatus"];
 type ComponentList = components["schemas"]["ComponentList"];
@@ -471,18 +471,17 @@ export const projectTasks: Record<
   "repo-error": [],
 };
 
-// Builds backing list-project-builds — the builds page (#185): one entry per
-// built tag, newest first, tallies mirroring projectStatuses[s].build.
+// Builds backing list-project-builds — the version ledger the builds page
+// reads (#185): one entry per built spec version, newest first, each carrying
+// the state of the newest milestone run that has worked it.
 const noBuilds: BuildList = { builds: [] };
 const runningV1Build: BuildList = {
   builds: [
     {
       tag: "v1",
+      milestoneNumber: 1,
       status: "in_progress",
-      tasks: { total: 4, done: 0, failed: 1, active: 3 },
       startedAt: "2026-07-10T09:12:00Z",
-      // Mid-build the aggregate is the cost so far — it accrues on the poll (#245).
-      usage: buildUsageByScenario.running,
     },
   ],
 };
@@ -490,11 +489,10 @@ const completedV1Build: BuildList = {
   builds: [
     {
       tag: "v1",
+      milestoneNumber: 1,
       status: "completed",
-      tasks: { total: 4, done: 4, failed: 0, active: 0 },
       startedAt: "2026-07-10T09:12:00Z",
       completedAt: "2026-07-10T10:03:00Z",
-      usage: buildUsageByScenario.completed,
     },
   ],
 };
