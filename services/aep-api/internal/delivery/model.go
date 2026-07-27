@@ -52,10 +52,24 @@ type TaskFacts struct {
 //
 // MergeSHA is set only for a build Execution (Execution.Kind == build), spawned
 // when a linked PR merges: the commit the build is pinned to (§7).
+//
+// MilestoneNumber/MilestoneTitle are the run's milestone reference and are
+// REQUIRED for a coding dispatch: §9's runner contract keys a coding run to a
+// milestone, not to one issue — the runner discovers its own working set from
+// the live issues API. The number is the platform key; the title is what
+// `gh issue list --milestone` matches on. They are unset for a build execution
+// and for the still-issue-anchored validation dispatch.
+//
+// They are the same two facts MilestoneDispatch carries, because this struct is
+// the RETIRING per-issue funnel's call shape and MilestoneDispatch is the
+// cycle-level one the run supervisor uses. When the funnel goes at the flip,
+// this pair goes with it and MilestoneDispatch is the only carrier left.
 type DispatchRequest struct {
-	Execution *Execution
-	Task      TaskFacts
-	MergeSHA  string
+	Execution       *Execution
+	Task            TaskFacts
+	MergeSHA        string
+	MilestoneNumber int
+	MilestoneTitle  string
 }
 
 // Executor performs one dispatch attempt for a class of Task (§3, §11). The

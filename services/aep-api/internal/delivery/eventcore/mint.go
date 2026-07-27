@@ -55,14 +55,14 @@ func (e *Events) mintFixIssue(ctx context.Context, run *delivery.MilestoneRun, e
 			"- OpenChoreo WorkflowRun: %s\n\n"+
 			"Failure output:\n\n```\n%s\n```\n\n"+
 			"Fix the component so it builds, then include this issue in your pull request's Resolves list.",
-		ev.Component, shortSHA(ev.CommitSHA), ev.Component, ev.CommitSHA, orNone(ev.RunName), orNone(ev.Reason))
+		ev.Component, delivery.ShortSHA(ev.CommitSHA), ev.Component, ev.CommitSHA, orNone(ev.RunName), orNone(ev.Reason))
 
 	return e.mint(ctx, run.OrgID, run.ProjectID, sourcecontrol.CreateIssueRequest{
 		Title:     fmt.Sprintf("Fix the failing build for %s", ev.Component),
 		Body:      body,
 		Labels:    []string{delivery.LabelAgentWork},
 		Milestone: &run.MilestoneNumber,
-		DedupeKey: fmt.Sprintf("aep fix %s %s", ev.Component, shortSHA(ev.CommitSHA)),
+		DedupeKey: fmt.Sprintf("aep fix %s %s", ev.Component, delivery.ShortSHA(ev.CommitSHA)),
 	})
 }
 
@@ -110,7 +110,7 @@ func (e *Events) mintRedMainIssue(ctx context.Context, ev delivery.BuildTerminal
 	}
 	if deployed == nil {
 		slog.DebugContext(ctx, "eventcore: red build outside a run and no deployed version — nothing to attribute it to",
-			"component", ev.Component, "commit", shortSHA(ev.CommitSHA))
+			"component", ev.Component, "commit", delivery.ShortSHA(ev.CommitSHA))
 		return nil
 	}
 	body := fmt.Sprintf(
@@ -128,7 +128,7 @@ func (e *Events) mintRedMainIssue(ctx context.Context, ev delivery.BuildTerminal
 		Body:  body,
 		// No agent-work label, deliberately: never auto-dispatched.
 		Milestone: &deployed.MilestoneNumber,
-		DedupeKey: fmt.Sprintf("aep red-main %s %s", ev.Component, shortSHA(ev.CommitSHA)),
+		DedupeKey: fmt.Sprintf("aep red-main %s %s", ev.Component, delivery.ShortSHA(ev.CommitSHA)),
 	})
 	return err
 }

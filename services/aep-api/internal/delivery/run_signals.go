@@ -40,6 +40,17 @@ const (
 	// SigRunConflict — the cycle's pull request could not be merged and a
 	// conflict issue naming it was minted into the milestone.
 	SigRunConflict = "run-conflict"
+	// SigRunCancel — a human abandoned the increment. It is the ONLY expiry the
+	// unbounded wait state has, and the only signal in this set that is an
+	// instruction rather than a fact: everything else the supervisor re-derives
+	// from ground truth, but "a person changed their mind" has no ground truth
+	// to poll.
+	//
+	// Cancel is delivered as a SIGNAL rather than a Temporal workflow
+	// cancellation so the run settles its own row and closes its own cycle on
+	// the ordinary code path, with a live context — a cancelled Temporal context
+	// cannot run the activities that record the outcome.
+	SigRunCancel = "run-cancel"
 )
 
 // RunSignal is the payload of every milestone-run signal. One struct rather

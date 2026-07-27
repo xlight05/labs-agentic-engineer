@@ -33,6 +33,8 @@ import (
 	"strings"
 	"time"
 
+	"go.temporal.io/sdk/worker"
+
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
 	"github.com/wso2/aep/aep-api/internal/clients/oauth"
@@ -50,6 +52,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery/eventcore"
 	"github.com/wso2/aep/aep-api/internal/delivery/execution"
 	deliveryhttpapi "github.com/wso2/aep/aep-api/internal/delivery/httpapi"
+	"github.com/wso2/aep/aep-api/internal/delivery/run"
 	"github.com/wso2/aep/aep-api/internal/delivery/task"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
 	"github.com/wso2/aep/aep-api/internal/dependencies"
@@ -143,6 +146,19 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// so webhook handlers/watchers hold it unconditionally.
 	devflowRuntime := delivery.NewRuntime(cfg.Temporal)
 	devflowSignaler := delivery.NewSignaler(devflowRuntime, workflowRunRepo)
+
+	// The milestone RUN SUPERVISOR — the same nil-safe-concrete-type shape as
+	// the signaler above, and for the same reason: the event plane and the build
+	// click both hold it unconditionally, and every degraded state (Temporal
+	// down, no agent dispatcher) has to be a logged no-op rather than a nil check
+	// at each call site.
+	//
+	// The agent dispatcher is not wired yet: the coding agent does not implement
+	// delivery.MilestoneDispatcher, so a started run could dispatch nothing. The
+	// supervisor refuses to start rather than burning a version's run row on a
+	// loop with no way forward, and the reconcile sweep re-offers each milestone
+	// once the dispatcher lands.
+	runSupervisor := run.NewSupervisor(devflowRuntime, runRuns{runs: milestoneRunRepo}, nil)
 
 	// Token provider for service-to-service auth. OC authorizes requests by
 	// the service client subject (aep-api-client), so every OC API call
@@ -649,8 +665,8 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		Repos:    repoLocator{db: db},
 		Design:   designComponents{store: artifactStore},
 		Builds:   eventcoreBuilds{oc: componentClient, repos: repoRepo, stager: buildStager},
-		Signaler: noRunSupervisor{},
-		Starter:  noRunSupervisor{},
+		Signaler: runSupervisor,
+		Starter:  runSupervisor,
 		// Echo suppression (issues.* only) uses the same platform identity the
 		// task handlers do.
 		PlatformSender: platformSender,
@@ -1036,14 +1052,12 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// project mutex, then (detached) plans the version's Tasks into the milestone
 	// and mints its gates. Set here rather than in build.Deps because its gate
 	// resolver is provisioningSvc, which is constructed after buildSvc.
-	// noRunSupervisor is the same stand-in the event plane holds: the run row
-	// waits until the supervisor lands.
 	buildSvc.SetPlanPath(build.PlanPathDeps{
 		Milestones: issueService,
 		Runs:       milestoneRunRepo,
 		Planner:    taskPlan,
 		Gates:      buildGateResolver{prov: provisioningSvc},
-		Starter:    noRunSupervisor{},
+		Starter:    runSupervisor,
 	})
 	// Reject cascade: an org-publish gate issue closed with its consumers still
 	// ungranted is a decline → flip those access requests to rejected. Registered
@@ -1177,7 +1191,29 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 			Recorder:           devflowActivityRecorder{svc: activitySvc},
 			Titles:             devflowTitles{reads: taskReads},
 		})
-		watchers = append(watchers, devflow.NewWorkerWatcher(devflowRuntime, devflowActs))
+		// The milestone run supervisor rides the SAME worker. One task queue must
+		// be served by one worker that knows every workflow on it — a second
+		// worker polling `aep-devflow` with a disjoint registration would fail
+		// whichever tasks it happened to pick up — and the supervisor cannot be
+		// registered inside devflow, which may not import a sibling slice. So the
+		// composition root hands the registration across.
+		runActs := run.NewActivities(run.Deps{
+			Runs:       runRuns{runs: milestoneRunRepo},
+			Cycles:     runCycles{cycles: runCycleRepo},
+			Milestones: issueService,
+			PRs:        issueService,
+			Design:     designComponents{store: artifactStore},
+			Builds:     runBuilds{oc: componentClient},
+			Validation: runValidation{
+				svc:       validationSvc,
+				art:       artifactSvcGit,
+				files:     filesSvc,
+				milestone: issueService,
+			},
+			// Dispatcher is deliberately unset — see runSupervisor above.
+		})
+		watchers = append(watchers, devflow.NewWorkerWatcher(devflowRuntime, devflowActs).
+			AlsoRegister(func(wk worker.Worker) { run.Register(wk, runActs) }))
 		slog.Info("devflow: temporal worker watcher registered", "hostPort", cfg.Temporal.HostPort)
 	}
 

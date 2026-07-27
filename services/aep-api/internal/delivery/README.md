@@ -17,23 +17,31 @@ flowchart LR
       K1["Executor · DispatchRequest · TaskFacts · TaskStreamHub"]
       K2["Runtime · Signaler · signals · workflow I/O vocab (DevFlowInput/Status, DevPhase*…)"]
       K3["read DTOs — TaskView · ExecutionView · Lineage · TaskDetail"]
-      K4["milestone model — labels · run signals · StartRunRequest · BuildTerminalObserver"]
+      K4["milestone model — labels · run signals · StartRunRequest · RunStatus · workflow id"]
+      K5["merge→builds contract — DiffComponents · BuildRunName · BuildTerminalObserver · MilestoneDispatcher"]
     end
     BUILD["build (buildpipe)"] --> ROOT
     TASK["task (taskflow)"] --> ROOT
     EXEC["execution — funnel/registry/sweep/TaskStreamService"] --> ROOT
     EVENT["eventcore — merge policy · build fan-out · issue minting · sweep"] --> ROOT
+    RUN["run — the milestone run supervisor (one Temporal workflow)"] --> ROOT
     CODE["codingagent"] --> ROOT
     DEV["devflow — Temporal workflows/activities/worker"] --> ROOT
-    VAL["validation — S2S context/credentials"] --> ROOT
+    VAL["validation — S2S context/credentials · report verdict"] --> ROOT
     HTTP --> BUILD & TASK & EXEC
     CODE -.->|BuildTerminalObserver| EVENT
+    CODE -.->|MilestoneDispatcher| RUN
+    EVENT -.->|RunSignaler · RunStarter| RUN
+    BUILD -.->|RunStarter| RUN
     BUILD -.->|SpecPlanner| TASK
+    RUN -.->|ValidationCoordinator| VAL
   end
   EXEC --> EXECS[("executions · workflow_runs")]
   EVENT --> RUNS[("milestone_runs · run_cycles")]
   BUILD --> RUNS
+  RUN --> RUNS
   DEV --> TMPRL[["Temporal"]]
+  RUN --> TMPRL
   BUILD -->|SpecTagger · SaveSpec| SPEC[[spec]]
   BUILD -->|repo full-name · milestones · supersede| SC[[sourcecontrol]]
   BUILD -->|GateResolver| DEP[[dependencies/provisioning]]
@@ -57,10 +65,11 @@ and every former feature→feature edge becomes a legal slice→root type refere
 | `build` (buildpipe) | the whole-spec gate + `v<N>` tag cut, **the milestone plan path** (supersede the previous version, mint `v<N>`'s milestone, admit the run row, then plan its Tasks and mint its gates), builds history, dep-drawer preflight | `Runtime`, the workflow I/O vocab, `MilestoneRun`/`StartRunRequest`, `TaskView` (via `TaskReader`) and the planner (via `SpecPlanner`) |
 | `task` (taskflow) | GitHub-native Task Commands/Reads/Plan + list/get/promote handlers. The plan turn mints one **prose** issue per Task **into the version's milestone**, assigned at creation | the read DTOs and the label vocabulary; reaches the funnel via the `Dispatcher` port |
 | `execution` | the ONE funnel (admit/finish/reevaluate), registry, sweep, `TaskStreamService`, `OpsExecutionReader` | `Executor`/`DispatchRequest`/`TaskFacts`, `Signaler`, `TaskStreamHub` |
-| `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals) and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
-| `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler` |
-| `devflow` | the Temporal dev/task/validation workflows, activities, worker | `Runtime`, `Signaler`, the workflow I/O vocab |
-| `validation` | the two S2S validation runner callbacks (context / test-credentials) | — (no cross-edges; least entangled) |
+| `eventcore` | the event plane of the milestone-run loop: the auto-merge policy seam, the merged-PR path-diff build fan-out + per-`(component, SHA)` re-trigger budget, fix/conflict/red-main issue minting, milestone-matched predicate re-evaluation, adoption, and the reconcile sweep | the milestone model (labels, `MilestoneRun`/`RunCycle`, run signals), `DiffComponents`/`BuildRunName` and `BuildTerminalObserver`; **no Temporal** — it reaches the supervisor only through the `RunSignaler`/`RunStarter` ports |
+| `run` | the milestone run SUPERVISOR: the wait state + dispatch predicate, the cycle loop, the four budgets + no-progress + ceiling, the validation cycle, settle, and cancel. Plus the `Supervisor` handle the event plane and the build click signal and start runs through | `Runtime`, the milestone model, `RunStatus`/`MilestoneRunWorkflowID`, `MilestoneDispatch`, `DiffComponents`/`BuildRunNamePrefix`; **no GitHub client, no gorm** |
+| `codingagent` | the CodingExecutor + dispatcher + job watchers + templates | `Executor`/`DispatchRequest`/`TaskStreamHub`, `Signaler`, `MilestoneDispatcher` |
+| `devflow` | the Temporal dev/task/validation workflows, activities, worker — and the worker itself, which the supervisor rides through `AlsoRegister` | `Runtime`, `Signaler`, the workflow I/O vocab |
+| `validation` | the two S2S validation runner callbacks (context / test-credentials), the validation issue, and the report → verdict rule | — (no cross-edges; least entangled) |
 | `httpapi` | the aggregator: embeds build/task/execution handlers; **holds `Deps`** (see below) | imports the sub-packages (the exempt aggregator) |
 
 **`Deps` lives in `httpapi`, not the root.** Every other domain keeps its `Deps` in the domain root, but
@@ -77,7 +86,9 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | org-credential reads · `AnthropicKeyResolver` | needs | `platform/secrets` / P3a org repositories — coding-agent runner secrets |
 | `ExecutionReader` (`ops.ExecutionFact`) | offers | `ops` — latest-execution-per-kind correlation (`execution.OpsExecutionReader`, P6-retired the app bridge) |
 | `BuildTerminalObserver` (root) | offers | the OpenChoreo watcher → the event plane: a settled build reported outwards, so watcher and event plane stay peer sub-packages |
-| `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, so one adapter satisfies them |
+| `MilestoneDispatcher` (root, over `MilestoneDispatch`) | offers | the coding agent → the supervisor: launch one agent run at a milestone and answer with its Job ref. The dispatch prompt is a milestone reference; the runner discovers its own working set |
+| `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, and `*run.Supervisor` satisfies both |
+| `RunStore` · `CycleStore` · `MilestoneReader` · `PRReader` · `DesignReader` · `BuildReader` · `ValidationCoordinator` | needs | `run` → the root repositories, `sourcecontrol`, the design reader, `clients/openchoreo` and `delivery/validation`. Every I/O the loop performs, named once; `BuildReader` is read-ONLY because the supervisor never triggers a build |
 | `MilestoneClient` (mint · list a milestone's issues · close issue · close milestone) | needs | `build` → `sourcecontrol`. The plan path's whole GitHub surface: create `v<N>` idempotently, and supersede `v<N-1>` |
 | `MilestoneRunStore` (active-run read · admit · settle · list) | needs | `build` → the root run repository. The 409 pre-check and the admission that arms the spec-run mutex |
 | `SpecPlanner` (`PlanIntoMilestone`) | needs | `build` → `task`. The planning turn, reached through the root exactly as `TaskReader` is, so `build` names no sibling |
@@ -101,6 +112,10 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   attempts, Job ref, branch, PR number, merge SHA). The milestone **number** is the key; the title is kept
   only as the `v<N>` tag a `?tag=` query resolves through. Loop position is read from the latest cycle, and
   per-component build/deploy status is derived from OpenChoreo on read — neither is stored.
+- The **run loop** (`run`): one Temporal workflow per milestone, `run-<org>-<project>-<milestoneNumber>`,
+  whose id is REUSED after a terminal run because a milestone sees sequential runs across its life. It
+  owns the four budgets, the no-progress rule, the cycle ceiling, the validation cycle and settle — and
+  nothing else: it detects no event and writes no issue.
 - **Persistence**: every gorm in this domain sits at the ROOT (the fence `TestGormFencedToDomainRepository`
   draws), as single write-authority — `repository_execution.go` · `repository_workflow_run.go` ·
   `repository_coding_agent_log.go` · `repository_run.go` · `repository_cycle.go` over the `execution.go` /
@@ -149,6 +164,31 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 - **The event plane imports no workflow engine.** It detects, mints and signals; the supervisor decides.
   The dependency direction is enforced as a package boundary — the supervisor is reachable only through
   the `RunSignaler`/`RunStarter` ports, so no loop decision can be smuggled into a webhook handler.
+- **A signal is a wake-up, never evidence.** The supervisor re-reads GROUND TRUTH before acting on any
+  signal: the milestone's own issue counts at every cycle boundary, and the CYCLE RECORD (not the payload)
+  to decide whether the agent's pull request landed — a human's pull request merging mid-cycle raises the
+  identical signal. That is what makes a lost delivery cost latency rather than correctness, and it is why
+  the wait state can be unbounded with cancel as its only expiry.
+- **The supervisor counts its own budgets.** They are workflow state, written OUT to the run row for the
+  read model and never read back: a replay must reproduce the same decisions without a database. The one
+  budget it does not count is the automatic build re-trigger — that is the event plane's, derived from the
+  WorkflowRuns themselves, and the supervisor reads the same runs rather than keeping a second tally.
+- **Every terminal reason names exactly one failure class.** `redispatch-budget` is agent death (including
+  a Job that exited without a pull request); `build-retrigger-budget` is a build that stayed red through
+  its one automatic re-trigger with no fix issue to recover it; `fix-chain-budget` and `conflict-budget`
+  bound the two recovery chains; `no-progress` is a green cycle that left the milestone unchanged;
+  `cycle-ceiling` is the backstop over all of them; `validation-failed` is the verdict. A run that settles
+  for a reason outside this list is a bug in the loop, not a new state.
+- **Settle closes the milestone; nothing branches on that.** Milestone state is display only, closed
+  milestones still accept new issues, and a failed or cancelled increment leaves its milestone OPEN
+  because the way forward from it is more work in the same version. A stray gate never blocks settle:
+  gates hold dispatch, and with an empty working set they hold nothing.
+- **One task queue, one worker.** The supervisor and the dying dev/task/validation workflows are
+  registered on the SAME Temporal worker (`devflow.WorkerWatcher.AlsoRegister`, supplied by the
+  composition root because a slice may not import a sibling). Two workers polling one queue with disjoint
+  registrations would fail whichever tasks each picked up by accident.
+- **Cancel is a signal, not a Temporal cancellation.** A cancelled context could not run the activities
+  that record the outcome, so the run settles its own row and closes its own cycle on the ordinary path.
 - **Echo suppression is `issues.*`-only.** Every label, comment and milestone assignment the platform
   writes fires an `issues.*` delivery straight back, so those handlers drop self-sender deliveries. It is
   deliberately NOT applied to `pull_request.*`: in App mode the coding runner opens its PR as the same

@@ -36,13 +36,33 @@ const dialRetryInterval = 15 * time.Second
 // watcher just keeps retrying and the devflow endpoints answer 503 until the
 // first successful dial.
 type WorkerWatcher struct {
-	rt   *delivery.Runtime
-	acts *Activities
+	rt    *delivery.Runtime
+	acts  *Activities
+	extra []func(worker.Worker)
 }
 
 // NewWorkerWatcher builds the watcher; nothing connects until Run.
 func NewWorkerWatcher(rt *delivery.Runtime, acts *Activities) *WorkerWatcher {
 	return &WorkerWatcher{rt: rt, acts: acts}
+}
+
+// AlsoRegister adds a registration step that runs on every worker this watcher
+// builds, including the ones it rebuilds after a re-dial.
+//
+// One task queue must be served by ONE worker that knows every workflow on it:
+// a second worker polling the same queue with a disjoint registration would
+// fail whichever tasks it happened to pick up. So a workflow that lives in
+// another package — the milestone run supervisor, which this package may not
+// import (slices never import siblings) — joins the worker through this seam,
+// with the composition root supplying the closure.
+//
+// The seam retires with this package: when the devflow workflows go, the
+// remaining registrar owns the worker outright.
+func (w *WorkerWatcher) AlsoRegister(register func(worker.Worker)) *WorkerWatcher {
+	if register != nil {
+		w.extra = append(w.extra, register)
+	}
+	return w
 }
 
 // Run dials until connected, then runs the worker until ctx is cancelled.
@@ -77,6 +97,9 @@ func (w *WorkerWatcher) Run(ctx context.Context) {
 			},
 		})
 		registerAll(wk, w.acts)
+		for _, register := range w.extra {
+			register(wk)
+		}
 
 		if err := wk.Start(); err != nil {
 			slog.Error("devflow: worker start failed, re-dialing", "error", err)

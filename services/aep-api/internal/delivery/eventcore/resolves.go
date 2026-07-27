@@ -17,7 +17,6 @@
 package eventcore
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -85,27 +84,8 @@ func milestoneFromBranch(ref string) (int, bool) {
 	return n, true
 }
 
-// shortSHA is the 12-hex-character form of a commit used in run names, dedupe
-// keys and issue prose. Twelve is git's own long-enough-to-be-unique default
-// and keeps a WorkflowRun name inside the Kubernetes name budget.
-func shortSHA(sha string) string {
-	s := strings.ToLower(strings.TrimSpace(sha))
-	if len(s) > 12 {
-		return s[:12]
-	}
-	return s
-}
-
-// buildRunNamePrefix is the (component, commit) half of a build WorkflowRun's
-// name — the key the automatic re-trigger budget counts on. Attempts share it
-// and differ only in the trailing ordinal, so counting the runs whose name
-// carries this prefix IS the attempt count, derived from OpenChoreo rather
-// than stored anywhere.
-func buildRunNamePrefix(projectID, component, sha string) string {
-	return strings.ToLower(fmt.Sprintf("%s-%s-%s-", projectID, component, shortSHA(sha)))
-}
-
-// buildRunName names attempt n (1-based) of a component's build at a commit.
-func buildRunName(projectID, component, sha string, attempt int) string {
-	return fmt.Sprintf("%s%d", buildRunNamePrefix(projectID, component, sha), attempt)
-}
+// The commit-shortening and build-run naming helpers live in the domain ROOT
+// (delivery.ShortSHA / BuildRunNamePrefix / BuildRunName): the run supervisor
+// reads back the very runs this package triggers, and a name the two halves
+// disagreed about would silently break both the re-trigger budget and the
+// supervisor's "did this cycle land green?" read.

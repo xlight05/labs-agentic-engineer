@@ -213,23 +213,3 @@ func (l eventcoreRepoLister) ListAll(ctx context.Context) ([]eventcore.RepoRef, 
 	}
 	return out, nil
 }
-
-// noRunSupervisor is the stand-in for the run supervisor that has not landed
-// yet. It is not a disabled feature: the event plane's detection, minting and
-// GitHub writes all run for real, and only the two verbs that need a workflow
-// engine — signal a run, start a run — have nobody to answer them.
-//
-// Logging at debug rather than warn is deliberate: until a milestone run row
-// exists, no handler reaches either verb at all.
-type noRunSupervisor struct{}
-
-func (noRunSupervisor) SignalRun(ctx context.Context, run *delivery.MilestoneRun, name string, _ delivery.RunSignal) error {
-	slog.DebugContext(ctx, "run supervisor not wired — signal dropped", "run", run.ID, "signal", name)
-	return nil
-}
-
-func (noRunSupervisor) StartRun(ctx context.Context, req delivery.StartRunRequest) error {
-	slog.DebugContext(ctx, "run supervisor not wired — run not started",
-		"project", req.ProjectID, "milestone", req.MilestoneNumber, "origin", req.Origin)
-	return nil
-}

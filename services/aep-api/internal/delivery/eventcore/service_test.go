@@ -178,8 +178,8 @@ func TestService_FixIssueIsMintedOnce(t *testing.T) {
 	h.cycles.latest = cycle
 	// The re-trigger budget is already spent, so a red terminal mints.
 	h.builds.runs["order-service"] = []BuildRun{
-		{Name: buildRunName(testProject, "order-service", testMergeSHA, 1), Completed: true},
-		{Name: buildRunName(testProject, "order-service", testMergeSHA, 2), Completed: true},
+		{Name: delivery.BuildRunName(testProject, "order-service", testMergeSHA, 1), Completed: true},
+		{Name: delivery.BuildRunName(testProject, "order-service", testMergeSHA, 2), Completed: true},
 	}
 
 	// The dedupe read, served from what the stub has actually been asked to

@@ -322,7 +322,11 @@ func (e *GraphQLError) Error() string {
 // IsGraphQLType reports true when err is a GraphQLError carrying at least one
 // error of the given machine-readable type (e.g. "NOT_FOUND", "RATE_LIMITED").
 //
-//deadcode:keep phase-A: wired by the milestone plan path (phase C) — remove then
+// Retained infra, not a phase leftover: the milestone predicate already
+// surfaces *GraphQLError, but no caller branches on its type yet (the plan path
+// recovers a duplicate milestone through REST's 422 instead).
+//
+//deadcode:keep the typed discriminator for the GraphQL seam — see above.
 func IsGraphQLType(err error, typ string) bool {
 	var ge *GraphQLError
 	if !errors.As(err, &ge) {

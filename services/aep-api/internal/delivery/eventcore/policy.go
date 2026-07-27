@@ -17,7 +17,6 @@
 package eventcore
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
@@ -76,62 +75,10 @@ func decideAutoMerge(resolves []int, milestoneIssues []sourcecontrol.IssueInfo) 
 	return mergeDecision{Merge: true, Reason: "resolves agent work in the run's milestone", Matched: matched}
 }
 
-// pathDiff is the outcome of matching a merged pull request's changed files
-// against the design's App Paths: the components to build, and the files that
-// belong to no component.
-type pathDiff struct {
-	Components []string
-	Unmatched  []string
-}
-
-// diffComponents maps changed files onto components by App Path prefix.
-//
-// It is generic over who authored the pull request — the merge, not the
-// authorship, is what makes a component stale. Unmatched files are returned
-// rather than dropped so the caller can WARN about them: a path outside every
-// App Path is either a repo-root concern (docs, CI) or a design that has
-// drifted from the tree, and silently ignoring the second is how a component
-// stops being rebuilt without anybody noticing.
-//
-// Components are returned in a stable order so a fan-out is reproducible.
-func diffComponents(files []string, appPaths map[string]string) pathDiff {
-	var out pathDiff
-	if len(files) == 0 {
-		return out
-	}
-	claimed := make(map[string]bool, len(files))
-	for name, appPath := range appPaths {
-		hit := false
-		for _, f := range files {
-			if fileUnder(f, appPath) {
-				claimed[f] = true
-				hit = true
-			}
-		}
-		if hit {
-			out.Components = append(out.Components, name)
-		}
-	}
-	sort.Strings(out.Components)
-	for _, f := range files {
-		if !claimed[f] {
-			out.Unmatched = append(out.Unmatched, f)
-		}
-	}
-	return out
-}
-
-// fileUnder reports whether a changed file lives under a component's App Path.
-// An empty App Path means the component builds from the repo root, so every
-// change is its change.
-func fileUnder(file, appPath string) bool {
-	clean := strings.TrimPrefix(strings.TrimSpace(appPath), "./")
-	clean = strings.Trim(clean, "/")
-	if clean == "" {
-		return true
-	}
-	return file == clean || strings.HasPrefix(file, clean+"/")
-}
+// The path diff itself is delivery.DiffComponents in the domain root: the run
+// supervisor has to compute the SAME expected component set to know when a
+// cycle's builds have all reported, and two copies of a prefix-matching rule
+// would eventually disagree about what a merge rebuilds.
 
 // dispatchable is the dispatch predicate: no gate is open in the milestone and
 // its working set is non-empty.

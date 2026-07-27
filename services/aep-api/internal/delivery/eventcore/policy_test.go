@@ -103,46 +103,6 @@ func TestDecideAutoMerge(t *testing.T) {
 	}
 }
 
-func TestDiffComponents(t *testing.T) {
-	paths := map[string]string{
-		"order-service": "services/order",
-		"web":           "apps/web",
-		"monolith":      "", // builds from the repo root
-	}
-	t.Run("prefix match, stable order, unmatched reported", func(t *testing.T) {
-		got := diffComponents([]string{"services/order/main.go", "docs/adr.md"}, map[string]string{
-			"order-service": "services/order",
-			"web":           "apps/web",
-		})
-		if !reflect.DeepEqual(got.Components, []string{"order-service"}) {
-			t.Fatalf("components = %v, want just order-service", got.Components)
-		}
-		if !reflect.DeepEqual(got.Unmatched, []string{"docs/adr.md"}) {
-			t.Fatalf("unmatched = %v, want the doc change", got.Unmatched)
-		}
-	})
-	t.Run("an empty App Path claims everything", func(t *testing.T) {
-		got := diffComponents([]string{"docs/adr.md"}, paths)
-		if !reflect.DeepEqual(got.Components, []string{"monolith"}) {
-			t.Fatalf("components = %v, want monolith", got.Components)
-		}
-		if len(got.Unmatched) != 0 {
-			t.Fatalf("a repo-root component leaves nothing unmatched, got %v", got.Unmatched)
-		}
-	})
-	t.Run("a path prefix is not a directory prefix", func(t *testing.T) {
-		got := diffComponents([]string{"services/order-legacy/main.go"}, paths)
-		if len(got.Components) != 1 || got.Components[0] != "monolith" {
-			t.Fatalf("services/order must not match services/order-legacy, got %v", got.Components)
-		}
-	})
-	t.Run("no files, nothing to build", func(t *testing.T) {
-		if got := diffComponents(nil, paths); len(got.Components) != 0 {
-			t.Fatalf("components = %v, want none", got.Components)
-		}
-	})
-}
-
 // TestDispatchable pins the predicate against the populations a milestone can
 // actually hold. The cases that matter are the ones where "some issue is open"
 // and "there is work to do" part company: a ledger-only milestone, a milestone
@@ -205,18 +165,18 @@ func TestDispatchable(t *testing.T) {
 // different commit.
 func TestAttemptsFor(t *testing.T) {
 	runs := []BuildRun{
-		{Name: buildRunName("proj1", "order-service", "abc123def456789", 1)},
-		{Name: buildRunName("proj1", "order-service", "abc123def456789", 2)},
-		{Name: buildRunName("proj1", "order-service", "999999999999999", 1)},
-		{Name: buildRunName("proj1", "web", "abc123def456789", 1)},
+		{Name: delivery.BuildRunName("proj1", "order-service", "abc123def456789", 1)},
+		{Name: delivery.BuildRunName("proj1", "order-service", "abc123def456789", 2)},
+		{Name: delivery.BuildRunName("proj1", "order-service", "999999999999999", 1)},
+		{Name: delivery.BuildRunName("proj1", "web", "abc123def456789", 1)},
 	}
-	if got := attemptsFor(runs, buildRunNamePrefix("proj1", "order-service", "abc123def456789")); got != 2 {
+	if got := attemptsFor(runs, delivery.BuildRunNamePrefix("proj1", "order-service", "abc123def456789")); got != 2 {
 		t.Fatalf("attempts for (order-service, abc123def456) = %d, want 2", got)
 	}
-	if got := attemptsFor(runs, buildRunNamePrefix("proj1", "web", "abc123def456789")); got != 1 {
+	if got := attemptsFor(runs, delivery.BuildRunNamePrefix("proj1", "web", "abc123def456789")); got != 1 {
 		t.Fatalf("attempts for (web, abc123def456) = %d, want 1", got)
 	}
-	if got := attemptsFor(nil, buildRunNamePrefix("proj1", "web", "abc")); got != 0 {
+	if got := attemptsFor(nil, delivery.BuildRunNamePrefix("proj1", "web", "abc")); got != 0 {
 		t.Fatalf("attempts with no runs = %d, want 0", got)
 	}
 }

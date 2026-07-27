@@ -240,7 +240,7 @@ func TestPullRequestMerged_BuildsEveryTouchedComponentAtTheMergeSHA(t *testing.T
 	}
 	for _, component := range []string{"order-service", "web"} {
 		names := h.builds.triggeredFor(component)
-		if len(names) != 1 || names[0] != buildRunName(testProject, component, "abc123def456789", 1) {
+		if len(names) != 1 || names[0] != delivery.BuildRunName(testProject, component, "abc123def456789", 1) {
 			t.Fatalf("component %s must have exactly one attempt-1 run pinned to the merge SHA, got %v", component, names)
 		}
 	}

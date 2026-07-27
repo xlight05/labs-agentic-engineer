@@ -61,14 +61,14 @@ func (e *Events) fanOutBuilds(ctx context.Context, orgID, projectID string, run 
 	if err != nil {
 		return err
 	}
-	diff := diffComponents(files, paths)
+	diff := delivery.DiffComponents(files, paths)
 	if len(diff.Unmatched) > 0 {
 		slog.WarnContext(ctx, "eventcore: merged files match no component App Path — nothing rebuilt for them",
-			"pr", prNumber, "merge", shortSHA(mergeSHA), "files", diff.Unmatched)
+			"pr", prNumber, "merge", delivery.ShortSHA(mergeSHA), "files", diff.Unmatched)
 	}
 	if len(diff.Components) == 0 {
 		slog.WarnContext(ctx, "eventcore: merged pull request touched no component",
-			"pr", prNumber, "merge", shortSHA(mergeSHA), "milestone", run.MilestoneNumber)
+			"pr", prNumber, "merge", delivery.ShortSHA(mergeSHA), "milestone", run.MilestoneNumber)
 		return nil
 	}
 
@@ -90,7 +90,7 @@ func (e *Events) fanOutBuilds(ctx context.Context, orgID, projectID string, run 
 			}
 			if attempt > 0 {
 				slog.InfoContext(ctx, "eventcore: build triggered at the merge SHA",
-					"component", component, "merge", shortSHA(mergeSHA), "attempt", attempt)
+					"component", component, "merge", delivery.ShortSHA(mergeSHA), "attempt", attempt)
 			}
 		}(component)
 	}
@@ -117,12 +117,12 @@ func (e *Events) ensureBuildRun(ctx context.Context, orgID, projectID, component
 	if err != nil {
 		return 0, err
 	}
-	existing := attemptsFor(runs, buildRunNamePrefix(projectID, component, commitSHA))
+	existing := attemptsFor(runs, delivery.BuildRunNamePrefix(projectID, component, commitSHA))
 	if existing >= limit {
 		return 0, nil
 	}
 	attempt := existing + 1
-	name := buildRunName(projectID, component, commitSHA, attempt)
+	name := delivery.BuildRunName(projectID, component, commitSHA, attempt)
 	if err := e.p.Builds.TriggerBuildAtCommit(ctx, orgID, projectID, component, commitSHA, name); err != nil {
 		return 0, err
 	}
@@ -174,7 +174,7 @@ func (e *Events) OnBuildTerminal(ctx context.Context, ev delivery.BuildTerminal)
 				slog.WarnContext(ctx, "eventcore: bump build-retrigger tally failed", "run", run.ID, "error", err)
 			}
 			slog.InfoContext(ctx, "eventcore: red build re-triggered once at the same SHA",
-				"component", ev.Component, "commit", shortSHA(ev.CommitSHA), "attempt", attempt)
+				"component", ev.Component, "commit", delivery.ShortSHA(ev.CommitSHA), "attempt", attempt)
 			return nil
 		}
 	}

@@ -83,7 +83,7 @@ func TestBuildTerminal_FirstRedRetriggersExactlyOnce(t *testing.T) {
 	}
 
 	runs := h.builds.triggeredFor("order-service")
-	if len(runs) != 2 || runs[1] != buildRunName(testProject, "order-service", testMergeSHA, 2) {
+	if len(runs) != 2 || runs[1] != delivery.BuildRunName(testProject, "order-service", testMergeSHA, 2) {
 		t.Fatalf("the first red must re-trigger attempt 2 at the same SHA, got %v", runs)
 	}
 	if len(h.issues.created) != 0 {

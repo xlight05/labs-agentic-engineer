@@ -61,7 +61,7 @@ func (e *Events) closeCycle(ctx context.Context, run *delivery.MilestoneRun, bra
 	}
 	if err := e.p.Cycles.FinishCycle(ctx, cycle.ID, mergeSHA); err != nil {
 		slog.WarnContext(ctx, "eventcore: finish cycle failed",
-			"cycle", cycle.ID, "merge", shortSHA(mergeSHA), "error", err)
+			"cycle", cycle.ID, "merge", delivery.ShortSHA(mergeSHA), "error", err)
 	}
 }
 
