@@ -25,4 +25,15 @@ export const buildKeys = {
   /** One version's whole run story: its milestone runs and their cycles. */
   runs: (projectName: string, tag: string) =>
     [...buildKeys.all(projectName), "runs", tag] as const,
+  /** The builds one cycle's merge produced — a cluster read, priced apart. */
+  cycleBuilds: (projectName: string, tag: string, cycleId: string) =>
+    [...buildKeys.runs(projectName, tag), "cycles", cycleId, "builds"] as const,
+  /** One build's log, from the cursor the client last saw. */
+  buildLog: (projectName: string, componentName: string, buildName: string) =>
+    [
+      ...buildKeys.all(projectName),
+      "log",
+      componentName,
+      buildName,
+    ] as const,
 };

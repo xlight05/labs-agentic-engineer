@@ -24,9 +24,36 @@ import type { components } from "../../../generated/aep-api";
 
 type BuildSummary = components["schemas"]["BuildSummary"];
 type MilestoneRunView = components["schemas"]["MilestoneRunView"];
+type TaskView = components["schemas"]["TaskView"];
 
+// Router stubbed to plain anchors — no RouterProvider needed. createLink is
+// what the gate hold's deep link uses, so it has to survive the stub.
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
+  createLink: (Component: React.ElementType) =>
+    ({
+      to,
+      params,
+      search,
+      children,
+      ...rest
+    }: {
+      to: string;
+      params?: Record<string, string>;
+      search?: Record<string, string>;
+      children?: React.ReactNode;
+    }) => {
+      const path = Object.entries(params ?? {}).reduce(
+        (acc, [k, v]) => acc.replace(`$${k}`, v),
+        to,
+      );
+      const query = new URLSearchParams(search ?? {}).toString();
+      return (
+        <Component {...rest} component="a" href={query ? `${path}?${query}` : path}>
+          {children}
+        </Component>
+      );
+    },
 }));
 
 // The settle-fetch effect is the only thing the page needs a client for.
@@ -43,11 +70,23 @@ vi.mock("../../tasks/components/IssueSections", () => ({
   ),
 }));
 
-// The feed opens an SSE stream; stub it and record whether it was mounted.
-vi.mock("./RunFeed", () => ({
-  RunFeed: ({ runId }: { runId: string }) => (
-    <div data-testid="run-feed">{runId}</div>
+// The cycle sections open an SSE stream and read the cluster for builds; stub
+// the whole block and record the cycles it was handed, so this file stays about
+// the PAGE (version selection, run cards, cancel) — CycleSections has its own.
+vi.mock("./CycleSections", () => ({
+  CycleSections: ({ run }: { run: MilestoneRunView }) => (
+    <div data-testid="cycle-sections">
+      {run.cycles.map((c) => `${c.kind}:${c.branch ?? ""}:${c.mergeSha ?? ""}`).join("|")}
+    </div>
   ),
+}));
+
+// The issue plane the run card reads to tell its holds apart. `undefined` is
+// the list not having arrived yet, which is a different thing from an empty
+// milestone.
+let mockIssues: TaskView[] | undefined = [];
+vi.mock("../../tasks/api/queries", () => ({
+  useAllTasks: () => ({ data: mockIssues }),
 }));
 
 let mockBuilds: BuildSummary[] = [];
@@ -71,6 +110,7 @@ vi.mock("../api/queries", () => ({
     refetch: vi.fn(),
   }),
   useCancelRun: () => ({ mutate: cancelMutate, ...cancelState }),
+  useCycleBuilds: () => ({ data: [], isPending: false }),
 }));
 
 import { BuildsPage } from "./BuildsPage";
@@ -122,9 +162,46 @@ function run(over: Partial<MilestoneRunView> = {}): MilestoneRunView {
   };
 }
 
+function issue(
+  number: number,
+  title: string,
+  executorClass: string,
+  derivedStatus = "pending",
+): TaskView {
+  return {
+    issueNumber: number,
+    title,
+    executorClass,
+    derivedStatus,
+    issueUrl: `https://github.com/o/r/issues/${number}`,
+    executions: {},
+  } as TaskView;
+}
+
+// A gate with a provisioning run in flight against it — the platform is
+// standing the dependency up and will close the gate itself.
+function provisioningGate(number: number, title: string): TaskView {
+  return {
+    ...issue(number, title, "provision"),
+    executions: {
+      provision: {
+        id: `x${number}`,
+        kind: "provision",
+        status: "running",
+        createdAt: "2026-07-10T09:01:00Z",
+      },
+    },
+  } as TaskView;
+}
+
+// One open coding issue: a milestone with work in it, so a waiting run's hold
+// is the unbounded park rather than an empty working set.
+const withOpenWork = () => [issue(2, "Implement the shortener API", "coding")];
+
 afterEach(() => {
   mockBuilds = [];
   mockRuns = [];
+  mockIssues = [];
   cancelState.isPending = false;
   cancelState.isError = false;
   cancelState.error = null;
@@ -162,51 +239,172 @@ describe("BuildsPage — one version's story", () => {
     expect(screen.getByTestId("issues")).toHaveTextContent("v2:false");
   });
 
-  it("lands directly on the live run with its feed already open", () => {
-    mockBuilds = [build("v2", "in_progress")];
-    mockRuns = [run({ state: "running" })];
-    renderPage();
-    expect(screen.getByTestId("run-feed")).toHaveTextContent("run-1");
-  });
-
-  it("leaves the feed closed on a settled version", () => {
-    mockBuilds = [build("v2", "completed")];
-    mockRuns = [run({ state: "succeeded" })];
-    renderPage();
-    expect(screen.queryByTestId("run-feed")).not.toBeInTheDocument();
-  });
-
-  it("renders the cycle timeline with the facts webhooks taught it", () => {
+  it("lands on the run's cycles, handed the facts webhooks taught it", () => {
     mockBuilds = [build("v2", "in_progress")];
     mockRuns = [run()];
     renderPage();
 
-    expect(screen.getByText("Cycle 1 · coding")).toBeInTheDocument();
-    expect(screen.getByText("Cycle 2 · fix")).toBeInTheDocument();
-    expect(screen.getByText("aep/m2-c1")).toBeInTheDocument();
-    expect(screen.getByText("#3")).toBeInTheDocument();
-    expect(screen.getByText("dcb1edc5")).toBeInTheDocument();
-    // A re-dispatched cycle shows its per-cycle budget.
-    expect(screen.getByText("attempt 2/2")).toBeInTheDocument();
+    // Which cycles the page hands down, and the learned facts riding on them —
+    // the rendering of a cycle is CycleSections' own test.
+    expect(screen.getByTestId("cycle-sections")).toHaveTextContent(
+      "coding:aep/m2-c1:dcb1edc5fe04|fix::",
+    );
   });
 
-  it("renders the budget counters", () => {
+  it("shows no budget counters on a healthy run — unspent allowance is not the user's business", () => {
     mockBuilds = [build("v2", "in_progress")];
-    mockRuns = [run()];
+    mockRuns = [run()]; // 2/8 cycles, 1/2 fix cycles — nothing at its ceiling
     renderPage();
-    expect(screen.getByText("2 / 8")).toBeInTheDocument();
-    expect(screen.getByText("1 / 2")).toBeInTheDocument();
+    expect(screen.queryByText("2 / 8")).not.toBeInTheDocument();
+    expect(screen.queryByText("1 / 2")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a budget counter once it is spent, next to the reason it explains", () => {
+    mockBuilds = [build("v2", "failed")];
+    mockRuns = [
+      run({
+        state: "failed",
+        terminalReason: "cycle-ceiling",
+        budgets: {
+          cyclesTotal: 8,
+          cycleCeiling: 8,
+          fixCycles: 1,
+          conflictCycles: 0,
+          buildRetriggers: 0,
+        },
+      }),
+    ];
+    renderPage();
+    // Rendered as one line next to the terminal reason: "Budget spent: …".
+    expect(screen.getByText(/Budget spent: Cycles 8 \/ 8/)).toBeInTheDocument();
+    // The fix-cycle allowance is still unspent, so it is not listed.
+    expect(screen.queryByText(/Fix cycles/)).not.toBeInTheDocument();
   });
 
   it("makes cancel PROMINENT and explained on a waiting run", () => {
     mockBuilds = [build("v2", "in_progress")];
     mockRuns = [run({ state: "waiting" })];
+    mockIssues = withOpenWork();
     renderPage();
 
     expect(screen.getByText("Waiting")).toBeInTheDocument();
     expect(screen.getByText(/wait is unbounded/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Cancel run/ }));
     expect(cancelMutate).toHaveBeenCalledWith("run-1");
+  });
+
+  // The reported bug: a build busy writing its milestone announced itself as
+  // parked, with a cancel button, on a project that had no gates at all.
+  it("reads a planning run as work in progress, not as a hold", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "planning", cycles: [] })];
+    mockIssues = [];
+    renderPage();
+
+    expect(screen.getByText("Planning")).toBeInTheDocument();
+    expect(screen.getByText("Planning v2")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing is held/)).toBeInTheDocument();
+    expect(screen.queryByText(/wait is unbounded/)).not.toBeInTheDocument();
+    // Cancel is a signal to a supervisor that does not exist yet: offering it
+    // would 202 and do nothing.
+    expect(
+      screen.queryByRole("button", { name: /Cancel run/ }),
+    ).not.toBeInTheDocument();
+    // And no empty cycle section under a notice that already explained itself.
+    expect(screen.queryByTestId("cycle-sections")).not.toBeInTheDocument();
+  });
+
+  it("names the gates holding a waiting run, and where to release them", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = [
+      issue(1, "Provide configuration: url-shortener-db", "provision"),
+      ...withOpenWork(),
+    ];
+    renderPage();
+
+    expect(screen.getByText(/Held by an unresolved connection/)).toBeInTheDocument();
+    // The dependency is named, and the way out is a real navigation.
+    expect(screen.getByText("url-shortener-db")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Resolve connections/ }),
+    ).toHaveAttribute("href", "/projects/acme/spec?connections=open");
+    // A gate hold is NOT the unbounded park — the fix for one is nothing like
+    // the fix for the other.
+    expect(screen.queryByText(/wait is unbounded/)).not.toBeInTheDocument();
+  });
+
+  // The reported bug: a postgres cluster and an identity app take ~5 minutes to
+  // stand up, and the platform closes both gates the moment they are Ready. The
+  // page called that "Held by 2 unresolved connections" and offered a button to
+  // resolve them, sending the user after work that did not exist.
+  it("reads gates the platform is provisioning as work in progress, not a hold", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = [
+      provisioningGate(1, "Provision resource: user-auth (thunder-app)"),
+      provisioningGate(4, "Provision resource: ceramics-db (postgres-cnpg)"),
+      ...withOpenWork(),
+    ];
+    renderPage();
+
+    expect(screen.getByText("Provisioning 2 connections")).toBeInTheDocument();
+    expect(screen.queryByText(/unresolved connection/)).not.toBeInTheDocument();
+    // Nothing to go and do, so no way out is offered.
+    expect(
+      screen.queryByRole("link", { name: /Resolve connections/ }),
+    ).not.toBeInTheDocument();
+    // The dependencies are still named — that is what is being waited on.
+    expect(screen.getByText("ceramics-db (postgres-cnpg)")).toBeInTheDocument();
+  });
+
+  it("keeps the way out when a gate is stalled with nothing driving it", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = [
+      provisioningGate(1, "Provision resource: db"),
+      issue(2, "Provide configuration: stripe", "provision"),
+      ...withOpenWork(),
+    ];
+    renderPage();
+
+    // The stalled one speaks over the one in flight, and only it is named.
+    expect(screen.getByText(/Held by an unresolved connection/)).toBeInTheDocument();
+    expect(screen.getByText("stripe")).toBeInTheDocument();
+    expect(screen.queryByText("db")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Resolve connections/ }),
+    ).toHaveAttribute("href", "/projects/acme/spec?connections=open");
+  });
+
+  it("tells an empty milestone apart from a gate hold", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = [issue(2, "Add the redirect handler", "coding", "merged")];
+    renderPage();
+
+    expect(screen.getByText("Waiting for work")).toBeInTheDocument();
+    expect(screen.queryByText(/unresolved connection/)).not.toBeInTheDocument();
+  });
+
+  it("accuses no run of having no work before the issue list arrives", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = undefined;
+    renderPage();
+    expect(screen.queryByText("Waiting for work")).not.toBeInTheDocument();
+  });
+
+  // A resolved gate holds nothing, so it must not keep explaining a hold.
+  it("drops the hold once every gate is resolved", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [run({ state: "waiting" })];
+    mockIssues = [
+      issue(1, "Provide configuration: db", "provision", "merged"),
+      ...withOpenWork(),
+    ];
+    renderPage();
+    expect(screen.queryByText(/unresolved/)).not.toBeInTheDocument();
   });
 
   it("offers no cancel on a terminal run", () => {
@@ -224,6 +422,7 @@ describe("BuildsPage — one version's story", () => {
   it("says nothing was cancelled when the engine is unreachable", () => {
     mockBuilds = [build("v2", "in_progress")];
     mockRuns = [run({ state: "waiting" })];
+    mockIssues = withOpenWork();
     cancelState.isError = true;
     cancelState.error = new Error("workflow engine unavailable");
     renderPage();

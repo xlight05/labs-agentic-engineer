@@ -17,14 +17,14 @@
 
 **The Builds page shows ONE version's story, latest by default.** Navigating
 there while a run is live lands directly on that run with its feed open — there
-is no ledger list in between. Old versions are reached from the overview.
+is no ledger list in between.
 
-1. **The version ledger is a dropdown on the overview's build stage card.** A
-   build is a version is a tag is a milestone, so the build stage's version chip
-   is where past versions belong. It is fetched **on demand** — the query is
-   disabled until the menu opens and is never polled — because an idle overview
-   must cost nothing. Choosing a version deep-links `builds?tag=v<N>`; an
-   unknown tag falls back to newest rather than erroring.
+1. **The version ledger lives on the Builds page, as that page's own version
+   picker.** A build is a version is a tag is a milestone, and choosing which
+   version to look at is a control on the surface that shows one — not on the
+   overview, whose stage cards are a read-only summary that link onward and
+   nothing more. The picker writes `?tag=v<N>`; an unknown tag falls back to
+   newest rather than erroring.
 
 2. **The run state is the page's single liveness driver.** `useBuildRuns` polls
    at 5s while the newest run is non-terminal and stops when it settles; the
@@ -44,9 +44,23 @@ is no ledger list in between. Old versions are reached from the overview.
 
 4. **Cancel is prominent on a waiting run.** `waiting` is written only when a
    run actually parks, and cancel is the only expiry its unbounded wait has — so
-   a parked run gets a filled warning button and a banner saying that cancelling
+   a parked run gets a filled warning button and a notice saying that cancelling
    abandons the increment. On a running run cancel is still there, just not
-   shouted. On a terminal run it is absent. A 503 says *nothing was cancelled*.
+   shouted. On a terminal run, and while `planning`, it is absent: cancel is a
+   signal to the supervisor, and during the plan window there is no supervisor
+   yet to receive it — the button would return 202 and do nothing. A 503 says
+   *nothing was cancelled*.
+
+4b. **One hold notice on the run card answers "why is nothing moving", and it
+   distinguishes three different answers.** `planning` is the platform writing
+   the milestone (gates minted, issues planned in) — bounded work in progress,
+   shown in the info tone with a spinner and nothing asked of the user. A
+   `waiting` run with an open gate is held on a human. A `waiting` run with an
+   empty working set is the loop declining to call a version delivered that was
+   never planned. Each has a different thing to do about it, so each gets its
+   own words; the notice is a soft-tinted panel in the tone's own colour
+   (StatusChip's vocabulary), never a filled `Alert` — two of those stacked
+   turned an ordinary build into a page that read as an incident.
 
 5. **Issue rows carry durable facts only** — the GitHub state (Open / Done) and
    the issue link. They are **not clickable**: the run's story is the timeline
@@ -54,12 +68,15 @@ is no ledger list in between. Old versions are reached from the overview.
    liveness never comes from a row. (Agent replies on row expand are a later
    enhancement: lazy on-expand fetch, gracefully polled, never realtime.)
 
-6. **A gate is a hold banner, not a row.** While any `aep:provision` issue in
-   the milestone is open the run dispatches nothing, so the gate is the *reason
-   nothing is moving*, not one item among many. The banner names each held
-   dependency and deep-links the spec view's connection drawer via
-   `?connections=open`. A resolved gate disappears entirely — it holds nothing
-   and was never work.
+6. **A gate is part of the run's hold notice, not a row.** While any
+   `aep:provision` issue in the milestone is open the run dispatches nothing, so
+   the gate is the *reason nothing is moving*, not one item among many — which
+   makes it the run card's business (decision 4b), not the issue list's. The
+   notice names each held dependency and deep-links the spec view's connection
+   drawer via `?connections=open`. A resolved gate disappears entirely — it
+   holds nothing and was never work. The issue list deliberately says nothing
+   about gates: announcing the hold in both places put two warnings on one page
+   competing to explain one fact.
 
 7. **Bare human issues sit in a separate Ledger section.** They joined the
    milestone but are never worked and never stall settle, so listing them

@@ -37,10 +37,20 @@ ports:
   # The in-cluster Service is patched to NodePort 30820 by setup-prerequisites.sh.
   - port: 8200:30820
     nodeFilters: [loadbalancer]
+files:
+  # Pin the resolver every dnsPolicy: Default pod gets — CoreDNS above all — to
+  # a static file instead of a snapshot of the node's /etc/resolv.conf. See the
+  # header of k3s-resolv.conf for the Colima restart race this closes.
+  - description: "Static upstream resolver for in-cluster DNS"
+    source: k3s-resolv.conf
+    destination: /etc/k3s-resolv.conf
+    nodeFilters: [server:*]
 options:
   k3s:
     extraArgs:
       - arg: "--tls-san=host.k3d.internal"
+        nodeFilters: [server:*]
+      - arg: "--resolv-conf=/etc/k3s-resolv.conf"
         nodeFilters: [server:*]
       - arg: "--kubelet-arg=eviction-hard=imagefs.available<1%,nodefs.available<1%"
         nodeFilters: [server:*]

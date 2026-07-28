@@ -48,6 +48,13 @@ const noDeploy: DeployStage = {
   validation: "none",
 };
 
+// The phase ladder these carry stops at "tasks", exactly as the server's does
+// (aep-api `status_stages.go`): nothing has emitted "components" since tasks
+// became GitHub issues, and hasTasks is always false there — a live count on a
+// 5s poll is not worth the GitHub request. Fixtures that ran ahead of the
+// server hid a real bug: the header chip read "Active" under MSW and "Building"
+// forever against the API. Mirror the server, and let the stage aggregates
+// carry the scenario.
 export const projectStatuses: Record<
   Exclude<ProjectScenario, "error">,
   ProjectStatus
@@ -102,7 +109,7 @@ export const projectStatuses: Record<
     repoUrl: REPO_URL,
     hasSpec: true,
     hasDesign: true,
-    hasTasks: true,
+    hasTasks: false,
     specStatus: "approved",
     designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true },
@@ -114,12 +121,12 @@ export const projectStatuses: Record<
   },
   // v1 built, dev rollout in progress (1 of 3 components ready).
   deploying: {
-    phase: "components",
+    phase: "tasks",
     repoStatus: "ready",
     repoUrl: REPO_URL,
     hasSpec: true,
     hasDesign: true,
-    hasTasks: true,
+    hasTasks: false,
     specStatus: "approved",
     designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true },
@@ -136,12 +143,12 @@ export const projectStatuses: Record<
   },
   // v1 deployed to dev; spec has drifted since (dirty → rendered v1+).
   deployed: {
-    phase: "components",
+    phase: "tasks",
     repoStatus: "ready",
     repoUrl: REPO_URL,
     hasSpec: true,
     hasDesign: true,
-    hasTasks: true,
+    hasTasks: false,
     specStatus: "approved",
     designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: true, design: true },
@@ -158,12 +165,12 @@ export const projectStatuses: Record<
   },
   // v1 build done but the dev deployment failed.
   "deploy-failed": {
-    phase: "components",
+    phase: "tasks",
     repoStatus: "ready",
     repoUrl: REPO_URL,
     hasSpec: true,
     hasDesign: true,
-    hasTasks: true,
+    hasTasks: false,
     specStatus: "approved",
     designStatus: "approved",
     spec: { exists: true, version: "v1", dirty: false, design: true },
@@ -430,9 +437,23 @@ function task(
 // No validation issue here: list-tasks hides it — it is a phase of the run and
 // surfaces with the run's verdict on the deployment surface.
 const buildingTasks: TaskView[] = [
-  // An open dispatch gate: the Builds page renders this as a hold banner, not
-  // as a row, and while it is open the run dispatches nothing.
-  task(8, "Provide configuration: payments-provider", "pending", "provision"),
+  // An open dispatch gate, with the provisioning run the platform admitted
+  // against it — the ordinary mid-build state, and the one the run card must
+  // read as work in progress rather than as a hold on the user. It renders as
+  // a tagged ROW here as well: a provisioned connection is part of the
+  // version's record, not just a reason nothing is moving.
+  {
+    ...task(8, "Provision resource: orders-db (postgres-cnpg)", "pending", "provision"),
+    executions: {
+      provision: {
+        id: "exec-provision-8",
+        kind: "provision",
+        status: "running",
+        createdAt: "2026-07-10T09:12:30Z",
+        startedAt: "2026-07-10T09:12:35Z",
+      },
+    },
+  },
   task(12, "Checkout flow with cart persistence", "pending", "coding", "storefront"),
   task(10, "Product catalog CRUD endpoints", "pending", "coding", "catalog-api"),
   task(9, "Scaffold storefront app shell", "merged", "coding", "storefront"),
@@ -597,7 +618,7 @@ export const projectBuildRuns: Record<
   spec: noRuns,
   "spec-failed": noRuns,
   // A gate is open in the `building` scenario's issue list, so its run is
-  // parked — which is exactly when the hold banner and cancel both matter.
+  // parked — which is exactly when the hold notice and cancel both matter.
   building: waitingRun,
   deploying: liveRun,
   deployed: settledRun,

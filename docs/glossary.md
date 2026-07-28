@@ -284,7 +284,10 @@ resolves number-through-run-rows and never matches a title.
 ### Milestone run
 One supervised pass over one milestone — the platform's single dispatch door.
 Origin is `spec-build` or `incident-adoption`; state is
-`waiting | running | succeeded | failed | cancelled`. A milestone sees
+`planning | waiting | running | succeeded | failed | cancelled`. `planning` is
+the fill window — the row is admitted (arming the mutex) before its milestone
+is written, so it names work the platform is doing; `waiting` is the unbounded
+wait, where something outside the platform is needed. A milestone sees
 **sequential** runs across its life, so the workflow id is reused.
 
 ### Cycle

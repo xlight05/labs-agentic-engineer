@@ -23,6 +23,7 @@ package projects
 
 import (
 	"context"
+	"time"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
@@ -34,16 +35,16 @@ import (
 // --- observability.Client ----------------------------------------------------
 
 type stubObservClient struct {
-	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
+	GetBuildLogsFunc func(ctx context.Context, orgName, projectName, componentName, buildName string, since time.Time) (*gen.BuildLogs, error)
 }
 
 var _ observability.Client = (*stubObservClient)(nil)
 
-func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
+func (s *stubObservClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string, since time.Time) (*gen.BuildLogs, error) {
 	if s.GetBuildLogsFunc == nil {
 		panic("stubObservClient: GetBuildLogs not set")
 	}
-	return s.GetBuildLogsFunc(ctx, orgName, projectName, componentName, buildName)
+	return s.GetBuildLogsFunc(ctx, orgName, projectName, componentName, buildName, since)
 }
 
 // --- sourcecontrol.RepoService (only GetRepo is consulted by TriggerBuild) ----------
@@ -129,7 +130,7 @@ func (s *stubComponentSvc) TriggerBuild(context.Context, string, string, string)
 func (s *stubComponentSvc) ListBuilds(context.Context, string, string, string, int, string) (*gen.WorkflowRunList, error) {
 	panic("stubComponentSvc: ListBuilds not expected")
 }
-func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string, string) (*gen.BuildLogs, error) {
+func (s *stubComponentSvc) GetBuildLogs(context.Context, string, string, string, string, int64) (*gen.BuildLogs, error) {
 	panic("stubComponentSvc: GetBuildLogs not expected")
 }
 

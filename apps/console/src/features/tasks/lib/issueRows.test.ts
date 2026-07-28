@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { components } from "../../../generated/aep-api";
-import { gateSubject, partitionIssues } from "./issueRows";
+import { gateSubject, openGates, partitionIssues } from "./issueRows";
 
 type TaskView = components["schemas"]["TaskView"];
 
@@ -43,7 +43,7 @@ function issue(
 }
 
 describe("partitionIssues", () => {
-  it("splits agent work, open gates, and the ledger", () => {
+  it("splits agent work, gates, and the ledger", () => {
     const p = partitionIssues([
       issue(1, "coding"),
       issue(2, "provision"),
@@ -54,9 +54,12 @@ describe("partitionIssues", () => {
     expect(p.ledger.map((i) => i.issueNumber)).toEqual([3]);
   });
 
-  it("drops a RESOLVED gate entirely — it holds nothing and was never work", () => {
+  // A provisioned connection is part of how the version came to exist, so it
+  // stays in the record like closed agent work does. Narrowing to what still
+  // HOLDS is openGates' job, not the partition's.
+  it("keeps a RESOLVED gate — the version's record, not just its blockers", () => {
     const p = partitionIssues([issue(2, "provision", "merged")]);
-    expect(p.gates).toHaveLength(0);
+    expect(p.gates.map((i) => i.issueNumber)).toEqual([2]);
     expect(p.work).toHaveLength(0);
     expect(p.ledger).toHaveLength(0);
   });
@@ -80,6 +83,13 @@ describe("partitionIssues", () => {
   it("preserves order within each section", () => {
     const p = partitionIssues([issue(5, "coding"), issue(4, "coding")]);
     expect(p.work.map((i) => i.issueNumber)).toEqual([5, 4]);
+  });
+});
+
+describe("openGates", () => {
+  it("keeps only the gates that still hold dispatch", () => {
+    const gates = [issue(1, "provision"), issue(2, "provision", "merged")];
+    expect(openGates(gates).map((i) => i.issueNumber)).toEqual([1]);
   });
 });
 

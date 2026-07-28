@@ -308,12 +308,15 @@ func (w *JobWatcher) captureFinalLog(ctx context.Context, row *delivery.Executio
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: tail failed", "execution", row.ID, "ns", ns, "pod", podName, "error", err)
 		return
 	}
+	// Redact before persisting: this row is the run's log at rest and is served
+	// back to users, so a credential reaching it would outlive the pod.
+	logText := redactSecrets(string(body))
 	if err := w.logs.Create(ctx, &delivery.CodingAgentLog{
 		TaskID:     execUUID,
 		RunName:    row.RunName,
 		FinalPhase: phase,
-		LogText:    string(body),
-		SizeBytes:  int64(len(body)),
+		LogText:    logText,
+		SizeBytes:  int64(len(logText)),
 	}); err != nil {
 		slog.WarnContext(ctx, "codingagent.JobWatcher: captureFinalLog: persist failed", "execution", row.ID, "run", row.RunName, "error", err)
 		return

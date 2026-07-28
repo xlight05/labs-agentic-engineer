@@ -39,9 +39,10 @@ type Deps struct {
 
 	// The milestone run read surface: a version's runs + cycles, the per-run
 	// progress stream, and cancel.
-	RunReads    *runread.Reads
-	RunProgress *runread.ProgressService
-	RunCommands *runread.Commands
+	RunReads       *runread.Reads
+	RunProgress    *runread.ProgressService
+	RunCommands    *runread.Commands
+	RunCycleBuilds *runread.CycleBuilds
 }
 
 // Every slice names its type Handler, so embedding them directly would be
@@ -70,6 +71,6 @@ func New(d Deps) (*Handlers, error) {
 		buildHandler:     build.NewHandler(d.BuildSvc, d.PreflightSvc, d.BuildActivity),
 		taskHandler:      task.NewHandler(d.TaskReads, d.TaskCommands),
 		executionHandler: execution.NewHandler(d.TaskStream),
-		runreadHandler:   runread.NewHandler(d.RunReads, d.RunProgress, d.RunCommands),
+		runreadHandler:   runread.NewHandler(d.RunReads, d.RunProgress, d.RunCommands, d.RunCycleBuilds),
 	}, nil
 }

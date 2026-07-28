@@ -31,7 +31,10 @@ import (
 
 // Client fetches build logs from the observability service.
 type Client interface {
-	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
+	// since narrows the query window to entries after that instant — the tail
+	// read behind the console's log cursor. A zero `since` reads the whole
+	// retention window.
+	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string, since time.Time) (*gen.BuildLogs, error)
 }
 
 type observabilityClient struct {
@@ -69,13 +72,20 @@ type buildLogsResponse struct {
 	TotalCount *int        `json:"totalCount,omitempty"`
 }
 
-func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
+func (c *observabilityClient) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string, since time.Time) (*gen.BuildLogs, error) {
 	now := time.Now()
+	// A cursor read starts at the cursor; a first read takes the whole retention
+	// window. Narrowing here rather than only filtering the response keeps a
+	// tail poll cheap on the observability service too.
+	start := now.Add(-30 * 24 * time.Hour)
+	if !since.IsZero() && since.After(start) {
+		start = since
+	}
 	body := buildLogsRequest{
 		ComponentName: componentName,
 		NamespaceName: orgName,
 		ProjectName:   projectName,
-		StartTime:     now.Add(-30 * 24 * time.Hour),
+		StartTime:     start,
 		EndTime:       now,
 		Limit:         1000,
 		SortOrder:     "asc",

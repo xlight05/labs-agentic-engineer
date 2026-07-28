@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
@@ -64,7 +65,11 @@ type ComponentService interface {
 	// Build (workflow runs)
 	TriggerBuild(ctx context.Context, orgName, projectName, componentName string) (*gen.WorkflowRun, error)
 	ListBuilds(ctx context.Context, orgName, projectName, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error)
-	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error)
+	// GetBuildLogs reads one build's log from `sinceMillis` onward (0 = from the
+	// beginning). The response says whether it is COMPLETE — the build is
+	// terminal and there will never be more — so a caller tailing a live build
+	// knows when to stop asking.
+	GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string, sinceMillis int64) (*gen.BuildLogs, error)
 }
 
 // BuildSecretStager pre-stages the org's build git Secret on the workflow
@@ -315,13 +320,94 @@ func (s *componentService) ListBuilds(ctx context.Context, orgName, projectName,
 	return list, nil
 }
 
-func (s *componentService) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string) (*gen.BuildLogs, error) {
+// GetBuildLogs reads one build's log from a cursor, and reports whether that
+// read is the whole of it.
+//
+// The build's terminal state is read BEFORE the log, deliberately. A build that
+// finishes between the two reads is then reported as still running, and the
+// caller polls once more and gets the tail — whereas reading the status last
+// could declare a log complete while the lines written in between were never
+// returned. One wasted poll is the right side of that trade.
+func (s *componentService) GetBuildLogs(ctx context.Context, orgName, projectName, componentName, buildName string, sinceMillis int64) (*gen.BuildLogs, error) {
 	if s.observClient == nil {
 		return nil, ErrLogsUnavailable
 	}
-	logs, err := s.observClient.GetBuildLogs(ctx, orgName, projectName, componentName, buildName)
+	completed := s.buildIsTerminal(ctx, orgName, buildName)
+
+	var since time.Time
+	if sinceMillis > 0 {
+		since = time.UnixMilli(sinceMillis)
+	}
+	logs, err := s.observClient.GetBuildLogs(ctx, orgName, projectName, componentName, buildName, since)
 	if err != nil {
 		return nil, fmt.Errorf("get build logs: %w", err)
 	}
+	if logs == nil {
+		logs = &gen.BuildLogs{}
+	}
+	logs.Logs = entriesAfter(logs.Logs, sinceMillis)
+	logs.Complete = completed
+	if next, ok := newestEntryMillis(logs.Logs); ok {
+		logs.NextCursor = next
+	}
 	return logs, nil
+}
+
+// buildIsTerminal reports whether the build's WorkflowRun has completed. An
+// unreadable run is reported as NOT terminal: the caller then keeps polling,
+// which is recoverable, where a wrong "complete" would silently truncate the
+// log at whatever had been written.
+func (s *componentService) buildIsTerminal(ctx context.Context, orgName, buildName string) bool {
+	if s.client == nil {
+		return false
+	}
+	run, err := s.client.GetWorkflowRun(ctx, orgName, buildName)
+	if err != nil || run == nil {
+		return false
+	}
+	return run.Completed
+}
+
+// entriesAfter drops entries at or before the cursor. The observability query
+// window is inclusive of its start, so without this the entry the cursor names
+// would be re-emitted on every poll.
+func entriesAfter(entries []gen.BuildLogEntry, sinceMillis int64) []gen.BuildLogEntry {
+	if sinceMillis <= 0 || len(entries) == 0 {
+		return entries
+	}
+	out := make([]gen.BuildLogEntry, 0, len(entries))
+	for _, e := range entries {
+		ms, ok := entryMillis(e)
+		// An unparseable timestamp is kept: a duplicated line is a smaller harm
+		// than a dropped one, and it cannot be ordered against the cursor.
+		if !ok || ms > sinceMillis {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// newestEntryMillis is the cursor to hand back — the newest timestamp in this
+// page. Entries arrive ascending, but the max is taken rather than the last so
+// an out-of-order page cannot rewind the cursor and replay the log.
+func newestEntryMillis(entries []gen.BuildLogEntry) (int64, bool) {
+	var newest int64
+	var found bool
+	for _, e := range entries {
+		if ms, ok := entryMillis(e); ok && ms > newest {
+			newest, found = ms, true
+		}
+	}
+	return newest, found
+}
+
+func entryMillis(e gen.BuildLogEntry) (int64, bool) {
+	if e.Timestamp == "" {
+		return 0, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, e.Timestamp)
+	if err != nil {
+		return 0, false
+	}
+	return t.UnixMilli(), true
 }

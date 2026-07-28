@@ -132,9 +132,9 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   import each other, in either direction. Dispatch has exactly ONE door — a run works a milestone — so a
   `task` that could reach the supervisor would be a second door with the run's budgets bypassed.
   `TestTaskRunSplit` + `slice ⊥ sibling` both enforce it.
-- **One active spec run per project.** At most one non-terminal (`waiting`/`running`) `spec-build` milestone
-  run exists per (org, project) — a partial unique index (`ux_milestone_runs_spec_active`, created by the
-  `milestone_runs` migration; AutoMigrate cannot express one) that admission hits with
+- **One active spec run per project.** At most one non-terminal (`planning`/`waiting`/`running`) `spec-build`
+  milestone run exists per (org, project) — a partial unique index (`ux_milestone_runs_spec_active_v2`, created
+  by the `milestone_runs` migration; AutoMigrate cannot express one) that admission hits with
   `INSERT … ON CONFLICT DO NOTHING`, so the invariant holds under concurrency and not merely under the
   endpoint's pre-check. Both answers are the same 409. `incident-adoption` runs sit deliberately outside
   the index and execute concurrently on their own milestones.

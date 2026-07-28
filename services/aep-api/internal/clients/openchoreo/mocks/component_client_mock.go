@@ -42,6 +42,9 @@ var _ openchoreo.ComponentClient = &ComponentClientMock{}
 //			ListProjectReleaseBindingsFunc: func(ctx context.Context, orgName string, projectName string) ([]openchoreo.ReleaseBindingSummary, error) {
 //				panic("mock out the ListProjectReleaseBindings method")
 //			},
+//			ListProjectWorkflowRunsFunc: func(ctx context.Context, orgName string, projectName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
+//				panic("mock out the ListProjectWorkflowRuns method")
+//			},
 //			ListWorkflowRunsFunc: func(ctx context.Context, orgName string, projectName string, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
 //				panic("mock out the ListWorkflowRuns method")
 //			},
@@ -93,6 +96,9 @@ type ComponentClientMock struct {
 
 	// ListProjectReleaseBindingsFunc mocks the ListProjectReleaseBindings method.
 	ListProjectReleaseBindingsFunc func(ctx context.Context, orgName string, projectName string) ([]openchoreo.ReleaseBindingSummary, error)
+
+	// ListProjectWorkflowRunsFunc mocks the ListProjectWorkflowRuns method.
+	ListProjectWorkflowRunsFunc func(ctx context.Context, orgName string, projectName string, limit int, cursor string) (*gen.WorkflowRunList, error)
 
 	// ListWorkflowRunsFunc mocks the ListWorkflowRuns method.
 	ListWorkflowRunsFunc func(ctx context.Context, orgName string, projectName string, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error)
@@ -194,6 +200,19 @@ type ComponentClientMock struct {
 			OrgName string
 			// ProjectName is the projectName argument value.
 			ProjectName string
+		}
+		// ListProjectWorkflowRuns holds details about calls to the ListProjectWorkflowRuns method.
+		ListProjectWorkflowRuns []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// OrgName is the orgName argument value.
+			OrgName string
+			// ProjectName is the projectName argument value.
+			ProjectName string
+			// Limit is the limit argument value.
+			Limit int
+			// Cursor is the cursor argument value.
+			Cursor string
 		}
 		// ListWorkflowRuns holds details about calls to the ListWorkflowRuns method.
 		ListWorkflowRuns []struct {
@@ -309,6 +328,7 @@ type ComponentClientMock struct {
 	lockListComponents                         sync.RWMutex
 	lockListDeployments                        sync.RWMutex
 	lockListProjectReleaseBindings             sync.RWMutex
+	lockListProjectWorkflowRuns                sync.RWMutex
 	lockListWorkflowRuns                       sync.RWMutex
 	lockTriggerBuild                           sync.RWMutex
 	lockTriggerBuildAtCommit                   sync.RWMutex
@@ -620,6 +640,54 @@ func (mock *ComponentClientMock) ListProjectReleaseBindingsCalls() []struct {
 	mock.lockListProjectReleaseBindings.RLock()
 	calls = mock.calls.ListProjectReleaseBindings
 	mock.lockListProjectReleaseBindings.RUnlock()
+	return calls
+}
+
+// ListProjectWorkflowRuns calls ListProjectWorkflowRunsFunc.
+func (mock *ComponentClientMock) ListProjectWorkflowRuns(ctx context.Context, orgName string, projectName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
+	if mock.ListProjectWorkflowRunsFunc == nil {
+		panic("ComponentClientMock.ListProjectWorkflowRunsFunc: method is nil but ComponentClient.ListProjectWorkflowRuns was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		OrgName     string
+		ProjectName string
+		Limit       int
+		Cursor      string
+	}{
+		Ctx:         ctx,
+		OrgName:     orgName,
+		ProjectName: projectName,
+		Limit:       limit,
+		Cursor:      cursor,
+	}
+	mock.lockListProjectWorkflowRuns.Lock()
+	mock.calls.ListProjectWorkflowRuns = append(mock.calls.ListProjectWorkflowRuns, callInfo)
+	mock.lockListProjectWorkflowRuns.Unlock()
+	return mock.ListProjectWorkflowRunsFunc(ctx, orgName, projectName, limit, cursor)
+}
+
+// ListProjectWorkflowRunsCalls gets all the calls that were made to ListProjectWorkflowRuns.
+// Check the length with:
+//
+//	len(mockedComponentClient.ListProjectWorkflowRunsCalls())
+func (mock *ComponentClientMock) ListProjectWorkflowRunsCalls() []struct {
+	Ctx         context.Context
+	OrgName     string
+	ProjectName string
+	Limit       int
+	Cursor      string
+} {
+	var calls []struct {
+		Ctx         context.Context
+		OrgName     string
+		ProjectName string
+		Limit       int
+		Cursor      string
+	}
+	mock.lockListProjectWorkflowRuns.RLock()
+	calls = mock.calls.ListProjectWorkflowRuns
+	mock.lockListProjectWorkflowRuns.RUnlock()
 	return calls
 }
 

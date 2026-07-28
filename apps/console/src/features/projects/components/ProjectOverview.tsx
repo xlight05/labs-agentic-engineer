@@ -34,7 +34,7 @@ import { PageHeader } from "../../../components/PageHeader";
 import { SectionTitle } from "../../../components/SectionTitle";
 import { StatusChip } from "../../../components/StatusChip";
 import { useProject, useProjectComponents, useProjectStatus } from "../api/queries";
-import { phaseChip } from "../lib/phaseChip";
+import { projectChip } from "../lib/projectChip";
 import { RecentActivity } from "./RecentActivity";
 import { ComponentsList } from "./ComponentsList";
 import { OverviewPipeline } from "./OverviewPipeline";
@@ -109,7 +109,7 @@ export function ProjectOverview({ projectName }: { projectName: string }) {
                   {displayName}
                 </Typography>
                 {status.data && (
-                  <StatusChip {...phaseChip(status.data)} appearance="soft" dot />
+                  <StatusChip {...projectChip(status.data)} appearance="soft" dot />
                 )}
               </Stack>
               {status.data?.repoUrl && (

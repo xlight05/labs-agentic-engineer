@@ -38,6 +38,11 @@ var _ delivery.MilestoneDispatcher = (*CodingExecutor)(nil)
 // every open issue in it and may touch several components — so there is no real
 // component to name, and the Job/pod still needs a valid k8s label value. Same
 // role as validationComponentSentinel.
+//
+// It is a LABEL VALUE ONLY. Nothing may resolve project content through it:
+// there is no specs/design/components/aep-milestone/. The runner accordingly
+// takes its applied skills from the union across every component's design.json
+// (skills_resolver.ts, SkillsScope) rather than from this name.
 const milestoneComponentSentinel = "aep-milestone"
 
 // Dispatch launches ONE agent run over a milestone and returns the launched

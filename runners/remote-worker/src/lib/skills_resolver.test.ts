@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   readSkillsApplied,
+  readProjectSkillsApplied,
   resolveSkillsFromClone,
   resolveKind,
   resolveTaskSkills,
@@ -93,6 +94,60 @@ test("readSkillsApplied: reads only the named component, not others", async () =
   });
   assert.deepEqual(await readSkillsApplied(ws, "api"), ["go"]);
   assert.deepEqual(await readSkillsApplied(ws, "webapp"), ["react-webapp"]);
+});
+
+// ---- readProjectSkillsApplied (milestone scope) -----------------------------
+
+test("readProjectSkillsApplied: unions every component, de-duplicated, in component order", async () => {
+  const ws = await tmpTree({
+    "specs/design/components/webapp/design.json": JSON.stringify({
+      skillsApplied: ["react-webapp", "go"],
+    }),
+    "specs/design/components/api/design.json": JSON.stringify({ skillsApplied: ["go"] }),
+    "specs/design/components/worker/design.json": JSON.stringify({ skillsApplied: ["go", "temporal"] }),
+  });
+  // Sorted component order (api, webapp, worker); "go" appears once, first-seen.
+  assert.deepEqual(await readProjectSkillsApplied(ws), ["go", "react-webapp", "temporal"]);
+});
+
+test("readProjectSkillsApplied: does NOT read a component named after the milestone sentinel", async () => {
+  // The regression: a milestone Job carries AEP_COMPONENT_NAME=aep-milestone,
+  // which never names a real component — the union must still find the skills.
+  const ws = await tmpTree({
+    "specs/design/components/workout-tracker-webapp/design.json": JSON.stringify({
+      skillsApplied: ["react-webapp"],
+    }),
+  });
+  assert.deepEqual(await readSkillsApplied(ws, "aep-milestone"), []);
+  assert.deepEqual(await readProjectSkillsApplied(ws), ["react-webapp"]);
+});
+
+test("readProjectSkillsApplied: absent components dir → [] with a warning", async () => {
+  const ws = await tmpTree({ "README.md": "no specs here" });
+  const lines: string[] = [];
+  assert.deepEqual(await readProjectSkillsApplied(ws, (l) => lines.push(l)), []);
+  assert.ok(
+    lines.some((l) => l.includes("specs/design/components/ not found")),
+    `expected a not-found warning, got ${JSON.stringify(lines)}`,
+  );
+});
+
+test("readProjectSkillsApplied: components without / with malformed design.json contribute nothing", async () => {
+  const ws = await tmpTree({
+    "specs/design/components/api/design.json": JSON.stringify({ skillsApplied: ["go"] }),
+    "specs/design/components/broken/design.json": "{ not json",
+    "specs/design/components/undesigned/README.md": "no design.json yet",
+  });
+  assert.deepEqual(await readProjectSkillsApplied(ws), ["go"]);
+});
+
+test("readProjectSkillsApplied: skips dot-dirs and stray files", async () => {
+  const ws = await tmpTree({
+    "specs/design/components/api/design.json": JSON.stringify({ skillsApplied: ["go"] }),
+    "specs/design/components/.cache/design.json": JSON.stringify({ skillsApplied: ["leaked"] }),
+    "specs/design/components/notes.md": "stray file",
+  });
+  assert.deepEqual(await readProjectSkillsApplied(ws), ["go"]);
 });
 
 // ---- resolveKind ------------------------------------------------------------
@@ -197,7 +252,7 @@ test("resolveTaskSkills: end-to-end with an injected clone", async () => {
   let cloneCount = 0;
   const out = await resolveTaskSkills({
     workspace: ws,
-    componentName: "api",
+    scope: { kind: "component", componentName: "api" },
     skillsRepoURL: "https://github.com/acme/org-skills",
     pat: "tok",
     scratchDir,
@@ -222,7 +277,7 @@ test("resolveTaskSkills: no applied skills → no clone, empty result", async ()
   let cloned = false;
   const out = await resolveTaskSkills({
     workspace: ws,
-    componentName: "api",
+    scope: { kind: "component", componentName: "api" },
     skillsRepoURL: "https://github.com/acme/org-skills",
     pat: "tok",
     scratchDir: path.join(os.tmpdir(), "aep-skills-noop", "task-2"),
@@ -232,4 +287,28 @@ test("resolveTaskSkills: no applied skills → no clone, empty result", async ()
   });
   assert.equal(cloned, false, "clone must be skipped when no skills are applied");
   assert.deepEqual(out, []);
+});
+
+test("resolveTaskSkills: project scope materialises skills from every component", async () => {
+  const ws = await tmpTree({
+    "specs/design/components/api/design.json": JSON.stringify({ skillsApplied: ["go"] }),
+    "specs/design/components/webapp/design.json": JSON.stringify({ skillsApplied: ["react-webapp"] }),
+  });
+  const cloneSrc = await tmpTree({
+    "skills/go/SKILL.md": skillMD("go", "org"),
+    "skills/react-webapp/SKILL.md": skillMD("react-webapp", "org"),
+  });
+
+  const out = await resolveTaskSkills({
+    workspace: ws,
+    scope: { kind: "project" },
+    skillsRepoURL: "https://github.com/acme/org-skills",
+    pat: "tok",
+    scratchDir: path.join(os.tmpdir(), "aep-skills-project", "cycle-1"),
+    clone: async (_repoURL, _pat, dest) => {
+      await fs.promises.cp(cloneSrc, dest, { recursive: true });
+    },
+  });
+
+  assert.deepEqual(out.map((s) => s.materializedName), ["org-go", "org-react-webapp"]);
 });

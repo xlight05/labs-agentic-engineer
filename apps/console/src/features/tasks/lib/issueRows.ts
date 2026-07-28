@@ -29,7 +29,9 @@ type TaskView = components["schemas"]["TaskView"];
 export interface IssuePartition {
   /** Agent work: the run's working set, and the run's history once closed. */
   work: TaskView[];
-  /** OPEN dispatch gates. These hold the loop, so they are a banner, not rows. */
+  /** Dispatch gates — the connections a version's components need before they
+   *  can deploy. Worked by the platform rather than by the agent, and closed
+   *  without a pull request, but a real part of the version's record. */
   gates: TaskView[];
   /** Bare human issues that joined the milestone — never worked, never
    *  stalling settle. Their own section, so they are not read as tasks. */
@@ -39,17 +41,18 @@ export interface IssuePartition {
 /**
  * Partition one version's issues.
  *
- * A CLOSED gate is dropped entirely: a resolved gate holds nothing, and it was
- * never work, so it belongs neither to the banner nor to the history the work
- * list tells. The two other populations keep their closed members — that is
- * the version's record of what got done.
+ * All three populations keep their CLOSED members — that is the version's
+ * record of what got done, and a provisioned connection is as much a part of
+ * how a version came to exist as a merged pull request. Only the run card
+ * narrows further, to the open gates, because only an open gate holds
+ * anything; see `openGates`.
  */
 export function partitionIssues(tasks: TaskView[]): IssuePartition {
   const partition: IssuePartition = { work: [], gates: [], ledger: [] };
   for (const task of tasks) {
     switch (task.executorClass) {
       case "provision":
-        if (task.derivedStatus === "pending") partition.gates.push(task);
+        partition.gates.push(task);
         break;
       case "ledger":
         partition.ledger.push(task);
@@ -62,6 +65,16 @@ export function partitionIssues(tasks: TaskView[]): IssuePartition {
     }
   }
   return partition;
+}
+
+/**
+ * The gates that are still OPEN — the only ones that hold dispatch, and so the
+ * only ones the run card's hold notice may speak for. A resolved gate is
+ * history: it belongs in the version's issue list, not in an explanation of why
+ * nothing is moving.
+ */
+export function openGates(gates: TaskView[]): TaskView[] {
+  return gates.filter((gate) => gate.derivedStatus === "pending");
 }
 
 /**

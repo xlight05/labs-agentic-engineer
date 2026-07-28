@@ -18,7 +18,6 @@
 
 import {
   Alert,
-  AlertTitle,
   Box,
   Button,
   Chip,
@@ -30,27 +29,32 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { GitHub } from "@wso2/oxygen-ui-icons-react";
-import { createLink } from "@tanstack/react-router";
 import { SectionTitle } from "../../../components/SectionTitle";
 import { StatusChip } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
 import { useAllTasks } from "../api/queries";
-import { issueStateChip } from "../api/status";
-import { gateSubject, partitionIssues } from "../lib/issueRows";
+import { issueKindChip, issueStateChip } from "../api/status";
+import { partitionIssues } from "../lib/issueRows";
 
 type TaskView = components["schemas"]["TaskView"];
 
-// Router-typed Oxygen Button (the console's createLink pattern, cf.
-// DeploymentsPage) so the banner's deep link is a real navigation.
-const LinkButton = createLink(Button);
-
-// A version's issues, as the three things they actually are (§10):
+// A version's issues, as the two things they actually are (§10):
 //
-//   - a HOLD BANNER for open dispatch gates — a gate is not a row, it is the
-//     reason nothing else is moving;
-//   - the ISSUE LIST of agent work, carrying durable facts only;
+//   - the ISSUE LIST — everything the version took to build, carrying durable
+//     facts only: the agent's work, and the connections the platform
+//     provisioned for it, each tagged with which it is;
 //   - a LEDGER of bare human issues, which are never worked and never stall
 //     the run, and so must not be mistaken for tasks.
+//
+// A gate is in the list because it is part of the record: a version's story is
+// incomplete if the database it needed simply never appears. What is NOT here
+// is the gate WARNING — "why is nothing moving" is a question about the run, so
+// the run card answers it, and answering it here as well put two warnings on
+// one page competing to explain one fact.
+//
+// Rows sort by issue number, which is the order the version actually happened
+// in: gates are minted before the milestone is planned, so the connections read
+// first and the work that consumed them follows.
 //
 // The validation issue appears in none of them: the list read hides it, because
 // the deployment is what is being validated and the verdict renders there.
@@ -69,6 +73,7 @@ function IssueRows({ issues }: { issues: TaskView[] }) {
         <ListingTable.Body>
           {issues.map((issue) => {
             const chip = issueStateChip(issue.derivedStatus);
+            const kind = issueKindChip(issue.executorClass);
             return (
               // Deliberately not clickable. A row shows what GitHub holds; the
               // run's own story is the timeline and the feed above, and the
@@ -86,7 +91,24 @@ function IssueRows({ issues }: { issues: TaskView[] }) {
                         #{issue.issueNumber}
                       </Typography>
                     }
-                    primary={issue.title}
+                    primary={
+                      kind ? (
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          sx={{ alignItems: "center", flexWrap: "wrap" }}
+                        >
+                          <span>{issue.title}</span>
+                          <StatusChip
+                            label={kind.label}
+                            tone={kind.tone}
+                            appearance="soft"
+                          />
+                        </Stack>
+                      ) : (
+                        issue.title
+                      )
+                    }
                   />
                 </ListingTable.Cell>
                 <ListingTable.Cell sx={{ maxWidth: 120 }}>
@@ -115,64 +137,6 @@ function IssueRows({ issues }: { issues: TaskView[] }) {
         </ListingTable.Body>
       </ListingTable>
     </ListingTable.Container>
-  );
-}
-
-/**
- * Open dispatch gates, as the hold they are. A gate is the one deliberate
- * human brake on the loop: while any gate in the milestone is open, the run
- * dispatches nothing, so the remaining issues are held rather than idle.
- *
- * Gates are resolved in the architecture view's connection drawer, which is
- * where a dependency's configuration is supplied — hence the deep link.
- */
-function GateHoldBanner({
-  projectName,
-  gates,
-}: {
-  projectName: string;
-  gates: TaskView[];
-}) {
-  return (
-    <Alert
-      severity="warning"
-      sx={{ mb: 3 }}
-      action={
-        <LinkButton
-          size="small"
-          color="inherit"
-          to="/projects/$projectName/spec"
-          params={{ projectName }}
-          search={{ connections: "open" }}
-        >
-          Resolve connections
-        </LinkButton>
-      }
-    >
-      <AlertTitle>
-        {gates.length === 1
-          ? "A connection is unresolved"
-          : `${gates.length} connections are unresolved`}
-      </AlertTitle>
-      Remaining tasks are held until it is resolved — the run dispatches nothing
-      while a gate is open.
-      <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", rowGap: 1 }}>
-        {gates.map((gate) => (
-          <Chip
-            key={gate.issueNumber}
-            component="a"
-            href={gate.issueUrl}
-            target="_blank"
-            rel="noreferrer"
-            clickable
-            size="small"
-            variant="outlined"
-            color="warning"
-            label={gateSubject(gate.title)}
-          />
-        ))}
-      </Stack>
-    </Alert>
   );
 }
 
@@ -211,26 +175,27 @@ export function IssueSections({
     );
   }
 
+  // Gates and agent work are one list — see the note above. Only the run card's
+  // hold narrows to the OPEN gates.
   const { work, gates, ledger } = partitionIssues(issues.data);
+  const rows = [...gates, ...work].sort(
+    (a, b) => a.issueNumber - b.issueNumber,
+  );
 
   return (
     <>
-      {gates.length > 0 && (
-        <GateHoldBanner projectName={projectName} gates={gates} />
-      )}
-
       <SectionTitle
-        trailing={<Chip label={work.length} size="small" variant="outlined" />}
+        trailing={<Chip label={rows.length} size="small" variant="outlined" />}
       >
         Issues
       </SectionTitle>
-      {work.length === 0 ? (
+      {rows.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
           No issues for {tag} yet — the build plans them into the version's
           milestone right after it starts.
         </Typography>
       ) : (
-        <IssueRows issues={work} />
+        <IssueRows issues={rows} />
       )}
 
       {ledger.length > 0 && (

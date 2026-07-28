@@ -973,17 +973,23 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		runCycleLogs = agentProgressReader
 	}
 	runProgress := runread.NewProgressService(milestoneRunRepo, runCycleRepo, runCycleLogs)
+	// A cycle's builds are DERIVED from OpenChoreo on read, never stored, so
+	// this read is the one part of the run surface that touches the cluster —
+	// which is why it is its own endpoint rather than a field on the run read.
+	runCycleBuilds := runread.NewCycleBuilds(milestoneRunRepo, runCycleRepo,
+		runreadProjectBuilds{oc: componentClient})
 
 	deliveryHandlers, err := deliveryhttpapi.New(deliveryhttpapi.Deps{
-		BuildSvc:      buildSvc,
-		PreflightSvc:  preflightSvc,
-		BuildActivity: buildActivityRecorder{svc: activitySvc},
-		TaskReads:     taskReads,
-		TaskCommands:  taskCommands,
-		TaskStream:    taskStreamSvc,
-		RunReads:      runReads,
-		RunProgress:   runProgress,
-		RunCommands:   runread.NewCommands(milestoneRunRepo, runSupervisor),
+		BuildSvc:       buildSvc,
+		PreflightSvc:   preflightSvc,
+		BuildActivity:  buildActivityRecorder{svc: activitySvc},
+		TaskReads:      taskReads,
+		TaskCommands:   taskCommands,
+		TaskStream:     taskStreamSvc,
+		RunReads:       runReads,
+		RunProgress:    runProgress,
+		RunCommands:    runread.NewCommands(milestoneRunRepo, runSupervisor),
+		RunCycleBuilds: runCycleBuilds,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("assemble delivery domain: %w", err)

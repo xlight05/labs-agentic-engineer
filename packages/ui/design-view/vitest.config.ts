@@ -25,6 +25,10 @@ export default defineConfig({
     // per-file via a `// @vitest-environment jsdom` pragma, mirroring
     // apps/console's vitest.config.ts convention.
     environment: "node",
+    // Source only. `build` compiles tests into dist/ alongside the library, and
+    // vitest's default glob would collect those stale copies and run them
+    // against yesterday's source (matches apps/console's scoped include).
+    include: ["src/**/*.test.{ts,tsx}"],
     // Needed so @testing-library/react's auto-cleanup-between-tests effect
     // detects a global `afterEach` and actually registers (it silently no-ops
     // without a global test-framework hook) — DesignView.test.tsx renders

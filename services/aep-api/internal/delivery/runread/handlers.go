@@ -31,16 +31,17 @@ import (
 // Handler serves the run read surface on the strict interface: the version's
 // runs, the per-run progress stream, and cancel.
 type Handler struct {
-	reads    *Reads
-	progress *ProgressService
-	commands *Commands
+	reads       *Reads
+	progress    *ProgressService
+	commands    *Commands
+	cycleBuilds *CycleBuilds
 }
 
 // NewHandler returns the slice's handler. Any nil service leaves its operations
 // answering 503 rather than panicking — the degraded-boot contract every slice
 // handler follows.
-func NewHandler(reads *Reads, progress *ProgressService, commands *Commands) *Handler {
-	return &Handler{reads: reads, progress: progress, commands: commands}
+func NewHandler(reads *Reads, progress *ProgressService, commands *Commands, cycleBuilds *CycleBuilds) *Handler {
+	return &Handler{reads: reads, progress: progress, commands: commands, cycleBuilds: cycleBuilds}
 }
 
 // ListBuildRuns serves GET /projects/{p}/builds/{tag}/runs.
@@ -53,6 +54,18 @@ func (h *Handler) ListBuildRuns(ctx context.Context, request gen.ListBuildRunsRe
 		return nil, mapRunError(err)
 	}
 	return gen.ListBuildRuns200JSONResponse(*out), nil
+}
+
+// ListCycleBuilds serves GET /projects/{p}/builds/{tag}/cycles/{cycleId}/builds.
+func (h *Handler) ListCycleBuilds(ctx context.Context, request gen.ListCycleBuildsRequestObject) (gen.ListCycleBuildsResponseObject, error) {
+	if h.cycleBuilds == nil {
+		return nil, apierr.ServiceUnavailable("cycle build reads not configured")
+	}
+	out, err := h.cycleBuilds.ForCycle(ctx, tenant.BoundOrgFromContext(ctx), request.ProjectName, request.Tag, request.CycleID)
+	if err != nil {
+		return nil, mapRunError(err)
+	}
+	return gen.ListCycleBuilds200JSONResponse(*out), nil
 }
 
 // StreamRunProgress serves GET /projects/{p}/runs/{runId}/progress.
@@ -103,6 +116,8 @@ func mapRunError(err error) error {
 		return apierr.NotFound("no run for this version")
 	case errors.Is(err, ErrRunNotFound):
 		return apierr.NotFound("run not found")
+	case errors.Is(err, ErrCycleNotFound):
+		return apierr.NotFound("cycle not found")
 	case errors.Is(err, delivery.ErrTemporalUnavailable):
 		// Nothing was cancelled and the caller may retry — a 503, not a 500.
 		return apierr.ServiceUnavailable("the workflow engine is unavailable — nothing was cancelled")

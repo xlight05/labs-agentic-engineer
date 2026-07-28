@@ -113,39 +113,42 @@ describe("IssueSections", () => {
     ).toHaveAttribute("href", "https://github.com/o/r/issues/2");
   });
 
-  it("renders an OPEN gate as a hold banner, not as a row", () => {
+  // A provisioned connection is as much a part of how a version came to exist
+  // as a merged pull request — a list that hides it tells an incomplete story.
+  // What it must NOT do is read as agent work, hence the tag.
+  it("lists provisioning gates with agent work, tagged for what they are", () => {
     mockIssues = [
-      issue(1, "Provide configuration: url-shortener-db", "provision"),
+      issue(1, "Provide configuration: url-shortener-db", "provision", "merged"),
       issue(2, "Implement the shortener API", "coding"),
     ];
     renderSections();
 
-    expect(screen.getByText(/A connection is unresolved/)).toBeInTheDocument();
-    expect(screen.getByText(/Remaining tasks are held/)).toBeInTheDocument();
-    // The dependency is named on the banner…
-    expect(screen.getByText("url-shortener-db")).toBeInTheDocument();
-    // …and the gate's title never appears as an issue row.
     expect(
-      screen.queryByText("Provide configuration: url-shortener-db"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("deep-links the banner to the spec view's connection drawer", () => {
-    mockIssues = [issue(1, "Provide configuration: db", "provision")];
-    renderSections();
-
-    expect(
-      screen.getByRole("link", { name: /Resolve connections/ }),
-    ).toHaveAttribute("href", "/projects/acme/spec?connections=open");
-  });
-
-  it("shows no banner once every gate is resolved", () => {
-    mockIssues = [
-      issue(1, "Provide configuration: db", "provision", "merged"),
-      issue(2, "Implement the shortener API", "coding"),
-    ];
-    renderSections();
+      screen.getByText("Provide configuration: url-shortener-db"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Provisioning")).toBeInTheDocument();
+    // Agent work carries no kind tag — a list that is mostly coding rows does
+    // not need every one of them labelled "Coding".
+    expect(screen.getAllByText("Provisioning")).toHaveLength(1);
+    // …and no second warning competing with the run card's hold.
     expect(screen.queryByText(/unresolved/)).not.toBeInTheDocument();
+  });
+
+  it("orders rows the way the version happened — connections, then the work", () => {
+    mockIssues = [
+      issue(6, "Implement ceramics-webapp", "coding"),
+      issue(1, "Provision resource: user-auth", "provision", "merged"),
+      issue(5, "Implement ceramics-api", "coding"),
+    ];
+    renderSections();
+
+    const titles = screen
+      .getAllByRole("row")
+      .slice(1) // drop the header row
+      .map((row) => row.textContent);
+    expect(titles?.[0]).toContain("Provision resource: user-auth");
+    expect(titles?.[1]).toContain("Implement ceramics-api");
+    expect(titles?.[2]).toContain("Implement ceramics-webapp");
   });
 
   it("puts bare human issues in their own Ledger section", () => {
@@ -166,15 +169,16 @@ describe("IssueSections", () => {
     expect(screen.queryByText("Ledger")).not.toBeInTheDocument();
   });
 
-  it("counts each section beside its title", () => {
+  it("counts each section beside its title, gates included", () => {
     mockIssues = [
+      issue(1, "Provide configuration: db", "provision", "merged"),
       issue(2, "One", "coding"),
       issue(3, "Two", "coding"),
       issue(7, "Ledger one", "ledger"),
     ];
     renderSections();
     const issuesHeading = screen.getByText("Issues").parentElement;
-    expect(within(issuesHeading as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(issuesHeading as HTMLElement).getByText("3")).toBeInTheDocument();
   });
 
   it("says the plan has not landed yet when a version has no work", () => {

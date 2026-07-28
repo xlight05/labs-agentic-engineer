@@ -22,11 +22,12 @@
 // the runner already clones the project repo and holds an org-wide GitHub PAT,
 // so it clones the org's `org-skills` repo too and resolves the design's applied
 // skills locally — no second BFF round-trip, one git-based delivery mechanism.
-// See docs/design/coding-runner-skills-clone.md.
 //
 // Flow (per task):
-//   1. Read specs/design/components/<component>/design.json → skillsApplied[]
-//      for the BUILDING component from the PROJECT clone.
+//   1. Read skillsApplied[] from the PROJECT clone, at the scope the run works
+//      at: one component's design.json, or — for a milestone cycle, which spans
+//      the whole milestone and may touch any component — the union across every
+//      specs/design/components/*/design.json.
 //   2. git clone --depth 1 the org-skills repo into a scratch dir OUTSIDE the
 //      work tree (so its nested .git never enters the agent's git status).
 //   3. For each bare name resolve skills/<name>/SKILL.md (+ references/*.md) and
@@ -34,16 +35,16 @@
 //      are dropped (parity with the old server-side ResolveMany warn-and-skip).
 //
 // The resulting SkillResolution[] feeds materializeSkills unchanged.
+//
+// Scope is the caller's to state, never inferred from AEP_COMPONENT_NAME: a
+// milestone Job carries a sentinel there, so reading a design file by that name
+// silently resolves nothing. See SkillsScope.
 
 import fs from "node:fs";
 import path from "node:path";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { parse as parseYaml } from "yaml";
-import { shellQuote } from "./workspace.js";
+import { cloneWithToken } from "./git_clone.js";
 import type { SkillKind, SkillResolution } from "./skills_materializer.js";
-
-const execAsync = promisify(exec);
 
 const SKILLS_ROOT = "skills";
 const KNOWN_KINDS: readonly SkillKind[] = ["platform", "org", "custom", "imported"];
@@ -52,11 +53,27 @@ const KNOWN_KINDS: readonly SkillKind[] = ["platform", "org", "custom", "importe
 // @aep/design-projection use.
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---/;
 
+/**
+ * Which design files contribute `skillsApplied` to this run.
+ *
+ * `component` is the single-component read: one named component is being built,
+ * so only its design.json applies. `project` is the union across every
+ * component — the milestone loop works a whole milestone on one branch and may
+ * touch any component in it, so there is no single design.json to read.
+ *
+ * A milestone Job's AEP_COMPONENT_NAME is the `aep-milestone` sentinel (it only
+ * has to be a valid k8s label value), so it must never be used to select a
+ * design file; a run at milestone scope passes `project` instead.
+ */
+export type SkillsScope =
+  | { kind: "component"; componentName: string }
+  | { kind: "project" };
+
 export interface ResolveTaskSkillsArgs {
   /** The project work tree (holds specs/design/components/<name>/design.json). */
   workspace: string;
-  /** The building component's name — selects which component's design.json to read. */
-  componentName: string;
+  /** Which component design files contribute skillsApplied. */
+  scope: SkillsScope;
   /** AEP_SKILLS_REPO_URL — the org's `org-skills` clone URL. */
   skillsRepoURL: string;
   /** Org-wide GitHub PAT (x-access-token) for the clone. */
@@ -70,15 +87,18 @@ export interface ResolveTaskSkillsArgs {
 }
 
 /**
- * Resolve the building component's applied skills from a fresh org-skills
- * clone. Returns an empty list (NOT an error) when the component's design.json
- * applies no skills or is absent. Throws only on a clone failure — the caller
- * degrades to the base plugin.
+ * Resolve the run's applied skills from a fresh org-skills clone. Returns an
+ * empty list (NOT an error) when the design applies no skills or the design
+ * files are absent. Throws only on a clone failure — the caller degrades to the
+ * base plugin.
  */
 export async function resolveTaskSkills(args: ResolveTaskSkillsArgs): Promise<SkillResolution[]> {
   const log = args.log ?? ((l: string) => console.log(l));
 
-  const names = await readSkillsApplied(args.workspace, args.componentName, log);
+  const names =
+    args.scope.kind === "project"
+      ? await readProjectSkillsApplied(args.workspace, log)
+      : await readSkillsApplied(args.workspace, args.scope.componentName, log);
   if (names.length === 0) {
     log("[skills-resolve] design applies no skills — nothing to materialise");
     return [];
@@ -123,6 +143,57 @@ export async function readSkillsApplied(
   return [];
 }
 
+// The directory every component's authored design file lives under.
+const COMPONENTS_DIR = "specs/design/components";
+
+// Reads the union of `skillsApplied` across every component's design.json —
+// the milestone-scope read. Components are visited in sorted order and names
+// de-duplicated first-seen, so the result is deterministic for a given tree.
+// An absent components directory → [] (a project with no designed components
+// yet); an individual component's absent/malformed design.json contributes
+// nothing, exactly as at component scope.
+export async function readProjectSkillsApplied(
+  workspace: string,
+  log: (line: string) => void = () => {},
+): Promise<string[]> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(path.join(workspace, COMPONENTS_DIR), {
+      withFileTypes: true,
+    });
+  } catch {
+    log(`[skills-resolve] ⚠️  ${COMPONENTS_DIR}/ not found — proceeding with no applied skills`);
+    return [];
+  }
+
+  const components = entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+    .map((e) => e.name)
+    .sort();
+
+  const union: string[] = [];
+  const seen = new Set<string>();
+  const contributors: string[] = [];
+  for (const component of components) {
+    // Quiet per-component read: at project scope a component without a
+    // design.json is ordinary, not the warning-worthy case it is at component
+    // scope, where the named component's file is the one thing being asked for.
+    const names = await readSkillsApplied(workspace, component);
+    if (names.length > 0) contributors.push(component);
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      union.push(name);
+    }
+  }
+
+  log(
+    `[skills-resolve] milestone scope: ${union.length} skill(s) across ${contributors.length}/${components.length} component(s)` +
+      (contributors.length > 0 ? ` (${contributors.join(", ")})` : ""),
+  );
+  return union;
+}
+
 // resolveSkillsFromClone maps each bare name to skills/<name>/SKILL.md (+ any
 // references/*.md) in the flat org-skills layout, deriving the kind from the
 // SKILL.md frontmatter. Missing/unsafe names are dropped with a warning.
@@ -152,17 +223,21 @@ export async function resolveSkillsFromClone(
   return out;
 }
 
-// cloneSkillsRepo shallow-clones the org-skills repo into destDir, authing https
-// URLs with the org-wide PAT (file:// origins — tests — pass through unauthed).
-// Wipes destDir first so a resumed pod's stale dir never blocks `git clone`.
+// cloneSkillsRepo shallow-clones the org-skills repo into destDir, authing with
+// the org-wide PAT via the askpass shim (file:// origins — tests — pass an empty
+// token and clone unauthed). Wipes destDir first so a resumed pod's stale dir
+// never blocks `git clone`.
 async function cloneSkillsRepo(repoURL: string, pat: string, destDir: string): Promise<void> {
   await fs.promises.rm(destDir, { recursive: true, force: true });
   await fs.promises.mkdir(path.dirname(destDir), { recursive: true });
-  const authedURL = repoURL.replace("https://", `https://x-access-token:${pat}@`);
-  const cmd = `git clone --depth 1 ${shellQuote(authedURL)} ${shellQuote(destDir)}`;
-  await execAsync(cmd, {
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    maxBuffer: 16 * 1024 * 1024,
+  await cloneWithToken({
+    repoUrl: repoURL,
+    destDir,
+    token: pat,
+    // Sibling of the clone target, inside the caller's scratch dir — never the
+    // work tree, and removed with the scratch dir.
+    shimDir: path.dirname(destDir),
+    depth1: true,
   });
 }
 

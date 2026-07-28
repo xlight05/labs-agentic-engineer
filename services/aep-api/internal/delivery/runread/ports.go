@@ -34,6 +34,10 @@ var (
 	ErrTagNotFound = errors.New("runread: no run for this tag")
 	// ErrRunNotFound means no run with that id belongs to this org and project.
 	ErrRunNotFound = errors.New("runread: run not found")
+	// ErrCycleNotFound means no cycle with that id belongs to the version being
+	// read. Same fence as the other two — a cycle of another org, or of another
+	// version of this project, is simply absent.
+	ErrCycleNotFound = errors.New("runread: cycle not found")
 )
 
 // RunReader is the run rows this surface serves. Satisfied by
@@ -58,6 +62,20 @@ type RunReader interface {
 // delivery.RunCycleRepository.
 type CycleReader interface {
 	ListByRun(ctx context.Context, orgID, runID string) ([]delivery.RunCycle, error)
+}
+
+// ProjectBuildLister reads every build WorkflowRun in a project, in ONE call —
+// the read a cycle's builds are derived from. Project-wide rather than
+// per-component because the read side does not know which components a merge
+// touched, and the run names themselves say: an attempt of (component, commit)
+// carries that pair in its name, so filtering the project's runs by the merge
+// SHA recovers the fan-out without re-deriving the path diff (which would cost
+// a GitHub call per read).
+//
+// The alternative — storing the fan-out when it is triggered — is deliberately
+// not taken: see CycleBuilds.
+type ProjectBuildLister interface {
+	ListProjectBuildRuns(ctx context.Context, orgID, projectID string) ([]delivery.MergeBuild, error)
 }
 
 // CycleLogReader is one cycle's agent activity — the captured snapshot once the

@@ -182,3 +182,33 @@ func (a runValidation) Verdict(ctx context.Context, orgID, projectID string) (st
 	}
 	return validation.VerdictFromReport([]byte(fc.Content)), nil
 }
+
+// runreadProjectBuilds reads every build WorkflowRun in a project so the run
+// read can derive one cycle's builds from its merge SHA. One call rather than
+// one per component: the read side does not know which components a merge
+// touched, and it does not need to — the run names carry the (component,
+// commit, attempt) triple, so delivery.BuildsAtMerge recovers the fan-out by
+// filtering. Nothing is stored; this is the same cluster-is-the-truth rule the
+// re-trigger budget follows.
+type runreadProjectBuilds struct{ oc openchoreo.ComponentClient }
+
+func (a runreadProjectBuilds) ListProjectBuildRuns(ctx context.Context, orgID, projectID string) ([]delivery.MergeBuild, error) {
+	list, err := a.oc.ListProjectWorkflowRuns(ctx, orgID, projectID, 0, "")
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return nil, nil
+	}
+	out := make([]delivery.MergeBuild, 0, len(list.Items))
+	for _, item := range list.Items {
+		out = append(out, delivery.MergeBuild{
+			Component: item.ComponentName,
+			RunName:   item.Name,
+			Status:    item.Status,
+			Completed: item.Completed,
+			StartedAt: item.StartedAt,
+		})
+	}
+	return out, nil
+}

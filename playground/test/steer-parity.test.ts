@@ -68,7 +68,7 @@ test("targetSuffix + renderPlanContext shapes appear in their Go sources", () =>
   const genai = joinedGoLiterals("services/aep-api/internal/spec/genai_service.go");
   assert.ok(genai.includes("\n\n(target: "), "targetSuffix prefix drifted");
   const plan = joinedGoLiterals("services/aep-api/internal/delivery/task/plan.go");
-  assert.ok(plan.includes("\n\n## Existing open Tasks and lineage diffs (reference)\n"), "renderPlanContext header drifted");
+  assert.ok(plan.includes("\n\n## Existing open Tasks in this version (reference)\n"), "renderPlanContext header drifted");
 });
 
 // --- aep ⇄ aep-local shared-section identity --------------------------------

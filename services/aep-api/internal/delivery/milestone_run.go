@@ -31,6 +31,16 @@ const (
 	// execute concurrently with each other and with a live spec run.
 	RunOriginIncidentAdoption = "incident-adoption"
 
+	// RunStatePlanning is the FILL WINDOW: the row has been admitted (so the
+	// spec mutex is armed) but the milestone it works is still being written —
+	// gates minted, then the planning turn streaming issues into GitHub. It is
+	// bounded work the platform is actively doing, which is exactly what
+	// separates it from RunStateWaiting: nothing is held, nobody is needed.
+	//
+	// Only the plan path writes it, and only at admission. The supervisor's
+	// first pass leaves it — for running if it dispatches, for waiting if a gate
+	// holds it — so no transition ever moves INTO planning.
+	RunStatePlanning = "planning"
 	// RunStateWaiting is the unbounded wait between cycles; cancel is its only
 	// expiry. RunStateRunning covers a dispatched cycle. The loop oscillates
 	// waiting ⇄ running until it settles.
@@ -106,9 +116,10 @@ const (
 //
 // The spec-run mutex (§5's 409, in DB form) is a partial unique index on
 // (org_id, project_id) WHERE origin = 'spec-build' AND state IN
-// ('waiting','running'), created by the milestone_runs migration — AutoMigrate
-// cannot express a partial index. Incident-adoption runs are deliberately
-// outside the index, so they run concurrently on their own milestones.
+// ('planning','waiting','running'), created by the milestone_runs migration —
+// AutoMigrate cannot express a partial index. Incident-adoption runs are
+// deliberately outside the index, so they run concurrently on their own
+// milestones.
 type MilestoneRun struct {
 	ID        string `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
 	OrgID     string `gorm:"index;not null" json:"-"`
@@ -122,7 +133,7 @@ type MilestoneRun struct {
 	MilestoneTitle string `gorm:"index;not null" json:"milestoneTitle"`
 
 	Origin string `gorm:"not null;index" json:"origin"`                // spec-build | incident-adoption
-	State  string `gorm:"not null;index;default:waiting" json:"state"` // waiting | running | succeeded | failed | cancelled
+	State  string `gorm:"not null;index;default:waiting" json:"state"` // planning | waiting | running | succeeded | failed | cancelled
 	// TerminalReason is set exactly once, when the run settles into a non-success
 	// terminal state. Empty while non-terminal and on a succeeded run.
 	TerminalReason string `gorm:"type:text" json:"terminalReason,omitempty"`
@@ -170,4 +181,6 @@ func IsTerminalRunState(state string) bool {
 
 // nonTerminalRunStates is the WHERE-clause form of !IsTerminalRunState, shared
 // by the guarded transitions and the mutex lookup so the two can never disagree.
-var nonTerminalRunStates = []string{RunStateWaiting, RunStateRunning}
+// It must stay in step with the migration's partial index predicate — a state
+// missing from one and present in the other would let a second spec run in.
+var nonTerminalRunStates = []string{RunStatePlanning, RunStateWaiting, RunStateRunning}

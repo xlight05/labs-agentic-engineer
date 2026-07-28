@@ -49,6 +49,7 @@ import { openTaskLog } from "./lib/logger.js";
 import type { DispatchRequest } from "./lib/types.js";
 import type { WorkspaceLayout } from "./lib/workspace.js";
 import { emit, primeScrubber } from "./lib/progress/emitter.js";
+import { installConsoleScrubber } from "./lib/progress/console_scrub.js";
 import { resolveTaskSkills } from "./lib/skills_resolver.js";
 import { materializeSkills } from "./lib/skills_materializer.js";
 
@@ -130,6 +131,8 @@ async function copyLocalSkillLibrary(skillsDir: string, destDir: string): Promis
 }
 
 async function main(): Promise<number> {
+  installConsoleScrubber();
+
   let run: LocalRun;
   try {
     run = readLocalRunFromEnv();
@@ -161,7 +164,8 @@ async function main(): Promise<number> {
       const skillsDir = run.skillsDir;
       const resolutions = await resolveTaskSkills({
         workspace: run.projectDir,
-        componentName: run.componentName,
+        // The local harness runs one named component, not a milestone.
+        scope: { kind: "component", componentName: run.componentName },
         skillsRepoURL: "local:working-tree",
         pat: "",
         scratchDir: path.join(run.runDir, "skills-clone"),

@@ -32,7 +32,9 @@ import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "../../../components/PageHeader";
 import { IssueSections } from "../../tasks/components/IssueSections";
+import { useAllTasks } from "../../tasks/api/queries";
 import { taskKeys } from "../../tasks/api/keys";
+import { openGates, partitionIssues } from "../../tasks/lib/issueRows";
 import { useBuildRuns, useBuilds } from "../api/queries";
 import { versionIsLive } from "../lib/runView";
 import { RunStory } from "./RunStory";
@@ -42,7 +44,7 @@ import { RunStory } from "./RunStory";
  *
  * There is no ledger list in between: navigating here while a run is live lands
  * straight on that run, with its feed already open. Old versions are reached
- * through the overview's version dropdown, which deep-links `?tag=v<N>`.
+ * through this page's own version picker, which writes `?tag=v<N>`.
  *
  * Two data planes, priced apart. The run rows and cycle records are DB-only, so
  * they poll at 5s while the version is moving. The issue list is GitHub-backed,
@@ -69,6 +71,24 @@ export function BuildsPage({
   const runs = useBuildRuns(projectName, selectedTag);
   const runList = runs.data?.runs ?? [];
   const live = versionIsLive(runList);
+
+  // The same query IssueSections reads, on the same key — react-query serves
+  // both from one request. The run card needs it because only the issue plane
+  // can tell a gate hold apart from an empty working set, and undefined until
+  // it lands is what stops a card accusing a run of having no work on the
+  // strength of a list that has not arrived.
+  const issues = useAllTasks(projectName, selectedTag, { live });
+  const partition = issues.data ? partitionIssues(issues.data) : undefined;
+  const milestone = partition && {
+    // OPEN gates only. The list below keeps the resolved ones as the version's
+    // record; a hold notice speaks only for what is still holding.
+    gates: openGates(partition.gates),
+    // OPEN work only. The work list keeps its closed members — that is the
+    // version's record of what got done — but a milestone of finished issues
+    // has nothing left to dispatch.
+    openWork: partition.work.filter((task) => task.derivedStatus === "pending")
+      .length,
+  };
 
   // One final issue fetch at settle. The GitHub-backed list stops polling the
   // moment the run turns terminal, but the writes that settle a version (the
@@ -183,13 +203,13 @@ export function BuildsPage({
         // created the version, then any incident adopted into it. Newest first,
         // and only the newest can be live.
         <Stack spacing={2} sx={{ mb: 4 }}>
-          {runList.map((run, i) => (
+          {runList.map((run) => (
             <RunStory
               key={run.id}
               projectName={projectName}
               tag={selected.tag}
               run={run}
-              defaultFeedOpen={i === 0 && live}
+              {...(milestone ? { milestone } : {})}
             />
           ))}
         </Stack>

@@ -722,6 +722,54 @@ paths:
       summary: List a version's milestone runs and their cycles
       tags:
       - Runs
+  /projects/{projectName}/builds/{tag}/cycles/{cycleId}/builds:
+    get:
+      description: The builds one cycle's merge fanned out to, DERIVED from OpenChoreo and never
+        stored — per-component build state has exactly one source of truth, and a stored copy could
+        desynchronise from the cluster. Deliberately NOT folded into list-build-runs, which is DB-only
+        so the console can poll it cheaply — this read costs a cluster call, so the console fetches it
+        only for a cycle that has a merge SHA. A cycle without one returns an empty list.
+      operationId: list-cycle-builds
+      parameters:
+      - description: Project name (DNS-label slug)
+        in: path
+        name: projectName
+        required: true
+        schema:
+          description: Project name (DNS-label slug)
+          type: string
+      - description: Spec version tag (`v<N>`), resolved to a milestone number through the run rows.
+        in: path
+        name: tag
+        required: true
+        schema:
+          description: Spec version tag
+          type: string
+      - description: Cycle id, as carried by RunCycleView.id on the run read.
+        in: path
+        name: cycleId
+        required: true
+        schema:
+          description: Cycle id
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CycleBuildList'
+          description: OK
+        default:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: Error
+      security:
+      - userJWT: []
+      summary: List the builds a cycle's merge produced
+      tags:
+      - Runs
   /projects/{projectName}/components:
     get:
       operationId: list-components
@@ -883,6 +931,17 @@ paths:
         schema:
           description: Build WorkflowRun name (DNS-label slug)
           type: string
+      - description: Return only entries stamped AFTER this epoch-millis cursor — feed back the
+          previous response's `nextCursor`. Absent reads from the beginning. Millis rather than a line
+          offset because the cursor must survive the hand-over from a live pod tail to the captured
+          snapshot, where a line count is meaningless but a timestamp still orders correctly.
+        in: query
+        name: since
+        required: false
+        schema:
+          description: Epoch-millis cursor
+          format: int64
+          type: integer
       responses:
         '200':
           content:
@@ -2529,17 +2588,31 @@ components:
       type: object
     BuildLogs:
       additionalProperties: false
+      description: One read of a build's log. A build that is still running returns an incomplete
+        response and the client re-reads from `nextCursor`; a terminal build returns everything it has
+        in one call. A complete response carrying no entries is the honest "nothing retained" answer,
+        not an error.
       properties:
+        complete:
+          description: True when the build is terminal and this response carries everything there
+            will ever be — the client stops polling. False means re-read from `nextCursor`.
+          type: boolean
         logs:
           items:
             $ref: '#/components/schemas/BuildLogEntry'
           type: array
           nullable: true
+        nextCursor:
+          description: Epoch millis of the newest entry returned; pass back as `since`. Absent when
+            nothing was returned, in which case the previous cursor stands.
+          format: int64
+          type: integer
         totalCount:
           format: int64
           type: integer
       required:
       - logs
+      - complete
       type: object
     BuildPreflight:
       additionalProperties: false
@@ -3106,6 +3179,49 @@ components:
       - name
       - style
       type: object
+    CycleBuild:
+      additionalProperties: false
+      description: One component's build at a cycle's merge SHA, derived from its OpenChoreo
+        WorkflowRun. `status` and `completed` are that run's own pair, carried verbatim — OpenChoreo's
+        status is a condition Reason string rather than a closed set, so `completed` is the terminal
+        gate and `status` must never be parsed to decide anything.
+      properties:
+        attempt:
+          description: 1 for the fan-out's build; 2 for the single automatic re-trigger a red build
+            gets. Read off the run name's trailing ordinal, which is where the attempt count lives.
+          format: int64
+          type: integer
+        buildName:
+          description: The WorkflowRun's name — pass verbatim to get-build-logs as `buildName`.
+          type: string
+        completed:
+          type: boolean
+        component:
+          type: string
+        startedAt:
+          type: string
+        status:
+          description: The WorkflowRun's status, verbatim (`Pending`, `Running`, or the completion
+            condition's Reason).
+          type: string
+      required:
+      - component
+      - buildName
+      - status
+      - completed
+      - attempt
+      type: object
+    CycleBuildList:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/CycleBuild'
+          type: array
+          nullable: true
+      required:
+      - items
+      type: object
     DependencyStatus:
       additionalProperties: false
       properties:
@@ -3612,7 +3728,11 @@ components:
           type: string
           x-go-type: '*time.Time'
         state:
+          description: planning is the fill window — the version's milestone is still being
+            written (gates minted, then issues planned in). waiting is the unbounded wait
+            between cycles, where something outside the platform is needed.
           enum:
+          - planning
           - waiting
           - running
           - succeeded
@@ -3851,7 +3971,11 @@ components:
         hasTasks:
           type: boolean
         phase:
-          description: no-repo, repo-cloning, repo-error, prompt, spec, architecture, tasks, components
+          description: >-
+            Repo and artifact rungs only: no-repo, repo-cloning, repo-error,
+            prompt (no spec), spec (spec, no design), tasks (both). "tasks" is
+            terminal — delivery state lives in the build and deploy aggregates,
+            which is what a caller should render past the spec.
           type: string
         repoErrorMessage:
           description: Set when phase is repo-error.

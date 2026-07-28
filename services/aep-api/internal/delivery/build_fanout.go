@@ -19,6 +19,7 @@ package delivery
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -110,4 +111,61 @@ func BuildRunNamePrefix(projectID, component, sha string) string {
 // BuildRunName names attempt n (1-based) of a component's build at a commit.
 func BuildRunName(projectID, component, sha string, attempt int) string {
 	return fmt.Sprintf("%s%d", BuildRunNamePrefix(projectID, component, sha), attempt)
+}
+
+// MergeBuild is one component's build at a merge SHA, read back off its
+// WorkflowRun. Status and Completed are the run's own pair, carried verbatim:
+// OpenChoreo's status is a condition Reason string rather than a closed set, so
+// Completed is the terminal gate and Status is display only.
+type MergeBuild struct {
+	Component string
+	RunName   string
+	Status    string
+	Completed bool
+	StartedAt string
+	// Attempt is the run name's trailing ordinal: 1 for the fan-out's build, 2
+	// for the one automatic re-trigger a red build gets.
+	Attempt int
+}
+
+// BuildsAtMerge picks the builds belonging to one merge out of a project's
+// WorkflowRuns, newest attempt per component, ordered by component name.
+//
+// This is the READ-side inverse of BuildRunName, and it is a projection of the
+// cluster rather than of anything stored — the same rule the re-trigger budget
+// follows, for the same reason: a stored copy of per-component build state
+// could desynchronise from the cluster, and a run that exists cannot be
+// un-counted. Matching is on the name because the name is what carries the
+// (component, commit, attempt) triple; the component is read off the run's own
+// label rather than parsed back out, so a component whose name contains a dash
+// cannot be mis-split.
+func BuildsAtMerge(runs []MergeBuild, projectID, sha string) []MergeBuild {
+	if sha == "" {
+		return nil
+	}
+	best := map[string]MergeBuild{}
+	for _, r := range runs {
+		if r.Component == "" {
+			continue
+		}
+		prefix := BuildRunNamePrefix(projectID, r.Component, sha)
+		if !strings.HasPrefix(strings.ToLower(r.RunName), prefix) {
+			continue
+		}
+		attempt, err := strconv.Atoi(strings.ToLower(r.RunName)[len(prefix):])
+		if err != nil || attempt <= 0 {
+			// A name that carries the prefix but no ordinal is not one of ours.
+			continue
+		}
+		r.Attempt = attempt
+		if prior, seen := best[r.Component]; !seen || attempt > prior.Attempt {
+			best[r.Component] = r
+		}
+	}
+	out := make([]MergeBuild, 0, len(best))
+	for _, b := range best {
+		out = append(out, b)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Component < out[j].Component })
+	return out
 }

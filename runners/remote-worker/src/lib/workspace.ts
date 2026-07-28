@@ -48,6 +48,9 @@ import http from "node:http";
 import https from "node:https";
 import { config } from "../config.js";
 import { credHelperScript, ghWrapperScript } from "./credhelper.js";
+import { cloneWithToken } from "./git_clone.js";
+import { primeScrubber } from "./progress/emitter.js";
+import { shellQuote } from "./shell.js";
 
 const execAsync = promisify(exec);
 
@@ -105,9 +108,11 @@ export interface GitTokenRequest {
 // the given runner bearer and returns the GitHub PAT. The endpoint returns an
 // org/installation-wide token, so the SAME PAT clones both the project repo
 // (workspace provisioning) and the org-skills repo (per-task skills clone).
-// Used during workspace provisioning to embed credentials in the clone URL —
-// avoids the GIT_ASKPASS protocol mismatch where credhelper.sh outputs two-line
-// key=value format but GIT_ASKPASS reads only one line per call.
+//
+// This is the one place a git token enters the runner process, so it is also
+// where the token is enrolled as a scrubber literal — every later emission,
+// log line or error message is redacted by shape-independent exact match, not
+// by hoping the credential looks like a `github_pat_…`.
 export async function refreshGitToken(req: GitTokenRequest, bearer: string): Promise<string> {
   if (!bearer.trim()) {
     throw new Error("bearer is empty");
@@ -154,9 +159,14 @@ export async function refreshGitToken(req: GitTokenRequest, bearer: string): Pro
             if (!data.token) {
               return reject(new Error("git-service response missing token"));
             }
-            resolve(data.token as string);
+            const token = data.token as string;
+            primeScrubber([token]);
+            resolve(token);
           } catch {
-            reject(new Error("invalid git-service response: " + body.slice(0, 200)));
+            // Never quote the body: this is the credential-bearing payload,
+            // and an unparseable one is exactly the case where a token could
+            // ride out inside a fragment that matches no known shape.
+            reject(new Error(`invalid git-service response (${body.length} bytes, not JSON)`));
           }
         });
       },
@@ -169,12 +179,8 @@ export async function refreshGitToken(req: GitTokenRequest, bearer: string): Pro
 }
 
 // resolvePATForClone reads the staged bearer file and refreshes the GitHub PAT
-// used to embed credentials in the workspace clone URL.
-async function resolvePATForClone(
-  bearerFile: string,
-  _helperScript: string,
-  req: ProvisionRequest,
-): Promise<string> {
+// the workspace clone authenticates with.
+async function resolvePATForClone(bearerFile: string, req: ProvisionRequest): Promise<string> {
   const bearer = await fs.promises.readFile(bearerFile, "utf-8");
   if (!bearer.trim()) {
     throw new Error("bearer file is empty");
@@ -187,9 +193,9 @@ async function resolvePATForClone(
 // sweep re-enters this step, which begins with rm -rf).
 //
 // Order matters: `git clone <url> <dir>` refuses to write into an existing
-// non-empty directory. So we stage the credhelper in a sibling tmp dir,
-// clone into the workspace path (which must not exist yet), and only then
-// drop the .aep/ and .gh-config/ directories inside the cloned tree.
+// non-empty directory. So we stage the clone's credentials in a sibling tmp
+// dir, clone into the workspace path (which must not exist yet), and only
+// then drop the .aep/ and .gh-config/ directories inside the cloned tree.
 export async function provisionWorkspace(req: ProvisionRequest): Promise<WorkspaceLayout> {
   const layout = computeLayout(req.orgId, req.projectId, req.taskId);
   const stageDir = layout.workspace + ".stage";
@@ -201,42 +207,31 @@ export async function provisionWorkspace(req: ProvisionRequest): Promise<Workspa
   await fs.promises.mkdir(path.dirname(layout.workspace), { recursive: true, mode: 0o755 });
   await fs.promises.mkdir(stageDir, { recursive: true, mode: 0o700 });
 
-  // Stage credhelper + bearer in the sibling dir so the clone can authenticate.
-  // The staged helper points at the (about-to-be-created) workspace dir so
-  // identity-rewrite calls during the clone don't have a target to write to —
-  // benign no-op (the .git dir doesn't exist yet during clone). The runtime
-  // helper (re-written below in the workspace) gets the real path.
+  // Stage the bearer in the sibling dir: refreshGitToken reads it to mint the
+  // clone token, and it has to live somewhere outside the not-yet-existing
+  // workspace. The askpass shim lands here too (see cloneWithToken below).
+  // The runtime credhelper is written into the cloned tree afterwards.
   const stageBearer = path.join(stageDir, "bearer");
-  const stageHelper = path.join(stageDir, "credhelper.sh");
   await fs.promises.writeFile(stageBearer, req.bearer, { mode: 0o600 });
-  await fs.promises.writeFile(
-    stageHelper,
-    credHelperScript({ taskId: req.taskId, workspaceDir: layout.workspace }),
-    { mode: 0o700 },
-  );
 
   try {
-    // Resolve the PAT from git-service before cloning so we can embed it
-    // in the clone URL. GIT_ASKPASS protocol reads only one line per call,
-    // but the credhelper outputs two-line key=value format — using it as
-    // GIT_ASKPASS causes git to use the literal string
-    // "username=x-access-token" as the credential, which GitHub rejects.
+    // Resolve the PAT from git-service, then clone the PLAIN URL with the
+    // token handed to git via the askpass shim (see git_clone.ts). The token
+    // stays in the clone child's environment: not in argv, not in the error
+    // message on failure, and not left behind in .git/config. `.git/config`
+    // gets the long-lived credential.https://github.com.helper below, which is
+    // what authenticates the agent's own later fetch/push.
     //
-    // Embedding the PAT directly in the clone URL avoids the askpass
-    // mismatch. The URL credentials are consumed once during clone and do
-    // not persist in .git/config (which is materialised after the clone
-    // with the proper credential.https://github.com.helper).
-    const patResp = await resolvePATForClone(stageBearer, stageHelper, req);
-    const cloneEnv = {
-      ...process.env,
-      GIT_TERMINAL_PROMPT: "0",
-    };
-    const authedURL = req.repoUrl.replace("https://", `https://x-access-token:${patResp}@`);
     // No --branch: clone the remote's default branch (HEAD). The agent
     // creates its own feature branch via `git checkout -b ...` once it
     // starts working, per the aep skill workflow.
-    const cloneCmd = `git clone ${shellQuote(authedURL)} ${shellQuote(layout.workspace)}`;
-    await execAsync(cloneCmd, { env: cloneEnv, maxBuffer: 16 * 1024 * 1024 });
+    const patResp = await resolvePATForClone(stageBearer, req);
+    await cloneWithToken({
+      repoUrl: req.repoUrl,
+      destDir: layout.workspace,
+      token: patResp,
+      shimDir: stageDir,
+    });
 
     // Materialise the runtime layout inside the cloned tree.
     await fs.promises.mkdir(layout.aepDir, { recursive: true, mode: 0o755 });
@@ -280,9 +275,4 @@ export async function provisionWorkspace(req: ProvisionRequest): Promise<Workspa
   }
 
   return layout;
-}
-
-export function shellQuote(s: string): string {
-  // Single-quote and escape any embedded single-quote.
-  return `'${s.replaceAll("'", "'\\''")}'`;
 }

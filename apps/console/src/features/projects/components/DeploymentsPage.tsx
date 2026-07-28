@@ -44,7 +44,7 @@ import {
   groupDeploymentCards,
   type DeploymentCard,
 } from "../lib/deploymentRows";
-import { phaseChip } from "../lib/phaseChip";
+import { projectChip } from "../lib/projectChip";
 import { validationView } from "../lib/pipeline";
 
 const LinkChip = createLink(Chip);
@@ -285,7 +285,7 @@ export function DeploymentsPage({ projectName }: { projectName: string }) {
   const header = (
     <PageHeader
       title="Deployments"
-      {...(status.data && { status: phaseChip(status.data) })}
+      {...(status.data && { status: projectChip(status.data) })}
       backTo={{
         link: <Link to="/projects/$projectName" params={{ projectName }} />,
         label: "Back to Overview",

@@ -47,6 +47,26 @@ else
         exit 1
     fi
 
+    # k3d resolves a `files:` source against the CONFIG FILE's directory, and it
+    # joins unconditionally — an absolute source becomes /tmp/Users/... and the
+    # create dies with "could resolve source file path". The dev overlay below
+    # also needs a writable copy of the config. So stage the config and every
+    # file it references together in one directory and keep the source RELATIVE.
+    # We run the create from that directory too, so the path resolves whether
+    # k3d joins against the config dir or the process CWD.
+    RESOLV_SRC="$(cd "${SCRIPT_DIR}/.." && pwd)/k3s-resolv.conf"
+    if [ ! -f "$RESOLV_SRC" ]; then
+        echo "❌ pod resolver file not found at $RESOLV_SRC"
+        echo "   Restore it with: git checkout HEAD -- deployments/k3s-resolv.conf"
+        exit 1
+    fi
+    K3D_STAGE_DIR="/tmp/aep-k3d-config"
+    rm -rf "$K3D_STAGE_DIR"
+    mkdir -p "$K3D_STAGE_DIR"
+    cp "$RESOLV_SRC" "$K3D_STAGE_DIR/k3s-resolv.conf"
+    cp "$K3D_CONFIG" "$K3D_STAGE_DIR/k3d-local-config.yaml"
+    K3D_CONFIG="$K3D_STAGE_DIR/k3d-local-config.yaml"
+
     # Dev plugin overlay (default ON) — bind-mount runners/remote-worker/plugin into
     # the k3d server node so the dev variant of aep-coding-agent can
     # hostPath-mount it into the runner pod (live skill edits, no image
@@ -65,24 +85,24 @@ else
             exit 1
         fi
         PLUGIN_HOST_PATH="$(cd "${SCRIPT_DIR}/../../runners/remote-worker/plugin" && pwd)"
-        K3D_CONFIG_DEV="/tmp/k3d-local-config.dev.yaml"
-        cp "$K3D_CONFIG" "$K3D_CONFIG_DEV"
-        cat >> "$K3D_CONFIG_DEV" <<EOF
+        # Append in place — the staged config must stay beside the files it
+        # references, so this must not copy itself elsewhere.
+        cat >> "$K3D_CONFIG" <<EOF
 volumes:
   - volume: ${PLUGIN_HOST_PATH}:/aep-dev/plugin
     nodeFilters:
       - server:*
 EOF
-        K3D_CONFIG="$K3D_CONFIG_DEV"
         echo "🧪 dev plugin overlay — k3d node will bind-mount ${PLUGIN_HOST_PATH} → /aep-dev/plugin"
     fi
 
+    # Run from the stage dir so a CWD-relative `files:` source resolves too.
     if [ "$is_colima" = true ]; then
         echo "🚀 Creating k3d cluster (Colima detected — K3D_FIX_DNS=0)..."
-        K3D_FIX_DNS=0 k3d cluster create --config "$K3D_CONFIG"
+        ( cd "$K3D_STAGE_DIR" && K3D_FIX_DNS=0 k3d cluster create --config "$K3D_CONFIG" )
     else
         echo "🚀 Creating k3d cluster..."
-        k3d cluster create --config "$K3D_CONFIG"
+        ( cd "$K3D_STAGE_DIR" && k3d cluster create --config "$K3D_CONFIG" )
     fi
 
     echo "✅ k3d cluster created!"
@@ -111,6 +131,11 @@ ensure_host_k3d_internal_in_coredns
 # and `*.openchoreoapis.localhost` — the chart-shipped rewrite only handles
 # the first and targets a name the `.:53` plugin chain can't resolve.
 ensure_openchoreo_localhost_in_coredns
+
+# Prove pods can actually resolve public names before handing the cluster over.
+# fix_node_dns above rewrites the NODE resolver, which CoreDNS does not re-read;
+# this is what catches a CoreDNS left pointing at a stale upstream.
+ensure_cluster_dns_healthy
 
 generate_machine_ids "$CLUSTER_NAME"
 echo ""

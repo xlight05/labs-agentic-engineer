@@ -110,6 +110,7 @@ var opOwner = map[string]string{
 	"ListOrganizations":             embedOrganization,
 	"ListPlatformResourceTypes":     embedDependencies,
 	"ListBuildRuns":                 embedDelivery,
+	"ListCycleBuilds":               embedDelivery,
 	"ListProjectBuilds":             embedDelivery,
 	"ListProjectTags":               embedSpec,
 	"ListProjects":                  embedProjects,

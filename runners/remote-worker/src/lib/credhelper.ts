@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { shellQuote } from "./shell.js";
+
 // Templates for the workspace credential helpers.
 //
 // Two scripts live inside each task's `.aep/` directory:
@@ -45,6 +47,37 @@ export interface CredHelperParams {
   workspaceDir: string;
 }
 
+// Env var carrying a clone token into the git child process, where only the
+// askpass shim below reads it. It is set on a per-child env object and NEVER
+// on `process.env`: runner.ts spreads `process.env` into the agent's child
+// env, so a token placed there would reach the agent and everything it spawns.
+export const CLONE_TOKEN_ENV = "AEP_CLONE_TOKEN";
+
+// The shim's filename on disk. Written into a scratch dir, never the work tree.
+export const ASKPASS_FILE = "askpass.sh";
+
+// askpassScript answers git's credential prompts from the child environment.
+// Mirrors services/aep-api/internal/platform/gitfs/askpass.go: because the
+// token travels in the environment rather than in the clone URL, it cannot
+// appear in argv (a `ps` listing), in a `Command failed: git clone '<url>'`
+// error message, or in the cloned repo's `.git/config` — git preserves URL
+// userinfo verbatim, so an authenticated clone URL leaves the credential at
+// rest in the work tree for the whole run.
+//
+// Unlike credhelper.sh this shim performs no refresh round-trip: the caller
+// has already minted the token. It is static, so writing it is idempotent.
+export function askpassScript(): string {
+  return `#!/bin/sh
+# AEP clone credential shim — answers git's GIT_ASKPASS prompts from the
+# child environment so the token never reaches argv, an error message, or
+# .git/config.
+case "$1" in
+*sername*) echo x-access-token ;;
+*) printf %s "$${CLONE_TOKEN_ENV}" ;;
+esac
+`;
+}
+
 export function credHelperScript(params: CredHelperParams): string {
   const { taskId, workspaceDir } = params;
   return `#!/usr/bin/env bash
@@ -68,8 +101,8 @@ export function credHelperScript(params: CredHelperParams): string {
 # so subsequent commits attribute correctly. The first in-flight commit
 # may still carry the old identity (best-effort, not transactional).
 set -e
-expected_task_id=${shellSingleQuote(taskId)}
-workspace_dir=${shellSingleQuote(workspaceDir)}
+expected_task_id=${shellQuote(taskId)}
+workspace_dir=${shellQuote(workspaceDir)}
 
 corr_header=()
 if [ -n "$AEP_CORRELATION_ID" ]; then
@@ -202,7 +235,7 @@ export function ghWrapperScript(realGhPath: string, params: CredHelperParams): s
 # taskId doesn't match this script's bound task. Same shape as the
 # credhelper.sh tripwire.
 set -e
-expected_task_id=${shellSingleQuote(taskId)}
+expected_task_id=${shellQuote(taskId)}
 
 bearer="$(cat "$AEP_BEARER_FILE" 2>/dev/null || true)"
 if [ -n "$bearer" ]; then
@@ -257,11 +290,3 @@ exec ${JSON.stringify(realGhPath)} "$@"
 `;
 }
 
-// shellSingleQuote wraps a value in single quotes, escaping any embedded
-// single-quote with the standard '\''  trick. Mirrors workspace.ts's
-// shellQuote so taskId / workspaceDir values containing weird characters
-// don't break the script. Both inputs are paths or UUIDs in practice;
-// quoting is defense-in-depth.
-function shellSingleQuote(s: string): string {
-  return `'${s.replaceAll("'", "'\\''")}'`;
-}

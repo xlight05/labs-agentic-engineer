@@ -165,9 +165,31 @@ func line(kind, summary, emitter string) contracts.ProgressEvent {
 	return contracts.ProgressEvent{SchemaVersion: 1, Seq: 1, Kind: kind, Summary: summary, Emitter: emitter}
 }
 
+// fakeProjectBuilds is the cluster, as the cycle-build read sees it: every
+// WorkflowRun the project has, of any commit. It stores nothing per cycle —
+// modelling the real contract, where the runs themselves ARE the record and the
+// read recovers a merge's fan-out by filtering them.
+type fakeProjectBuilds struct {
+	runs []delivery.MergeBuild
+	err  error
+}
+
+func (f fakeProjectBuilds) ListProjectBuildRuns(_ context.Context, _, _ string) ([]delivery.MergeBuild, error) {
+	return f.runs, f.err
+}
+
 // newHarness wires the real runread services behind componenttest.
 func newHarness(t *testing.T, rows []delivery.MilestoneRun, cycles map[string][]delivery.RunCycle,
 	logs map[string][]contracts.ProgressEvent, canceller runread.RunCanceller) *componenttest.Harness {
+	t.Helper()
+	return newHarnessWithBuilds(t, rows, cycles, logs, canceller, nil)
+}
+
+// newHarnessWithBuilds is newHarness plus a cluster to derive cycle builds from.
+// A nil lister is the degraded boot without the OpenChoreo client.
+func newHarnessWithBuilds(t *testing.T, rows []delivery.MilestoneRun, cycles map[string][]delivery.RunCycle,
+	logs map[string][]contracts.ProgressEvent, canceller runread.RunCanceller,
+	builds runread.ProjectBuildLister) *componenttest.Harness {
 	t.Helper()
 	runs := fakeRuns{org: "acme", rows: rows}
 	cyc := fakeCycles{byRun: cycles}
@@ -176,9 +198,10 @@ func newHarness(t *testing.T, rows []delivery.MilestoneRun, cycles map[string][]
 		logReader = fakeCycleLogs{byCycle: logs}
 	}
 	handlers, err := deliveryhttpapi.New(deliveryhttpapi.Deps{
-		RunReads:    runread.NewReads(runs, cyc),
-		RunProgress: runread.NewProgressService(runs, cyc, logReader),
-		RunCommands: runread.NewCommands(runs, canceller),
+		RunReads:       runread.NewReads(runs, cyc),
+		RunProgress:    runread.NewProgressService(runs, cyc, logReader),
+		RunCommands:    runread.NewCommands(runs, canceller),
+		RunCycleBuilds: runread.NewCycleBuilds(runs, cyc, builds),
 	})
 	if err != nil {
 		t.Fatalf("assemble delivery aggregator: %v", err)
@@ -414,4 +437,125 @@ func parseFrames(t *testing.T, body string) []map[string]any {
 		}
 	}
 	return out
+}
+
+// ---- GET /builds/{tag}/cycles/{cycleId}/builds --------------------------------
+
+// mergedCycle is a cycle whose pull request landed — the only kind that has
+// builds to report.
+func mergedCycle(id, sha string) delivery.RunCycle {
+	c := cycle(id, delivery.CycleKindCoding, true)
+	c.Branch = "aep/m4-c1"
+	c.PRNumber = 12
+	c.MergeSHA = sha
+	return c
+}
+
+func TestListCycleBuilds_DerivesTheFanOutFromTheMergeSHA(t *testing.T) {
+	const sha = "4a91c2f8ab3199ff"
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {mergedCycle("c1", sha)}},
+		nil, nil,
+		fakeProjectBuilds{runs: []delivery.MergeBuild{
+			{Component: "webapp", RunName: delivery.BuildRunName("widgets", "webapp", sha, 1), Status: "Running"},
+			{Component: "api", RunName: delivery.BuildRunName("widgets", "api", sha, 1), Status: "Succeeded", Completed: true},
+			// A build of a DIFFERENT commit, which this cycle must not claim.
+			{Component: "api", RunName: delivery.BuildRunName("widgets", "api", "ffffffffffff", 1), Status: "Failed", Completed: true},
+		}})
+
+	rec := h.AsOrg("acme").Get("/api/v1/projects/widgets/builds/v3/cycles/c1/builds")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got gen.CycleBuildList
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v — %s", err, rec.Body.String())
+	}
+	if len(got.Items) != 2 {
+		t.Fatalf("builds = %+v, want only this merge's two", got.Items)
+	}
+	if got.Items[0].Component != "api" || !got.Items[0].Completed || got.Items[0].Status != "Succeeded" {
+		t.Errorf("api build = %+v, want the completed one carried verbatim", got.Items[0])
+	}
+	if got.Items[1].Component != "webapp" || got.Items[1].Completed {
+		t.Errorf("webapp build = %+v, want the still-running one", got.Items[1])
+	}
+	if got.Items[0].BuildName != delivery.BuildRunName("widgets", "api", sha, 1) {
+		// The name is the client's key into get-build-logs; it must be handed back
+		// verbatim so nothing client-side reconstructs it.
+		t.Errorf("buildName = %q, want the WorkflowRun's own name", got.Items[0].BuildName)
+	}
+}
+
+// A cycle still working has no merge, so nothing has been built. That is the
+// ordinary mid-cycle answer and must not read as an error.
+func TestListCycleBuilds_UnmergedCycle_Empty(t *testing.T) {
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {cycle("c1", delivery.CycleKindCoding, false)}},
+		nil, nil,
+		fakeProjectBuilds{runs: []delivery.MergeBuild{
+			{Component: "api", RunName: delivery.BuildRunName("widgets", "api", "4a91c2f8ab31", 1)},
+		}})
+
+	rec := h.AsOrg("acme").Get("/api/v1/projects/widgets/builds/v3/cycles/c1/builds")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got gen.CycleBuildList
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("builds = %+v, want none before the merge", got.Items)
+	}
+}
+
+// A boot without the OpenChoreo client answers empty rather than failing — the
+// same answer a project with no builds gives.
+func TestListCycleBuilds_NoClusterClient_Empty(t *testing.T) {
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {mergedCycle("c1", "4a91c2f8ab31")}},
+		nil, nil, nil)
+
+	if rec := h.AsOrg("acme").Get("/api/v1/projects/widgets/builds/v3/cycles/c1/builds"); rec.Code != http.StatusOK {
+		t.Fatalf("code %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// The cycle is looked up WITHIN the version's own runs, so an id that exists
+// elsewhere is not readable by guessing it here.
+func TestListCycleBuilds_UnknownCycle_404(t *testing.T) {
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {mergedCycle("c1", "4a91c2f8ab31")}},
+		nil, nil, fakeProjectBuilds{})
+
+	if rec := h.AsOrg("acme").Get("/api/v1/projects/widgets/builds/v3/cycles/nope/builds"); rec.Code != http.StatusNotFound {
+		t.Fatalf("code %d, want 404 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListCycleBuilds_CrossTenant_404(t *testing.T) {
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {mergedCycle("c1", "4a91c2f8ab31")}},
+		nil, nil, fakeProjectBuilds{})
+
+	if rec := h.AsOrg("evil").Get("/api/v1/projects/widgets/builds/v3/cycles/c1/builds"); rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-tenant read: code %d, want 404 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListCycleBuilds_NoAuth_401(t *testing.T) {
+	h := newHarnessWithBuilds(t,
+		[]delivery.MilestoneRun{specRun("r1", delivery.RunStateRunning)},
+		map[string][]delivery.RunCycle{"r1": {mergedCycle("c1", "4a91c2f8ab31")}},
+		nil, nil, fakeProjectBuilds{})
+
+	if rec := h.NoAuth().Get("/api/v1/projects/widgets/builds/v3/cycles/c1/builds"); rec.Code != http.StatusUnauthorized {
+		t.Errorf("no-auth read: code %d, want 401", rec.Code)
+	}
 }

@@ -71,7 +71,8 @@ func (h *Handler) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRequ
 	if err := projects.RequireSlug("buildName", request.BuildName); err != nil {
 		return nil, err
 	}
-	logs, err := h.comp.GetBuildLogs(ctx, org, request.ProjectName, request.ComponentName, request.BuildName)
+	// An absent ?since decodes to 0, which is exactly "read from the beginning".
+	logs, err := h.comp.GetBuildLogs(ctx, org, request.ProjectName, request.ComponentName, request.BuildName, request.Params.Since)
 	if err != nil {
 		if errors.Is(err, projects.ErrLogsUnavailable) {
 			return nil, apierr.ServiceUnavailable("build logs service not available")

@@ -51,11 +51,11 @@ export const COLLAB_DEPS_STEER =
   "then update design.md and every affected design.json to match; do not narrate the process.";
 
 // MUST match planInstruction,
-// services/aep-api/internal/feature/task/plan.go
+// services/aep-api/internal/delivery/task/plan.go
 export const PLAN_INSTRUCTION =
   "Plan the implementation Tasks for this project. Load the task-planning skill and follow it: create one Task per design component with planTask, wire dependsOn by component name, and write each Task's body with updateTask in the same turn. The design is under specs/design/ and the requirements under specs/requirements/. Existing open Tasks (if any) are listed at the end of this message for reference — add Tasks ONLY for components they do not cover, and do not recreate or update the listed Tasks in this turn. Never invent a component the design does not define.";
 
-/** Mirrors targetSuffix, services/aep-api/internal/feature/genai/genai_service.go. */
+/** Mirrors targetSuffix, services/aep-api/internal/spec/genai_service.go. */
 export function targetSuffix(target: string | undefined): string {
   if (!target || target.trim() === "") return "";
   return "\n\n(target: " + target + ")";
@@ -71,7 +71,7 @@ export function composeSpecInstruction(text: string, target?: string): string {
 }
 
 /**
- * Mirrors renderPlanContext, services/aep-api/internal/feature/task/plan.go:
+ * Mirrors renderPlanContext, services/aep-api/internal/delivery/task/plan.go:
  * existing-task renderings (tasks/<n>.md) appended to the plan instruction as
  * deterministic sections — plan context is platform state and rides the
  * INSTRUCTION, never the snapshot.
@@ -80,7 +80,7 @@ export function renderPlanContext(files: Record<string, string>): string {
   const paths = Object.keys(files);
   if (paths.length === 0) return "";
   paths.sort();
-  let out = "\n\n## Existing open Tasks and lineage diffs (reference)\n";
+  let out = "\n\n## Existing open Tasks in this version (reference)\n";
   for (const p of paths) {
     out += `\n--- ${p} ---\n${files[p]}\n`;
   }

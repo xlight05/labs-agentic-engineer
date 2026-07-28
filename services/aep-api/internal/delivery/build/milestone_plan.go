@@ -138,7 +138,11 @@ func (s *Service) claimVersion(ctx context.Context, orgID, projectID, tag string
 		MilestoneNumber: res.Number,
 		MilestoneTitle:  tag,
 		Origin:          delivery.RunOriginSpecBuild,
-		State:           delivery.RunStateWaiting,
+		// PLANNING, not waiting: fillMilestone has not run yet, so for the next
+		// minutes this row is a version being written, not a run parked on
+		// something a human has to do. Admitting as waiting is what made the
+		// console tell users their build was held while it was busy.
+		State: delivery.RunStatePlanning,
 	})
 	if err != nil {
 		return nil, &EdgeError{Status: 500, Message: "admit milestone run: " + err.Error()}

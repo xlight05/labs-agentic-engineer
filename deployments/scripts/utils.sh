@@ -325,6 +325,61 @@ fix_node_dns() {
     echo "✅ Node DNS configured"
 }
 
+# _cluster_dns_resolves runs a throwaway pod that resolves a public name through
+# cluster DNS (10.43.0.10). Non-zero means resolution failed.
+_cluster_dns_resolves() {
+    local image="$1" host="$2"
+    kubectl run "aep-dns-probe-${RANDOM}" \
+        --context "${CLUSTER_CONTEXT}" --rm --attach --quiet --restart=Never \
+        --image="$image" --command -- \
+        sh -c "nslookup ${host} >/dev/null 2>&1" >/dev/null 2>&1
+}
+
+# Assert pods can resolve public names through CoreDNS, and repair CoreDNS when
+# they can't.
+#
+# CoreDNS's `.:53` block forwards to `/etc/resolv.conf`, and the forward plugin
+# reads that file ONCE at process start. The file is a snapshot of the node's
+# resolver taken when the pod sandbox was created and is never refreshed. So any
+# change to node DNS after CoreDNS started — fix_node_dns above, or Docker
+# re-deriving a restarted node's resolv.conf after a Colima reboot — leaves
+# CoreDNS forwarding to an address that may no longer answer. The symptom is
+# nasty because it is silent and asymmetric: the node resolves fine, pods
+# resolve nothing external, and a coding-agent run dies at `git clone` with
+# "Could not resolve host: github.com".
+#
+# k3d-local-config.yaml pins pod DNS to a static resolv.conf so newly created
+# clusters cannot hit this at all. This check covers clusters created before that
+# pin plus any other drift: it probes real resolution and, if it fails, restarts
+# CoreDNS so it re-reads the current resolver. Runs on every start.sh because a
+# Colima restart is exactly when the race fires.
+ensure_cluster_dns_healthy() {
+    local probe_image="${AEP_DNS_PROBE_IMAGE:-busybox:1.36}"
+    local probe_host="${AEP_DNS_PROBE_HOST:-github.com}"
+
+    echo "🔧 Checking in-cluster DNS..."
+    if _cluster_dns_resolves "$probe_image" "$probe_host"; then
+        echo "✅ Cluster DNS resolves ${probe_host}"
+        return 0
+    fi
+
+    echo "⚠️  Pods cannot resolve ${probe_host} — restarting CoreDNS so it re-reads the node resolver"
+    kubectl rollout restart deployment coredns -n kube-system --context "${CLUSTER_CONTEXT}" >/dev/null 2>&1 || true
+    kubectl rollout status deployment coredns -n kube-system --context "${CLUSTER_CONTEXT}" --timeout=90s >/dev/null 2>&1 || true
+
+    if _cluster_dns_resolves "$probe_image" "$probe_host"; then
+        echo "✅ Cluster DNS repaired (CoreDNS restarted)"
+        return 0
+    fi
+
+    echo "❌ Pods still cannot resolve ${probe_host} after restarting CoreDNS."
+    echo "   Every external name fails in-cluster: coding-agent git clone, image pulls by name."
+    echo "   Inspect the two ends of the forward chain:"
+    echo "     docker exec k3d-${CLUSTER_NAME}-server-0 cat /etc/resolv.conf"
+    echo "     kubectl --context ${CLUSTER_CONTEXT} -n kube-system logs -l k8s-app=kube-dns --tail=20"
+    return 1
+}
+
 # Configure k3s containerd to use the workflow-plane registry via ClusterIP.
 # Kubelet can't resolve Kubernetes service DNS, so we mirror the service name
 # to its ClusterIP. Requires k3s restart to take effect.

@@ -237,8 +237,11 @@ func TestClaimVersion_MintsTheMilestoneAndAdmitsTheRun(t *testing.T) {
 	if run.MilestoneNumber != 9 || run.MilestoneTitle != "v3" {
 		t.Errorf("run = %+v, want milestone 9 titled v3", run)
 	}
-	if run.Origin != delivery.RunOriginSpecBuild || run.State != delivery.RunStateWaiting {
-		t.Errorf("run = %+v, want a waiting spec-build run", run)
+	// PLANNING, not waiting: the row is admitted before fillMilestone, so it
+	// must not claim to be parked on a human while the platform is writing the
+	// milestone.
+	if run.Origin != delivery.RunOriginSpecBuild || run.State != delivery.RunStatePlanning {
+		t.Errorf("run = %+v, want a planning spec-build run", run)
 	}
 	if len(h.runs.admitted) != 1 {
 		t.Fatalf("admitted %d runs, want 1", len(h.runs.admitted))

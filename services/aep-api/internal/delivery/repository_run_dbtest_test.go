@@ -160,6 +160,44 @@ func TestMilestoneRunRepository_SpecRunMutex(t *testing.T) {
 	}
 }
 
+// TestMilestoneRunRepository_SpecRunMutexCoversPlanning pins the widened index
+// predicate. The plan path admits PLANNING and only leaves it minutes later,
+// once the milestone is filled — which is precisely the window a double-click
+// lands in, so a mutex that did not cover the state would be unarmed for the
+// whole of it. This is the one invariant the new state could have broken.
+func TestMilestoneRunRepository_SpecRunMutexCoversPlanning(t *testing.T) {
+	t.Parallel()
+	db := dbtest.New(t)
+	repo := delivery.NewMilestoneRunRepository(db)
+	ctx := context.Background()
+
+	planning := specRun("orga", "proj", 1, "v1")
+	planning.State = delivery.RunStatePlanning
+	ok, first, err := repo.TryAdmit(ctx, planning)
+	if err != nil || !ok || first == nil {
+		t.Fatalf("TryAdmit(planning) = (%v, %+v, %v), want admitted", ok, first, err)
+	}
+
+	if ok, row, err := repo.TryAdmit(ctx, specRun("orga", "proj", 2, "v2")); err != nil || ok {
+		t.Fatalf("a second spec run was admitted while one is planning (%+v, %v) — the mutex is unarmed across the plan window", row, err)
+	}
+
+	// The 409 read has to agree with the index, or the endpoint would answer
+	// "free" for a project the database will refuse.
+	active, err := repo.ActiveSpecRunByProject(ctx, "orga", "proj")
+	if err != nil || active == nil || active.ID != first.ID {
+		t.Fatalf("ActiveSpecRunByProject = (%+v, %v), want the planning run %s", active, err, first.ID)
+	}
+
+	// The supervisor's first pass leaves planning; nothing moves back into it.
+	if _, err := repo.SetState(ctx, first.ID, delivery.RunStateWaiting); err != nil {
+		t.Fatalf("SetState(planning → waiting): %v", err)
+	}
+	if _, err := repo.SetState(ctx, first.ID, delivery.RunStatePlanning); err == nil {
+		t.Fatal("SetState(planning) was accepted — planning is written once, at admission")
+	}
+}
+
 // TestMilestoneRunRepository_Transitions pins the guarded state machine: the
 // loop oscillates waiting ⇄ running keeping its original start stamp, the first
 // settle wins, and every later write is a (nil, nil) no-op rather than a

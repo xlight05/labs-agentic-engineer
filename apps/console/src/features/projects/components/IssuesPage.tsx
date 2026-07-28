@@ -21,7 +21,7 @@ import { CircleAlert } from "@wso2/oxygen-ui-icons-react";
 import { EmptyState } from "../../../components/EmptyState";
 import { PageHeader } from "../../../components/PageHeader";
 import { useProject, useProjectStatus } from "../api/queries";
-import { phaseChip } from "../lib/phaseChip";
+import { projectChip } from "../lib/projectChip";
 
 // Placeholder by decision (#173): Issues is the future surface for issues
 // the SRE agent raises against the running project; its own feature will
@@ -40,7 +40,7 @@ export function IssuesPage({ projectName }: { projectName: string }) {
         {...(project.data && {
           subtitle: project.data.displayName ?? project.data.name,
         })}
-        {...(status.data && { status: phaseChip(status.data) })}
+        {...(status.data && { status: projectChip(status.data) })}
         backTo={{
           link: <Link to="/projects/$projectName" params={{ projectName }} />,
           label: "Back to Overview",

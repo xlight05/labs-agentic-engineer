@@ -129,6 +129,11 @@ type ComponentClient interface {
 	// the BFF watcher can correlate runs back to the task.
 	TriggerCodingAgent(ctx context.Context, params CodingAgentParams) (*gen.WorkflowRun, error)
 	ListWorkflowRuns(ctx context.Context, orgName, projectName, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error)
+	// ListProjectWorkflowRuns is the same read widened to every component in
+	// the project — one call instead of one per component. The run read uses it
+	// to derive a cycle's builds from its merge SHA without first having to
+	// learn which components the merge touched.
+	ListProjectWorkflowRuns(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.WorkflowRunList, error)
 	GetWorkflowRun(ctx context.Context, orgName, runName string) (*gen.WorkflowRun, error)
 }
 
@@ -1225,7 +1230,19 @@ func (c *componentClient) createWorkflowRun(ctx context.Context, orgName string,
 
 func (c *componentClient) ListWorkflowRuns(ctx context.Context, orgName, projectName, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
 	scopedComp := ScopedComponentName(projectName, componentName)
-	sel := ocgen.LabelSelectorParam(fmt.Sprintf("%s=%s", string(LabelKeyComponent), scopedComp))
+	return c.listWorkflowRunsBySelector(ctx, orgName,
+		fmt.Sprintf("%s=%s", string(LabelKeyComponent), scopedComp), limit, cursor)
+}
+
+func (c *componentClient) ListProjectWorkflowRuns(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
+	return c.listWorkflowRunsBySelector(ctx, orgName,
+		fmt.Sprintf("%s=%s", string(LabelKeyProject), projectName), limit, cursor)
+}
+
+// listWorkflowRunsBySelector is the shared body of the two listings above; only
+// the label selector differs, so the response handling lives once.
+func (c *componentClient) listWorkflowRunsBySelector(ctx context.Context, orgName, selector string, limit int, cursor string) (*gen.WorkflowRunList, error) {
+	sel := ocgen.LabelSelectorParam(selector)
 	params := &ocgen.ListWorkflowRunsParams{LabelSelector: &sel}
 	if limit > 0 {
 		l := ocgen.LimitParam(limit)

@@ -110,6 +110,7 @@ func (e MilestoneRunViewOrigin) Valid() bool {
 const (
 	MilestoneRunViewStateCancelled MilestoneRunViewState = "cancelled"
 	MilestoneRunViewStateFailed    MilestoneRunViewState = "failed"
+	MilestoneRunViewStatePlanning  MilestoneRunViewState = "planning"
 	MilestoneRunViewStateRunning   MilestoneRunViewState = "running"
 	MilestoneRunViewStateSucceeded MilestoneRunViewState = "succeeded"
 	MilestoneRunViewStateWaiting   MilestoneRunViewState = "waiting"
@@ -121,6 +122,8 @@ func (e MilestoneRunViewState) Valid() bool {
 	case MilestoneRunViewStateCancelled:
 		return true
 	case MilestoneRunViewStateFailed:
+		return true
+	case MilestoneRunViewStatePlanning:
 		return true
 	case MilestoneRunViewStateRunning:
 		return true
@@ -514,10 +517,15 @@ type BuildLogEntry struct {
 	Timestamp string `json:"timestamp,omitempty"`
 }
 
-// BuildLogs defines model for BuildLogs.
+// BuildLogs One read of a build's log. A build that is still running returns an incomplete response and the client re-reads from `nextCursor`; a terminal build returns everything it has in one call. A complete response carrying no entries is the honest "nothing retained" answer, not an error.
 type BuildLogs struct {
-	Logs       []BuildLogEntry `json:"logs"`
-	TotalCount int64           `json:"totalCount,omitempty"`
+	// Complete True when the build is terminal and this response carries everything there will ever be — the client stops polling. False means re-read from `nextCursor`.
+	Complete bool            `json:"complete"`
+	Logs     []BuildLogEntry `json:"logs"`
+
+	// NextCursor Epoch millis of the newest entry returned; pass back as `since`. Absent when nothing was returned, in which case the previous cursor stands.
+	NextCursor int64 `json:"nextCursor,omitempty"`
+	TotalCount int64 `json:"totalCount,omitempty"`
 }
 
 // BuildPreflight defines model for BuildPreflight.
@@ -727,6 +735,26 @@ type CreateSkillInput struct {
 	SkillMd    string            `json:"skillMd"`
 }
 
+// CycleBuild One component's build at a cycle's merge SHA, derived from its OpenChoreo WorkflowRun. `status` and `completed` are that run's own pair, carried verbatim — OpenChoreo's status is a condition Reason string rather than a closed set, so `completed` is the terminal gate and `status` must never be parsed to decide anything.
+type CycleBuild struct {
+	// Attempt 1 for the fan-out's build; 2 for the single automatic re-trigger a red build gets. Read off the run name's trailing ordinal, which is where the attempt count lives.
+	Attempt int64 `json:"attempt"`
+
+	// BuildName The WorkflowRun's name — pass verbatim to get-build-logs as `buildName`.
+	BuildName string `json:"buildName"`
+	Completed bool   `json:"completed"`
+	Component string `json:"component"`
+	StartedAt string `json:"startedAt,omitempty"`
+
+	// Status The WorkflowRun's status, verbatim (`Pending`, `Running`, or the completion condition's Reason).
+	Status string `json:"status"`
+}
+
+// CycleBuildList defines model for CycleBuildList.
+type CycleBuildList struct {
+	Items []CycleBuild `json:"items"`
+}
+
 // DeleteOp defines model for DeleteOp.
 type DeleteOp struct {
 	BaseSha string `json:"baseSha,omitempty"`
@@ -919,7 +947,9 @@ type MilestoneRunView struct {
 	MilestoneTitle string                 `json:"milestoneTitle"`
 	Origin         MilestoneRunViewOrigin `json:"origin"`
 	StartedAt      *time.Time             `json:"startedAt,omitempty"`
-	State          MilestoneRunViewState  `json:"state"`
+
+	// State planning is the fill window — the version's milestone is still being written (gates minted, then issues planned in). waiting is the unbounded wait between cycles, where something outside the platform is needed.
+	State MilestoneRunViewState `json:"state"`
 
 	// TerminalReason Why a non-succeeded run stopped. Each value names exactly one failure class; empty while the run is non-terminal and on a succeeded run.
 	TerminalReason string `json:"terminalReason,omitempty"`
@@ -931,7 +961,7 @@ type MilestoneRunView struct {
 // MilestoneRunViewOrigin defines model for MilestoneRunView.Origin.
 type MilestoneRunViewOrigin string
 
-// MilestoneRunViewState defines model for MilestoneRunView.State.
+// MilestoneRunViewState planning is the fill window — the version's milestone is still being written (gates minted, then issues planned in). waiting is the unbounded wait between cycles, where something outside the platform is needed.
 type MilestoneRunViewState string
 
 // OrganizationList defines model for OrganizationList.
@@ -1040,7 +1070,7 @@ type ProjectStatus struct {
 	HasSpec      bool   `json:"hasSpec"`
 	HasTasks     bool   `json:"hasTasks"`
 
-	// Phase no-repo, repo-cloning, repo-error, prompt, spec, architecture, tasks, components
+	// Phase Repo and artifact rungs only: no-repo, repo-cloning, repo-error, prompt (no spec), spec (spec, no design), tasks (both). "tasks" is terminal — delivery state lives in the build and deploy aggregates, which is what a caller should render past the spec.
 	Phase string `json:"phase"`
 
 	// RepoErrorMessage Set when phase is repo-error.
@@ -1602,6 +1632,12 @@ type ListActivityParams struct {
 type StreamActivityParams struct {
 	// LastEventID SSE resume cursor: the last frame id seen (occurredAt|id). Replay resumes after it.
 	LastEventID string `json:"Last-Event-ID,omitempty"`
+}
+
+// GetBuildLogsParams defines parameters for GetBuildLogs.
+type GetBuildLogsParams struct {
+	// Since Return only entries stamped AFTER this epoch-millis cursor — feed back the previous response's `nextCursor`. Absent reads from the beginning. Millis rather than a line offset because the cursor must survive the hand-over from a live pod tail to the captured snapshot, where a line count is meaningless but a timestamp still orders correctly.
+	Since int64 `form:"since,omitempty" json:"since,omitempty"`
 }
 
 // GetDependencyStatusParams defines parameters for GetDependencyStatus.

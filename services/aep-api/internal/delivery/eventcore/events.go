@@ -343,7 +343,10 @@ func (e *Events) OnIssues(ctx context.Context, _, action string, payload []byte)
 	}
 	if run.State != delivery.RunStateWaiting {
 		// A running run re-reads the milestone at its own cycle boundary; waking
-		// it mid-cycle would only race the agent that is already working.
+		// it mid-cycle would only race the agent that is already working. A
+		// PLANNING run has no supervisor yet to wake, and the first thing that
+		// supervisor does is poll the milestone — so the signal would be lost
+		// and is not needed.
 		return nil
 	}
 	counts, err := e.p.Issues.MilestoneIssueCounts(ctx, orgID, projectID, ms.Number)

@@ -157,6 +157,32 @@ test("scrub: order — literal beats entropy (no double-redact garble)", () => {
   assert.equal(out, "prefix [REDACTED] suffix");
 });
 
+test("scrub: redacts a token inside a failed `git clone` command string", () => {
+  // The leak that motivated moving the clone token out of the URL: node's
+  // child_process prefixes the failing COMMAND to the error message, and the
+  // runner logs that. The clone no longer embeds credentials, but a shaped
+  // token appearing here must still be caught.
+  const s = fresh();
+  const pat = "github_pat_11TESTONLY_abcdefghijklmnopqrstuvwxyz0123456789";
+  const line =
+    `Command failed: git clone 'https://x-access-token:${pat}@github.com/asdlc-repos/store.git' '/home/aep/ws'`;
+  const out = s.scrub(line);
+  assert.ok(!out.includes(pat), `leaked: ${out}`);
+  assert.match(out, /git clone 'https:\/\/x-access-token:\[REDACTED\]@github\.com/);
+});
+
+test("scrub: redacts an enrolled token whose shape no pattern matches", () => {
+  // Shape-independence: refreshGitToken enrolls whatever the credential
+  // endpoint returns, so a classic 40-hex PAT or an opaque App token is
+  // covered without the denylist knowing its prefix.
+  const s = fresh();
+  const opaque = "aQ7fL2mZ9xR4tY6uP1sD3gH5jK8nB0vC";
+  s.addLiteral(opaque);
+  const line = `Command failed: git clone 'https://x-access-token:${opaque}@github.com/o/r.git' '/ws'`;
+  const out = s.scrub(line);
+  assert.ok(!out.includes(opaque), `leaked: ${out}`);
+});
+
 test("scrub: handles multi-line strings", () => {
   const s = fresh();
   s.addLiteral("super-secret-bearer-1234567890");

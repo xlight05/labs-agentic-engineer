@@ -28,8 +28,10 @@ package projects
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
@@ -280,28 +282,35 @@ func TestComponentService_GetBuildLogs_NotConfigured(t *testing.T) {
 	// nil observability client ⇒ the local ErrLogsUnavailable sentinel (the HTTP
 	// op maps it to 503).
 	svc := NewComponentService(&ocmocks.ComponentClientMock{}, nil, nil, nil, nil)
-	if _, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1"); !errors.Is(err, ErrLogsUnavailable) {
+	if _, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 0); !errors.Is(err, ErrLogsUnavailable) {
 		t.Fatalf("nil observ client must return ErrLogsUnavailable, got %v", err)
 	}
 }
 
 func TestComponentService_GetBuildLogs_SuccessAndError(t *testing.T) {
 	t.Parallel()
-	observ := &stubObservClient{GetBuildLogsFunc: func(_ context.Context, org, proj, comp, build string) (*gen.BuildLogs, error) {
+	observ := &stubObservClient{GetBuildLogsFunc: func(_ context.Context, org, proj, comp, build string, _ time.Time) (*gen.BuildLogs, error) {
 		if org != "acme" || build != "run-1" {
 			t.Errorf("observ args: org=%q build=%q", org, build)
 		}
 		return &gen.BuildLogs{TotalCount: 2, Logs: []gen.BuildLogEntry{{Log: "a"}, {Log: "b"}}}, nil
 	}}
-	logs, err := NewComponentService(&ocmocks.ComponentClientMock{}, observ, nil, nil, nil).GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1")
+	// The service reads the build's terminal state before its log, so the OC
+	// client is exercised here too.
+	terminal := &ocmocks.ComponentClientMock{
+		GetWorkflowRunFunc: func(context.Context, string, string) (*gen.WorkflowRun, error) {
+			return &gen.WorkflowRun{Name: "run-1", Completed: true}, nil
+		},
+	}
+	logs, err := NewComponentService(terminal, observ, nil, nil, nil).GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 0)
 	if err != nil || logs == nil || logs.TotalCount != 2 {
 		t.Fatalf("logs happy: logs=%+v err=%v", logs, err)
 	}
 
-	observErr := &stubObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string) (*gen.BuildLogs, error) {
+	observErr := &stubObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string, time.Time) (*gen.BuildLogs, error) {
 		return nil, errors.New("observ 500")
 	}}
-	_, err = NewComponentService(&ocmocks.ComponentClientMock{}, observErr, nil, nil, nil).GetBuildLogs(context.Background(), "a", "p", "c", "b")
+	_, err = NewComponentService(terminal, observErr, nil, nil, nil).GetBuildLogs(context.Background(), "a", "p", "c", "b", 0)
 	if err == nil || !strings.Contains(err.Error(), "get build logs") {
 		t.Fatalf("observ error must wrap with 'get build logs', got %v", err)
 	}
@@ -450,5 +459,135 @@ func TestOcEntrypoint_CanonicalWebAppKind(t *testing.T) {
 				t.Errorf("ocEntrypoint(%q) = %q, want %q", tc.componentType, got, tc.want)
 			}
 		})
+	}
+}
+
+// --- GetBuildLogs cursor -------------------------------------------------------
+//
+// The cursor is what lets ONE endpoint serve a live build and a finished one.
+// These pin the three rules that make it safe: entries at the cursor are not
+// replayed, the cursor only ever moves forward, and "complete" is never claimed
+// on a build that might still be writing.
+
+func logsAt(times ...string) *gen.BuildLogs {
+	out := &gen.BuildLogs{}
+	for i, ts := range times {
+		out.Logs = append(out.Logs, gen.BuildLogEntry{Timestamp: ts, Log: fmt.Sprintf("line %d", i)})
+	}
+	return out
+}
+
+func buildLogsSvc(t *testing.T, completed bool, entries *gen.BuildLogs, capture *time.Time) ComponentService {
+	t.Helper()
+	oc := &ocmocks.ComponentClientMock{
+		GetWorkflowRunFunc: func(context.Context, string, string) (*gen.WorkflowRun, error) {
+			return &gen.WorkflowRun{Name: "run-1", Completed: completed}, nil
+		},
+	}
+	observ := &stubObservClient{GetBuildLogsFunc: func(_ context.Context, _, _, _, _ string, since time.Time) (*gen.BuildLogs, error) {
+		if capture != nil {
+			*capture = since
+		}
+		return entries, nil
+	}}
+	return NewComponentService(oc, observ, nil, nil, nil)
+}
+
+func TestComponentService_GetBuildLogs_TerminalBuildIsComplete(t *testing.T) {
+	t.Parallel()
+	svc := buildLogsSvc(t, true, logsAt("2026-07-27T10:42:01Z", "2026-07-27T10:42:04Z"), nil)
+
+	logs, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 0)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if !logs.Complete {
+		t.Error("a terminal build must report complete so the client stops polling")
+	}
+	want := time.Date(2026, 7, 27, 10, 42, 4, 0, time.UTC).UnixMilli()
+	if logs.NextCursor != want {
+		t.Errorf("nextCursor = %d, want the newest entry's millis %d", logs.NextCursor, want)
+	}
+}
+
+func TestComponentService_GetBuildLogs_RunningBuildIsIncomplete(t *testing.T) {
+	t.Parallel()
+	svc := buildLogsSvc(t, false, logsAt("2026-07-27T10:42:01Z"), nil)
+
+	logs, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 0)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if logs.Complete {
+		t.Error("a running build must report incomplete — there is more to come")
+	}
+}
+
+// An unreadable WorkflowRun must NOT be read as complete: the client polling
+// once more is recoverable, a truncated log silently is not.
+func TestComponentService_GetBuildLogs_UnreadableRunIsNotComplete(t *testing.T) {
+	t.Parallel()
+	oc := &ocmocks.ComponentClientMock{
+		GetWorkflowRunFunc: func(context.Context, string, string) (*gen.WorkflowRun, error) {
+			return nil, errors.New("cluster down")
+		},
+	}
+	observ := &stubObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string, time.Time) (*gen.BuildLogs, error) {
+		return logsAt("2026-07-27T10:42:01Z"), nil
+	}}
+	logs, err := NewComponentService(oc, observ, nil, nil, nil).
+		GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 0)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if logs.Complete {
+		t.Error("an unreadable run must not be reported complete")
+	}
+}
+
+// The observability window is inclusive of its start, so the entry the cursor
+// names would otherwise be re-emitted on every poll.
+func TestComponentService_GetBuildLogs_CursorDoesNotReplayItsOwnEntry(t *testing.T) {
+	t.Parallel()
+	at := func(s string) int64 {
+		ts, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+		return ts.UnixMilli()
+	}
+	var narrowed time.Time
+	svc := buildLogsSvc(t, false, logsAt("2026-07-27T10:42:01Z", "2026-07-27T10:42:04Z"), &narrowed)
+
+	cursor := at("2026-07-27T10:42:01Z")
+	logs, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", cursor)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if len(logs.Logs) != 1 || logs.Logs[0].Timestamp != "2026-07-27T10:42:04Z" {
+		t.Fatalf("entries = %+v, want only the one after the cursor", logs.Logs)
+	}
+	// The window is narrowed at the source too, so a tail poll is cheap there.
+	if narrowed.UnixMilli() != cursor {
+		t.Errorf("observability start = %v, want the cursor %d", narrowed, cursor)
+	}
+}
+
+// An entry with no parseable timestamp cannot be ordered against the cursor, so
+// it is kept: a duplicated line is a smaller harm than a dropped one.
+func TestComponentService_GetBuildLogs_UnparseableTimestampIsKept(t *testing.T) {
+	t.Parallel()
+	entries := &gen.BuildLogs{Logs: []gen.BuildLogEntry{{Log: "no timestamp"}}}
+	svc := buildLogsSvc(t, true, entries, nil)
+
+	logs, err := svc.GetBuildLogs(context.Background(), "acme", "web", "svc", "run-1", 1)
+	if err != nil {
+		t.Fatalf("logs: %v", err)
+	}
+	if len(logs.Logs) != 1 {
+		t.Fatalf("entries = %+v, want the untimestamped line kept", logs.Logs)
+	}
+	if logs.NextCursor != 0 {
+		t.Errorf("nextCursor = %d, want it unmoved when nothing could be timed", logs.NextCursor)
 	}
 }

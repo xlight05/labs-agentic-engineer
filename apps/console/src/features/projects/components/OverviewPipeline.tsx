@@ -36,7 +36,6 @@ import {
 } from "@wso2/oxygen-ui-icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import type { components } from "../../../generated/aep-api";
-import { VersionMenu } from "../../builds/components/VersionMenu";
 import {
   buildStageView,
   deployStageView,
@@ -64,17 +63,12 @@ function StageCard({
   view,
   to,
   projectName,
-  versionSlot,
 }: {
   icon: ReactNode;
   title: string;
   view: StageView;
   to: string;
   projectName: string;
-  /** Replaces the plain version chip with an interactive control. Rendered as
-   *  an overlay so an interactive element never nests inside the card's own
-   *  action area (invalid, and the click would fall through to navigation). */
-  versionSlot?: ReactNode;
 }) {
   const navigate = useNavigate();
   const ghost = view.tone === "ghost";
@@ -84,16 +78,10 @@ function StageCard({
       sx={{
         flex: 1,
         minWidth: 0,
-        position: "relative",
         ...(ghost && { opacity: 0.6 }),
         ...(view.tone === "error" && { borderColor: "error.main" }),
       }}
     >
-      {versionSlot && (
-        <Box sx={{ position: "absolute", top: 16, right: 16, zIndex: 1 }}>
-          {versionSlot}
-        </Box>
-      )}
       <CardActionArea
         sx={{ height: "100%", alignItems: "stretch" }}
         onClick={() =>
@@ -110,18 +98,12 @@ function StageCard({
               {title}
             </Typography>
             <Box sx={{ flexGrow: 1 }} />
-            {versionSlot ? (
-              // Reserve the overlay's footprint so the header row keeps its
-              // height and the title never runs under the control.
-              <Box sx={{ width: 76, height: 24 }} aria-hidden />
-            ) : (
-              <Chip
-                size="small"
-                label={view.version || "—"}
-                color={CHIP_COLOR[view.tone]}
-                variant={view.version ? "filled" : "outlined"}
-              />
-            )}
+            <Chip
+              size="small"
+              label={view.version || "—"}
+              color={CHIP_COLOR[view.tone]}
+              variant={view.version ? "filled" : "outlined"}
+            />
           </Stack>
           <Typography
             variant="body2"
@@ -217,16 +199,6 @@ export function OverviewPipeline({
         view={build}
         to="builds"
         projectName={projectName}
-        // The version ledger lives here (§10): the build stage IS the version,
-        // so its chip is where a user reaches previous ones. Fetched on demand
-        // — an idle overview costs zero polling for it.
-        versionSlot={
-          <VersionMenu
-            projectName={projectName}
-            currentVersion={build.version}
-            tone={CHIP_COLOR[build.tone]}
-          />
-        }
       />
       <ChevronRight
         size={20}

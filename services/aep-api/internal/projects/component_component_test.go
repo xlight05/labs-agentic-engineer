@@ -60,6 +60,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
 
@@ -93,6 +94,14 @@ func newHarness(t *testing.T, f compFakes) *componenttest.Harness {
 	t.Helper()
 	if f.oc == nil {
 		f.oc = &ocmocks.ComponentClientMock{}
+	}
+	if f.oc.GetWorkflowRunFunc == nil {
+		// Build-logs reads the run's terminal state before its log, so every
+		// build-logs path touches this. Default to a terminal run; a test that
+		// cares about the live case programs its own.
+		f.oc.GetWorkflowRunFunc = func(_ context.Context, _, runName string) (*gen.WorkflowRun, error) {
+			return &gen.WorkflowRun{Name: runName, Completed: true}, nil
+		}
 	}
 	compSvc := projects.NewComponentService(f.oc, f.observ, f.store, nil, nil)
 	var cfgSvc projects.ConfigService
@@ -388,7 +397,7 @@ func TestComponentComponent_BuildLogs_HarvestedError500(t *testing.T) {
 	// Reproduces the harvested golden (get_component_build_logs.json): the
 	// observability client is configured but its fetch fails → the service wraps
 	// the error → mapComponentError's default 500 with detail "failed to get build logs".
-	observ := &extObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string) (*gen.BuildLogs, error) {
+	observ := &extObservClient{GetBuildLogsFunc: func(context.Context, string, string, string, string, time.Time) (*gen.BuildLogs, error) {
 		return nil, errors.New("observability service 500")
 	}}
 	h := newHarness(t, compFakes{observ: observ})

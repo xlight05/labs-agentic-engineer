@@ -83,6 +83,7 @@ Key wiring:
 
 - `git-service` uses **host KUBECONFIG** (seeded by `start.sh` from `k3d kubeconfig get … --internal`) to write per-WorkflowRun Secrets into `workflows-default`. Mirrors agent-manager's `KUBECONFIG=/app/.kube/config` env knob.
 - The coding-agent pod reaches `git-service` and `aep-api` (running on the host) via `host.k3d.internal`, which we pin to the **docker bridge gateway** in CoreDNS NodeHosts. Pods → host.
+- **Two separate resolvers.** `fix_node_dns` sets the *node's* `/etc/resolv.conf` (image pulls); `k3s-resolv.conf`, mounted via `files:` in `k3d-local-config.yaml` and passed as `--resolv-conf`, is what every `dnsPolicy: Default` pod gets — CoreDNS included. CoreDNS reads its upstream once at startup and never refreshes, so without the static pin a Colima restart can leave it forwarding to a dead address: the node resolves fine, pods resolve nothing external, and coding-agent runs die at `git clone` with `Could not resolve host: github.com`. `ensure_cluster_dns_healthy` (run by `setup-k3d.sh` and every `start.sh`) probes real resolution and restarts CoreDNS if it has gone stale.
 - `OPENBAO_ADDR=host.docker.internal:8200` — OpenBao's `NodePort` 30820 is exposed on host port 8200 by `k3d-local-config.yaml`.
 - Thunder OAuth apps (`aep-console-client`, `aep-api-client`, BFF→service triplets, **`openchoreo-workload-publisher-client`**) are bootstrapped via Thunder helm pre-install scripts (`single-cluster/values-thunder.yaml`), same pattern as agent-manager's `wso2-amp-thunder-extension`.
 

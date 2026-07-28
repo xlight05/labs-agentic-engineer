@@ -247,7 +247,7 @@ func TestBuild_CutsTheTagAndClaimsTheVersion(t *testing.T) {
 	row := runs[0]
 	if row.OrgID != "acme" || row.ProjectID != "shop" || row.MilestoneNumber != 9 ||
 		row.MilestoneTitle != "v1" || row.Origin != delivery.RunOriginSpecBuild ||
-		row.State != delivery.RunStateWaiting {
+		row.State != delivery.RunStatePlanning {
 		t.Errorf("admitted run = %+v", row)
 	}
 	if n := spy.awaitPlan(t); n != 9 {

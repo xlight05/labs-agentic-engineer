@@ -89,6 +89,9 @@ async function openRunStream(
 export function useRunProgress(
   projectName: string,
   runId: string | undefined,
+  /** Open the stream at all. False keeps a page that nobody is watching
+   *  connection-free — the property the old run-level feed toggle gave us. */
+  enabled = true,
 ): RunProgressState {
   const [cycles, setCycles] = useState<RunProgressCycle[]>([]);
   const [settledState, setSettledState] = useState<string>();
@@ -101,7 +104,9 @@ export function useRunProgress(
     setCycles([]);
     setSettledState(undefined);
     setPhase("connecting");
-    if (!runId) return;
+    // Not enabled = nobody is looking. A settled version whose cycles are all
+    // collapsed must open no connection and replay no history.
+    if (!runId || !enabled) return;
 
     const controller = new AbortController();
     let disposed = false;
@@ -195,7 +200,7 @@ export function useRunProgress(
       disposed = true;
       controller.abort();
     };
-  }, [projectName, runId]);
+  }, [projectName, runId, enabled]);
 
   return { cycles, settledState, phase };
 }

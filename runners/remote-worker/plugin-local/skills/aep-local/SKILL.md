@@ -82,14 +82,14 @@ endpoint) and the wider context under `specs/requirements/` and
 
 ## Project structure
 
-Create a production-ready project structure under your component's
+Create a production-ready project structure under each component's
 **App Path** (from the issue's Component Reference card). The App Path
 is a **folder name** relative to the repo root (e.g. `user-api`,
-`services/auth`) — it is NOT an HTTP route. All of this component's
+`services/auth`) — it is NOT an HTTP route. All of that component's
 files (source, `Dockerfile`, `workload.yaml`) must live under that
 directory and nowhere else; the platform watches that path to decide
 which component to rebuild on a push, so a file committed outside it
-will not trigger your build.
+will not trigger its build.
 
 Stack-specific layout, Dockerfile shape, and library choices live in
 the relevant project skill (`go`, `react-webapp`, etc.) — do not

@@ -76,10 +76,18 @@ _load_env_key PUBLIC_CONSOLE_URL
 # 0. Refresh k3d node DNS (8.8.8.8 fallback for image pulls). k3d's
 #    native host.k3d.internal mapping + OC's CoreDNS rewrite handle the
 #    rest — see fix_node_dns comment in utils.sh.
+#
+#    Then assert IN-CLUSTER DNS works. These are two different resolvers:
+#    rewriting the node's file does not reach CoreDNS, which snapshotted its
+#    upstream when its pod was created. A Colima restart is precisely when
+#    CoreDNS ends up pointing at an address that no longer answers, so this is
+#    a pre-flight condition — a cluster whose pods can't resolve github.com
+#    fails every coding-agent run at `git clone`.
 echo ""
 echo "🔧 Refreshing k3d node DNS..."
 if kubectl cluster-info --context "${CLUSTER_CONTEXT}" --request-timeout=5s &>/dev/null; then
     fix_node_dns
+    ensure_cluster_dns_healthy || exit 1
 else
     echo "⚠️  k3d cluster not accessible — skipping DNS refresh (run setup.sh if cluster is missing)"
 fi

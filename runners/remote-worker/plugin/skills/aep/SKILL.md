@@ -357,8 +357,7 @@ is a **folder name** relative to the repo root (e.g. `user-api`,
 files (source, `Dockerfile`, `workload.yaml`) must live under that
 directory and nowhere else; the platform watches that path to decide
 which component to rebuild on a push, so a file committed outside it
-will not trigger its build. It is also what makes two issues safe to
-fan out in parallel (§4).
+will not trigger its build.
 
 Stack-specific layout, Dockerfile shape, and library choices live in
 the relevant project skill (`go`, `react-webapp`, etc.) — do not

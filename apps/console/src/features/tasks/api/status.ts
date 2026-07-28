@@ -44,3 +44,17 @@ export function issueStateChip(derivedStatus: string): TaskChip {
     CHIP_BY_STATUS[derivedStatus] ?? { label: derivedStatus, tone: "error" }
   );
 }
+
+// The row's KIND, shown only where it changes how the row should be read.
+// A version's issue list is mostly agent work, so tagging every coding row
+// "Coding" would be noise; a provisioning gate in the same list is not, because
+// it is worked by the PLATFORM rather than by the agent and closes without a
+// pull request. Anything else — including a kind this console has not learned —
+// renders untagged rather than guessing a label for it.
+const CHIP_BY_KIND: Record<string, TaskChip> = {
+  provision: { label: "Provisioning", tone: "info" },
+};
+
+export function issueKindChip(executorClass: string): TaskChip | null {
+  return CHIP_BY_KIND[executorClass] ?? null;
+}

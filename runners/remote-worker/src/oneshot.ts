@@ -40,6 +40,7 @@ import { openTaskLog } from "./lib/logger.js";
 import { isUUID, isSlug } from "./lib/uuid.js";
 import type { DispatchRequest } from "./lib/types.js";
 import { emit, primeScrubber } from "./lib/progress/emitter.js";
+import { installConsoleScrubber } from "./lib/progress/console_scrub.js";
 import { resolveTaskSkills } from "./lib/skills_resolver.js";
 import { materializeSkills } from "./lib/skills_materializer.js";
 import { ClientCredentialsTokenProvider } from "./lib/oauth.js";
@@ -115,12 +116,16 @@ function readDispatchFromEnv(): DispatchRequest {
 }
 
 async function main(): Promise<number> {
+  // Before anything logs: the BFF forwards this pod's console output into the
+  // user-visible build log, so every line has to pass the scrubber.
+  installConsoleScrubber();
+
   let req: DispatchRequest;
   try {
     req = readDispatchFromEnv();
   } catch (err) {
-    // Pre-scrubber stderr is the only safe channel here — the bearer
-    // hasn't been read yet so we can't enroll it as a redaction literal.
+    // Nothing is enrolled as a literal yet (the bearer hasn't been read), so
+    // this line is covered only by the scrubber's token-shape patterns.
     console.error("[oneshot] env validation failed:", err instanceof Error ? err.message : String(err));
     return 2;
   }
@@ -188,17 +193,25 @@ async function main(): Promise<number> {
   // materialise them into the AgentSkills plugin tree under .aep/skills-plugin/.
   // On any failure we log LOUDLY and continue without the per-task plugin
   // (runner falls back to the base aep plugin only).
-  // See docs/design/coding-runner-skills-clone.md.
+  //
+  // Scope: an implementation run is a MILESTONE cycle — one branch, one PR,
+  // any component in the milestone — so it takes the union of every component's
+  // skillsApplied. Its AEP_COMPONENT_NAME is the `aep-milestone` sentinel and
+  // must not be used to pick a design file. A validation run applies no design
+  // skills at all: it is black-box verification driven by the `aep-validation`
+  // skill (AEP_TASK_KIND), and builds nothing.
   let preloadSkillNames: string[] = [];
   let skillsPluginDir: string | undefined;
   const skillsRepoURL = process.env.AEP_SKILLS_REPO_URL ?? "";
-  if (skillsRepoURL) {
+  if (req.taskKind === "validation") {
+    console.log("[oneshot] validation run — no design skills apply; using the aep-validation skill only");
+  } else if (skillsRepoURL) {
     try {
       const skillsBearer = ccProvider ? await ccProvider.getToken() : req.bearer;
       const pat = await refreshGitToken(req, skillsBearer);
       const resolutions = await resolveTaskSkills({
         workspace: layout.workspace,
-        componentName: req.componentName,
+        scope: { kind: "project" },
         skillsRepoURL,
         pat,
         // Clone OUTSIDE the work tree so its nested .git never enters the

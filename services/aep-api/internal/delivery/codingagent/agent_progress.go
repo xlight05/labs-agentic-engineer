@@ -402,6 +402,11 @@ func textToProgressEvents(text string) ([]contracts.ProgressEvent, bool) {
 	if text == "" {
 		return []contracts.ProgressEvent{}, false
 	}
+	// Single choke point for the console feed: both callers reach the UI through
+	// here, so redacting the raw pod output once covers wrapped `log` lines and
+	// structured envelope fields alike. See redact.go for why this runs even
+	// though the runner already scrubs at the source.
+	text = redactSecrets(text)
 	out := make([]contracts.ProgressEvent, 0, 256)
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	// Allow long lines — agent output occasionally dumps long JSON blobs that
