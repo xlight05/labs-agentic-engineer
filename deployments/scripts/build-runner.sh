@@ -30,6 +30,10 @@
 # or the runner's TS/toolchain (skill edits are picked up live via the plugin
 # hostPath overlay and never need a rebuild).
 #
+# SKIP_IMPORT=1 builds without importing — used by setup.sh, which starts this
+# build in the background before the cluster exists and leaves the import to
+# setup-aep.sh so the multi-GB node import runs exactly once.
+#
 # Called by setup-aep.sh (build + import at setup) and `make build-runner`.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,7 +64,9 @@ fi
 # of a multi-GB image has taken long enough to blow past the Job's
 # activeDeadlineSeconds, killing the pod the moment it starts. Skipped (with a
 # note) when k3d or the cluster isn't up — e.g. building ahead of cluster setup.
-if command -v k3d &>/dev/null && k3d cluster list "$CLUSTER_NAME" &>/dev/null; then
+if [ "${SKIP_IMPORT:-0}" = "1" ]; then
+    echo "⏭️  node import skipped (SKIP_IMPORT=1) — the caller owns it"
+elif command -v k3d &>/dev/null && k3d cluster list "$CLUSTER_NAME" &>/dev/null; then
     k3d image import "$IMAGE" -c "$CLUSTER_NAME" \
         && echo "✅ imported $IMAGE into k3d cluster '$CLUSTER_NAME'" \
         || echo "⚠️  k3d image import failed; first dispatch may cold-pull"

@@ -41,6 +41,23 @@ echo "  6. AEP-specific config (ClusterWorkflows, ComponentTypes,"
 echo "     Environment, AuthzRoleBindings, .env file)"
 echo ""
 
+# The runner image (Debian + Go + Playwright + baked chromium, multi-GB) has no
+# cluster dependency — only its `k3d image import` does. Building it in the
+# background from step 1 overlaps it with the prerequisites / OpenChoreo /
+# Temporal installs, which take longer than the build, so it costs nothing on
+# the critical path instead of adding minutes at the tail of setup-aep.sh.
+# setup-aep.sh keeps ownership of the import (SKIP_IMPORT=1 here), so the 4 GB
+# node import still happens exactly once. PREBUILD_RUNNER=0 restores the serial
+# build inside setup-aep.sh.
+RUNNER_BUILD_LOG="${TMPDIR:-/tmp}/aep-runner-build.log"
+RUNNER_BUILD_PID=""
+if [ "${PREBUILD_RUNNER:-1}" = "1" ]; then
+    echo "🐳 Pre-building the runner image in the background → $RUNNER_BUILD_LOG"
+    SKIP_IMPORT=1 bash "$SCRIPT_DIR/build-runner.sh" > "$RUNNER_BUILD_LOG" 2>&1 &
+    RUNNER_BUILD_PID=$!
+    echo ""
+fi
+
 bash "$SCRIPT_DIR/setup-k3d.sh"
 echo ""
 
@@ -59,6 +76,21 @@ echo ""
 
 bash "$SCRIPT_DIR/setup-temporal.sh"
 echo ""
+
+# Join the background prebuild before setup-aep.sh reaches its own
+# build-runner.sh call — otherwise both would build the same tag concurrently.
+# Non-fatal (mirrors setup-aep.sh): a build hiccup must not block platform
+# setup, it only leaves coding + validation dispatch disabled.
+if [ -n "$RUNNER_BUILD_PID" ]; then
+    echo "⏳ Waiting for the background runner-image build..."
+    if wait "$RUNNER_BUILD_PID"; then
+        echo "✅ runner image pre-built (setup-aep.sh imports it into the node next)"
+    else
+        echo "⚠️  background runner-image build failed — see $RUNNER_BUILD_LOG"
+        tail -5 "$RUNNER_BUILD_LOG" 2>/dev/null || true
+    fi
+    echo ""
+fi
 
 bash "$SCRIPT_DIR/setup-aep.sh"
 echo ""
