@@ -120,6 +120,13 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   grammar and that spelling. The milestone **number** is the key; the title is kept
   only as the `v<N>` tag a `?tag=` query resolves through. Loop position is read from the latest cycle, and
   per-component build/deploy status is derived from OpenChoreo on read — neither is stored.
+- **Delivery's agent SPEND**, on the cycle record: a cycle IS one agent run, so its captured token usage
+  and the USD stamped on it at capture (`cost_usd`, amended console ADR-0011) are where both the build and
+  validation phases of Settings → Usage come from. The phase is read from the cycle's kind. `RecordUsage`
+  is the one cycle mutator NOT fenced on `ended_at IS NULL`: usage arrives from the terminal-log capture,
+  and a cycle closes on the merge webhook seconds after its Job exits — fencing it would discard nearly
+  every capture. `PhaseUsageRollup` sums this with the executions table, which today contributes nothing
+  (its only remaining kind, `provision`, runs no model).
 - The **run loop** (`run`): one Temporal workflow per milestone, `run-<org>-<project>-<milestoneNumber>`,
   whose id is REUSED after a terminal run because a milestone sees sequential runs across its life. It
   owns the four budgets, the no-progress rule, the cycle ceiling, the validation cycle and settle — and
@@ -129,6 +136,8 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   `repository_run.go` · `repository_cycle.go` · `repository_run_cycle_log.go` over the `execution.go` /
   `coding_agent_log.go` / `milestone_run.go` / `run_cycle.go` / `run_cycle_log.go` entities. Their tables
   are `executions` · `coding_agent_logs` · `milestone_runs` · `run_cycles` · `run_cycle_logs`.
+  `usage_rollup.go` is the one read that spans two of them, and is a plain function over both
+  repositories rather than a third store.
 
 ## Invariants — don't break
 - **`task ⊥ run`.** The GitHub-facing Task surface and the run supervisor are peer sub-packages that never

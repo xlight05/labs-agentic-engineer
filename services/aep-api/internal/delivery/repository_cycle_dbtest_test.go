@@ -21,8 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/platform/dbtest"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 )
 
 // admitRun inserts a spec-build run and returns it, failing the test if the
@@ -44,7 +46,7 @@ func TestRunCycleRepository_AppendDispatchAndFinish(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	runs := delivery.NewMilestoneRunRepository(db)
-	cycles := delivery.NewRunCycleRepository(db)
+	cycles := delivery.NewRunCycleRepository(db, nil)
 	ctx := context.Background()
 
 	run := admitRun(t, runs, "orga", "proj", 4, "v4")
@@ -188,7 +190,7 @@ func TestRunCycleRepository_LatestAndTimeline(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	runs := delivery.NewMilestoneRunRepository(db)
-	cycles := delivery.NewRunCycleRepository(db)
+	cycles := delivery.NewRunCycleRepository(db, nil)
 	ctx := context.Background()
 
 	run := admitRun(t, runs, "orga", "proj", 5, "v5")
@@ -265,5 +267,129 @@ func TestRunCycleRepository_LatestAndTimeline(t *testing.T) {
 	// Another project's cycles survive.
 	if rows, err := cycles.ListByRun(ctx, "orga", other.ID); err != nil || len(rows) != 1 {
 		t.Fatalf("other project's timeline = (%d rows, %v), want 1", len(rows), err)
+	}
+}
+
+// TestRunCycleRepository_RecordUsageAndPhaseRollup pins delivery's agent-spend
+// capture end to end: the usage stamp lands on a CLOSED cycle (the normal case,
+// since a cycle closes on the merge webhook seconds after the agent Job exits),
+// the USD is frozen from the stamper at write time, and the rollup attributes
+// each cycle kind to the right SDLC phase.
+func TestRunCycleRepository_RecordUsageAndPhaseRollup(t *testing.T) {
+	t.Parallel()
+	db := dbtest.New(t)
+	runs := delivery.NewMilestoneRunRepository(db)
+	// $1/MTok in, $10/MTok out, $0.10/MTok cache read — round figures so the
+	// expected stamp is obvious by inspection rather than reverse-engineered.
+	stamper := modelcost.NewStamper([]modelcost.ModelRate{{
+		ModelID: "model-a", InputPerMTok: 1, OutputPerMTok: 10, CacheReadPerMTok: 0.1,
+	}})
+	cycles := delivery.NewRunCycleRepository(db, stamper)
+	ctx := context.Background()
+
+	run := admitRun(t, runs, "orgu", "shop", 7, "v7")
+	appendCycle := func(kind string) *delivery.RunCycle {
+		t.Helper()
+		c := &delivery.RunCycle{
+			OrgID: run.OrgID, ProjectID: run.ProjectID, RunID: run.ID, Kind: kind,
+		}
+		if err := cycles.Append(ctx, c); err != nil {
+			t.Fatalf("Append(%s): %v", kind, err)
+		}
+		return c
+	}
+
+	coding := appendCycle(delivery.CycleKindCoding)
+	fix := appendCycle(delivery.CycleKindFix)
+	validation := appendCycle(delivery.CycleKindValidation)
+	// A build-phase cycle that never captures usage — an agent that died before
+	// its terminal message. It stays at 0 tokens with model_id '', and must not
+	// drag the phase's model id to "unknown" the way a genuine multi-model phase
+	// would (contracts.TokenUsage.Add keeps the model across a zero contributor).
+	appendCycle(delivery.CycleKindConflict)
+
+	// The coding cycle CLOSES before its usage is captured — the ordering that
+	// actually happens in production, and the one an open-cycle guard would drop.
+	if _, err := cycles.Finish(ctx, coding.ID, "deadbeef"); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	// 1M in + 100k out + 2M cache-read = $1 + $1 + $0.20 = $2.20
+	usage := contracts.TokenUsage{
+		InputTokens: 1_000_000, OutputTokens: 100_000, CacheReadTokens: 2_000_000,
+		Model: "model-a",
+	}
+	if err := cycles.RecordUsage(ctx, coding.ID, usage); err != nil {
+		t.Fatalf("RecordUsage(closed coding cycle): %v", err)
+	}
+	// A second, smaller build-phase contributor so the rollup is proven to SUM
+	// rather than to return the last row it saw.
+	if err := cycles.RecordUsage(ctx, fix.ID, contracts.TokenUsage{
+		InputTokens: 1_000_000, Model: "model-a", // $1.00
+	}); err != nil {
+		t.Fatalf("RecordUsage(fix): %v", err)
+	}
+	// An UNPRICEABLE validation run: real tokens, a model with no rate row. Its
+	// cost must stay null while its tokens still count.
+	if err := cycles.RecordUsage(ctx, validation.ID, contracts.TokenUsage{
+		InputTokens: 500_000, OutputTokens: 10_000, Model: "model-unknown",
+	}); err != nil {
+		t.Fatalf("RecordUsage(validation): %v", err)
+	}
+
+	// The stamp is frozen on the row.
+	stored, err := cycles.Latest(ctx, "orgu", run.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("Latest = (%+v, %v)", stored, err)
+	}
+	timeline, err := cycles.ListByRun(ctx, "orgu", run.ID)
+	if err != nil {
+		t.Fatalf("ListByRun: %v", err)
+	}
+	byID := map[string]delivery.RunCycle{}
+	for _, c := range timeline {
+		byID[c.ID] = c
+	}
+	if got := byID[coding.ID]; got.CostUsd == nil || *got.CostUsd != 2.20 {
+		t.Fatalf("coding cost_usd = %v, want 2.20", got.CostUsd)
+	}
+	if got := byID[coding.ID].Usage(); got != usage {
+		t.Fatalf("coding usage round-trip = %+v, want %+v", got, usage)
+	}
+	if got := byID[validation.ID]; got.CostUsd != nil {
+		t.Fatalf("unpriceable validation cost_usd = %v, want null", got.CostUsd)
+	}
+
+	build, valid, err := cycles.SumUsageByProjectPhase(ctx, "orgu")
+	if err != nil {
+		t.Fatalf("SumUsageByProjectPhase: %v", err)
+	}
+	// coding + fix fold into build; conflict contributed nothing and must not
+	// appear as a project of its own or dilute the model id.
+	b := build["shop"]
+	if b.Tokens.InputTokens != 2_000_000 || b.Tokens.OutputTokens != 100_000 ||
+		b.Tokens.CacheReadTokens != 2_000_000 {
+		t.Fatalf("build tokens = %+v, want 2M/100k/2M", b.Tokens)
+	}
+	if b.CostUsd == nil || *b.CostUsd != 3.20 {
+		t.Fatalf("build cost = %v, want 3.20 (2.20 + 1.00)", b.CostUsd)
+	}
+	if b.Tokens.Model != "model-a" {
+		t.Fatalf("build model = %q, want model-a (both contributors agree)", b.Tokens.Model)
+	}
+	// The validation cycle lands in the VALIDATION phase, not build — the split
+	// this whole rollup exists to get right.
+	v := valid["shop"]
+	if v.Tokens.InputTokens != 500_000 || v.Tokens.OutputTokens != 10_000 {
+		t.Fatalf("validation tokens = %+v, want 500k/10k", v.Tokens)
+	}
+	if v.CostUsd != nil {
+		t.Fatalf("validation cost = %v, want nil (no rate row for its model)", v.CostUsd)
+	}
+
+	// Org fence: another org's rollup sees none of it.
+	if b2, v2, err := cycles.SumUsageByProjectPhase(ctx, "other-org"); err != nil ||
+		len(b2) != 0 || len(v2) != 0 {
+		t.Fatalf("cross-org rollup = (%v, %v, %v), want empty", b2, v2, err)
 	}
 }

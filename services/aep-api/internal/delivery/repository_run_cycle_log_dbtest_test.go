@@ -51,7 +51,7 @@ func TestRunCycleLogRepository_RoundTrip(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	runs := delivery.NewMilestoneRunRepository(db)
-	cycles := delivery.NewRunCycleRepository(db)
+	cycles := delivery.NewRunCycleRepository(db, nil)
 	logs := delivery.NewRunCycleLogRepository(db)
 	ctx := context.Background()
 
@@ -108,7 +108,7 @@ func TestRunCycleLogRepository_CascadesWithTheProject(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	runs := delivery.NewMilestoneRunRepository(db)
-	cycles := delivery.NewRunCycleRepository(db)
+	cycles := delivery.NewRunCycleRepository(db, nil)
 	logs := delivery.NewRunCycleLogRepository(db)
 	ctx := context.Background()
 
@@ -139,7 +139,7 @@ func TestRunCycleRepository_ListRecentDispatched(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	runs := delivery.NewMilestoneRunRepository(db)
-	cycles := delivery.NewRunCycleRepository(db)
+	cycles := delivery.NewRunCycleRepository(db, nil)
 	ctx := context.Background()
 
 	run := admitRun(t, runs, "orgc", "proj", 4, "v4")

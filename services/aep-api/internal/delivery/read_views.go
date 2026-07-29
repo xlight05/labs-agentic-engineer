@@ -73,7 +73,7 @@ type ExecutionView struct {
 type TaskView struct {
 	IssueNumber int    `json:"issueNumber"`
 	Title       string `json:"title"`
-	IssueURL string `json:"issueUrl"`
+	IssueURL    string `json:"issueUrl"`
 	// A task carries no pull request of its own: agent work is claimed by a BUILD
 	// SESSION's pull request, whose identity lives on the run's cycle record
 	// (delivery.RunCycle) because that is what the merge policy decided about.

@@ -145,7 +145,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	configRepo := projects.NewConfigRepository(db)
 	repoRepo := sourcecontrol.NewRepoRepository(db)
 	milestoneRunRepo := delivery.NewMilestoneRunRepository(db)
-	runCycleRepo := delivery.NewRunCycleRepository(db)
+	runCycleRepo := delivery.NewRunCycleRepository(db, in.RateStamper)
 	orgRepo := organization.NewOrganizationRepository(db)
 	orgCredRepo := organization.NewOrgCredentialRepository(db)
 	orgAnthropicRepo := organization.NewOrgAnthropicRepository(db)
@@ -866,12 +866,14 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// CRUD + status, the component read + build + deploy surface, and the
 	// component env-var config. Its slice handlers embed straight into the edge's
 	// composite; the edge holds no project/component/config service.
-	// Settings → Usage (#291): fold spec-turn + coding-execution per-project
-	// usage, labelled by the org's live projects (a usage slug with no live
-	// project is a since-deleted project, shown greyed).
+	// Settings → Usage (#291): fold spec-turn + delivery per-project usage,
+	// labelled by the org's live projects (a usage slug with no live project is a
+	// since-deleted project, shown greyed). Delivery's half sums BOTH its capture
+	// tables — cycles, where every agent run lands after the issue-driven flip,
+	// and the older execution rows (see delivery.PhaseUsageRollup).
 	usageService := projects.NewUsageService(
 		turnRepo.SumUsageByProject,
-		executionRepo.SumUsageByProjectPhase,
+		delivery.PhaseUsageRollup(executionRepo, runCycleRepo),
 		func(ctx context.Context, orgID string) (map[string]string, error) {
 			names := map[string]string{}
 			list, err := projectService.ListProjects(ctx, orgID, 100, "", "")

@@ -23,6 +23,9 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/wso2/aep/aep-api/internal/contracts"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 )
 
 // RunCycleRepository is the write-authority over a run's cycle records — one
@@ -93,13 +96,38 @@ type RunCycleRepository interface {
 	// cascade, paired with MilestoneRunRepository.DeleteByProject so a recreated
 	// same-named project starts with a clean timeline.
 	DeleteByProject(ctx context.Context, orgID, projectID string) error
+
+	// RecordUsage stamps the cycle's captured token usage onto the row, and its
+	// write-time USD onto cost_usd (#291).
+	//
+	// It is the ONE mutator NOT guarded on the cycle being open, and that is the
+	// whole point: usage arrives from the terminal-log capture, and a cycle
+	// CLOSES on the merge webhook seconds after its agent Job exits — routinely
+	// before the watcher's next tick. Fencing this on ended_at IS NULL would
+	// discard nearly every capture. Idempotent by value: the capture re-derives
+	// the same figures from the same log, so a repeat write is a no-op in effect.
+	RecordUsage(ctx context.Context, id string, u contracts.TokenUsage) error
+
+	// SumUsageByProjectPhase rolls up captured CYCLE usage per project across an
+	// org, split into the build and validation SDLC phases (#291) — delivery's
+	// agent spend, since every token-burning dispatch is a cycle after the
+	// issue-driven flip. Validation cycles are the validation phase; coding, fix
+	// and conflict cycles are the build phase (the UsagePhase* constants). Each map
+	// is keyed by project id; CostUsd sums the frozen per-row stamps and is nil
+	// when no contributing row was stamped.
+	SumUsageByProjectPhase(ctx context.Context, orgID string) (build, validation map[string]contracts.StampedUsage, err error)
 }
 
-type runCycleRepository struct{ db *gorm.DB }
+type runCycleRepository struct {
+	db      *gorm.DB
+	stamper *modelcost.Stamper
+}
 
-// NewRunCycleRepository wires the gorm-backed repository.
-func NewRunCycleRepository(db *gorm.DB) RunCycleRepository {
-	return &runCycleRepository{db: db}
+// NewRunCycleRepository wires the gorm-backed repository. stamper prices
+// captured cycle usage at write time (#291); nil disables stamping (tests) and
+// cost_usd stays null.
+func NewRunCycleRepository(db *gorm.DB, stamper *modelcost.Stamper) RunCycleRepository {
+	return &runCycleRepository{db: db, stamper: stamper}
 }
 
 func (r *runCycleRepository) Append(ctx context.Context, cycle *RunCycle) error {
@@ -195,6 +223,104 @@ func (r *runCycleRepository) DeleteByProject(ctx context.Context, orgID, project
 	return r.db.WithContext(ctx).
 		Where("org_id = ? AND project_id = ?", orgID, projectID).
 		Delete(&RunCycle{}).Error
+}
+
+func (r *runCycleRepository) RecordUsage(ctx context.Context, id string, u contracts.TokenUsage) error {
+	updates := map[string]any{
+		"input_tokens":          u.InputTokens,
+		"output_tokens":         u.OutputTokens,
+		"cache_read_tokens":     u.CacheReadTokens,
+		"cache_creation_tokens": u.CacheCreationTokens,
+		"model_id":              u.Model,
+	}
+	// Stamp USD at capture from the rates in force now (#291): frozen on the row,
+	// never re-derived. Null when unpriceable (no rate row / no model).
+	if r.stamper != nil {
+		updates["cost_usd"] = r.stamper.Cost(modelcost.Tokens{
+			ModelID:             u.Model,
+			InputTokens:         u.InputTokens,
+			OutputTokens:        u.OutputTokens,
+			CacheReadTokens:     u.CacheReadTokens,
+			CacheCreationTokens: u.CacheCreationTokens,
+		})
+	}
+	// NOT applyOpen: see RecordUsage's contract — a closed cycle is exactly the
+	// case this has to serve.
+	return r.db.WithContext(ctx).
+		Model(&RunCycle{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+func (r *runCycleRepository) SumUsageByProjectPhase(ctx context.Context, orgID string) (build, validation map[string]contracts.StampedUsage, err error) {
+	var rows []cyclePhaseUsageRow
+	err = r.db.WithContext(ctx).
+		Model(&RunCycle{}).
+		Select("project_id, "+
+			// Validation is its own phase; every other kind (coding, fix, conflict) is
+			// the build phase. This CASE is where that classification LIVES — see the
+			// UsagePhase* constants.
+			"CASE WHEN kind = ? THEN ? ELSE ? END AS phase, "+
+			"COALESCE(SUM(input_tokens),0) AS input_tokens, "+
+			"COALESCE(SUM(output_tokens),0) AS output_tokens, "+
+			"COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens, "+
+			"COALESCE(SUM(cache_creation_tokens),0) AS cache_creation_tokens, "+
+			"SUM(cost_usd) AS cost_usd, "+ // NULL when no row is stamped — the #291 semantic
+			// The phase's model id survives only while every contributor THAT SPENT
+			// TOKENS agrees on it — exactly contracts.TokenUsage.Add, which keeps the
+			// model across a zero-token contributor and blanks it on a genuine
+			// disagreement. Hence the CASE: a cycle that captured nothing carries
+			// model_id '' and must not drag a single-model phase to "unknown".
+			// COUNT(DISTINCT …) and MAX(…) both ignore NULL, so those rows drop out.
+			"COUNT(DISTINCT CASE WHEN "+cycleHasTokens+" THEN model_id END) AS models, "+
+			"COALESCE(MAX(CASE WHEN "+cycleHasTokens+" THEN model_id END), '') AS max_model",
+			CycleKindValidation, UsagePhaseValidation, UsagePhaseBuild).
+		Where("org_id = ? AND project_id <> ''", orgID).
+		Group("project_id, phase").
+		// Only phases with real token traffic — a cycle that captured nothing
+		// leaves a 0-token row that must not conjure a phase out of nothing.
+		Having("SUM(input_tokens) + SUM(output_tokens) + SUM(cache_read_tokens) + SUM(cache_creation_tokens) > 0").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, nil, err
+	}
+	build = make(map[string]contracts.StampedUsage)
+	validation = make(map[string]contracts.StampedUsage)
+	for _, row := range rows {
+		u := contracts.TokenUsage{
+			InputTokens:         row.InputTokens,
+			OutputTokens:        row.OutputTokens,
+			CacheReadTokens:     row.CacheReadTokens,
+			CacheCreationTokens: row.CacheCreationTokens,
+		}
+		if row.Models == 1 {
+			u.Model = row.MaxModel
+		}
+		stamped := contracts.StampedUsage{Tokens: u, CostUsd: row.CostUsd}
+		if row.Phase == UsagePhaseValidation {
+			validation[row.ProjectID] = stamped
+		} else {
+			build[row.ProjectID] = stamped
+		}
+	}
+	return build, validation, nil
+}
+
+// cycleHasTokens is the "this row actually spent something" predicate, shared by
+// the model-agreement CASEs so the notion of a contributing row is spelled once.
+const cycleHasTokens = "input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens > 0"
+
+// cyclePhaseUsageRow is the per-(project, phase) aggregate scan shape (#291).
+type cyclePhaseUsageRow struct {
+	ProjectID           string
+	Phase               string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	CostUsd             *float64
+	Models              int64
+	MaxModel            string
 }
 
 // updateOpen applies a guarded update to a cycle that has not been closed and

@@ -16,7 +16,11 @@
 
 package delivery
 
-import "time"
+import (
+	"time"
+
+	"github.com/wso2/aep/aep-api/internal/contracts"
+)
 
 // RunCycle kinds (plain strings, matching the model convention). The kind names
 // what the cycle was dispatched to do; recovery cycles are ordinary cycles, so
@@ -119,6 +123,27 @@ type RunCycle struct {
 	// MergeReason is the verdict's own words, for a reader. Never parsed.
 	MergeReason string `gorm:"type:text" json:"mergeReason,omitempty"`
 
+	// Token usage captured from the runner's terminal NDJSON result (#249/#291).
+	// A cycle IS one agent run, so this is where delivery's agent spend lives:
+	// after the issue-driven flip every token-burning dispatch is a cycle
+	// (coding, fix, conflict, validation), and the only Execution rows left are
+	// KindProvision ones, which stand up OpenChoreo resources and run no model.
+	//
+	// Tokens + model are the stored truth; CostUsd is the USD stamped at capture
+	// from the model_rates then in force (amended ADR-0011) — never repriced. All
+	// zero (CostUsd null) for cycles that predate capture, whose agent died
+	// before its terminal message, or whose model had no rate row.
+	//
+	// Deliberately off the wire (`json:"-"`): #291 moved agent spend out of the
+	// per-build and per-task surfaces and into Settings → Usage, and the run
+	// spine does not re-litigate that.
+	InputTokens         int64    `gorm:"not null;default:0" json:"-"`
+	OutputTokens        int64    `gorm:"not null;default:0" json:"-"`
+	CacheReadTokens     int64    `gorm:"not null;default:0" json:"-"`
+	CacheCreationTokens int64    `gorm:"not null;default:0" json:"-"`
+	ModelID             string   `gorm:"type:text;not null;default:''" json:"-"`
+	CostUsd             *float64 `gorm:"column:cost_usd" json:"-"`
+
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	// EndedAt stamps the cycle closed. A nil EndedAt is the "still open" guard
@@ -129,6 +154,32 @@ type RunCycle struct {
 // TableName pins the table name so a struct rename cannot silently move the
 // table.
 func (RunCycle) TableName() string { return "run_cycles" }
+
+// Usage returns the cycle's captured token usage. Mirrors Execution.Usage so
+// both delivery capture surfaces hand the same shape to the rollup.
+func (c RunCycle) Usage() contracts.TokenUsage {
+	return contracts.TokenUsage{
+		InputTokens:         c.InputTokens,
+		OutputTokens:        c.OutputTokens,
+		CacheReadTokens:     c.CacheReadTokens,
+		CacheCreationTokens: c.CacheCreationTokens,
+		Model:               c.ModelID,
+	}
+}
+
+// The two delivery-owned SDLC phases in the Settings → Usage split (#291); the
+// third (spec/design) is the spec domain's, keyed off agent turns.
+//
+// The mapping from cycle kind to phase is: a VALIDATION cycle is the validation
+// phase, and every other kind — coding, fix, conflict, all of them agent work
+// driving the build toward green — is the build phase. That classification is
+// applied in SQL, by the CASE in RunCycleRepository.SumUsageByProjectPhase, so
+// the aggregate is one query rather than a per-row round trip; it deliberately
+// has no Go twin that could drift from it.
+const (
+	UsagePhaseBuild      = "build"
+	UsagePhaseValidation = "validation"
+)
 
 // CyclePullRequest is the pull request identity a cycle learns from one
 // pull_request delivery: what the agent opened, as the HOST describes it.

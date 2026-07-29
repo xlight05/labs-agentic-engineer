@@ -37,10 +37,18 @@ cache write), the model id, and a `cost_usd` stamp** computed at capture time.
 - **Rates are data.** A `model_rates` table (`model_id` → the four per-MTok
   USD rates) is the pricing source, seeded by migration and ops-managed. It
   replaces the `MODEL_PRICING_MODEL_ID` / `MODEL_RATE_*_PER_MTOK` env config.
-- **Stamp at write.** When a turn/execution's usage is captured, `aep-api`
-  resolves the record's `model_id` against `model_rates` and writes `cost_usd`
-  onto the same row. A later rate edit affects only subsequent captures —
-  history never moves.
+- **Stamp at write.** When a record's usage is captured, `aep-api` resolves its
+  `model_id` against `model_rates` and writes `cost_usd` onto the same row. A
+  later rate edit affects only subsequent captures — history never moves.
+- **Two capture surfaces, one per phase source.** The spec/design phase stamps
+  onto `agent_turns`. Both delivery phases — build and validation — stamp onto
+  `run_cycles`, because a build session's cycle IS one agent run: after the
+  issue-driven flip (ADR-0011 of `docs/decisions`, *the milestone is the unit of
+  execution*) every token-burning dispatch is a cycle, and the phase a cycle's
+  spend belongs to is read from its kind (`validation` → validation, everything
+  else → build). The `executions` table also carries usage columns and is still
+  summed, but the only kind it still mints is `provision`, which stands up
+  OpenChoreo resources and runs no model.
 - **`cost_usd` is nullable.** A row whose model has no rate, or that predates
   stamping, stores `null`; aggregates sum the stamps and surface `null` when
   nothing is stamped. No read-time pricing formula remains.

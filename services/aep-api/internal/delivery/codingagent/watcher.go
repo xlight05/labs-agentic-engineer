@@ -222,6 +222,17 @@ func (w *JobWatcher) captureCycleLog(ctx context.Context, cycle *delivery.RunCyc
 		slog.WarnContext(ctx, "codingagent.JobWatcher: cycle log persist failed", "cycle", cycle.ID, "run", cycle.JobRef, "error", err)
 		return
 	}
+	// Token usage rides the runner's terminal NDJSON result (#249/#291) — stamp it
+	// onto the cycle now that the log is in hand. This is the ONLY capture point
+	// for delivery's agent spend: a cycle is one agent run, and the execution-row
+	// twin above never sees one (KindProvision runs no model). Best-effort — a
+	// pre-capture runner, or an agent that died before its terminal message,
+	// simply carries none.
+	if u := usageFromLog(string(body)); u != nil {
+		if err := w.cycles.RecordUsage(ctx, cycle.ID, *u); err != nil {
+			slog.WarnContext(ctx, "codingagent.JobWatcher: record cycle usage failed", "cycle", cycle.ID, "error", err)
+		}
+	}
 	slog.InfoContext(ctx, "codingagent.JobWatcher: captured cycle log",
 		"cycle", cycle.ID, "run", cycle.JobRef, "phase", phase, "bytes", len(body))
 }
