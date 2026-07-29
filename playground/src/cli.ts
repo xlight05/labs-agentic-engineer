@@ -36,7 +36,6 @@ import { loadRepoSkills } from "./kit/skills.js";
 import { loadDotenv } from "@aep/agents/shared/env";
 import {
   chatTurn,
-  codeAllCommand,
   codeCommand,
   designCommand,
   requirementsCommand,
@@ -101,14 +100,11 @@ async function runHeadless(
     case "tasks":
       outcome = await tasksCommand(projectDir, opts);
       break;
-    case "code": {
-      // With an issue file: one independent run (the honing loop). Without:
-      // execute the WHOLE plan in dependency order, one go.
-      outcome = commandArg
-        ? await codeCommand(projectDir, commandArg, opts, confirmCodingDir(projectDir))
-        : await codeAllCommand(projectDir, opts, confirmCodingDir(projectDir));
+    case "code":
+      // One session works the whole project — the `aep` skill decides
+      // discovery, ordering and fan-out (see its SKILL.md).
+      outcome = await codeCommand(projectDir, opts, confirmCodingDir(projectDir));
       break;
-    }
     case "undo":
       outcome = undoCommand(projectDir, opts);
       break;
@@ -148,16 +144,15 @@ async function runMenu(projectDir: string, opts: PhaseOptions): Promise<number> 
     const action: MenuAction = await phaseMenu(projectDir, projectSlug(projectDir), skillCount);
     if (action === "quit") break;
     if (action === "code") {
-      // One go: the whole plan in dependency order (VS Code is the file
-      // browser — no per-issue picking, no review detour).
+      // One session works the whole project (VS Code is the file browser —
+      // no per-issue picking, no review detour).
       await runHeadless("code", projectDir, opts);
       continue;
     }
     if (action === "tasks") {
       const tasksAction = await tasksScreen(projectDir);
       if (tasksAction.kind === "plan") await runHeadless("tasks", projectDir, opts);
-      if (tasksAction.kind === "code-all") await runHeadless("code", projectDir, opts);
-      if (tasksAction.kind === "code") await runHeadless("code", projectDir, opts, tasksAction.issueFile);
+      if (tasksAction.kind === "code") await runHeadless("code", projectDir, opts);
       continue;
     }
     if (action === "chat") {

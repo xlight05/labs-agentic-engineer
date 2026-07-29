@@ -183,7 +183,6 @@ export interface TaskContextFile {
   title: string;
   dependsOn: string[];
   origin: TaskOrigin;
-  derivedStatus?: string;
   specTag?: string;
   designTag?: string;
   /** The markdown body after the frontmatter fence. */

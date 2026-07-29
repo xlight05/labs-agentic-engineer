@@ -16,9 +16,11 @@
  * under the License.
  */
 
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { query, type McpServerConfig, type Query } from "@anthropic-ai/claude-agent-sdk";
+import { composeBasePlugin, type AgentMode } from "./skill_compose.js";
 import type { TaskLog } from "./logger.js";
 import type { DispatchRequest } from "./types.js";
 import type { WorkspaceLayout } from "./workspace.js";
@@ -104,7 +106,7 @@ export interface StartedRun {
 }
 
 // PerTaskSkills carries the materialised AgentSkills plugin into the SDK
-// query options. PR 3 of docs/design/skills-system.md.
+// query options (built by skills_resolver.ts + skills_materializer.ts).
 //
 // `skillsPluginDir` is the absolute path to .aep/skills-plugin/. If
 // set, runner.ts adds a second `{type:"local"}` plugin entry pointing
@@ -113,38 +115,69 @@ export interface StartedRun {
 // into the SDK's `skills:` array so their full bodies inject at
 // startup. Custom and imported skills sit in the same plugin and
 // surface via the SDK's standard skill listing (description in
-// context, body on invoke) — they are NOT in the preload array. See
-// the design doc's "Why skills: <built-in names> and not skills:
-// 'all'" rationale.
+// context, body on invoke) — they are NOT in the preload array,
+// because a run must not pay for every attached skill's full body
+// when only the stack ones are certain to apply.
 export interface PerTaskSkills {
   skillsPluginDir?: string;
   preloadSkillNames: string[];
 }
 
-// BaseAgentConfig parameterizes the two values that were hardcoded until the
-// playground's local mode (docs/design/playground.md §3): the always-loaded
-// workflow plugin and the startup skill preload. Both default byte-identically
-// to today's behavior (pinned in runner.test.ts); production callers pass
-// nothing. A caller that overrides `basePreload` owns the FULL preload list —
-// the validation-task append only applies to the default.
+// BaseAgentConfig parameterizes what the always-loaded workflow plugin is and
+// how it is composed. Every field defaults to production behavior, so
+// `oneshot.ts` passes nothing at all (pinned in runner.test.ts).
+//
+// `mode` is stated by the caller, never inferred. The entrypoint unambiguously
+// knows which flavour of run this is; deriving it from something incidental (an
+// empty `repoUrl`, an absent MCP token) would tie the agent's whole procedure to
+// a signal whose meaning could shift for an unrelated reason. It defaults to
+// `github` because that is the safe direction: a local run mistakenly composed
+// for GitHub fails loudly the first time `gh` is invoked, whereas a production
+// run mistakenly composed for local would be told there is no remote and no PR
+// to open — the exact opposite of its contract.
+//
+// A caller that overrides `basePreload` owns the FULL preload list — the
+// validation-task append only applies to the default.
 export interface BaseAgentConfig {
-  /** The always-loaded workflow plugin dir; defaults to the shipped `plugin/`. */
+  /** The authored workflow plugin dir; defaults to the shipped `plugin/`. */
   basePluginPath?: string;
   /** The startup `skills:` preload; defaults to ["aep:aep"] (+ the validation body for validation tasks). */
   basePreload?: string[];
+  /** Which mode to compose the workflow skill for; defaults to "github". */
+  mode?: AgentMode;
+  /** Where the composed plugin is written; defaults to a per-task dir under the OS temp dir. */
+  composeDir?: string;
+}
+
+export interface ResolvedBaseAgentConfig {
+  /** The authored plugin dir to compose FROM (not what the SDK loads). */
+  sourcePluginPath: string;
+  preload: string[];
+  mode: AgentMode;
+  composeDir: string;
 }
 
 // resolveBaseAgentConfig is a pure seam (the buildMcpOptions pattern) so the
-// byte-identical defaults are unit-pinnable without constructing a query().
+// defaults are unit-pinnable without constructing a query() or touching disk.
 export function resolveBaseAgentConfig(
   base: BaseAgentConfig | undefined,
   taskKind: DispatchRequest["taskKind"],
-): { pluginPath: string; preload: string[] } {
-  const pluginPath = base?.basePluginPath ?? PLUGIN_PATH;
-  if (base?.basePreload) return { pluginPath, preload: [...base.basePreload] };
+  taskId: string,
+): ResolvedBaseAgentConfig {
+  const sourcePluginPath = base?.basePluginPath ?? PLUGIN_PATH;
+  const mode = base?.mode ?? "github";
+  // Outside the workspace in both modes: in production the workspace is a git
+  // clone the agent commits from, and in the playground it is the developer's
+  // own project dir. Neither should grow a copy of the plugin tree.
+  const composeDir = base?.composeDir ?? path.join(os.tmpdir(), "aep-base-plugin", taskId);
+  const preload = base?.basePreload ? [...base.basePreload] : defaultPreload(taskKind);
+  return { sourcePluginPath, preload, mode, composeDir };
+}
+
+function defaultPreload(taskKind: DispatchRequest["taskKind"]): string[] {
   const preload = ["aep:aep"];
   if (taskKind === "validation") preload.push("aep:aep-validation");
-  return { pluginPath, preload };
+  return preload;
 }
 
 export function runClaudeQuery(
@@ -189,9 +222,20 @@ export function runClaudeQuery(
   // Validation tasks additionally preload the validation workflow body:
   // it replaces the implementation workflow and the run cannot afford
   // the agent skipping a description-triggered load of it.
-  const resolvedBase = resolveBaseAgentConfig(base, req.taskKind);
+  //
+  // The base plugin is COMPOSED, never loaded from the authored tree: the `aep`
+  // skill carries `<!-- mode:… -->` blocks for the GitHub/local split, and this
+  // is the single choke point that resolves them (see skill_compose.ts). Doing
+  // it here rather than in each entrypoint means no caller can forget and ship a
+  // session the raw source, markers and both procedures included.
+  const resolvedBase = resolveBaseAgentConfig(base, req.taskKind, req.taskId);
+  const basePluginDir = composeBasePlugin({
+    sourceDir: resolvedBase.sourcePluginPath,
+    destDir: resolvedBase.composeDir,
+    mode: resolvedBase.mode,
+  });
   const plugins: Array<{ type: "local"; path: string }> = [
-    { type: "local", path: resolvedBase.pluginPath },
+    { type: "local", path: basePluginDir },
   ];
   const skillPreload: string[] = resolvedBase.preload;
   if (perTaskSkills?.skillsPluginDir) {
@@ -231,7 +275,8 @@ export function runClaudeQuery(
       cwd: layout.workspace,
       plugins,
       // Force built-in skill bodies into context at startup. Do NOT
-      // replace with 'all' — see docs/design/skills-system.md.
+      // replace with 'all': that would inject every custom + imported
+      // skill's body too, which is what the on-demand listing is for.
       skills: skillPreload as unknown as string[],
       allowedTools,
       ...(mcpServers ? { mcpServers } : {}),

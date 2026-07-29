@@ -56,25 +56,19 @@ export async function phaseMenu(projectDir: string, slug: string, skillCount: nu
     : design.components.length > 0
       ? `2 Design         ✓ ${design.components.length} component(s)${design.skillsApplied.length ? ` · skillsApplied: ${design.skillsApplied.join(", ")}` : ""}`
       : "2 Design         — not generated yet";
-  const issueCounts = issues.length
-    ? ` (${["deployed", "ready", "failed"]
-        .map((s) => [issues.filter((i) => i.derivedStatus === s).length, s] as const)
-        .filter(([n]) => n > 0)
-        .map(([n, s]) => `${n} ${s}`)
-        .join(", ")})`
-    : "";
+  const pending = issues.filter((i) => !i.resolved).length;
+  const issueCounts = issues.length ? ` (${issues.length - pending} resolved, ${pending} pending)` : "";
   const tasksLabel = !tGate.ok
     ? `3 Tasks          ✗ blocked: ${tGate.reason}`
     : issues.length > 0
       ? `3 Tasks          ✓ ${issues.length} issue(s)${issueCounts}`
       : "3 Tasks          — not planned yet";
-  const pending = issues.filter((i) => i.derivedStatus !== "deployed").length;
   const codeLabel =
     issues.length === 0
       ? "4 Code           — needs issues"
       : pending > 0
-        ? `4 Code           run the plan (${pending} pending, dependency order) →`
-        : "4 Code           ✓ all issues deployed";
+        ? `4 Code           run — ${pending} pending, one session →`
+        : "4 Code           ✓ all issues look resolved";
 
   const choice = await clack.select<MenuAction>({
     message: `AEP playground — ${slug} (${projectDir}) · skills: ${skillCount} (working tree)`,

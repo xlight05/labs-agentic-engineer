@@ -16,14 +16,14 @@
  * under the License.
  */
 
-/** Coding-run flow units: status write-back, undo round trip, gates, timeline. */
+/** Coding-run flow units: undo round trip, gates, timeline rendering. */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readDerivedStatus, renderProgressLine, writeDerivedStatus } from "../src/engine/coding-run.js";
+import { renderProgressLine } from "../src/engine/coding-run.js";
 import { renderTaskContextFile } from "../src/ports/issue-store.js";
 import { takeUndoSnapshot, restoreUndoSnapshot, listUndoSnapshots } from "../src/state/undo.js";
 import { codeCommand } from "../src/commands.js";
@@ -38,28 +38,11 @@ function tempProject(): string {
       component: "user-service",
       title: "Implement the user service",
       dependsOn: ["auth-service"],
-      derivedStatus: "ready",
       body: "scope",
     }),
   );
   return dir;
 }
-
-test("writeDerivedStatus replaces an existing value and inserts a missing one", () => {
-  const dir = tempProject();
-  try {
-    writeDerivedStatus(dir, "issues/3.md", "running");
-    assert.match(readFileSync(join(dir, "issues/3.md"), "utf8"), /derivedStatus: "running"/);
-
-    // A file without the field gets it inserted after origin (production order).
-    writeFileSync(join(dir, "issues", "4.md"), '---\nissueNumber: 4\ncomponent: "a"\ntitle: "T"\ndependsOn: []\norigin: "manual"\n---\n');
-    writeDerivedStatus(dir, "issues/4.md", "deployed");
-    const text = readFileSync(join(dir, "issues/4.md"), "utf8");
-    assert.match(text, /origin: "manual"\nderivedStatus: "deployed"\n---/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("undo snapshot + restore round-trips edits and removes new files", () => {
   const dir = tempProject();
@@ -87,31 +70,22 @@ test("undo snapshot + restore round-trips edits and removes new files", () => {
   }
 });
 
-test("codeCommand gates: unparseable issue fails; unconfirmed headless run fails before any snapshot", async () => {
+test("codeCommand gates: no issues fails; unconfirmed headless run fails before any snapshot", async () => {
+  const empty = mkdtempSync(join(tmpdir(), "aep-play-code-empty-"));
+  try {
+    const noIssues = await codeCommand(empty, { silent: true });
+    assert.equal(noIssues.ok, false);
+    assert.match(noIssues.detail ?? "", /nothing to run/);
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+
   const dir = tempProject();
   try {
-    const bad = await codeCommand(dir, "issues/99.md", { silent: true });
-    assert.equal(bad.ok, false);
-    assert.match(bad.detail ?? "", /does not parse/);
-
-    const unconfirmed = await codeCommand(dir, "issues/3.md", { silent: true });
+    const unconfirmed = await codeCommand(dir, { silent: true });
     assert.equal(unconfirmed.ok, false);
     assert.match(unconfirmed.detail ?? "", /not confirmed/);
     assert.equal(listUndoSnapshots(dir).length, 0, "no snapshot before consent");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("readDerivedStatus reads the frontmatter value (the exit-0 clobber guard's input)", () => {
-  const dir = tempProject();
-  try {
-    assert.equal(readDerivedStatus(dir, "issues/3.md"), "ready");
-    // The agent's give-up protocol sets "failed" and exits 0 — the settle
-    // logic must see this value and NOT normalize it to deployed.
-    writeDerivedStatus(dir, "issues/3.md", "failed");
-    assert.equal(readDerivedStatus(dir, "issues/3.md"), "failed");
-    assert.equal(readDerivedStatus(dir, "issues/404.md"), undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

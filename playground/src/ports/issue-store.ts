@@ -49,7 +49,6 @@ export interface IssueFileData {
   title: string;
   dependsOn: string[];
   origin?: string;
-  derivedStatus?: string;
   key?: string;
   body?: string;
 }
@@ -69,7 +68,9 @@ function yamlFlowList(items: string[]): string {
  * Mirror of Go `TaskContextFile.Render` (field order fixed: issueNumber,
  * component, title, dependsOn, origin, then optionals), extended with the
  * playground's `key` line (extra frontmatter keys are ignored by
- * `parseTaskContextFile` — tolerated by design).
+ * `parseTaskContextFile` — tolerated by design). No status field: an issue's
+ * done-ness is never cached here — it is read fresh from the project tree
+ * each run, not from a flag a prior run wrote.
  */
 export function renderTaskContextFile(f: IssueFileData): string {
   let out = "---\n";
@@ -78,7 +79,6 @@ export function renderTaskContextFile(f: IssueFileData): string {
   out += `title: ${yamlQuote(f.title)}\n`;
   out += `dependsOn: ${yamlFlowList(f.dependsOn)}\n`;
   out += `origin: ${yamlQuote(f.origin ?? "spec-plan")}\n`;
-  if (f.derivedStatus) out += `derivedStatus: ${yamlQuote(f.derivedStatus)}\n`;
   if (f.key) out += `key: ${yamlQuote(f.key)}\n`;
   out += "---\n";
   const body = (f.body ?? "").trim();
@@ -126,14 +126,6 @@ export interface FoldOutcome {
 }
 
 const normTitle = (t: string): string => t.trim().toLowerCase();
-
-/**
- * THE dep-gating rule (one definition — TUI table, single-run hint, batch
- * skip): the issue's dependsOn components that still have a NON-deployed issue.
- */
-export function blockedBy(issue: Issue, all: Issue[]): string[] {
-  return issue.dependsOn.filter((dep) => all.some((i) => i.component === dep && i.derivedStatus !== "deployed"));
-}
 
 interface PlanTaskOkOutput {
   ok: true;
@@ -245,7 +237,6 @@ export class FsIssueStore {
           title: op.title,
           dependsOn: op.dependsOn,
           origin: op.origin,
-          derivedStatus: "ready",
           key,
           body: `> **Rationale:** ${op.rationale}`,
         };
@@ -256,7 +247,6 @@ export class FsIssueStore {
           title: data.title,
           dependsOn: data.dependsOn,
           origin: "spec-plan",
-          derivedStatus: "ready",
           body: data.body ?? "",
           file: `issues/${issueNumber}.md`,
           key,
@@ -301,7 +291,6 @@ export class FsIssueStore {
         title: target.title,
         dependsOn: target.dependsOn,
         origin: target.origin,
-        ...(target.derivedStatus ? { derivedStatus: target.derivedStatus } : {}),
         ...(target.key ? { key: target.key } : {}),
         body: target.body,
       });
@@ -314,50 +303,6 @@ export class FsIssueStore {
   private write(data: IssueFileData): void {
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(join(this.dir, `${data.issueNumber}.md`), renderTaskContextFile(data), "utf8");
-  }
-
-  /**
-   * The one-go execution order (docs §5 phase 4): topological by component
-   * `dependsOn` (Kahn's), ties broken by issueNumber; edges to components
-   * with no issue are ignored (advisory posture). On a cycle the remainder
-   * falls back to issueNumber order — the server-side accumulator prevents
-   * cycles at plan time, so this only guards hand-edited files.
-   */
-  static executionOrder(issues: Issue[]): Issue[] {
-    const byComponent = new Map<string, Issue[]>();
-    for (const i of issues) {
-      const list = byComponent.get(i.component) ?? [];
-      list.push(i);
-      byComponent.set(i.component, list);
-    }
-    const indegree = new Map<Issue, number>();
-    const dependents = new Map<string, Issue[]>();
-    for (const i of issues) {
-      const deps = i.dependsOn.filter((d) => byComponent.has(d) && d !== i.component);
-      indegree.set(i, deps.length);
-      for (const d of deps) {
-        const list = dependents.get(d) ?? [];
-        list.push(i);
-        dependents.set(d, list);
-      }
-    }
-    const byNumber = (a: Issue, b: Issue) => a.issueNumber - b.issueNumber;
-    const ready = issues.filter((i) => indegree.get(i) === 0).sort(byNumber);
-    const out: Issue[] = [];
-    while (ready.length > 0) {
-      const next = ready.shift()!;
-      out.push(next);
-      for (const dep of dependents.get(next.component) ?? []) {
-        const left = (indegree.get(dep) ?? 1) - 1;
-        indegree.set(dep, left);
-        if (left === 0) {
-          ready.push(dep);
-          ready.sort(byNumber);
-        }
-      }
-    }
-    for (const i of issues.sort(byNumber)) if (!out.includes(i)) out.push(i); // cycle remainder
-    return out;
   }
 
   /**

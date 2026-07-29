@@ -86,7 +86,6 @@ export function parseTaskContextFile(path: string, content: string): TaskContext
     title,
     dependsOn: strList(fm.dependsOn),
     origin: origin(fm.origin),
-    ...opt("derivedStatus", str(fm.derivedStatus)),
     ...opt("specTag", str(fm.specTag)),
     ...opt("designTag", str(fm.designTag)),
     body: text.slice(fence[0]!.length),

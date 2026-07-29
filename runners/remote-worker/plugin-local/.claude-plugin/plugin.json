@@ -1,5 +1,0 @@
-{
-  "name": "aep-local",
-  "version": "0.1.0",
-  "description": "AEP playground local-mode skill: work an issue FILE against a plain local project directory — no git remotes, no GitHub, no PR. Never shipped in the production runner image."
-}

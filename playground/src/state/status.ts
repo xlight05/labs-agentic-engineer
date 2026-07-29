@@ -21,7 +21,7 @@
  * Pure reads — the files ARE the state; nothing here caches or writes.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { listComponents } from "../engine/gates.js";
 import { FsIssueStore } from "../ports/issue-store.js";
@@ -64,13 +64,44 @@ export function designStatus(projectDir: string): DesignStatus {
   return { components, skillsApplied: [...skills].sort() };
 }
 
+/**
+ * A component's App Path, from its `design.json` — undefined when the design
+ * is missing or unparseable.
+ */
+function appPathFor(projectDir: string, component: string): string | undefined {
+  const file = join(projectDir, "specs/design/components", component, "design.json");
+  if (!existsSync(file)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as { appPath?: unknown };
+    return typeof parsed.appPath === "string" ? parsed.appPath : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A cheap, TUI-only proxy for "looks done": does the component's App Path
+ * exist and hold any files. This is NOT the real judgment — the `aep`
+ * skill's own discovery step (does the App Path actually satisfy the issue)
+ * is authoritative and runs at coding-run time. This is just good enough for
+ * a list glyph, so the menu doesn't need to ask an agent to render.
+ */
+export function issueLooksResolved(projectDir: string, component: string): boolean {
+  const appPath = appPathFor(projectDir, component);
+  if (!appPath) return false;
+  const dir = join(projectDir, appPath);
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return false;
+  return readdirSync(dir).length > 0;
+}
+
 export interface IssueSummary {
   file: string;
   issueNumber: number;
   component: string;
   title: string;
   dependsOn: string[];
-  derivedStatus: string;
+  /** See `issueLooksResolved` — a display proxy, not ground truth. */
+  resolved: boolean;
 }
 
 /**
@@ -84,6 +115,6 @@ export function listIssueSummaries(projectDir: string): IssueSummary[] {
     component: i.component,
     title: i.title,
     dependsOn: i.dependsOn,
-    derivedStatus: i.derivedStatus ?? "ready",
+    resolved: issueLooksResolved(projectDir, i.component),
   }));
 }

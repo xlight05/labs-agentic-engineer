@@ -17,16 +17,15 @@
  */
 
 /**
- * Drift guards for the "duplicated + pinned" copies
- * (docs/design/playground.md §9/§14) — read-the-source assertions, zero build
- * coupling:
+ * Drift guards for the "duplicated + pinned" copies — read-the-source
+ * assertions, zero build coupling:
  *
  *  1. Every TS steer constant must appear verbatim in its Go source file.
  *     Go splits long strings into concatenated literals, so the check
  *     extracts every interpreted string literal from the file, unescapes it,
  *     and joins adjacent literals — the copied constant must be a substring.
- *  2. The aep-local skill's shared sections (Project structure, Constraints)
- *     must be byte-identical to the production aep skill's.
+ *  2. The coding-run prompt's skill-pointer clause must appear in BOTH the Go
+ *     prompt builder and the playground's local dispatch.
  */
 
 import { test } from "node:test";
@@ -71,22 +70,28 @@ test("targetSuffix + renderPlanContext shapes appear in their Go sources", () =>
   assert.ok(plan.includes("\n\n## Existing open Tasks in this version (reference)\n"), "renderPlanContext header drifted");
 });
 
-// --- aep ⇄ aep-local shared-section identity --------------------------------
+// --- the coding-run prompt's skill pointer, either side of a language boundary
+//
+// The platform's coding prompt is authored in Go (the BFF builds it and stamps
+// it as AEP_PROMPT); the playground's is authored in TypeScript (local.ts builds
+// its own dispatch). Both are deliberately just a subject plus a pointer at the
+// `aep` skill for the procedure — so the pointer clause is the one string that
+// has to survive in both, and a rename of the skill has to move both. The skill
+// BODIES no longer need a parity test: there is one authored SKILL.md now, and
+// the mode blocks in it are checked by
+// runners/remote-worker/src/lib/skill_compose.test.ts.
 
-function skillSection(skillFile: string, heading: string): string {
-  const text = readFileSync(join(REPO_ROOT, skillFile), "utf8");
-  const start = text.indexOf(`\n## ${heading}\n`);
-  assert.ok(start >= 0, `${skillFile} has no "## ${heading}" section`);
-  const afterStart = start + `\n## ${heading}\n`.length;
-  const end = text.indexOf("\n## ", afterStart);
-  return text.slice(afterStart, end < 0 ? text.length : end).trim();
-}
+const SKILL_POINTER = "Follow the `aep` skill loaded in your session — it defines discovery, ordering, fan-out";
 
-const AEP_SKILL = "runners/remote-worker/plugin/skills/aep/SKILL.md";
-const AEP_LOCAL_SKILL = "runners/remote-worker/plugin-local/skills/aep-local/SKILL.md";
+test("the Go coding prompt points at the aep skill for the procedure", () => {
+  const joined = joinedGoLiterals("services/aep-api/internal/delivery/codingagent/coding_executor.go");
+  assert.ok(joined.includes(SKILL_POINTER), "buildPrompt no longer carries the shared skill-pointer clause");
+});
 
-for (const heading of ["Project structure", "Constraints"]) {
-  test(`aep-local "${heading}" section is byte-identical to the aep skill's`, () => {
-    assert.equal(skillSection(AEP_LOCAL_SKILL, heading), skillSection(AEP_SKILL, heading));
-  });
-}
+test("the playground's local dispatch points at the same skill, the same way", () => {
+  const localEntry = readFileSync(join(REPO_ROOT, "runners/remote-worker/src/local.ts"), "utf8");
+  // local.ts splits the prompt across two adjacent string literals; join them the
+  // way the Go check does before looking for the clause.
+  const joined = [...localEntry.matchAll(/"((?:[^"\\\n]|\\.)*)"/g)].map((m) => m[1] ?? "").join("");
+  assert.ok(joined.includes(SKILL_POINTER), "local.ts's prompt drifted from the shared skill-pointer clause");
+});

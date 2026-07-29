@@ -2,9 +2,14 @@
 
 Root-level local-filesystem playground: runs the **real** engineering agent
 (in-process `createApp` boot) and the **real** coding agent (remote-worker
-`local.ts`) against a plain project directory. Design:
-`docs/design/playground.md`. Purpose: edit a `SKILL.md`, a prompt, or a steer
-copy → rerun one phase → observe. No git, no GitHub, no Postgres, no cluster.
+`local.ts`) against a plain project directory. Purpose: edit a `SKILL.md`, a
+prompt, or a steer copy → rerun one phase → observe. No git, no GitHub, no
+Postgres, no cluster.
+
+The coding agent loads the **same `aep` skill production loads**, composed for
+`mode: "local"` — one authored `SKILL.md` with the GitHub-shaped steps marked
+inline, so tuning it here IS tuning the platform's. See
+`runners/remote-worker/design/decisions/ADR-0001-one-mode-composed-skill.md`.
 
 ## Run
 
@@ -13,9 +18,15 @@ pnpm play                              # picker → phase menu
 pnpm play <dir>                        # phase menu
 pnpm play <dir> requirements --idea "…"
 pnpm play <dir> design | tasks | check | undo
-pnpm play <dir> code [--yes]           # the WHOLE plan, one go, dependency order
-pnpm play <dir> code issues/3.md [--restore] [--yes]   # one run (honing loop)
+pnpm play <dir> code [--restore] [--yes]   # ONE coding-agent session works the
+                                            # whole project — no per-issue run
 ```
+
+`code` mirrors prod's milestone cycle (ADR-0011): the CLI never picks an issue
+or an order — the `aep` skill discovers its own working set from
+`issues/` (does each issue's App Path already look done?), orders it, and
+works as many as it reasonably can in one session, fanning independent ones
+out to subagents. See `design/decisions/ADR-0001-milestone-batch-coding-run.md`.
 
 No review/browse affordances: the playground auto-writes files and the user's
 editor (VS Code) is where browsing, diffs, and hand-edits happen — including
@@ -50,12 +61,15 @@ gates), the same instruction composition (`src/engine/compose.ts` carries
 provenance-pinned verbatim copies of the live Go steer strings —
 `test/steer-parity.test.ts` fails on drift), the same skills materialization,
 the same runner session options (`resolveBaseAgentConfig` defaults are
-unit-pinned in remote-worker).
+unit-pinned in remote-worker), and the same authored workflow skill (only the
+mode-marked GitHub steps are swapped — `skill_compose.test.ts` pins which text
+is shared and asserts neither mode leaks the other's procedure).
 
 ## Scope ends when the code lands
 
-The playground covers requirements → design → tasks → code, ending at the
-issue's `derivedStatus` flip. There is NO build/deploy half and none should be
+The playground covers requirements → design → tasks → code, ending when the
+coding-agent session stops (some issues may stay open — a later run picks them
+up, same as prod). There is NO build/deploy half and none should be
 added: no image builds, no `docker build` of the authored Dockerfile, no
 deploy attempt, no validation-task runs. Two things that look build-ish stay
 deliberately — the agent's local toolchain verification (`go build`,
@@ -75,8 +89,9 @@ push it to a repo and let the platform's normal flow build/deploy it.
 | No CRT-annotation append, no lineage diffs in replans | platform resources/tags don't exist locally | manual edit; replan is still files-based |
 | Issue `key` lineage constant `"local"`; no spec/design tags | no builds/tags locally | dedupe across replans still works |
 | Design/tasks gates are playground-side UX | production has no server gate on the console's spec paths | advisory only |
-| `derivedStatus: deployed` means "landed in the project dir" | the deploy oracle is dropped; the playground CLI is the writer of record on exit codes | ordering survives as a dependsOn warning |
+| No status field on an issue file | prod's own `derivedStatus` is read from GitHub issue state, never cached; the playground has no such oracle, so it re-derives "is this done" from whether the App Path looks implemented, every run | none needed — deleting a component's code puts its issue back in the working set |
 | Coding agent runs bypassPermissions ON THE HOST | production uses a disposable pod | mandatory undo snapshot + first-run consent; point it at scratch/git-tracked projects |
+| No GitHub-shaped steps in the workflow skill (issue files, no branch, no PR) | there is no remote to discover issues from or open a PR against | the deliberate one: the same authored `aep` skill, composed for `mode: "local"`; everything outside a `<!-- mode:… -->` block is shared with production verbatim |
 
 ## Layout
 

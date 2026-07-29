@@ -44,7 +44,6 @@ const GO_RENDER_FIXTURE =
   'title: "Implement \\"auth\\": step 1"\n' +
   'dependsOn: ["auth-service", "db"]\n' +
   'origin: "spec-plan"\n' +
-  'derivedStatus: "ready"\n' +
   '---\n' +
   '\n' +
   '> **Rationale:** covers auth\n' +
@@ -57,7 +56,6 @@ test("renderTaskContextFile is byte-identical to the Go renderer and round-trips
     component: "user-service",
     title: 'Implement "auth": step 1',
     dependsOn: ["auth-service", "db"],
-    derivedStatus: "ready",
     body: "> **Rationale:** covers auth\n\nScope text here.",
   });
   assert.equal(rendered, GO_RENDER_FIXTURE);
@@ -68,7 +66,6 @@ test("renderTaskContextFile is byte-identical to the Go renderer and round-trips
   assert.equal(parsed.component, "user-service");
   assert.equal(parsed.title, 'Implement "auth": step 1');
   assert.deepEqual(parsed.dependsOn, ["auth-service", "db"]);
-  assert.equal(parsed.derivedStatus, "ready");
   assert.match(parsed.body, /Scope text here\./);
 });
 
@@ -144,7 +141,6 @@ test("plan fold: planTask + updateTask-by-title → issues/<n>.md; replan dedupe
 
     const issue1 = readFileSync(join(projectDir, "issues/1.md"), "utf8");
     assert.match(issue1, /component: "user-service"/);
-    assert.match(issue1, /derivedStatus: "ready"/);
     assert.match(issue1, /> \*\*Rationale:\*\* covers user-service/);
     assert.match(issue1, /## Scope/);
     assert.match(issue1, /key: "[0-9a-f]{12}"/);
@@ -201,37 +197,6 @@ test("safeAllocator never clobbers an existing issue file (copied project, fresh
   } finally {
     rmSync(projectDir, { recursive: true, force: true });
   }
-});
-
-test("executionOrder: topological by dependsOn, issueNumber ties, cycle falls back", () => {
-  const issue = (issueNumber: number, component: string, dependsOn: string[]) => ({
-    issueNumber,
-    component,
-    title: `t${issueNumber}`,
-    dependsOn,
-    origin: "spec-plan" as const,
-    body: "",
-    file: `issues/${issueNumber}.md`,
-  });
-  // webapp(2)/notifier(3) depend on api(1); standalone(4) independent. After
-  // api runs, the lowest-numbered AVAILABLE task goes next (2, then 3, then 4).
-  const order = FsIssueStore.executionOrder([
-    issue(3, "notifier", ["api"]),
-    issue(2, "webapp", ["api"]),
-    issue(4, "standalone", []),
-    issue(1, "api", []),
-  ]).map((i) => i.issueNumber);
-  assert.deepEqual(order, [1, 2, 3, 4]);
-  // Dependencies always precede dependents regardless of numbering.
-  const inverted = FsIssueStore.executionOrder([issue(1, "webapp", ["api"]), issue(2, "api", [])]).map((i) => i.issueNumber);
-  assert.deepEqual(inverted, [2, 1]);
-
-  // Edges to components with no issue are ignored; a cycle degrades to number order.
-  const cyclic = FsIssueStore.executionOrder([
-    issue(1, "a", ["b", "ghost"]),
-    issue(2, "b", ["a"]),
-  ]).map((i) => i.issueNumber);
-  assert.deepEqual(cyclic, [1, 2]);
 });
 
 test("no terminal manifest → the fold writes nothing (D14 do-not-commit)", () => {

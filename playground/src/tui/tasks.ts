@@ -17,55 +17,45 @@
  */
 
 /**
- * The tasks screen: the `issues/*.md` table (dependsOn edges + derivedStatus)
- * plus plan/replan, run-the-whole-plan, and dependency-GATED single-task runs
- * (only tasks whose dependsOn components are deployed are offered; blocked
- * ones show why in the table). Deliberately NO file affordances — viewing,
- * editing, and hand-authoring issue files happen in the user's editor.
+ * The tasks screen: the `issues/*.md` table (dependsOn edges + a cheap
+ * resolved-glyph) plus plan/replan and running the whole project in one
+ * coding-agent session — the `aep` skill owns discovery, ordering and
+ * fan-out itself (mirrors prod's milestone loop), so there is no per-issue
+ * run here. Deliberately NO file affordances — viewing, editing, and
+ * hand-authoring issue files happen in the user's editor.
  */
 
 import { stdout as output } from "node:process";
 import * as clack from "@clack/prompts";
-import { blockedBy, FsIssueStore } from "../ports/issue-store.js";
+import { FsIssueStore } from "../ports/issue-store.js";
 import { projectSlug } from "../ports/spec-workspace.js";
+import { issueLooksResolved } from "../state/status.js";
 
-export type TasksAction = { kind: "plan" } | { kind: "code-all" } | { kind: "code"; issueFile: string } | { kind: "back" };
-
-function statusIcon(s: string | undefined): string {
-  if (s === "deployed") return "✓";
-  if (s === "failed") return "✗";
-  if (s === "running") return "▸";
-  return "·"; // ready
-}
+export type TasksAction = { kind: "plan" } | { kind: "code" } | { kind: "back" };
 
 /** Render the tasks table; returns the action the CLI should run. */
 export async function tasksScreen(projectDir: string): Promise<TasksAction> {
   const store = new FsIssueStore(projectDir, projectSlug(projectDir));
   const issues = store.list();
   if (issues.length === 0) output.write("  (no issues yet — plan first; hand-authored issues/<n>.md files are picked up too)\n");
+  let pendingCount = 0;
   for (const i of issues) {
-    const blocked = i.derivedStatus !== "deployed" ? blockedBy(i, issues) : [];
+    const resolved = issueLooksResolved(projectDir, i.component);
+    if (!resolved) pendingCount += 1;
     output.write(
-      `  ${statusIcon(i.derivedStatus)} #${i.issueNumber} [${i.component}] ${i.title}${i.dependsOn.length ? ` ⇠ ${i.dependsOn.join(", ")}` : ""} (${i.derivedStatus ?? "ready"})${blocked.length ? ` — blocked by: ${blocked.join(", ")}` : ""}\n`,
+      `  ${resolved ? "✓" : "·"} #${i.issueNumber} [${i.component}] ${i.title}${i.dependsOn.length ? ` ⇠ ${i.dependsOn.join(", ")}` : ""}\n`,
     );
   }
 
-  const pending = issues.filter((i) => i.derivedStatus !== "deployed");
-  const runnable = pending.filter((i) => blockedBy(i, issues).length === 0);
   const choice = await clack.select<string>({
     message: "Tasks",
     options: [
       { value: "plan", label: issues.length ? "re-plan (adds tasks for uncovered components)" : "plan tasks" },
-      ...(pending.length > 0 ? [{ value: "code-all", label: `run the plan — ${pending.length} pending task(s), dependency order` }] : []),
-      ...runnable.map((i) => ({
-        value: `code:${i.file}`,
-        label: `run #${i.issueNumber} [${i.component}] ${i.title}${i.derivedStatus === "failed" ? " (retry)" : ""}`,
-      })),
+      ...(pendingCount > 0 ? [{ value: "code", label: `run — ${pendingCount} issue(s) look pending, one session` }] : []),
       { value: "back", label: "back" },
     ],
   });
   if (clack.isCancel(choice) || choice === "back") return { kind: "back" };
   if (choice === "plan") return { kind: "plan" };
-  if (choice === "code-all") return { kind: "code-all" };
-  return { kind: "code", issueFile: choice.slice("code:".length) };
+  return { kind: "code" };
 }

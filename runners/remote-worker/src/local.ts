@@ -16,29 +16,34 @@
  * under the License.
  */
 
-// Local-mode entrypoint (docs/design/playground.md §5 phase 4) — oneshot.ts's
-// sibling for the AEP playground: the workspace IS a plain local project dir
-// (no clone, no credhelper, no PAT), the task is an issue FILE, and the
-// workflow skill is the `aep-local` plugin (edit-in-place, no PR). The same
+// Local-mode entrypoint — oneshot.ts's sibling for the AEP playground: the
+// workspace IS a plain local project dir (no clone, no credhelper, no PAT),
+// and the workflow skill is the SAME `aep` skill production loads, composed
+// for `mode: "local"` (edit-in-place, no PR). See skill_compose.ts: the two
+// modes share one authored SKILL.md, so the project conventions the playground
+// exists to tune cannot drift from the ones a real run uses.
+// Mirrors prod's milestone dispatch (`docs/decisions/ADR-0011`; playground
+// decision: `playground/design/decisions/ADR-0001-milestone-batch-coding-run.md`):
+// the run is scoped to the WHOLE project, not one issue — the prompt names
+// nothing but the project, and the `aep-local` skill discovers its own
+// working set from the issue files on disk (App-Path existence, not a stored
+// flag), orders them, and works as many as it can in one session. The same
 // runClaudeQuery drives the SDK session; the same NDJSON progress contract
 // streams on stdout; the same exit codes report the result:
 //
-//   0 — agent reported success
-//   1 — agent reported failure
+//   0 — the session did what it could (some issues may remain open — normal)
+//   1 — the agent gave up entirely
 //   2 — setup/unexpected error before the agent ran
 //
 // Env contract (stamped by the playground CLI):
 //   AEP_LOCAL_PROJECT_DIR  the project directory (becomes the cwd)
-//   AEP_LOCAL_ISSUE_FILE   issue file, relative to the project dir
-//   AEP_COMPONENT_NAME     the building component (selects design.json)
 //   AEP_LOCAL_SKILLS_DIR   the working-tree skill library (optional)
-//   AEP_LOCAL_PLUGIN_DIR   the base plugin (default: ../plugin-local)
+//   AEP_LOCAL_PLUGIN_DIR   the authored base plugin (default: ../plugin)
 //   AEP_LOCAL_RUN_DIR      scratch/log dir (default: <project>/.aep-playground/runner)
 //   ANTHROPIC_API_KEY      the SDK session's key
 //
 // This module imports nothing outside the package — remote-worker stays
-// workspace-dep-free for its standalone image; plugin-local is never loaded
-// by the production entrypoint (oneshot.ts).
+// workspace-dep-free for its standalone image.
 
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -54,7 +59,17 @@ import { resolveTaskSkills } from "./lib/skills_resolver.js";
 import { materializeSkills } from "./lib/skills_materializer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_LOCAL_PLUGIN = path.resolve(__dirname, "../plugin-local");
+// The SAME authored plugin production loads. `mode: "local"` below is what
+// swaps the GitHub-shaped steps out of it at compose time.
+const DEFAULT_PLUGIN = path.resolve(__dirname, "../plugin");
+
+// A run is scoped to the whole project, not one component — the agent works
+// every open issue it discovers and may touch several components. This is a
+// LABEL VALUE ONLY (mirrors prod's `aep-milestone` sentinel,
+// `delivery/codingagent/milestone_dispatch.go`): nothing resolves project
+// content through it, and skills are read at `{kind: "project"}` scope
+// instead (the union of every component's `design.json`), never off this name.
+const LOCAL_MILESTONE_SENTINEL = "aep-local-milestone";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -66,8 +81,6 @@ function requireEnv(name: string): string {
 
 interface LocalRun {
   projectDir: string;
-  issueFile: string;
-  componentName: string;
   skillsDir?: string;
   pluginDir: string;
   runDir: string;
@@ -75,31 +88,20 @@ interface LocalRun {
 
 function readLocalRunFromEnv(): LocalRun {
   const projectDir = path.resolve(requireEnv("AEP_LOCAL_PROJECT_DIR"));
-  const issueFile = requireEnv("AEP_LOCAL_ISSUE_FILE");
-  const componentName = requireEnv("AEP_COMPONENT_NAME");
   requireEnv("ANTHROPIC_API_KEY");
 
   if (!fs.existsSync(projectDir) || !fs.statSync(projectDir).isDirectory()) {
     throw new Error(`AEP_LOCAL_PROJECT_DIR is not a directory: ${projectDir}`);
-  }
-  if (path.isAbsolute(issueFile) || issueFile.includes("..")) {
-    throw new Error(`AEP_LOCAL_ISSUE_FILE must be a project-relative path: ${issueFile}`);
-  }
-  if (!fs.existsSync(path.join(projectDir, issueFile))) {
-    throw new Error(`issue file not found: ${path.join(projectDir, issueFile)}`);
-  }
-  if (componentName.includes("/") || componentName.includes("..")) {
-    throw new Error(`AEP_COMPONENT_NAME must not contain '/' or '..': ${componentName}`);
   }
 
   const skillsDir = process.env.AEP_LOCAL_SKILLS_DIR || undefined;
   if (skillsDir && !fs.existsSync(skillsDir)) {
     throw new Error(`AEP_LOCAL_SKILLS_DIR does not exist: ${skillsDir}`);
   }
-  const pluginDir = process.env.AEP_LOCAL_PLUGIN_DIR || DEFAULT_LOCAL_PLUGIN;
+  const pluginDir = process.env.AEP_LOCAL_PLUGIN_DIR || DEFAULT_PLUGIN;
   const runDir = process.env.AEP_LOCAL_RUN_DIR || path.join(projectDir, ".aep-playground", "runner");
 
-  return { projectDir, issueFile, componentName, ...(skillsDir ? { skillsDir } : {}), pluginDir, runDir };
+  return { projectDir, ...(skillsDir ? { skillsDir } : {}), pluginDir, runDir };
 }
 
 // The workspace IS the project dir; the auth-flavored layout fields point at
@@ -164,8 +166,9 @@ async function main(): Promise<number> {
       const skillsDir = run.skillsDir;
       const resolutions = await resolveTaskSkills({
         workspace: run.projectDir,
-        // The local harness runs one named component, not a milestone.
-        scope: { kind: "component", componentName: run.componentName },
+        // A run works the whole project, same as prod's milestone loop — the
+        // union of every component's skillsApplied, never one componentName.
+        scope: { kind: "project" },
         skillsRepoURL: "local:working-tree",
         pat: "",
         scratchDir: path.join(run.runDir, "skills-clone"),
@@ -193,15 +196,20 @@ async function main(): Promise<number> {
     taskId: randomUUID(),
     orgId: "play",
     projectId: path.basename(run.projectDir).toLowerCase(),
-    componentName: run.componentName,
+    componentName: LOCAL_MILESTONE_SENTINEL,
     repoUrl: "",
     bearer: "",
     identity: { name: "AEP Playground", email: "playground@localhost" },
     gitServiceUrl: "",
+    // Same shape as prod's dispatch prompt: the run's subject, then a pointer at
+    // the skill for the procedure. The pointer clause is duplicated in the BFF's
+    // Go `buildPrompt` (delivery/codingagent/coding_executor.go) because the two
+    // prompts are authored either side of a language boundary; the shared clause
+    // is pinned by playground/test/steer-parity.test.ts so the skill it names
+    // can't drift out from under one of them.
     prompt:
-      `Work on the task described in \`${run.issueFile}\` (relative to your cwd). Read it first. ` +
-      "The workflow and constraints are in the `aep-local` skill. When done, update the issue " +
-      "file's `derivedStatus` as the skill describes.",
+      "Work the issues in this project. Follow the `aep` skill loaded in your session — " +
+      "it defines discovery, ordering, fan-out, verification and how to finish.",
     taskKind: "implementation",
   };
 
@@ -211,7 +219,14 @@ async function main(): Promise<number> {
     layout,
     log,
     { ...(skillsPluginDir ? { skillsPluginDir } : {}), preloadSkillNames },
-    { basePluginPath: run.pluginDir, basePreload: ["aep-local:aep-local"] },
+    {
+      basePluginPath: run.pluginDir,
+      mode: "local",
+      // Under the run dir, not the OS temp dir: the composed skill is the exact
+      // text the agent was steered by, and "what did it actually read?" is a
+      // question a developer tuning the skill asks constantly.
+      composeDir: path.join(run.runDir, "base-plugin"),
+    },
   );
   const result = await completion;
   return result.exitCode;

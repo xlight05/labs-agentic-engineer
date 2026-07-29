@@ -19,7 +19,7 @@
 // Materialises the per-task AgentSkills plugin tree under
 // <workspace>/.aep/skills-plugin/.
 //
-// Layout (matches docs/design/skills-system.md > "Coding agent"):
+// Layout:
 //
 //   .aep/skills-plugin/
 //     .claude-plugin/

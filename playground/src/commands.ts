@@ -39,7 +39,7 @@ import { pendingQuestions, type PendingQuestions } from "./engine/questions.js";
 import { runSpecTurn, type SpecTurnResult } from "./engine/turn.js";
 import { runCodingAgent } from "./engine/coding-run.js";
 import { SKILLS_DIR } from "./engine/session.js";
-import { blockedBy, FsIssueStore, type FoldOutcome } from "./ports/issue-store.js";
+import { FsIssueStore, type FoldOutcome } from "./ports/issue-store.js";
 import { projectSlug } from "./ports/spec-workspace.js";
 import { loadProjectState, readPrompt, savePrompt, saveProjectState } from "./state/project.js";
 import { restoreUndoSnapshot, takeUndoSnapshot } from "./state/undo.js";
@@ -175,21 +175,23 @@ export interface CodeOptions extends PhaseOptions {
 }
 
 /**
- * Phase 4 — code (§5 phase 4; also the standalone requirement-2 entry).
- * Works on any dir with `specs/` + `issues/`: gate (issue parses), dependsOn
- * ordering WARNING (never a block), MANDATORY undo snapshot, spawn the
- * remote-worker local entry, stream its NDJSON, own the derivedStatus
- * write-back via exit codes.
+ * Phase 4 — code. Mirrors prod's milestone cycle: ONE coding-agent session
+ * works the whole project, not one issue at a time — the `aep` skill
+ * discovers its own working set from `issues/` and decides ordering and
+ * fan-out itself (see its SKILL.md). This command's only jobs are the
+ * MANDATORY undo snapshot and spawning the run.
+ *
+ * Exit code tracks whether the session completed, not whether every issue
+ * got resolved — leaving issues open for a later run is normal (mirrors
+ * prod's "a later cycle picks it up"), never a failure by itself.
  */
 export async function codeCommand(
   projectDir: string,
-  issueFile: string,
   opts: CodeOptions,
   confirmDir?: () => Promise<boolean>,
 ): Promise<PhaseOutcome> {
   const store = new FsIssueStore(projectDir, projectSlug(projectDir));
-  const issue = store.list().find((i) => i.file === issueFile);
-  if (!issue) return { ok: false, detail: `${issueFile} does not parse as a task (component + title frontmatter required)` };
+  if (store.list().length === 0) return { ok: false, detail: "nothing to run — no issues yet (plan tasks first?)" };
 
   // First-run consent (§12): bypassPermissions writes THIS directory.
   const state = loadProjectState(projectDir, projectSlug(projectDir));
@@ -203,89 +205,24 @@ export async function codeCommand(
     saveProjectState(projectDir, state);
   }
 
-  // Ordering hint (§5 gate 1): dependsOn components whose issues aren't
-  // deployed yet — warn, never block (the production "deployed" oracle is dropped).
-  const notDeployed = blockedBy(issue, store.list());
-  if (notDeployed.length > 0 && !opts.silent) {
-    output.write(`  ⚠ dependsOn not deployed yet: ${notDeployed.join(", ")} (hint only — continuing)\n`);
-  }
-
   if (opts.restore) {
     const restored = restoreUndoSnapshot(projectDir);
     if (!opts.silent) output.write(restored ? `  ↺ restored ${restored}\n` : "  (no undo snapshot to restore)\n");
   }
-  const snapshot = takeUndoSnapshot(projectDir); // mandatory (§12)
+  const snapshot = takeUndoSnapshot(projectDir); // mandatory (§12), once per session
   if (!opts.silent) output.write(`  ⛑ undo snapshot: ${snapshot}\n`);
 
   const result = await runCodingAgent({
     projectDir,
-    issueFile,
-    componentName: issue.component,
     skillsDir: opts.codingSkillsDir ?? SKILLS_DIR,
     ...(opts.pluginDir ? { pluginDir: opts.pluginDir } : {}),
     ...(opts.silent ? { silent: true } : {}),
   });
   if (!opts.silent) {
-    output.write(`\n  issue ${issue.issueNumber} → ${result.exitCode === 0 ? "deployed" : "failed"}\n`);
+    output.write(`\n  session ${result.exitCode === 0 ? "done" : `gave up (exit ${result.exitCode})`}\n`);
     output.write(`  transcript: ${result.runDir}\n`);
   }
   return result.exitCode === 0 ? { ok: true } : { ok: false, detail: `coding run exited ${result.exitCode}` };
-}
-
-/**
- * `play code` with no issue argument — execute the WHOLE plan in one go
- * (§5 phase 4): every non-deployed issue in dependency order. Status is
- * re-read between runs, so a dependent started later in the same batch sees
- * the dep its predecessor just deployed. An issue whose dependsOn component
- * has a non-deployed issue at its turn is SKIPPED (its dep failed earlier in
- * the batch) — never a hard error, and independent branches still run.
- */
-export async function codeAllCommand(
-  projectDir: string,
-  opts: CodeOptions,
-  confirmDir?: () => Promise<boolean>,
-): Promise<PhaseOutcome> {
-  const store = new FsIssueStore(projectDir, projectSlug(projectDir));
-  const plan = FsIssueStore.executionOrder(store.list()).filter((i) => i.derivedStatus !== "deployed");
-  if (plan.length === 0) return { ok: false, detail: "nothing to run — no non-deployed issues (plan tasks first?)" };
-  if (!opts.silent) {
-    output.write(`  ▸ executing ${plan.length} task(s) in dependency order: ${plan.map((i) => `#${i.issueNumber}`).join(" → ")}\n`);
-  }
-
-  // `--restore` applies ONCE, before the batch. Each codeCommand below takes
-  // its own undo snapshot; passing `restore` through would re-restore that
-  // pre-issue snapshot on every iteration, silently wiping the work each
-  // earlier issue just landed.
-  if (opts.restore) {
-    const restored = restoreUndoSnapshot(projectDir);
-    if (!opts.silent) output.write(restored ? `  ↺ restored ${restored}\n` : "  (no undo snapshot to restore)\n");
-  }
-  const perRunOpts: CodeOptions = { ...opts, restore: false };
-
-  let failed = 0;
-  let skipped = 0;
-  for (const issue of plan) {
-    // Fresh status: earlier runs in this batch may have deployed our deps.
-    const current = new FsIssueStore(projectDir, projectSlug(projectDir)).list();
-    const blocked = blockedBy(issue, current);
-    if (blocked.length > 0) {
-      skipped += 1;
-      if (!opts.silent) output.write(`  ↷ #${issue.issueNumber} ${issue.title} — skipped (dependsOn not deployed: ${blocked.join(", ")})\n`);
-      continue;
-    }
-    if (!opts.silent) output.write(`\n  ▶ #${issue.issueNumber} [${issue.component}] ${issue.title}\n`);
-    const outcome = await codeCommand(projectDir, issue.file, perRunOpts, confirmDir);
-    if (!outcome.ok) {
-      failed += 1;
-      if (!opts.silent) output.write(`  ✗ #${issue.issueNumber} failed: ${outcome.detail ?? "unknown"}\n`);
-      if (outcome.detail?.includes("not confirmed")) return outcome; // no consent — abort the batch
-    }
-  }
-
-  const ran = plan.length - skipped;
-  const summary = `${ran - failed}/${plan.length} deployed, ${failed} failed, ${skipped} skipped`;
-  if (!opts.silent) output.write(`\n  ■ batch done: ${summary}\n`);
-  return failed + skipped === 0 ? { ok: true } : { ok: false, detail: summary };
 }
 
 /** `play undo` — restore the latest pre-coding-run snapshot. */

@@ -35,7 +35,7 @@ test("parseKnownComponents collects sorted, unique component dir names", () => {
 test("parseTaskContextFile parses frontmatter + body and defaults optional fields", () => {
   const content =
     "---\nissueNumber: 42\ncomponent: order-service\ntitle: Implement order-service\n" +
-    "dependsOn:\n  - user-service\norigin: spec-plan\nderivedStatus: pending\n" +
+    "dependsOn:\n  - user-service\norigin: spec-plan\n" +
     "specTag: requirements-v3\ndesignTag: design-v5\n---\n## Scope\n\nDo the thing.\n";
   const t = parseTaskContextFile("tasks/42.md", content);
   assert.ok(t);
@@ -54,7 +54,6 @@ test("parseTaskContextFile tolerates missing optional fields", () => {
   assert.equal(t.issueNumber, 9); // fell back to the filename number
   assert.deepEqual(t.dependsOn, []);
   assert.equal(t.origin, "spec-plan"); // defaulted
-  assert.equal(t.derivedStatus, undefined);
 });
 
 test("parseTaskContextFile returns null for a non-task path", () => {

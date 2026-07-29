@@ -1,5 +1,5 @@
 {
   "name": "aep",
   "version": "0.8.0",
-  "description": "AEP task execution skills for agents working a platform-dispatched run: `aep` (milestone coding workflow), `aep-validation` (validation workflow, with authoring/healing discipline in its `references/`), `playwright-cli` (vendored from @playwright/cli, Apache-2.0)."
+  "description": "AEP task execution skills: `aep` (the coding workflow — one authored SKILL.md carrying `<!-- mode:github -->` / `<!-- mode:local -->` blocks, composed per run by lib/skill_compose.ts for either a platform-dispatched milestone or a playground project dir), `aep-validation` (validation workflow, with authoring/healing discipline in its `references/`), `playwright-cli` (vendored from @playwright/cli, Apache-2.0)."
 }
