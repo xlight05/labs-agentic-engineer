@@ -52,7 +52,7 @@ func newTurn(org, project, conv, useCase string) *spec.AgentTurn {
 
 func TestTurnRepo_GuardAndLifecycle(t *testing.T) {
 	t.Parallel()
-	repo := spec.NewTurnRepository(dbtest.New(t))
+	repo := spec.NewTurnRepository(dbtest.New(t), nil)
 	ctx := context.Background()
 
 	first, err := repo.TryStart(ctx, newTurn("o1", "p1", "c1", "requirements-chat"))
@@ -135,7 +135,7 @@ func TestTurnRepo_GuardAndLifecycle(t *testing.T) {
 func TestTurnRepo_SweepStale(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := spec.NewTurnRepository(db)
+	repo := spec.NewTurnRepository(db, nil)
 	ctx := context.Background()
 
 	stale, err := repo.TryStart(ctx, newTurn("o1", "p1", "c1", "requirements-chat"))

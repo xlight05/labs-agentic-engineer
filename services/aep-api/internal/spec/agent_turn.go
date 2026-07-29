@@ -65,6 +65,18 @@ type AgentTurn struct {
 	// requirements tag (vN) at gate time. BaseRef covers the baseSha half.
 	SpecTag string `gorm:"type:text" json:"specTag,omitempty"`
 
+	// Token usage from the turn's terminal manifest (#249/#291). Tokens + model
+	// are the stored truth; CostUsd is the USD stamped at capture from the
+	// model_rates then in force (amended ADR-0011) — never repriced. All zero
+	// (CostUsd null) for turns that predate capture or failed before the
+	// manifest, or whose model had no rate row.
+	InputTokens         int64    `gorm:"not null;default:0" json:"-"`
+	OutputTokens        int64    `gorm:"not null;default:0" json:"-"`
+	CacheReadTokens     int64    `gorm:"not null;default:0" json:"-"`
+	CacheCreationTokens int64    `gorm:"not null;default:0" json:"-"`
+	ModelID             string   `gorm:"type:text;not null;default:''" json:"-"`
+	CostUsd             *float64 `gorm:"column:cost_usd" json:"-"`
+
 	// HeartbeatAt is bumped by the running replica (~15s); the sweep fails
 	// rows whose heartbeat went stale (~60s) and releases the D18 guard.
 	HeartbeatAt time.Time `gorm:"index" json:"-"`

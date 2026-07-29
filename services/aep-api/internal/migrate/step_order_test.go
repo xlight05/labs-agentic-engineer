@@ -65,6 +65,7 @@ var goldenStepOrder = []string{
 	"phase10_rca_agent_reports",
 	"milestone_runs",
 	"run_cycle_logs",
+	"model_rates_seed",
 }
 
 // TestStepOrderGolden pins the ordered list. Steps is a pure builder, so this

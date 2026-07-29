@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/delivery"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
@@ -109,6 +110,12 @@ type fakeExecs struct {
 
 func (f *fakeExecs) DistinctDeployedProjects(context.Context) ([]delivery.DeployedProjectRef, error) {
 	return nil, nil
+}
+
+func (f *fakeExecs) RecordUsage(context.Context, string, contracts.TokenUsage) error { return nil }
+
+func (f *fakeExecs) SumUsageByProjectPhase(context.Context, string) (map[string]contracts.StampedUsage, map[string]contracts.StampedUsage, error) {
+	return nil, nil, nil
 }
 
 func (f *fakeExecs) DeleteByProject(ctx context.Context, orgID, projectID string) error {

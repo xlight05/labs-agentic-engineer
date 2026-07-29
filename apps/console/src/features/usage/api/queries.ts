@@ -25,21 +25,19 @@ function firstError(error: unknown, fallback: string): Error {
   return new Error(e?.detail ?? e?.title ?? fallback);
 }
 
-// Per-project usage rollups (#245). Actuals accrue as executions/turns land;
-// 30s staleness is plenty — the surfaces that need faster movement (a running
-// build) get it from their own polling reads carrying usage inline.
-export function useProjectUsage(projectName: string) {
+// Org-wide per-project usage cards (#291), the Settings → Usage read. Costs
+// are write-time stamps that only grow as work lands; a governance page has
+// no liveness needs, so 60s staleness is plenty.
+export function useProjectUsageList() {
   return useQuery({
-    queryKey: usageKeys.project(projectName),
+    queryKey: usageKeys.projects(),
     queryFn: async () => {
-      const { data, error } = await client.GET("/projects/{projectName}/usage", {
-        params: { path: { projectName } },
-      });
+      const { data, error } = await client.GET("/usage/projects");
       if (error || data === undefined) {
-        throw firstError(error, "Failed to load project usage");
+        throw firstError(error, "Failed to load usage");
       }
       return data;
     },
-    staleTime: 30_000,
+    staleTime: 60_000,
   });
 }

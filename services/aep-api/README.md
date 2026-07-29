@@ -70,8 +70,36 @@ datastore · `(["/surface"])` = an inbound HTTP surface.
   **tenant gate**. It is the only place domains meet.
 - **`clients/`** — outbound adapters to external systems (`openchoreo`, `thundersvc`,
   `secretmanagersvc`, `clustergatewayproxy`, `oauth`, `oidc`, `observability`, `k8s`).
-- **supporting:** `app` (process wiring), `config`, `migrate` (ordered schema steps),
-  `gen`/`igen` (generated contract types), `arch` (the executable rules), `seed`.
+- **supporting:** `app` (public composition **seam** — `Run(Options)`), `config`,
+  `migrate` (ordered schema steps), `gen`/`igen` (generated contract types),
+  `arch` (the executable rules), `seed`.
+
+## Composition seam (`app.Run(Options)`)
+
+Process lifecycle lives in the importable package
+`github.com/wso2/aep/aep-api/app`. Callers build `Options` (via
+`NewOSSOptions` or an overlay's own wiring) and call `Run`, which loads config.
+Auth seam contracts live in public `github.com/wso2/aep/aep-api/ocauth`. Domain
+graph assembly stays in `internal/app`; only the composition **seam** is
+exported.
+
+**Nil `Options` fields are feature off-switches** — they disable a capability
+cleanly, never panic, and never silently pick a different OpenChoreo credential
+path:
+
+| Field | Nil means |
+|---|---|
+| `AuthProvider` | no bearer on M2M OC calls |
+| `RequestAuthStrategy` | all-M2M / never pass-through (**direct-OC mode**) |
+| `ImpersonateOrgResolver` (+ optional late-bound builder) | no `X-Impersonate-Org` |
+| `SecretsProvider` | construct the default SM-API provider when its URL is configured |
+
+**OSS `cmd/aep-api`** runs in **direct-OC mode**: M2M `AuthProvider` when service
+auth is configured, `DirectOCStrategy` (always M2M), and a nil impersonation
+resolver. An **overlay module** is a separate process entry that imports the
+same `app` package and injects different `Options` — typically a **PAS strategy**
+that chooses pass-through user JWT vs M2M + impersonation per request. Detail →
+[`design/composition-seam.md`](design/composition-seam.md).
 
 ## Conventions
 
@@ -101,6 +129,10 @@ datastore · `(["/surface"])` = an inbound HTTP surface.
 | **edge** | the surface composer / composition root — wires all domains, mounts surfaces, runs the tenant gate |
 | **aggregator** | a domain's `httpapi` package that embeds its slice handlers and declares no methods of its own |
 | **milestone run** | delivery's single dispatch door — one supervised loop over one GitHub milestone, dispatching the coding agent cycle by cycle until the version settles |
+| **seam / Options** | public `app.Options` injectables that are the only place deployment behaviour differs at process start |
+| **direct-OC mode** | OSS default: all-M2M OpenChoreo auth, never user-JWT pass-through, no impersonation header |
+| **PAS strategy** | overlay-supplied `RequestAuthStrategy` that decides pass-through vs M2M (+ impersonation) per OC request |
+| **overlay module** | separate Go module / `main` that imports `app` and wires cloud-specific `Options` |
 
 *Product & platform terms (committed-truth, phantom-OU, tenant gate) → [`docs/glossary.md`](../../docs/glossary.md).*
 

@@ -15,13 +15,13 @@
 // under the License.
 
 // Package app is the composition root. Assemble wires the entire service graph
-// (HTTP handler + background watchers) from config + a resolved Infra bundle,
-// doing NO I/O of its own — deterministic and millisecond-fast, so an assembly
-// test can build the same real graph with a faked Infra (app.Assemble(cfg,
-// app.Fake())). Resolve (infra.go) performs every boot side effect — DB open +
-// migrations, the OpenBao key loads, the dev seed, k8s in-cluster init, the
-// workspace fsck — and hands Assemble the results. main runs Resolve → Assemble
-// → serve.
+// (HTTP handler + background watchers) from config + a resolved Infra bundle +
+// injectable Seam values, doing NO I/O of its own — deterministic and
+// millisecond-fast, so an assembly test can build the same real graph with a
+// faked Infra (app.Assemble(cfg, app.Fake(), Seam{})). Resolve (infra.go)
+// performs every boot side effect — DB open + migrations, the OpenBao key
+// loads, the dev seed, k8s in-cluster init, the workspace fsck — and hands
+// Assemble the results. Public app.Run owns Resolve → Assemble → serve.
 package app
 
 import (
@@ -35,7 +35,6 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/clustergatewayproxy"
-	"github.com/wso2/aep/aep-api/internal/clients/oauth"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo"
 	"github.com/wso2/aep/aep-api/internal/clients/secretmanagersvc"
@@ -75,6 +74,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol/webhook"
 	"github.com/wso2/aep/aep-api/internal/spec"
 	spechttpapi "github.com/wso2/aep/aep-api/internal/spec/httpapi"
+	"github.com/wso2/aep/aep-api/ocauth"
 )
 
 // Watcher is a long-running background loop. Every watcher blocks on its
@@ -94,14 +94,39 @@ type App struct {
 	degradations []Degradation
 }
 
+// Seam carries injectable composition-root dependencies into Assemble.
+// Every field's nil value is a feature off-switch: never panic, never silently
+// degrade into a different credential path. Callers (public app.Run / Options)
+// construct these; Assemble does not.
+type Seam struct {
+	// AuthProvider attaches a bearer on AuthModeServiceM2M OC (and CGW) calls.
+	// Nil = no bearer attached (feature off).
+	AuthProvider ocauth.AuthProvider
+
+	// RequestAuthStrategy decides credential class per OC request.
+	// Nil = all-M2M / never pass-through (openchoreo transport default).
+	RequestAuthStrategy ocauth.RequestAuthStrategy
+
+	// ImpersonateOrgResolver sets X-Impersonate-Org on M2M OC calls.
+	// Nil = no impersonation header.
+	ImpersonateOrgResolver func(ctx context.Context, namespace string) (string, error)
+
+	// SecretsProvider, when non-nil, is used instead of constructing the
+	// default SM-API provider from SECRET_MANAGER_API_URL.
+	// Nil = today's default construction (SM-API when URL configured).
+	SecretsProvider secretmanagersvc.Provider
+}
+
 // Assemble wires the entire service graph from config + a resolved Infra and
 // returns the HTTP handler + background watchers. It performs NO I/O and NO
 // process-lifecycle work (no os.Exit, no signals, no network, no clock, no
 // filesystem) — every dependency that needed boot-time I/O arrives pre-resolved
 // in `in` (see Resolve) — so an assembly test builds the same real graph in
-// milliseconds with Fake(). Wiring order is load-bearing: several constructors
-// read the value a prior one produced; the comments call out the couplings.
-func Assemble(cfg config.Config, in Infra) (*App, error) {
+// milliseconds with Fake(). AuthProvider / RequestAuthStrategy /
+// ImpersonateOrgResolver / SecretsProvider arrive via seam (nil = off).
+// Wiring order is load-bearing: several constructors read the value a prior
+// one produced; the comments call out the couplings.
+func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	var err error
 	db := in.DB
 	credStore := in.CredStore
@@ -116,7 +141,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// bootstrap: built-ins seed/reconcile into each org's repo on demand.
 
 	// Repositories
-	executionRepo := delivery.NewExecutionRepository(db)
+	executionRepo := delivery.NewExecutionRepository(db, in.RateStamper)
 	configRepo := projects.NewConfigRepository(db)
 	repoRepo := sourcecontrol.NewRepoRepository(db)
 	milestoneRunRepo := delivery.NewMilestoneRunRepository(db)
@@ -142,36 +167,22 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// Temporal is configured.
 	temporalRuntime := delivery.NewRuntime(cfg.Temporal)
 
-	// Token provider for service-to-service auth. OC authorizes requests by
-	// the service client subject (aep-api-client), so every OC API call
-	// must carry this token rather than the end-user's token.
-	var tokenProvider *oauth.TokenProvider
-	if cfg.ServiceAuth.TokenURL != "" && cfg.ServiceAuth.ClientID != "" {
-		tokenProvider = oauth.NewTokenProvider(
-			cfg.ServiceAuth.TokenURL,
-			cfg.ServiceAuth.ClientID,
-			cfg.ServiceAuth.ClientSecret,
-			cfg.ServiceAuth.HostHeader,
-		)
-		slog.Info("Service auth configured", "tokenURL", cfg.ServiceAuth.TokenURL, "clientID", cfg.ServiceAuth.ClientID)
+	if seam.AuthProvider != nil {
+		slog.Info("Service auth configured via seam AuthProvider")
 	}
-
-	// orgUUIDResolver maps an OC namespace (the org handle the BFF puts in the
-	// request URL) to the org's UUID for the X-Impersonate-Org header on M2M OC
-	// calls: JWT-first (the caller's own ouId), else the organizations side-car.
-	// The decision logic lives in the named, tested impersonationResolver.
-	orgUUIDResolver := impersonationResolver{sidecar: orgSideCar{db: db}}.Resolve
 
 	// OpenChoreo clients. Each one resolves the OC namespace as the OC
 	// org handle directly (== ouHandle); there is no override map. Migrated
 	// clients (namespace, project) take an openchoreo.Config; the still-hand-
 	// rolled clients (component, secretref) keep the legacy positional args
-	// until they migrate too.
+	// until they migrate too. AuthProvider / strategy / impersonation resolver
+	// arrive via seam — Assemble does not construct them.
 	ocConfig := openchoreo.Config{
 		BaseURL:                cfg.PlatformAPI.BaseURL,
 		HostHeader:             cfg.PlatformAPI.HostHeader,
-		AuthProvider:           tokenProvider,
-		ImpersonateOrgResolver: orgUUIDResolver,
+		AuthProvider:           seam.AuthProvider,
+		RequestAuthStrategy:    seam.RequestAuthStrategy,
+		ImpersonateOrgResolver: seam.ImpersonateOrgResolver,
 	}
 	projectClient := openchoreo.NewProjectClient(ocConfig)
 	namespaceClient := openchoreo.NewNamespaceClient(ocConfig)
@@ -188,12 +199,22 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		slog.Info("Observability API", "baseURL", cfg.Observability.BaseURL)
 	}
 
-	// SM-API provider (ADR-0002). Same provider in local + cloud: local
-	// SM-API runs in the docker-compose stack, cloud SM-API is reached at
-	// its public DNS. When SECRET_MANAGER_API_URL is empty the provider is
-	// not constructed and downstream callers handle the absence.
+	// SM-API / secrets provider (ADR-0002). When seam.SecretsProvider is set,
+	// use it (an overlay module may inject an alternate backend without
+	// changing Assemble).
+	// When nil, today's default: construct SM-API from SECRET_MANAGER_API_URL,
+	// or leave unset when the URL is empty (downstream callers handle absence).
 	var smClient secretmanagersvc.SecretManagementClient
-	if cfg.SecretManagerAPIURL != "" {
+	switch {
+	case seam.SecretsProvider != nil:
+		smClient, err = secretmanagersvc.NewSecretManagementClient(&secretmanagersvc.StoreConfig{
+			Provider: "injected",
+		}, seam.SecretsProvider)
+		if err != nil {
+			return nil, fmt.Errorf("secrets provider client init: %w", err)
+		}
+		slog.Info("secrets client", "provider", "injected")
+	case cfg.SecretManagerAPIURL != "":
 		smProvider := secretmanagerapi.NewProvider(secretmanagerapi.Config{
 			BaseURL: cfg.SecretManagerAPIURL,
 			Timeout: cfg.SecretManagerAPITimeout,
@@ -205,7 +226,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 			return nil, fmt.Errorf("sm-api client init: %w", err)
 		}
 		slog.Info("sm-api client", "baseURL", cfg.SecretManagerAPIURL, "timeout", cfg.SecretManagerAPITimeout)
-	} else {
+	default:
 		slog.Warn("SECRET_MANAGER_API_URL not set — Phase 1 secret writes disabled")
 	}
 	_ = smClient // consumed via smWriter below.
@@ -224,11 +245,15 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	var cgwClient *clustergatewayproxy.Client
 	if cfg.ClusterGatewayProxyURL != "" {
 		cgwCfg := clustergatewayproxy.Config{BaseURL: cfg.ClusterGatewayProxyURL}
-		if tokenProvider != nil {
-			cgwCfg.AuthProvider = tokenProvider
+		// ocauth.AuthProvider is a Token()+Invalidate() superset of the
+		// proxy's Token()-only AuthProvider; bridge via dynamic type assert.
+		if seam.AuthProvider != nil {
+			if ap, ok := seam.AuthProvider.(clustergatewayproxy.AuthProvider); ok {
+				cgwCfg.AuthProvider = ap
+			}
 		}
 		cgwClient = clustergatewayproxy.New(cgwCfg)
-		slog.Info("cluster-gateway-proxy client", "baseURL", cfg.ClusterGatewayProxyURL, "authenticated", tokenProvider != nil)
+		slog.Info("cluster-gateway-proxy client", "baseURL", cfg.ClusterGatewayProxyURL, "authenticated", cgwCfg.AuthProvider != nil)
 	} else {
 		slog.Warn("CLUSTER_GATEWAY_PROXY_URL not set — coding-agent live streaming + JobWatcher disabled; dispatch uses the direct K8s Job path")
 	}
@@ -369,7 +394,7 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 		}
 		return repoService.GetRepo(ctx, orgID, spec.SkillsRepoSentinelProjectID)
 	}
-	turnRepo := spec.NewTurnRepository(db)
+	turnRepo := spec.NewTurnRepository(db, in.RateStamper)
 	turnBroker := spec.NewTurnBroker()
 	genaiDeps := spec.ServiceDeps{
 		Repos:      repoService,
@@ -841,10 +866,40 @@ func Assemble(cfg config.Config, in Infra) (*App, error) {
 	// CRUD + status, the component read + build + deploy surface, and the
 	// component env-var config. Its slice handlers embed straight into the edge's
 	// composite; the edge holds no project/component/config service.
+	// Settings → Usage (#291): fold spec-turn + coding-execution per-project
+	// usage, labelled by the org's live projects (a usage slug with no live
+	// project is a since-deleted project, shown greyed).
+	usageService := projects.NewUsageService(
+		turnRepo.SumUsageByProject,
+		executionRepo.SumUsageByProjectPhase,
+		func(ctx context.Context, orgID string) (map[string]string, error) {
+			names := map[string]string{}
+			list, err := projectService.ListProjects(ctx, orgID, 100, "", "")
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range list.Items {
+				display := p.DisplayName
+				if display == "" {
+					display = p.Name
+				}
+				names[p.Name] = display
+			}
+			// no-silent-caps: an org with >100 projects would drop the overflow
+			// from the live-name lookup (they'd render as "deleted"). Log so the
+			// truncation is visible rather than a silent mislabel.
+			if list.NextCursor != "" {
+				slog.Warn("usage roll-up: live-project name lookup truncated at 100; extra projects will render as deleted", "org", orgID)
+			}
+			return names, nil
+		},
+	)
+
 	projectsHandlers, err := projectshttpapi.New(projects.Deps{
 		ProjectSvc:   projectService,
 		ComponentSvc: componentService,
 		ConfigSvc:    configService,
+		UsageSvc:     usageService,
 		ActivitySvc:  activitySvc,
 	})
 	if err != nil {

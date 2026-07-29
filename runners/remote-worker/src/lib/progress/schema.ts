@@ -84,11 +84,26 @@ export interface LogEvent extends ProgressEnvelope {
   summary: string;
 }
 
+// TurnUsage is the run's token usage off the SDK result (#291) — the cross-
+// runtime wire shape aep-api parses (usageFromLog → contracts.TokenUsage), so
+// the camelCase field names must match byte-for-byte. model is "" when the run
+// spanned multiple models (or the SDK reported none).
+export interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  model: string;
+}
+
 export interface ResultEvent extends ProgressEnvelope {
   kind: "result";
   status: "success" | "failure";
   summary?: string;
   error?: string;
+  // Token usage for the whole coding run (#291), present on a successful
+  // result; aep-api stamps its USD cost onto the execution row.
+  usage?: TurnUsage;
 }
 
 export type ProgressEvent =
@@ -110,5 +125,5 @@ export type ProgressEventInput = (
   | { kind: "git_push"; sha?: string; branch?: string; summary?: string }
   | { kind: "gh_action"; command: string; summary?: string }
   | { kind: "log"; level?: "info" | "warn" | "error"; summary: string }
-  | { kind: "result"; status: "success" | "failure"; summary?: string; error?: string }
+  | { kind: "result"; status: "success" | "failure"; summary?: string; error?: string; usage?: TurnUsage }
 ) & { emitter?: ProgressEmitter };

@@ -43,6 +43,11 @@ type server struct {
 	thunderNS      string
 	thunderRelease string
 	consoleURL     string
+	// localStubs: LOCAL DEV ONLY. When true, Init keeps the OpenBao root token
+	// (does not revoke it) so the in-cluster secret-manager-api stub — which
+	// authenticates with the root token — can read/write secrets. NEVER set in
+	// production, where SM-API is a managed service and the root token is revoked.
+	localStubs bool
 }
 
 func main() {
@@ -63,6 +68,7 @@ func main() {
 		thunderNS:      getEnv("THUNDER_NAMESPACE", "thunder"),
 		thunderRelease: getEnv("THUNDER_RELEASE", "thunder"),
 		consoleURL:     os.Getenv("CONSOLE_URL"),
+		localStubs:     os.Getenv("LOCAL_STUBS_ENABLED") == "true",
 	}
 
 	lis, err := net.Listen("tcp", ":9091")

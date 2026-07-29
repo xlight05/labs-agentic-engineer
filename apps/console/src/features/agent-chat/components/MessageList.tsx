@@ -18,7 +18,7 @@
 
 import { Avatar, Box, Stack, Typography, alpha } from "@wso2/oxygen-ui";
 import type { FeedBlock } from "../feed";
-import { TurnBlock, type QuestionCardProps } from "./TurnBlock";
+import { TurnBlock } from "./TurnBlock";
 import { WorkingIndicator } from "./WorkingIndicator";
 
 // The agent activity stream (task 3): a linear, author-attributed feed of user
@@ -115,7 +115,6 @@ export function MessageList({
   onToggleGroup,
   onOpenSpec,
   showWorkingTail,
-  questionCard,
 }: {
   feed: FeedBlock[];
   expandedGroups: Set<string>;
@@ -124,8 +123,6 @@ export function MessageList({
   /** Show a tail "Working…" indicator when a turn is in flight but hasn't
    *  produced any content (and so has no running turn block of its own yet). */
   showWorkingTail: boolean;
-  /** ask_question card wiring (ADR-0012), passed to every turn block. */
-  questionCard: QuestionCardProps;
 }) {
     // No dividers between blocks: each block's author header ("You" / "✦
     // Agent") plus the spacing already separates turns; hard rules made the
@@ -142,7 +139,6 @@ export function MessageList({
             expandedGroups={expandedGroups}
             onToggleGroup={onToggleGroup}
             onOpenSpec={onOpenSpec}
-            questionCard={questionCard}
           />
         ),
       )}

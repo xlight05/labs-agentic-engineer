@@ -90,13 +90,16 @@ that's a stalled feature — investigate, don't ignore.
   convention in ADR-0012. FE mock-verified; agents-service + platform grilling
   skill via [#271](https://github.com/wso2/labs-agentic-engineer/issues/271) —
   [#270](https://github.com/wso2/labs-agentic-engineer/issues/270)
-- Cost visibility — actual USD spend for every unit of agentic work, per
-  phase (per task/build on the Builds page, drafting-cycle chip on the Spec
-  view; USD-only primary, token detail on expand, no overview surface);
-  actuals only — estimates and the model comparator are out of scope
-  (single-model platform); tokens stored, USD derived at read (ADR-0011) —
-  [#245](https://github.com/wso2/labs-agentic-engineer/issues/245)
-  (BE handshake: [#249](https://github.com/wso2/labs-agentic-engineer/issues/249))
+- Usage & cost — org-wide agent spend on a dedicated **Settings → Usage**
+  page: one card per project (incl. deleted projects) with a folded USD cost
+  as a plain value, hover for the input/output/cache token breakdown; USD-only
+  primary, actuals only. Supersedes the scattered per-phase chips of #245
+  (Builds task/build chips + Spec drafting-cycle chip, all removed). Costs
+  are **stamped at capture time** from **DB-backed model rates**, so a rate
+  change never rewrites history (ADR-0011 reversed) —
+  [#291](https://github.com/wso2/labs-agentic-engineer/issues/291)
+  (supersedes [#245](https://github.com/wso2/labs-agentic-engineer/issues/245);
+  BE handshake: [#299](https://github.com/wso2/labs-agentic-engineer/issues/299))
 - Deployments page — two-column board (Development / Production): one card
   per component × binding with status chip, release, endpoint URL,
   deployed-at; unbound components show greyed "Not deployed" cards in dev;

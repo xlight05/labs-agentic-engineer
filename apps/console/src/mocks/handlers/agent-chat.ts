@@ -39,6 +39,11 @@ import {
 } from "../fixtures/chat";
 
 let turnCounter = 0;
+// Distinguishes this page instance's turns from another client's in the same
+// collab room: real turn ids are server-minted uuids, but this counter starts
+// at 1 in every tab — colliding ids would merge distinct questions in the
+// shared Yjs map (and a closed one would suppress a fresh ask).
+const instanceId = Math.random().toString(36).slice(2, 8);
 const turnInstruction = new Map<string, string>();
 
 function chatScenario(): ChatScenario | null {
@@ -70,7 +75,7 @@ export const agentChatHandlers = [
   http.post("*/api/v1/projects/:projectName/agents/:conversationId/messages", async ({ request }) => {
     const body = (await request.json()) as { instruction?: string };
     turnCounter += 1;
-    const turnId = `mock-turn-${turnCounter}`;
+    const turnId = `mock-turn-${instanceId}-${turnCounter}`;
     turnInstruction.set(turnId, body.instruction ?? "");
     return HttpResponse.json({ turnId }, { status: 202 });
   }),
@@ -114,6 +119,7 @@ export const agentChatHandlers = [
         instruction.includes(GRILLING_DIRECTIVE) || /\bgrill me\b/i.test(instruction);
       const grillBatch = /\ball at once\b|\bask me everything\b/i.test(instruction);
       if (grillBatch) {
+        // A full interview — long enough to exercise the form's scrolling.
         const input = {
           questions: [
             {
@@ -121,6 +127,7 @@ export const agentChatHandlers = [
               options: [
                 { label: "Individual consumers", description: "Self-serve signup", recommended: true },
                 { label: "Internal teams", description: "SSO, org-managed access" },
+                { label: "Both from day one", description: "Two onboarding paths — more scope" },
               ],
             },
             {
@@ -138,17 +145,76 @@ export const agentChatHandlers = [
                 { label: "Accounts" },
                 { label: "Payments" },
                 { label: "Notifications" },
+                { label: "Search" },
+              ],
+            },
+            {
+              question: "How should users sign in?",
+              options: [
+                { label: "Email + password" },
+                { label: "Social login", recommended: true },
+                { label: "SSO only" },
+              ],
+            },
+            {
+              question: "What is the pricing model?",
+              options: [
+                { label: "Free", recommended: true },
+                { label: "Subscription" },
+                { label: "One-off purchase" },
+              ],
+            },
+            {
+              question: "Where does the data live?",
+              options: [
+                { label: "Managed Postgres", recommended: true },
+                { label: "SQLite per tenant" },
+                { label: "Third-party BaaS" },
+              ],
+            },
+            {
+              question: "Which integrations matter?",
+              multiSelect: true,
+              options: [
+                { label: "Slack" },
+                { label: "Email" },
+                { label: "Calendar" },
+                { label: "None yet", recommended: true },
+              ],
+            },
+            {
+              question: "What is the launch timeline?",
+              options: [
+                { label: "2 weeks" },
+                { label: "1 month", recommended: true },
+                { label: "A quarter" },
+              ],
+            },
+            {
+              question: "How important is offline support?",
+              options: [
+                { label: "Not needed", recommended: true },
+                { label: "Nice to have" },
+                { label: "Critical" },
+              ],
+            },
+            {
+              question: "Who administers the workspace?",
+              options: [
+                { label: "A single owner", recommended: true },
+                { label: "Multiple admins" },
+                { label: "No admin concept" },
               ],
             },
           ],
         };
         return sse([
           { type: "text-delta", delta: "Let me pin the idea down — a few questions:" },
-          { type: "tool-call", toolCallId: "mock-qs-1", toolName: "ask_questions", input },
+          { type: "tool-call", toolCallId: `qs-${turnId}`, toolName: "ask_questions", input },
           {
             type: "tool-result",
             toolName: "ask_questions",
-            toolCallId: "mock-qs-1",
+            toolCallId: `qs-${turnId}`,
             input,
             output: { status: "awaiting_user_response" },
           },
@@ -167,11 +233,11 @@ export const agentChatHandlers = [
         };
         return sse([
           { type: "text-delta", delta: "Before I write anything, let me pin the idea down." },
-          { type: "tool-call", toolCallId: "mock-q-1", toolName: "ask_question", input },
+          { type: "tool-call", toolCallId: `q-${turnId}`, toolName: "ask_question", input },
           {
             type: "tool-result",
             toolName: "ask_question",
-            toolCallId: "mock-q-1",
+            toolCallId: `q-${turnId}`,
             input,
             output: { status: "awaiting_user_response", question: input.question },
           },

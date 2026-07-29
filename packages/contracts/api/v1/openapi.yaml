@@ -2028,25 +2028,20 @@ paths:
       summary: Attach to a turn's event stream (SSE replay + live tail)
       tags:
       - GenAI
-  /projects/{projectName}/usage:
+  /usage/projects:
     get:
-      description: Per-phase actual usage for a project (#245) — spec, build, validation, plus the current
-        drafting cycle. USD derived at read time from the configured model rates (ADR-0011).
-      operationId: get-project-usage
-      parameters:
-      - description: Project name (DNS-label slug)
-        in: path
-        name: projectName
-        required: true
-        schema:
-          description: Project name (DNS-label slug)
-          type: string
+      description: Org-wide agent usage (#291), one card per project. Every LIVE project is carded —
+        idle ones (no agent has run) as a real $0 — plus any since-deleted project that still carries
+        recorded usage (shown as a deleted card). Figures are lifetime sums of persisted per-row records;
+        costUsd sums the amounts stamped at capture time (ADR-0011 as amended) and is null when no row
+        carries a stamp.
+      operationId: list-project-usage
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProjectUsage'
+                $ref: '#/components/schemas/ProjectUsageList'
           description: OK
         default:
           content:
@@ -2056,7 +2051,7 @@ paths:
           description: Error
       security:
       - userJWT: []
-      summary: Get per-phase project usage
+      summary: List per-project agent usage
       tags:
       - Projects
   /rca-agent/reports:
@@ -4003,27 +3998,66 @@ components:
       - build
       - deploy
       type: object
-    ProjectUsage:
+    ProjectUsageCard:
       additionalProperties: false
-      description: Per-phase actual usage for a project (#245). All figures derive from persisted per-run token records (ADR-0011); costUsd is computed at read time from the configured model rates.
+      description: One project's lifetime agent usage (#291). Identity comes from the usage rows' stored
+        project slug, so a card survives its project's deletion.
       properties:
-        build:
+        deleted:
+          description: True when no live project matches the slug — rendered as a greyed card.
+          type: boolean
+        displayName:
+          description: The live project's display name; falls back to the slug for deleted projects.
+          type: string
+        projectName:
+          description: Project name (DNS-label slug) as stored on the usage rows.
+          type: string
+        usage:
           $ref: "#/components/schemas/Usage"
-          description: All coding/build executions.
-        draftCycle:
-          $ref: "#/components/schemas/Usage"
-          description: Spec/design agent turns since the last published spec tag — the Spec view chip.
+          description: Lifetime totals; costUsd sums write-time stamps and is null when no row is stamped.
+        phases:
+          $ref: "#/components/schemas/PhaseUsage"
+          description: The same lifetime spend split across the three SDLC phases (#291) — shown as a
+            secondary line in the card's breakdown expand. Always all three phases; a phase the project
+            never ran is a zero card.
+      required:
+        - projectName
+        - displayName
+        - deleted
+        - usage
+        - phases
+      type: object
+    PhaseUsage:
+      additionalProperties: false
+      description: A project's usage split by SDLC phase (#291). spec covers the spec/design agent turns;
+        build covers the build + coding executions; validation covers the validation executions. Each is a
+        full Usage so a phase can degrade to tokens when its rows are unstamped.
+      properties:
         spec:
           $ref: "#/components/schemas/Usage"
-          description: All spec/design agent turns (project lifetime).
+          description: Spec/design agent turns.
+        build:
+          $ref: "#/components/schemas/Usage"
+          description: Build + coding executions.
         validation:
           $ref: "#/components/schemas/Usage"
-          description: All validation executions.
+          description: Validation executions.
       required:
         - spec
         - build
         - validation
-        - draftCycle
+      type: object
+    ProjectUsageList:
+      additionalProperties: false
+      description: Org-wide usage roll-up (#291), tiered — stamped-cost projects first (costUsd desc),
+        then projects with usage the platform could not price (by tokens), then idle $0 projects last.
+      properties:
+        projects:
+          items:
+            $ref: "#/components/schemas/ProjectUsageCard"
+          type: array
+      required:
+        - projects
       type: object
     ProvisionBody:
       additionalProperties: false
@@ -4909,7 +4943,7 @@ components:
       type: object
     Usage:
       additionalProperties: false
-      description: Actual token usage for one unit of agent work or an aggregate (#245). Tokens + model are the persisted truth; costUsd is derived at read time from the configured model rates (ADR-0011) and null when no rate is configured for the model.
+      description: Actual token usage for one unit of agent work or an aggregate (#245, #291). Tokens + model are the persisted truth; costUsd is stamped at capture time from the model rates then in force (ADR-0011 as amended) and null when the row predates stamping or its model had no rate. Aggregates sum stamps and never reprice.
       properties:
         cacheCreationTokens:
           format: int64
@@ -4918,7 +4952,7 @@ components:
           format: int64
           type: integer
         costUsd:
-          description: Catalog-derived USD; null when pricing is unavailable for the model.
+          description: Write-time-stamped USD (sum, for aggregates); null when no stamp exists.
           format: double
           type: number
           nullable: true

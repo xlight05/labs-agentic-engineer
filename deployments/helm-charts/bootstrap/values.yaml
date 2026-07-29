@@ -21,3 +21,12 @@ aepServer:
 
 console:
   publicURL: "http://console.openchoreo.localhost:8080"
+
+# LOCAL DEV ONLY. When enabled, aep-server's Init keeps the OpenBao root token
+# (does not revoke it) so the in-cluster secret-manager-api stub — which
+# authenticates with the root token — can stage external-resource secrets.
+# Must stay false in production, where SM-API is a managed service and the root
+# token is always revoked. Pair with the platform chart's
+# codingAgentDispatch.localStubs.enabled=true (which deploys the stub itself).
+localStubs:
+  enabled: false

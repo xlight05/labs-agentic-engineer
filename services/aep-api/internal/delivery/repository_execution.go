@@ -24,7 +24,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/contracts/taskmeta"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 )
 
 // DeployedProjectRef is one (org, project) pair that has at least one Execution
@@ -113,14 +115,33 @@ type ExecutionRepository interface {
 	// deployed to configure. Intentionally NOT org-scoped: the runtime-config
 	// convergence sweep spans all orgs, like ListActive.
 	DistinctDeployedProjects(ctx context.Context) ([]DeployedProjectRef, error)
+
+	// RecordUsage stamps the run's captured token usage onto the row (#249),
+	// and its write-time USD onto cost_usd (#291). Unguarded by status — usage
+	// arrives from the final-log capture, which can land before or after the row
+	// goes terminal (coding successes end via the PR webhook). Last write wins;
+	// the capture is idempotent upstream.
+	RecordUsage(ctx context.Context, id string, u contracts.TokenUsage) error
+
+	// SumUsageByProjectPhase rolls up captured execution usage per project
+	// across an org (#291), split into the build and validation SDLC phases —
+	// the delivery half of the Settings → Usage read (spec supplies the
+	// design-turn phase). build folds every non-validation kind (build, coding,
+	// provisioning); validation is the validation kind alone. Each map is keyed
+	// by project id; CostUsd sums the frozen per-row stamps, nil when unstamped.
+	SumUsageByProjectPhase(ctx context.Context, orgID string) (build, validation map[string]contracts.StampedUsage, err error)
 }
 
 type executionRepository struct {
-	db *gorm.DB
+	db      *gorm.DB
+	stamper *modelcost.Stamper
 }
 
-func NewExecutionRepository(db *gorm.DB) ExecutionRepository {
-	return &executionRepository{db: db}
+// NewExecutionRepository builds the executions store. stamper prices captured
+// run usage at write time (#291); nil disables stamping (tests) and cost_usd
+// stays null.
+func NewExecutionRepository(db *gorm.DB, stamper *modelcost.Stamper) ExecutionRepository {
+	return &executionRepository{db: db, stamper: stamper}
 }
 
 func (r *executionRepository) TryAdmit(ctx context.Context, e *Execution) (bool, *Execution, error) {
@@ -342,4 +363,91 @@ func (r *executionRepository) getByID(ctx context.Context, id string) (*Executio
 		return nil, err
 	}
 	return &e, nil
+}
+
+func (r *executionRepository) RecordUsage(ctx context.Context, id string, u contracts.TokenUsage) error {
+	updates := map[string]any{
+		"input_tokens":          u.InputTokens,
+		"output_tokens":         u.OutputTokens,
+		"cache_read_tokens":     u.CacheReadTokens,
+		"cache_creation_tokens": u.CacheCreationTokens,
+		"model_id":              u.Model,
+	}
+	// Stamp USD at capture from the rates in force now (#291): frozen on the
+	// row, never re-derived. Null when unpriceable (no rate / no model).
+	if r.stamper != nil {
+		updates["cost_usd"] = r.stamper.Cost(modelcost.Tokens{
+			ModelID:             u.Model,
+			InputTokens:         u.InputTokens,
+			OutputTokens:        u.OutputTokens,
+			CacheReadTokens:     u.CacheReadTokens,
+			CacheCreationTokens: u.CacheCreationTokens,
+		})
+	}
+	return r.db.WithContext(ctx).
+		Model(&Execution{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+func (r *executionRepository) SumUsageByProjectPhase(ctx context.Context, orgID string) (build, validation map[string]contracts.StampedUsage, err error) {
+	var rows []execPhaseUsageRow
+	err = r.db.WithContext(ctx).
+		Model(&Execution{}).
+		Select("project_id, "+
+			// validation is its own phase; every other kind (build, coding,
+			// provisioning) is the build phase.
+			"CASE WHEN kind = 'validation' THEN 'validation' ELSE 'build' END AS phase, "+
+			"COALESCE(SUM(input_tokens),0) AS input_tokens, "+
+			"COALESCE(SUM(output_tokens),0) AS output_tokens, "+
+			"COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens, "+
+			"COALESCE(SUM(cache_creation_tokens),0) AS cache_creation_tokens, "+
+			"SUM(cost_usd) AS cost_usd, "+ // NULL when no row is stamped — the #291 semantic
+			// Count distinct model_id INCLUDING '' so any unknown-model row
+			// makes the phase's model degrade to '' (matching
+			// contracts.TokenUsage.Add: a mix of known + unknown is '').
+			"COUNT(DISTINCT model_id) AS models, "+
+			"COALESCE(MAX(model_id), '') AS max_model").
+		Where("org_id = ? AND project_id <> ''", orgID).
+		Group("project_id, phase").
+		// Only phases with real token traffic — a run that captured nothing
+		// leaves a 0-token row that should not inflate a phase.
+		Having("SUM(input_tokens) + SUM(output_tokens) + SUM(cache_read_tokens) + SUM(cache_creation_tokens) > 0").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, nil, err
+	}
+	build = make(map[string]contracts.StampedUsage)
+	validation = make(map[string]contracts.StampedUsage)
+	for _, row := range rows {
+		u := contracts.TokenUsage{
+			InputTokens:         row.InputTokens,
+			OutputTokens:        row.OutputTokens,
+			CacheReadTokens:     row.CacheReadTokens,
+			CacheCreationTokens: row.CacheCreationTokens,
+		}
+		if row.Models == 1 {
+			u.Model = row.MaxModel
+		}
+		stamped := contracts.StampedUsage{Tokens: u, CostUsd: row.CostUsd}
+		if row.Phase == "validation" {
+			validation[row.ProjectID] = stamped
+		} else {
+			build[row.ProjectID] = stamped
+		}
+	}
+	return build, validation, nil
+}
+
+// execPhaseUsageRow is the per-(project, phase) aggregate scan shape (#291).
+type execPhaseUsageRow struct {
+	ProjectID           string
+	Phase               string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	CostUsd             *float64
+	Models              int64
+	MaxModel            string
 }

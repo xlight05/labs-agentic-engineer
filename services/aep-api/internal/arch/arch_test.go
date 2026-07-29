@@ -253,6 +253,9 @@ var gormImporters = map[string]bool{
 	// Composition + kernel (structurally hold gorm; not feature slices).
 	"internal/edge": true,
 	"internal/app":  true,
+	// Public composition seam: Options.ImpersonateOrgResolverBuilder late-binds
+	// on *gorm.DB after Resolve opens infra (no persistence of its own).
+	"app": true,
 	// The secret kernel module (§10.4): its Postgres-backed store is one of the
 	// four backends it exists to own. Was internal/credentials.
 	"internal/platform/secrets": true,
@@ -314,12 +317,14 @@ func TestGormImportAllowlist(t *testing.T) {
 }
 
 // TestInternalOnlyLayout asserts no Go source lives outside the sanctioned
-// top-level roots: internal/ (everything) and cmd/ (mains). The flat models/
-// and repositories/ shared kernels are both DISSOLVED — every entity lives in
-// its owning <domain>/entity_*.go and each repository in <domain>/repository_*.go.
+// top-level roots: internal/ (everything), cmd/ (mains), app/ (public
+// composition seam — Run(Options)), and ocauth/ (public OC auth contracts for
+// overlay modules). The flat models/ and repositories/ shared kernels are both
+// DISSOLVED — every entity lives in its owning <domain>/entity_*.go and each
+// repository in <domain>/repository_*.go.
 func TestInternalOnlyLayout(t *testing.T) {
 	allowedRoots := map[string]bool{
-		"internal": true, "cmd": true,
+		"internal": true, "cmd": true, "app": true, "ocauth": true,
 	}
 	root := ".." + string(filepath.Separator) + ".." // module root from internal/arch
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -342,7 +347,7 @@ func TestInternalOnlyLayout(t *testing.T) {
 		}
 		top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
 		if !allowedRoots[top] {
-			t.Errorf("Go file outside the sanctioned roots: %s (allowed: internal/, cmd/, skills/, models/)", rel)
+			t.Errorf("Go file outside the sanctioned roots: %s (allowed: internal/, cmd/, app/, ocauth/)", rel)
 		}
 		return nil
 	})

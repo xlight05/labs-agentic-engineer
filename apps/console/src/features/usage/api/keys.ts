@@ -17,6 +17,5 @@
  */
 
 export const usageKeys = {
-  project: (projectName: string) =>
-    ["projects", "detail", projectName, "usage"] as const,
+  projects: () => ["usage", "projects"] as const,
 };

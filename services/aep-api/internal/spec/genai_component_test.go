@@ -42,6 +42,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
+	"github.com/wso2/aep/aep-api/internal/contracts"
 	"github.com/wso2/aep/aep-api/internal/edge"
 	"github.com/wso2/aep/aep-api/internal/platform/componenttest"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs/workspacetest"
@@ -247,6 +248,10 @@ func (f *fakeAgents) turns(t *testing.T) int {
 type memTurnRepo struct {
 	mu   sync.Mutex
 	rows []*spec.AgentTurn
+}
+
+func (m *memTurnRepo) SumUsageByProject(context.Context, string) (map[string]contracts.StampedUsage, error) {
+	return nil, nil
 }
 
 func (m *memTurnRepo) TryStart(_ context.Context, t *spec.AgentTurn) (*spec.AgentTurn, error) {

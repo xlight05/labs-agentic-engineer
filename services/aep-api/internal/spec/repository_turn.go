@@ -24,6 +24,9 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/wso2/aep/aep-api/internal/contracts"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 )
 
 // The agent_turns store was extracted out of the genai turn engine (now internal/spec) during the
@@ -61,6 +64,9 @@ type TurnTerminal struct {
 	Paths     []string
 	NoChanges bool
 	Message   string
+	// Usage is the turn's token usage off the terminal manifest (#249); nil
+	// when the stream carried none (failed turns, pre-capture agents).
+	Usage *contracts.TokenUsage
 	// SpecEdited is true when the turn authored real spec changes: a committed
 	// turn whose fold produced a net change, or a room-scoped turn whose agent
 	// edited the collab doc (issue #239 — the activity feed's agent-authorship
@@ -106,15 +112,24 @@ type TurnRepository interface {
 	// (reason stream-died, message "replica crashed or hung") and returns the
 	// swept rows so the caller can emit broker terminals.
 	SweepStale(ctx context.Context, olderThan time.Time) ([]AgentTurn, error)
+
+	// SumUsageByProject rolls up captured spec/design turn usage per project
+	// across an org (#291), keyed by project id — one half of the Settings →
+	// Usage read (delivery supplies the coding-execution half). CostUsd sums
+	// the frozen per-row stamps; nil when no row in a project is stamped.
+	SumUsageByProject(ctx context.Context, orgID string) (map[string]contracts.StampedUsage, error)
 }
 
 type turnRepository struct {
-	db *gorm.DB
+	db      *gorm.DB
+	stamper *modelcost.Stamper
 }
 
-// NewTurnRepository builds the agent_turns store.
-func NewTurnRepository(db *gorm.DB) TurnRepository {
-	return &turnRepository{db: db}
+// NewTurnRepository builds the agent_turns store. stamper prices captured turn
+// usage at write time (#291); nil disables stamping (tests, or a boot with no
+// rates) and cost_usd stays null.
+func NewTurnRepository(db *gorm.DB, stamper *modelcost.Stamper) TurnRepository {
+	return &turnRepository{db: db, stamper: stamper}
 }
 
 func (r *turnRepository) TryStart(ctx context.Context, t *AgentTurn) (*AgentTurn, error) {
@@ -153,17 +168,37 @@ func (r *turnRepository) Heartbeat(ctx context.Context, id string) error {
 }
 
 func (r *turnRepository) Finish(ctx context.Context, id string, terminal TurnTerminal) (bool, error) {
+	updates := map[string]any{
+		"status":     terminal.Status,
+		"commit_sha": terminal.CommitSHA,
+		"reason":     terminal.Reason,
+		"paths":      encodePaths(terminal.Paths),
+		"no_changes": terminal.NoChanges,
+		"message":    terminal.Message,
+	}
+	if u := terminal.Usage; u != nil {
+		updates["input_tokens"] = u.InputTokens
+		updates["output_tokens"] = u.OutputTokens
+		updates["cache_read_tokens"] = u.CacheReadTokens
+		updates["cache_creation_tokens"] = u.CacheCreationTokens
+		updates["model_id"] = u.Model
+		// Stamp USD at capture from the rates in force now (#291): the cost is
+		// frozen on the row and never re-derived, so a later rate change can't
+		// rewrite this turn's spend. Null when unpriceable (no rate / no model).
+		if r.stamper != nil {
+			updates["cost_usd"] = r.stamper.Cost(modelcost.Tokens{
+				ModelID:             u.Model,
+				InputTokens:         u.InputTokens,
+				OutputTokens:        u.OutputTokens,
+				CacheReadTokens:     u.CacheReadTokens,
+				CacheCreationTokens: u.CacheCreationTokens,
+			})
+		}
+	}
 	res := r.db.WithContext(ctx).
 		Model(&AgentTurn{}).
 		Where("id = ? AND status = ?", id, turnStatusRunning).
-		Updates(map[string]any{
-			"status":     terminal.Status,
-			"commit_sha": terminal.CommitSHA,
-			"reason":     terminal.Reason,
-			"paths":      encodePaths(terminal.Paths),
-			"no_changes": terminal.NoChanges,
-			"message":    terminal.Message,
-		})
+		Updates(updates)
 	if res.Error != nil {
 		return false, res.Error
 	}
@@ -242,6 +277,65 @@ func encodePaths(paths []string) string {
 		return ""
 	}
 	return string(b)
+}
+
+func (r *turnRepository) SumUsageByProject(ctx context.Context, orgID string) (map[string]contracts.StampedUsage, error) {
+	var rows []usageByProjectRow
+	err := r.db.WithContext(ctx).
+		Model(&AgentTurn{}).
+		Select("project_id, "+
+			"COALESCE(SUM(input_tokens),0) AS input_tokens, "+
+			"COALESCE(SUM(output_tokens),0) AS output_tokens, "+
+			"COALESCE(SUM(cache_read_tokens),0) AS cache_read_tokens, "+
+			"COALESCE(SUM(cache_creation_tokens),0) AS cache_creation_tokens, "+
+			"SUM(cost_usd) AS cost_usd, "+ // NULL when no row is stamped — exactly the #291 semantic
+			// Count distinct model_id INCLUDING '' so any unknown-model row
+			// makes the project's model degrade to '' (matching
+			// contracts.TokenUsage.Add: a mix of known + unknown is '').
+			"COUNT(DISTINCT model_id) AS models, "+
+			"COALESCE(MAX(model_id), '') AS max_model").
+		Where("org_id = ?", orgID).
+		Group("project_id").
+		// Only projects with real token traffic — a failed turn that captured
+		// nothing leaves a 0-token row that should not surface an empty card.
+		Having("SUM(input_tokens) + SUM(output_tokens) + SUM(cache_read_tokens) + SUM(cache_creation_tokens) > 0").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return usageRowsToMap(rows), nil
+}
+
+// usageByProjectRow is the per-project aggregate scan shape shared by the
+// turn and execution roll-ups (#291).
+type usageByProjectRow struct {
+	ProjectID           string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	CostUsd             *float64
+	Models              int64
+	MaxModel            string
+}
+
+// usageRowsToMap folds the per-project scan rows into StampedUsage keyed by
+// project id: model survives only when a project ran a single model.
+func usageRowsToMap(rows []usageByProjectRow) map[string]contracts.StampedUsage {
+	out := make(map[string]contracts.StampedUsage, len(rows))
+	for _, row := range rows {
+		u := contracts.TokenUsage{
+			InputTokens:         row.InputTokens,
+			OutputTokens:        row.OutputTokens,
+			CacheReadTokens:     row.CacheReadTokens,
+			CacheCreationTokens: row.CacheCreationTokens,
+		}
+		if row.Models == 1 {
+			u.Model = row.MaxModel
+		}
+		out[row.ProjectID] = contracts.StampedUsage{Tokens: u, CostUsd: row.CostUsd}
+	}
+	return out
 }
 
 // decodePaths reads the JSON array back (nil for empty/invalid).

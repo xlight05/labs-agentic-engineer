@@ -44,7 +44,7 @@ func newExec(org, repo string, issue int, kind taskmeta.ExecutionKind) *delivery
 func TestExecutionRepository_AdmissionMutex(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := delivery.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db, nil)
 	ctx := context.Background()
 
 	// Two concurrent admits for the SAME (repo, issue, kind) → exactly one wins.
@@ -123,7 +123,7 @@ func findActiveCoding(t *testing.T, repo delivery.ExecutionRepository, r string,
 func TestExecutionRepository_StartFinish(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := delivery.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db, nil)
 	ctx := context.Background()
 
 	_, row, err := repo.TryAdmit(ctx, newExec("orga", "acme/repo", 1, taskmeta.KindCoding))
@@ -163,7 +163,7 @@ func TestExecutionRepository_StartFinish(t *testing.T) {
 func TestExecutionRepository_Reads(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
-	repo := delivery.NewExecutionRepository(db)
+	repo := delivery.NewExecutionRepository(db, nil)
 	ctx := context.Background()
 
 	// Two coding attempts (first failed, then a retry) + a build, all on one Task.

@@ -27,7 +27,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@wso2/oxygen-ui";
-import { Boxes, KeyRound, Sparkles } from "@wso2/oxygen-ui-icons-react";
+import { Boxes, Coins, KeyRound, Sparkles } from "@wso2/oxygen-ui-icons-react";
 import { PageHeader } from "../../../components/PageHeader";
 
 // Each section is its own route (issue #143): deep-linkable and back/forward
@@ -35,6 +35,7 @@ import { PageHeader } from "../../../components/PageHeader";
 const SECTIONS = [
   { path: "/settings/credentials", label: "Credentials", Icon: KeyRound },
   { path: "/settings/skills", label: "Skills", Icon: Sparkles },
+  { path: "/settings/usage", label: "Usage", Icon: Coins },
   { path: "/settings/resources", label: "Resources", Icon: Boxes },
 ] as const;
 
@@ -54,7 +55,7 @@ export function SettingsLayout() {
     <PageContent>
       <PageHeader
         title="Settings"
-        subtitle="Org-level GitHub and Anthropic credentials, the skills catalogue, and shared resources"
+        subtitle="Org-level GitHub and Anthropic credentials, the skills catalogue, per-project agent usage, and shared resources"
       />
 
       <Box

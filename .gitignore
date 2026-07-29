@@ -72,3 +72,9 @@ deployments/helm-charts/platform/values.local.dev.yaml
 # Local build output of the dev secret-manager stub (15MB binary; rebuild with
 # `GOWORK=off go build -o local-secret-manager-api .` in that directory).
 deployments/local-secret-manager-api/local-secret-manager-api
+
+# Local PR-evidence screenshots (attached to PRs by hand, never committed)
+/.screenshots-*/
+# Local session artifacts — dev-tool config and working notes, not repo content
+/.agents/launch.json
+/docs/superpowers/

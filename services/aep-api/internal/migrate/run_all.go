@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/organization"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 	"github.com/wso2/aep/aep-api/internal/projects"
 	"github.com/wso2/aep/aep-api/internal/sourcecontrol"
 	"github.com/wso2/aep/aep-api/internal/spec"
@@ -61,6 +62,7 @@ func BaseModels() []any {
 		&organization.Organization{},
 		&delivery.Execution{},
 		&spec.AgentTurn{},
+		&modelcost.ModelRate{},
 		&projects.ActivityEvent{},
 		&delivery.MilestoneRun{},
 		&delivery.RunCycle{},
@@ -149,6 +151,11 @@ func Steps(db *gorm.DB, deploymentTier string) []database.Step {
 		// stream reads once the Job's pod is reaped. FK'd to run_cycles(id), so it
 		// follows milestone_runs.
 		ctxStep("run_cycle_logs", RunRunCycleLogs),
+		// model_rates seed (#291): the platform's active model at today's
+		// rates. AutoMigrate (BaseModels) creates the table; this idempotent
+		// step inserts the claude-sonnet-5 row so write-time USD stamping has
+		// a price card to resolve against. Ops-managed thereafter.
+		ctxStep("model_rates_seed", RunModelRatesSeed),
 	}
 }
 

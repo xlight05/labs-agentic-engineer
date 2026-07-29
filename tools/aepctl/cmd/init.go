@@ -222,8 +222,9 @@ func runAEPInit(cmd *cobra.Command, args []string) error {
 		// Local chart path — used for dev/local testing.
 		helmArgs = append([]string{helmArgs[0], helmArgs[1], initPlatformChart}, helmArgs[2:]...)
 	} else {
-		// Pull chart from GHCR.
-		helmArgs = append([]string{helmArgs[0], helmArgs[1], "oci://ghcr.io/wso2/aep/charts/platform"}, helmArgs[2:]...)
+		// Pull chart from GHCR. The OCI artifact is named after the chart's
+		// `name:` (aep-platform), not the directory (platform).
+		helmArgs = append([]string{helmArgs[0], helmArgs[1], "oci://ghcr.io/wso2/aep/charts/aep-platform"}, helmArgs[2:]...)
 		if initPlatformVersion != "latest" {
 			helmArgs = append(helmArgs, "--version", initPlatformVersion)
 		}

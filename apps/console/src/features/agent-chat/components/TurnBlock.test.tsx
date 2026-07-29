@@ -71,7 +71,6 @@ function renderTurn(t: Turn, onOpenSpec = vi.fn()) {
         expandedGroups={new Set()}
         onToggleGroup={vi.fn()}
         onOpenSpec={onOpenSpec}
-        questionCard={{ answerableIds: new Set(), busy: false, onAnswer: vi.fn() }}
       />
     </OxygenUIThemeProvider>,
   );

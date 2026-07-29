@@ -9,8 +9,8 @@ metadata:
 # Generate `validation-criteria.json`
 
 You are producing the **acceptance oracle** for the VALIDATION phase: a machine-readable list of
-testable criteria derived from the requirement. Every downstream check (generated e2e tests, agent
-scenario checks, the human sign-off checklist) is derived from this file, so **faithfulness to the
+testable criteria derived from the requirement. Every downstream check (generated e2e tests, the
+human sign-off checklist) is derived from this file, so **faithfulness to the
 requirement matters more than volume** — a wrong or invented criterion silently corrupts every
 downstream check.
 
@@ -44,7 +44,7 @@ a fresh id only to a genuinely new or reworded criterion.
       "criteria": [
         { "id": "AC-001-a", "must": "A registered email receives a reset link", "method": "e2e" },
         { "id": "AC-001-b", "must": "The reset link expires after 1 hour", "method": "e2e" },
-        { "id": "AC-001-c", "must": "The reset confirmation message is clear and actionable", "method": "scenario" }
+        { "id": "AC-001-c", "must": "The reset confirmation message is clear and actionable", "method": "manual" }
       ]
     }
   ]
@@ -61,20 +61,20 @@ a fresh id only to a genuinely new or reworded criterion.
 | `criteria[]` | The testable acceptance criteria for that requirement. **≥ 1 per requirement.** |
 | `criteria[].id` | `AC-<req-number>-<letter>`, e.g. `AC-001-a`, `AC-001-b`. |
 | `criteria[].must` | A single, **atomic**, verifiable assertion. No conjunctions — split "X and Y" into two criteria. |
-| `criteria[].method` | Exactly one of `e2e` \| `scenario` \| `manual` (see below). |
+| `criteria[].method` | Exactly one of `e2e` \| `manual` (see below). |
 
 ## Assigning `method`
 
 - **`e2e`** — deterministically checkable by driving the app: a UI flow via a headless browser, or a
   deterministic API/CLI assertion for non-UI behavior. Prefer this whenever a stable pass/fail assertion
   is possible.
-- **`scenario`** — real but **not** a stable deterministic assertion; needs judgment or exploratory
-  interaction (e.g. "the error message is clear and actionable", "the layout is usable on mobile").
-- **`manual`** — cannot be validated automatically at all (external/physical side effects, third-party
-  actions, subjective calls beyond an agent's reach). Use sparingly.
+- **`manual`** — everything that cannot be checked by a deterministic e2e assertion: needs human
+  judgment, exploratory interaction, or subjective evaluation (e.g. "the error message is clear and
+  actionable", "the layout is usable on mobile"), or has external/physical/third-party side effects
+  beyond an agent's reach.
 
-When unsure between `e2e` and `scenario`, choose `e2e` if you can phrase a concrete assertion; otherwise
-`scenario`. Every criterion gets exactly one method.
+When unsure, choose `e2e` if you can phrase a concrete deterministic assertion; otherwise `manual`.
+Every criterion gets exactly one method.
 
 ## Discipline
 

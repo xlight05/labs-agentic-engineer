@@ -53,6 +53,10 @@ export interface CollabSpec {
   docPaths: string[];
   /** The live provider (for CollaborationCaret); null until connected. */
   provider: HocuspocusProvider | null;
+  /** The room Y.Doc — exists from mount regardless of connection (so an
+   *  offline/solo client still has a local doc to work on). Null before the
+   *  first effect run. */
+  doc: Y.Doc | null;
   /** This client's presence identity (name/color) for caret labels. */
   self: { name: string; color: string };
   /** True while a transaction originates from this client (binding helper). */
@@ -89,6 +93,9 @@ export function useCollabSpec(
   orgHandle: string,
 ): CollabSpec {
   const [status, setStatus] = useState<CollabStatus>("connecting");
+  // Flips true once the local Y.Doc is created (mount), so the memoized return
+  // re-exposes `doc` even when the room never connects (offline/solo).
+  const [docReady, setDocReady] = useState(false);
   const [peers, setPeers] = useState<CollabPeer[]>([]);
   const [version, setVersion] = useState(0);
   const docRef = useRef<Y.Doc | null>(null);
@@ -105,6 +112,7 @@ export function useCollabSpec(
   useEffect(() => {
     const doc = new Y.Doc();
     docRef.current = doc;
+    setDocReady(true);
     // Stable across this effect — captured so the cleanup doesn't read a ref
     // that could have moved (react-hooks/exhaustive-deps).
     const flushes = pendingFlushes.current;
@@ -213,6 +221,7 @@ export function useCollabSpec(
           ? listDocPaths(docRef.current)
           : [],
       provider: status === "connected" ? providerRef.current : null,
+      doc: docReady ? docRef.current : null,
       self: {
         name: user.name,
         color:
@@ -245,6 +254,6 @@ export function useCollabSpec(
           provider.sendStateless(JSON.stringify({ type: "flush", id }));
         }),
     }),
-    [status, peers, version, user.name],
+    [status, peers, version, user.name, docReady],
   );
 }

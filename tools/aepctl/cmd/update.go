@@ -118,7 +118,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if updatePlatformChart != "" {
 		helmArgs = append(helmArgs, updatePlatformChart)
 	} else {
-		helmArgs = append(helmArgs, "oci://ghcr.io/wso2/aep/charts/platform")
+		// OCI artifact is named after the chart's `name:` (aep-platform).
+		helmArgs = append(helmArgs, "oci://ghcr.io/wso2/aep/charts/aep-platform")
 		if updatePlatformVersion != "" {
 			helmArgs = append(helmArgs, "--version", updatePlatformVersion)
 		}

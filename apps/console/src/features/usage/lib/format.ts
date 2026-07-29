@@ -19,6 +19,7 @@
 import type { components } from "../../../generated/aep-api";
 
 export type Usage = components["schemas"]["Usage"];
+export type PhaseUsage = components["schemas"]["PhaseUsage"];
 
 // "12.3K" / "3.1M" — cost chips live in dense headers, so token counts are
 // always abbreviated; the exact split lives in the breakdown tooltip.

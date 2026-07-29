@@ -261,13 +261,24 @@ func (s *server) Init(req *adminpb.InitRequest, stream grpc.ServerStreamingServe
 
 	// Revoke the root token — all provisioning is done and it is no longer needed.
 	// Recovery, if ever required, uses the unseal keys via OpenBao's generate-root process.
-	if err := progress("Revoking root token..."); err != nil {
-		return err
+	//
+	// LOCAL DEV EXCEPTION: when local stubs are enabled, the in-cluster
+	// secret-manager-api stub authenticates to OpenBao with the root token, so
+	// revoking it would break external-resource secret staging. Keep it in that
+	// case only. In production (localStubs=false) the root token is always revoked.
+	if s.localStubs {
+		if err := progress("Local stubs enabled — keeping OpenBao root token (dev only)."); err != nil {
+			return err
+		}
+	} else {
+		if err := progress("Revoking root token..."); err != nil {
+			return err
+		}
+		if _, err := openbao.Must(ctx, "POST", s.openbaoAddr, rootToken, "/v1/auth/token/revoke-self", nil); err != nil {
+			return fatal(fmt.Sprintf("revoke root token: %v", err))
+		}
+		// rootToken was revoked above and is intentionally not referenced past this point.
 	}
-	if _, err := openbao.Must(ctx, "POST", s.openbaoAddr, rootToken, "/v1/auth/token/revoke-self", nil); err != nil {
-		return fatal(fmt.Sprintf("revoke root token: %v", err))
-	}
-	// rootToken was revoked above and is intentionally not referenced past this point.
 
 	// Send credentials — root token is intentionally omitted; it has been revoked.
 	return stream.Send(&adminpb.InitEvent{

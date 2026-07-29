@@ -31,7 +31,6 @@ import {
   runCycleLines,
   runHeartbeatLine,
 } from "../fixtures/run-progress";
-import { projectUsage } from "../fixtures/usage";
 
 function scenario(): ProjectScenario {
   return (
@@ -175,10 +174,6 @@ export const projectHandlers = [
         },
       });
     },
-  ),
-  // Cost visibility (#245): per-phase actual usage.
-  http.get("*/api/v1/projects/:projectName/usage", () =>
-    respond((s) => projectUsage[s]),
   ),
   // Task page (#173): one task with its execution history…
   http.get("*/api/v1/projects/:projectName/tasks/:issueNumber", ({ params }) => {

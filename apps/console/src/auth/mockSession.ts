@@ -19,11 +19,31 @@
 // The mock-auth identity for default dev (VITE_API_MODE=mock): a fixed
 // user and org, no Thunder required. The org matches the collab mock
 // BFF's default so spec rooms resolve the same way in both places.
+//
+// Multi-user dev (`aep:mock:user`): set a display name and reload to act as
+// a DIFFERENT teammate — `sessionStorage.setItem('aep:mock:user','Alice')`
+// scopes the identity to ONE tab (sessionStorage is per-tab), so two tabs of
+// the same browser can exercise owner-vs-teammate flows (e.g. the question
+// form's asker-only submit). A localStorage value works too (whole browser).
+// Read once at module load: identity must stay stable for the session, same
+// as a real login. The email derives from the name.
+
+function mockUserOverride(): { name: string; email: string } | null {
+  try {
+    const name = (
+      sessionStorage.getItem("aep:mock:user") ?? localStorage.getItem("aep:mock:user")
+    )?.trim();
+    if (!name) return null;
+    const slug = name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return { name, email: `${slug || "user"}@example.com` };
+  } catch {
+    return null;
+  }
+}
 
 export const MOCK_USER = {
-  name: "Developer",
-  email: "developer@example.com",
   role: "Developer",
+  ...(mockUserOverride() ?? { name: "Developer", email: "developer@example.com" }),
 } as const;
 
 export const MOCK_ORG = "acme";

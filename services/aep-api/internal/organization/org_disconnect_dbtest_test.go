@@ -56,7 +56,7 @@ func TestOrgDisconnect_SeversCredential_LeavesExecutions_DB(t *testing.T) {
 	// Seed platform-owned executions rows for the org's Tasks. These must SURVIVE
 	// the disconnect (the issues go inert; the rows are not purged — that is the
 	// project-delete path, not disconnect).
-	execRepo := delivery.NewExecutionRepository(db)
+	execRepo := delivery.NewExecutionRepository(db, nil)
 	for _, issue := range []int{7, 8} {
 		if _, _, err := execRepo.TryAdmit(ctx, &delivery.Execution{
 			OrgID: "acme", ProjectID: "web", Repo: "acme/web", IssueNumber: issue,

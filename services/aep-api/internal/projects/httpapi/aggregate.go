@@ -60,6 +60,6 @@ func New(d projects.Deps) (*Handlers, error) {
 		componentbuildHandler:  componentbuild.New(d.ComponentSvc),
 		componentconfigHandler: componentconfig.New(d.ConfigSvc),
 		activityfeedHandler:    activityfeed.New(d.ActivitySvc),
-		projectusageHandler:    projectusage.New(),
+		projectusageHandler:    projectusage.New(d.UsageSvc),
 	}, nil
 }

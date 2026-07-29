@@ -37,7 +37,7 @@ func TestDeleteProject_PurgesExecutions_OrgScoped_DB(t *testing.T) {
 	t.Parallel()
 	db := dbtest.New(t)
 	ctx := context.Background()
-	execRepo := delivery.NewExecutionRepository(db)
+	execRepo := delivery.NewExecutionRepository(db, nil)
 
 	seed := func(org, proj string, issue int) {
 		if _, _, err := execRepo.TryAdmit(ctx, &delivery.Execution{

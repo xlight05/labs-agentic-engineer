@@ -20,23 +20,25 @@ import (
 	"context"
 
 	"github.com/wso2/aep/aep-api/internal/gen"
+	"github.com/wso2/aep/aep-api/internal/platform/tenant"
+	"github.com/wso2/aep/aep-api/internal/projects"
 )
 
-// Handler serves get-project-usage. PLACEHOLDER until the #249 backend
-// (capture, persistence, per-phase aggregation, USD derivation per ADR-0011)
-// lands: no usage capture exists yet, so all-zero rollups are the truth —
-// the console hides zero-usage chips.
-type Handler struct{}
+// Handler serves list-project-usage (#291): the org-wide Settings → Usage
+// roll-up. All aggregation + labelling lives in projects.UsageService; the
+// slice is pure edge wiring — resolve the bound org, delegate, respond.
+type Handler struct {
+	svc *projects.UsageService
+}
 
 // New returns the slice's handler.
-func New() *Handler { return &Handler{} }
+func New(svc *projects.UsageService) *Handler { return &Handler{svc: svc} }
 
-func (h *Handler) GetProjectUsage(_ context.Context, _ gen.GetProjectUsageRequestObject) (gen.GetProjectUsageResponseObject, error) {
-	zero := gen.Usage{} // zero tokens, "" model, null costUsd — nothing captured yet
-	return gen.GetProjectUsage200JSONResponse(gen.ProjectUsage{
-		Spec:       zero,
-		Build:      zero,
-		Validation: zero,
-		DraftCycle: zero,
-	}), nil
+func (h *Handler) ListProjectUsage(ctx context.Context, _ gen.ListProjectUsageRequestObject) (gen.ListProjectUsageResponseObject, error) {
+	org := tenant.BoundOrgFromContext(ctx)
+	list, err := h.svc.ListProjectUsage(ctx, org)
+	if err != nil {
+		return nil, projects.MapProjectError(err)
+	}
+	return gen.ListProjectUsage200JSONResponse(list), nil
 }

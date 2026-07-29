@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/aep/aep-api/internal/migrate"
 	"github.com/wso2/aep/aep-api/internal/platform/database"
 	"github.com/wso2/aep/aep-api/internal/platform/gitfs"
+	"github.com/wso2/aep/aep-api/internal/platform/modelcost"
 	"github.com/wso2/aep/aep-api/internal/platform/secrets"
 	"github.com/wso2/aep/aep-api/internal/seed"
 )
@@ -47,6 +48,10 @@ type Infra struct {
 	AppClientSecret string        // GitHub App OAuth client_secret ("" ⇒ bind path disabled)
 	K8sClient       client.Client // in-cluster client; nil ⇒ mint-build skips Secret writes
 	Workspace       *gitfs.Engine
+	// RateStamper prices captured agent usage at write time (#291), loaded once
+	// from model_rates after migration. Assemble threads it into the turn +
+	// execution repositories; nil ⇒ no stamping (cost_usd stays null).
+	RateStamper *modelcost.Stamper
 }
 
 // Resolve performs every boot side effect and returns the resolved Infra: it
@@ -67,6 +72,16 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 	if err := Bootstrap(ctx, db, cfg); err != nil {
 		return Infra{}, err
 	}
+
+	// Model pricing (#291): load the model_rates the seed migration wrote into
+	// an immutable in-memory Stamper. Boot-time and not per-capture because
+	// rates are ops-managed and change rarely — a rate edit takes effect on the
+	// next restart. Assemble injects it into the capture repositories.
+	rateRows, err := migrate.LoadModelRates(ctx, db)
+	if err != nil {
+		return Infra{}, fmt.Errorf("model rates load: %w", err)
+	}
+	rateStamper := modelcost.NewStamper(rateRows)
 
 	// Credential store (AES-256-GCM over Postgres). Pure to construct, but the
 	// OpenBao loads + dev seed below depend on it, so it is resolved here.
@@ -162,5 +177,6 @@ func Resolve(ctx context.Context, cfg config.Config) (Infra, error) {
 		AppClientSecret: appClientSecret,
 		K8sClient:       wpClient,
 		Workspace:       workspaceEngine,
+		RateStamper:     rateStamper,
 	}, nil
 }

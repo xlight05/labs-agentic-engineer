@@ -70,6 +70,12 @@ export interface CreateAppDeps {
   store: ConversationStore;
   /** Build the model from the request's `X-Anthropic-Key` (§12.3.1). Injected so tests pass a mock. */
   buildModel: (apiKey: string) => LanguageModel;
+  /**
+   * The resolved model id `buildModel` instantiates — usage attribution on the
+   * terminal manifest (#249). Optional so mock-model callers (tests, evals)
+   * need not invent one; absent → the manifest usage carries `model: ""`.
+   */
+  modelId?: string;
   /** M2M gate config (always on): JWKS or shared secret. */
   auth: AgentsAuthConfig;
   /** SSE keep-alive cadence in ms (default `config.keepAliveMs`). */
@@ -300,6 +306,7 @@ export function createApp(deps: CreateAppDeps): Express {
         webSearch: body.webSearch === true,
         ...(roomPeer ? { collabPeer: roomPeer } : {}),
         model,
+        ...(deps.modelId ? { modelId: deps.modelId } : {}),
         store: deps.store,
         guard,
         onEvent: send,

@@ -25,7 +25,10 @@
 import {
   ASK_QUESTION_TOOL,
   ASK_QUESTIONS_TOOL,
+  buildAnswerInstruction,
+  buildAnswersInstruction,
   type AskQuestionInput,
+  type QuestionAnswer,
   type AskQuestionOption,
 } from "@aep/agent-stream";
 import type { ChatMessage } from "./chatStore";
@@ -94,6 +97,31 @@ export function parseQuestionsInput(toolName: string, input: unknown): AskQuesti
 /** True when `toolName` is one of the question tools (single or batch). */
 export function isQuestionTool(toolName: string | undefined): boolean {
   return toolName === ASK_QUESTION_TOOL || toolName === ASK_QUESTIONS_TOOL;
+}
+
+/**
+ * Serialize a card's answer(s) into the next turn's plain-text instruction —
+ * one definition shared by the chat hook and the collab banner. Single question
+ * → `Answer to "…"`, batch → an `Answers:` list (the wire contract's builders).
+ */
+export function serializeQuestionAnswer(
+  questions: AskQuestionInput[],
+  answers: QuestionAnswer[],
+): string {
+  if (questions.length === 1) {
+    return buildAnswerInstruction(
+      questions[0]!.question,
+      answers[0]?.selected ?? [],
+      answers[0]?.freeText,
+    );
+  }
+  return buildAnswersInstruction(
+    questions.map((q, i) => ({
+      question: q.question,
+      selected: answers[i]?.selected ?? [],
+      ...(answers[i]?.freeText ? { freeText: answers[i]!.freeText } : {}),
+    })),
+  );
 }
 
 /**

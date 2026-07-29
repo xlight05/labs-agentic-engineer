@@ -37,7 +37,6 @@ function renderFeed(messages: ChatMessage[], showWorkingTail = false) {
         onToggleGroup={vi.fn()}
         onOpenSpec={vi.fn()}
         showWorkingTail={showWorkingTail}
-        questionCard={{ answerableIds: new Set(), busy: false, onAnswer: vi.fn() }}
       />
     </OxygenUIThemeProvider>,
   );

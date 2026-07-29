@@ -18,11 +18,9 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { buildAnswerInstruction, buildAnswersInstruction, type QuestionAnswer } from "@aep/agent-stream";
 import { projectKeys } from "../projects/api/keys.js";
 import {
   addMessage,
-  answerQuestion,
   chatKeyFor,
   conversationIdFor,
   dropTurnOutput,
@@ -54,13 +52,6 @@ export interface AgentChat {
    *  authoritative "running" signal for the feed, incl. re-attached turns). */
   activeTurnId: string | undefined;
   send: (instruction: string) => void;
-  /**
-   * Answer a question card (ADR-0012): serializes the choice(s) into the next
-   * turn's instruction. The answer is recorded on the card only once the turn
-   * actually STARTED — a failed or no-op send leaves the card answerable, so an
-   * answer can never be silently lost behind a read-only card.
-   */
-  answer: (msg: Extract<ChatMessage, { role: "question" }>, answers: QuestionAnswer[]) => void;
   /** Clear the log + mint a fresh conversation id (header action). */
   newConversation: () => void;
 }
@@ -123,11 +114,8 @@ export function useAgentChat(org: string, projectName: string): AgentChat {
     };
   }, [chatKey, org, projectName, onTurnCommitted]);
 
-  // One turn dispatch, shared by send and answer. `onStarted` fires after
-  // startCollabTurn succeeds — the earliest point the instruction is durably on
-  // its way to the agent (used to record a card answer only once delivered).
-  const dispatch = useCallback(
-    (instruction: string, onStarted?: () => void) => {
+  const send = useCallback(
+    (instruction: string) => {
       const text = instruction.trim();
       if (!text || isSending) return;
       const convId = conversationIdFor(org, projectName, { create: true })!;
@@ -151,7 +139,6 @@ export function useAgentChat(org: string, projectName: string): AgentChat {
           setIsSending(false);
           return;
         }
-        onStarted?.();
         setActiveTurnId(turnId);
         addMessage(chatKey, {
           role: "user",
@@ -183,32 +170,9 @@ export function useAgentChat(org: string, projectName: string): AgentChat {
     [chatKey, org, projectName, isSending, author, onTurnCommitted],
   );
 
-  const send = useCallback((instruction: string) => dispatch(instruction), [dispatch]);
-
-  const answer = useCallback<AgentChat["answer"]>(
-    (msg, answers) => {
-      const instruction =
-        msg.questions.length === 1
-          ? buildAnswerInstruction(
-              msg.questions[0]!.question,
-              answers[0]?.selected ?? [],
-              answers[0]?.freeText,
-            )
-          : buildAnswersInstruction(
-              msg.questions.map((q, i) => ({
-                question: q.question,
-                selected: answers[i]?.selected ?? [],
-                ...(answers[i]?.freeText ? { freeText: answers[i]!.freeText } : {}),
-              })),
-            );
-      dispatch(instruction, () => answerQuestion(chatKey, msg.id, answers));
-    },
-    [dispatch, chatKey],
-  );
-
   const newConversation = useCallback(() => {
     startNewConversation(org, projectName);
   }, [org, projectName]);
 
-  return { messages, isSending, activeTurnId, send, answer, newConversation };
+  return { messages, isSending, activeTurnId, send, newConversation };
 }

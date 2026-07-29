@@ -29,31 +29,28 @@ import (
 	"github.com/wso2/aep/aep-api/internal/clients/openchoreo/gen"
 	"github.com/wso2/aep/aep-api/internal/clients/requests"
 	"github.com/wso2/aep/aep-api/internal/platform/auth"
+	"github.com/wso2/aep/aep-api/ocauth"
 )
-
-// AuthProvider is the auth-token contract the OC client depends on. Lets us
-// swap `*oauth.TokenProvider` (the only production impl) for a fake in
-// tests without touching the oauth package. Method signatures intentionally
-// match `*oauth.TokenProvider` so it satisfies the interface as-is.
-type AuthProvider interface {
-	Token() (string, error)
-	Invalidate()
-}
 
 // Config drives the OpenChoreo client construction.
 type Config struct {
 	BaseURL      string
 	HostHeader   string
-	AuthProvider AuthProvider
+	AuthProvider ocauth.AuthProvider
 	RetryConfig  requests.RequestRetryConfig
+
+	// RequestAuthStrategy selects the credential class per OC request.
+	// nil means AuthModeServiceM2M (direct-OC / all-M2M off-switch: never
+	// pass through an inbound user JWT).
+	RequestAuthStrategy ocauth.RequestAuthStrategy
 
 	// ImpersonateOrgResolver, when set, maps the namespace in a request URL
 	// (".../namespaces/{namespace}/...") to the org UUID sent as the
 	// X-Impersonate-Org header on M2M (service-token) requests, so platform-api
 	// routes and bills the target org rather than the service identity's own.
-	// Only consulted when no inbound user JWT is being forwarded. nil disables
-	// the header (e.g. local k3d, which talks to OpenChoreo directly and reads
-	// the namespace from the URL path).
+	// Only consulted on AuthModeServiceM2M. nil disables the header (e.g. local
+	// k3d, which talks to OpenChoreo directly and reads the namespace from the
+	// URL path).
 	ImpersonateOrgResolver func(ctx context.Context, namespace string) (string, error)
 }
 
@@ -120,6 +117,10 @@ func buildRetryConfig(cfg Config) requests.RequestRetryConfig {
 // hand-rolled REST clients (e.g. resource_client.go) call directly from
 // their `do` method. Centralizing it here means the generated and
 // hand-rolled clients can never drift on auth selection.
+//
+// Credential class comes from RequestAuthStrategy (nil → AuthModeServiceM2M).
+// Same-class 401 retry stays in buildRetryConfig via AuthProvider.Invalidate();
+// this editor never falls back across credential classes.
 func authRequestEditor(cfg Config) func(ctx context.Context, req *http.Request) error {
 	return func(ctx context.Context, req *http.Request) error {
 		if cfg.HostHeader != "" {
@@ -127,67 +128,59 @@ func authRequestEditor(cfg Config) func(ctx context.Context, req *http.Request) 
 		}
 		req.Header.Set("X-Use-OpenAPI", "true")
 
-		// Pick the credential for this call:
-		//
-		//   - User-facing call (an inbound user JWT is in ctx and the call is
-		//     NOT marked service-identity, AND an ImpersonateOrgResolver is
-		//     configured): forward the user JWT. platform-api derives the org
-		//     from the JWT's ouId; no impersonation header.
-		//
-		//   - Service-identity call (orchestration / async — dispatch, webhooks,
-		//     watchers — marked via auth.WithServiceIdentity, OR any call
-		//     with no inbound user JWT, OR direct-OC mode where
-		//     ImpersonateOrgResolver is nil): authenticate as the BFF's M2M
-		//     service identity. In direct-OC mode (helm bundle / k3d) OC's API
-		//     only trusts its own Thunder, not the platform's AE Thunder, so
-		//     forwarding the user JWT would always 401.
-		//
-		// The explicit service-identity marker is what makes the orchestration
-		// paths correct: they run inside the user's HTTP request (so a user JWT
-		// is present in ctx), but they act on the org's behalf and must NOT
-		// forward that user's JWT — otherwise the impersonation header is never
-		// set and the write mis-routes to the wrong namespace.
-		userJWT := auth.GetAuthToken(ctx)
-		useServiceIdentity := auth.IsServiceIdentity(ctx) || userJWT == "" || cfg.ImpersonateOrgResolver == nil
+		mode := ocauth.AuthModeServiceM2M
+		if cfg.RequestAuthStrategy != nil {
+			mode = cfg.RequestAuthStrategy.Decide(ctx)
+		}
 
-		if !useServiceIdentity {
+		switch mode {
+		case ocauth.AuthModeUserJWT:
+			userJWT := auth.GetAuthToken(ctx)
+			if userJWT == "" {
+				return fmt.Errorf("openchoreo: AuthModeUserJWT selected but no user JWT in context")
+			}
 			slog.DebugContext(ctx, "openchoreo: forwarding inbound user JWT",
 				"method", req.Method, "path", req.URL.Path)
 			req.Header.Set("Authorization", "Bearer "+userJWT)
 			return nil
-		}
 
-		if cfg.ImpersonateOrgResolver != nil {
-			if ns := namespaceFromPath(req.URL.Path); ns != "" {
-				orgUUID, err := cfg.ImpersonateOrgResolver(ctx, ns)
-				if err != nil {
-					return fmt.Errorf("openchoreo: resolve impersonation org for namespace %q: %w", ns, err)
-				}
-				if orgUUID != "" {
-					req.Header.Set("X-Impersonate-Org", orgUUID)
-					slog.DebugContext(ctx, "openchoreo: service-identity call — impersonating org",
-						"namespace", ns, "orgUUID", orgUUID, "method", req.Method, "path", req.URL.Path,
-						"explicitServiceIdentity", auth.IsServiceIdentity(ctx))
+		case ocauth.AuthModeServiceM2M:
+			if cfg.ImpersonateOrgResolver != nil {
+				if ns := namespaceFromPath(req.URL.Path); ns != "" {
+					orgUUID, err := cfg.ImpersonateOrgResolver(ctx, ns)
+					if err != nil {
+						return fmt.Errorf("openchoreo: resolve impersonation org for namespace %q: %w", ns, err)
+					}
+					if orgUUID != "" {
+						req.Header.Set("X-Impersonate-Org", orgUUID)
+						slog.DebugContext(ctx, "openchoreo: service-identity call — impersonating org",
+							"namespace", ns, "orgUUID", orgUUID, "method", req.Method, "path", req.URL.Path,
+							"explicitServiceIdentity", auth.IsServiceIdentity(ctx))
+					} else {
+						slog.DebugContext(ctx, "openchoreo: service-identity call — resolver returned no org, sending no impersonation header",
+							"namespace", ns, "method", req.Method, "path", req.URL.Path)
+					}
 				} else {
-					slog.DebugContext(ctx, "openchoreo: service-identity call — resolver returned no org, sending no impersonation header",
-						"namespace", ns, "method", req.Method, "path", req.URL.Path)
+					slog.DebugContext(ctx, "openchoreo: service-identity call — no namespace in path, sending no impersonation header",
+						"method", req.Method, "path", req.URL.Path)
 				}
-			} else {
-				slog.DebugContext(ctx, "openchoreo: service-identity call — no namespace in path, sending no impersonation header",
-					"method", req.Method, "path", req.URL.Path)
 			}
-		}
 
-		if cfg.AuthProvider != nil {
-			tok, err := cfg.AuthProvider.Token()
-			if err != nil {
-				return fmt.Errorf("openchoreo: service token fetch failed: %w", err)
+			if cfg.AuthProvider != nil {
+				tok, err := cfg.AuthProvider.Token()
+				if err != nil {
+					return fmt.Errorf("openchoreo: service token fetch failed: %w", err)
+				}
+				if tok != "" {
+					req.Header.Set("Authorization", "Bearer "+tok)
+				}
 			}
-			if tok != "" {
-				req.Header.Set("Authorization", "Bearer "+tok)
-			}
+			return nil
+
+		default:
+			// AuthModeNone: no bearer.
+			return nil
 		}
-		return nil
 	}
 }
 

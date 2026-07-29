@@ -44,12 +44,11 @@ import {
   useProjectTags,
 } from "../../projects/api/queries";
 import { useDesignDependencies, useSpecFileContent, useSpecFiles } from "../api/queries";
-import { useProjectUsage } from "../../usage/api/queries";
-import { totalTokens } from "../../usage/lib/format";
-import { UsageChip } from "../../usage/components/UsageChip";
 import { toSpecEntry } from "../api/mapping";
 import { computeDependencyUsedBy } from "../lib/dependencyUsedBy";
 import { useCollabSpec } from "../collab/useCollabSpec";
+import { SpecQuestionForm } from "./SpecQuestionForm";
+import { useRoomQuestion } from "../../agent-chat/useRoomQuestion";
 import { CollabTextArea } from "../collab/CollabTextArea";
 import { SpecMdEditor } from "../collab/SpecMdEditor";
 import { useYTextString } from "../collab/useYTextString";
@@ -91,6 +90,13 @@ export function SpecView({ projectName }: { projectName: string }) {
   // Rooms are org-scoped (`spec-<org>-<project>`); without an org claim fall
   // back to the collab mock BFF's default org so mock mode keeps working.
   const collab = useCollabSpec(projectName, user, orgHandle ?? "acme");
+  // Collab question cards spike: a pending agent question (one or many) takes
+  // over the body with a full-panel form, shared live with everyone in the
+  // room. useRoomQuestion mirrors this client's chat log into the room doc and
+  // observes the shared map. chatKey uses the "default" org fallback matching
+  // the chat panel, not the collab room's "acme".
+  const roomDoc = collab.doc;
+  const roomQuestion = useRoomQuestion(roomDoc, chatKeyFor(orgHandle ?? "default", projectName));
   // Chat-path turn-end flush (#252 Task 5): the chat panel's chatKey uses a
   // DIFFERENT fallback ("default", matching AppLayout/AgentChatPanel) than
   // the collab room's org scoping above ("acme") — these are unrelated
@@ -103,9 +109,6 @@ export function SpecView({ projectName }: { projectName: string }) {
     orgHandle ?? "default",
     projectName,
   );
-  // Cost visibility (#245): the header's draft-cycle spend chip — spec/design
-  // turn usage since the last published tag, mirroring the version chips.
-  const usageQ = useProjectUsage(projectName);
   const [selection, setSelection] = useState<SpecSelection | null>(null);
   const [addArtifactOpen, setAddArtifactOpen] = useState(false);
   // Build (#162): commit-then-build. buildPhase drives the button label /
@@ -598,15 +601,6 @@ export function SpecView({ projectName }: { projectName: string }) {
                   </Box>
                 </Tooltip>
               )}
-              {/* Draft-cycle spend (#245): what this version-in-progress has
-                  cost in spec/design turns. Hidden until any spend exists. */}
-              {usageQ.data && totalTokens(usageQ.data.draftCycle) > 0 && (
-                <UsageChip
-                  usage={usageQ.data.draftCycle}
-                  label="spec"
-                  context="Spec & design agent spend — current draft cycle"
-                />
-              )}
             </Stack>
           </Box>
 
@@ -737,6 +731,16 @@ export function SpecView({ projectName }: { projectName: string }) {
                 : ""}
             </Alert>
           </Box>
+        ) : roomQuestion && roomDoc ? (
+          /* Collab question form (spike): a LIST of agent questions takes over
+             the body — every room participant sees it and co-authors; only the
+             user who asked can submit. */
+          <SpecQuestionForm
+            doc={roomDoc}
+            entry={roomQuestion}
+            org={orgHandle ?? "default"}
+            projectName={projectName}
+          />
         ) : (
           <Box sx={{ flexGrow: 1, minHeight: 0, display: "flex" }}>
             <Box

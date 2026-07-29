@@ -98,6 +98,10 @@ export async function attachAndFoldTurn(
         if (!isQuestionTool(part.toolName)) break;
         const questions = parseQuestionsInput(part.toolName!, part.input);
         if (!questions) break;
+        // Landing in the chat log is ALSO what surfaces the question on the
+        // spec panel: useRoomQuestion subscribes to this log and mirrors
+        // answerable questions into the room's shared Yjs map (single path —
+        // no doc-publication race here).
         upsertQuestionMessage(chatKey, {
           role: "question",
           turnId,

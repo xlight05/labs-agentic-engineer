@@ -21,9 +21,40 @@
 // message often carries multiple tool_use content blocks). The caller
 // emits each returned event in order.
 
-import type { ProgressEmitter, ProgressEventInput } from "./schema.js";
+import type { ProgressEmitter, ProgressEventInput, TurnUsage } from "./schema.js";
 
 const MAX_SUMMARY = 200;
+
+function num(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+// usageFromResult reads the SDK result message's token usage (#291). Tokens
+// come from `usage` (snake_case SDK fields); the model comes from `modelUsage`,
+// a record keyed by model id — a single key is the run's model, anything else
+// (multi-model, or none) reports "" so aep-api treats it as unpriceable/mixed,
+// matching contracts.TokenUsage semantics. Returns undefined when the result
+// carried no usage at all (older SDKs / nothing to stamp).
+function usageFromResult(m: Record<string, unknown>): TurnUsage | undefined {
+  const u = m.usage;
+  if (!u || typeof u !== "object") return undefined;
+  const usage = u as Record<string, unknown>;
+
+  let model = "";
+  const mu = m.modelUsage;
+  if (mu && typeof mu === "object") {
+    const models = Object.keys(mu as Record<string, unknown>);
+    if (models.length === 1) model = models[0];
+  }
+
+  return {
+    inputTokens: num(usage.input_tokens),
+    outputTokens: num(usage.output_tokens),
+    cacheReadTokens: num(usage.cache_read_input_tokens),
+    cacheCreationTokens: num(usage.cache_creation_input_tokens),
+    model,
+  };
+}
 
 function trimSummary(s: string): string {
   const collapsed = s.replace(/\s+/g, " ").trim();
@@ -147,8 +178,9 @@ export function progressFromSdkMessage(message: unknown): ProgressEventInput[] {
 
   if (type === "result") {
     const subtype = String(m.subtype ?? "");
+    const usage = usageFromResult(m);
     if (subtype === "success") {
-      return [{ kind: "result", status: "success" }];
+      return [{ kind: "result", status: "success", ...(usage ? { usage } : {}) }];
     }
     const errors = Array.isArray(m.errors) ? (m.errors as string[]).join(", ") : "";
     return [{

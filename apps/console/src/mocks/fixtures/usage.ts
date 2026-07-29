@@ -17,16 +17,17 @@
  */
 
 import type { components } from "../../generated/aep-api";
-import type { ProjectScenario } from "./project";
 
 type Usage = components["schemas"]["Usage"];
-type ProjectUsage = components["schemas"]["ProjectUsage"];
+type PhaseUsage = components["schemas"]["PhaseUsage"];
+type ProjectUsageCard = components["schemas"]["ProjectUsageCard"];
+type ProjectUsageList = components["schemas"]["ProjectUsageList"];
 
 const FABLE = "claude-fable-5";
 
-// The single active model's rates ($/MTok), mirroring aep-api's checked-in
-// defaults (deployment-config-overridable there). Cache reads are ~0.1x
-// input, cache writes 1.25x, so mock USD figures look like production ones.
+// The active model's rates ($/MTok), mirroring the model_rates seed the #299
+// backend ships. Cache reads are ~0.1x input, cache writes 1.25x, so mock USD
+// figures look like production ones.
 const RATES = {
   inputPerMTok: 10,
   outputPerMTok: 50,
@@ -34,7 +35,8 @@ const RATES = {
   cacheWritePerMTok: 12.5,
 };
 
-// Rate-derived USD, exactly the read-time math aep-api does (ADR-0011).
+// The stamp math the backend runs at capture time (amended ADR-0011): rates
+// in force when the work ran; fixtures stamp once, never reprice.
 function priceUsd(u: Omit<Usage, "costUsd" | "model">): number {
   const usd =
     (u.inputTokens * RATES.inputPerMTok +
@@ -45,8 +47,7 @@ function priceUsd(u: Omit<Usage, "costUsd" | "model">): number {
   return Math.round(usd * 100) / 100;
 }
 
-// Fixture builder: tokens in, priced Usage out. Pass costUsd: null to
-// exercise the no-configured-rate state (tokens render without USD).
+// Fixture builder: tokens in, stamped Usage out.
 export function usage(
   inputTokens: number,
   outputTokens: number,
@@ -56,6 +57,23 @@ export function usage(
 ): Usage {
   const tokens = { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
   return { ...tokens, model, costUsd: priceUsd(tokens) };
+}
+
+// Pre-stamping rows (#291: no backfill): tokens exist, USD never will.
+function unstamped(
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadTokens: number,
+  cacheCreationTokens: number,
+): Usage {
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    model: FABLE,
+    costUsd: null,
+  };
 }
 
 export const zeroUsage: Usage = usage(0, 0, 0, 0);
@@ -82,63 +100,100 @@ export const taskUsage: Record<number, Usage> = {
   // 12 (pending) has no execution yet — exercises the absent-usage cell.
 };
 
-const specTurnsAll = usage(180_000, 96_000, 1_400_000, 240_000);
-const specDraftCycle = usage(52_000, 27_000, 410_000, 68_000);
-const buildingBuildUsage = sum([taskUsage[9]!, taskUsage[10]!, taskUsage[11]!]);
 const doneBuildUsage = sum(Object.values(taskUsage));
-const validationUsage = usage(48_000, 22_000, 520_000, 70_000);
 
-const noUsageRollup: ProjectUsage = {
-  spec: zeroUsage,
-  build: zeroUsage,
-  validation: zeroUsage,
-  draftCycle: zeroUsage,
+// ---- Settings → Usage page (#291) -----------------------------------------
+
+export type UsageScenario = "default" | "empty" | "error";
+
+// A plausible mock split of a total across the three SDLC phases (#291):
+// spec/design ~20%, build ~70%, validation ~10%. Tokens and cost scale
+// together; a null (unpriced) total keeps null costs per phase.
+function scale(u: Usage, f: number): Usage {
+  return {
+    inputTokens: Math.round(u.inputTokens * f),
+    outputTokens: Math.round(u.outputTokens * f),
+    cacheReadTokens: Math.round(u.cacheReadTokens * f),
+    cacheCreationTokens: Math.round(u.cacheCreationTokens * f),
+    model: u.model,
+    costUsd: u.costUsd === null ? null : Math.round(u.costUsd * f * 100) / 100,
+  };
+}
+
+function phasesOf(u: Usage): PhaseUsage {
+  return { spec: scale(u, 0.2), build: scale(u, 0.7), validation: scale(u, 0.1) };
+}
+
+const card = (
+  projectName: string,
+  displayName: string,
+  deleted: boolean,
+  u: Usage,
+): ProjectUsageCard => ({
+  projectName,
+  displayName,
+  deleted,
+  usage: u,
+  phases: phasesOf(u),
+});
+
+// An idle live project: no agent has run yet, so a real $0 (not a null unpriced
+// cost). The Usage page lists every live project, not only ones with spend.
+function idle(): Usage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    model: "",
+    costUsd: 0,
+  };
+}
+
+// The org roll-up in the tiered order the backend emits: stamped-cost desc,
+// then unpriced-but-active (tokens only), then idle $0 projects last. Covers:
+// live projects with spend, a deleted project that kept its spend, a
+// pre-stamping project (tokens, null cost), and a brand-new idle project.
+export const orgUsage: Record<Exclude<UsageScenario, "error">, ProjectUsageList> = {
+  default: {
+    projects: [
+      card(
+        "storefront-webapp",
+        "Storefront Webapp",
+        false,
+        sum([doneBuildUsage, usage(180_000, 96_000, 1_400_000, 240_000)]),
+      ),
+      card(
+        "notification-hub",
+        "Notification Hub",
+        false,
+        usage(160_000, 74_000, 1_100_000, 210_000),
+      ),
+      card(
+        "legacy-crm-poc",
+        "legacy-crm-poc",
+        true, // project deleted; its spend remains — greyed card
+        usage(120_000, 52_000, 700_000, 90_000),
+      ),
+      card(
+        "basic-calculator-webapp",
+        "Basic Calculator",
+        false,
+        usage(12_000, 4_500, 60_000, 9_000),
+      ),
+      card(
+        "spike-notifications",
+        "Spike Notifications",
+        false,
+        unstamped(52_000, 27_000, 410_000, 68_000), // pre-v2 rows: tokens only
+      ),
+      card("fresh-idea", "Fresh Idea", false, idle()), // new project, $0
+    ],
+  },
+  empty: { projects: [] },
 };
 
-// Per-scenario per-phase actuals for get-project-usage, consistent with the
-// tallies in fixtures/project.ts (building = v1 mid-build; deployed = v1 done
-// + drifted spec so the draft cycle has fresh spend).
-export const projectUsage: Record<
-  Exclude<ProjectScenario, "error">,
-  ProjectUsage
-> = {
-  fresh: noUsageRollup,
-  spec: {
-    spec: specTurnsAll,
-    build: zeroUsage,
-    validation: zeroUsage,
-    draftCycle: specTurnsAll, // nothing published yet — the whole spend is the cycle
-  },
-  "spec-failed": {
-    spec: specDraftCycle,
-    build: zeroUsage,
-    validation: zeroUsage,
-    draftCycle: specDraftCycle,
-  },
-  building: {
-    spec: specTurnsAll,
-    build: buildingBuildUsage,
-    validation: zeroUsage,
-    draftCycle: zeroUsage, // v1 just published; no new spec turns since
-  },
-  deploying: {
-    spec: specTurnsAll,
-    build: doneBuildUsage,
-    validation: validationUsage,
-    draftCycle: zeroUsage,
-  },
-  deployed: {
-    spec: sum([specTurnsAll, specDraftCycle]),
-    build: doneBuildUsage,
-    validation: validationUsage,
-    draftCycle: specDraftCycle, // specs/ drifted past v1 — the v1+ cycle
-  },
-  "deploy-failed": {
-    spec: specTurnsAll,
-    build: doneBuildUsage,
-    validation: validationUsage,
-    draftCycle: zeroUsage,
-  },
-  "repo-error": noUsageRollup,
-};
-
+export const usageLoadError = {
+  code: "internal",
+  message: "usage roll-up unavailable",
+} satisfies components["schemas"]["Error"];

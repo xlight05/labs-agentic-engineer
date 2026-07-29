@@ -208,23 +208,6 @@ export function upsertQuestionMessage(
   );
 }
 
-/**
- * Record a card's answers (ADR-0012) — the card flips read-only. Keyed by the
- * message id (unique per card), NOT toolCallId: blank toolCallIds are legal on
- * cards and must never gang-answer every blank-id card at once.
- */
-export function answerQuestion(
-  key: string,
-  messageId: string,
-  answers: QuestionAnswer[],
-): void {
-  if (!messageId) return;
-  persist(
-    key,
-    load(key).map((m) => (m.role === "question" && m.id === messageId ? { ...m, answers } : m)),
-  );
-}
-
 /** Streamed text accumulates into the turn's last assistant message. */
 export function appendAssistantText(
   key: string,

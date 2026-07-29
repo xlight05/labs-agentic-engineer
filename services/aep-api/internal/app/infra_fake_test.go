@@ -28,7 +28,7 @@ import (
 // connection is opened. The workspace is nil for the same reason (constructors
 // store the pointer; the trash hooks / reaper only deref it when invoked). The
 // minter (no-app mode) and credential store (cipher-only over the nil DB) are
-// both pure to construct. app.Assemble(cfg, Fake()) thus builds the same real
+// both pure to construct. app.Assemble(cfg, Fake(), Seam{}) thus builds the same real
 // handler + watchers as production without touching the network, clock, or disk.
 func Fake() Infra {
 	minter, _ := secrets.NewAppTokenMinter(nil)               // no-app mode, no I/O

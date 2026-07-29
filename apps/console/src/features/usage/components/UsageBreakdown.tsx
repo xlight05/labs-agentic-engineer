@@ -16,21 +16,43 @@
  * under the License.
  */
 
-import { Box, Stack, Typography } from "@wso2/oxygen-ui";
-import { formatTokens, type Usage } from "../lib/format";
+import { Box, Divider, Stack, Typography } from "@wso2/oxygen-ui";
+import {
+  formatTokens,
+  formatUsd,
+  totalTokens,
+  type PhaseUsage,
+  type Usage,
+} from "../lib/format";
+
+// The three SDLC phases, in pipeline order (#291), each with its user-facing
+// label. Shown as a small secondary split under the total token breakdown.
+const PHASES: [keyof PhaseUsage, string][] = [
+  ["spec", "Spec / design"],
+  ["build", "Build"],
+  ["validation", "Validation"],
+];
+
+// One phase's figure: its stamped USD, or a token count when the phase ran on
+// rows the platform could not price (null cost).
+function phaseFigure(u: Usage): string {
+  return u.costUsd !== null ? formatUsd(u.costUsd) : `${formatTokens(totalTokens(u))} tok`;
+}
 
 // The detailed token view behind every folded cost figure (#245): the
-// input/output/cache split that explains why agentic token counts look large.
-// Rendered in the UsageChip's expand popover and the task caption's tooltip.
-// `context` names WHAT the figure covers ("Agent spend — build v1") so no
-// number ever floats without a scope.
+// input/output/cache split that explains why agentic token counts look large,
+// plus (#291) the per-phase cost split when `phases` is supplied. `context`
+// names WHAT the figure covers ("Agent spend — Storefront") so no number
+// ever floats without a scope.
 export function UsageBreakdown({
   usage,
+  phases,
   context,
 }: {
   usage: Usage;
   // `| undefined` keeps pass-through from optional props legal under
   // exactOptionalPropertyTypes.
+  phases?: PhaseUsage | undefined;
   context?: string | undefined;
 }) {
   const rows: [string, number][] = [
@@ -67,8 +89,36 @@ export function UsageBreakdown({
       )}
       {usage.costUsd === null && (
         <Typography variant="caption" sx={{ opacity: 0.7 }}>
-          No configured rate for this model — tokens only.
+          No stamped cost — this usage predates pricing or its model had no
+          rate.
         </Typography>
+      )}
+      {phases && (
+        <>
+          <Divider sx={{ my: 0.5 }} />
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, opacity: 0.7, fontSize: "0.65rem" }}
+          >
+            Cost by phase
+          </Typography>
+          {PHASES.map(([key, label]) => (
+            <Box
+              key={key}
+              sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}
+            >
+              <Typography variant="caption" sx={{ fontSize: "0.65rem", opacity: 0.8 }}>
+                {label}
+              </Typography>
+              <Typography
+                variant="caption"
+                sx={{ fontSize: "0.65rem", opacity: 0.8, fontVariantNumeric: "tabular-nums" }}
+              >
+                {phaseFigure(phases[key])}
+              </Typography>
+            </Box>
+          ))}
+        </>
       )}
     </Stack>
   );

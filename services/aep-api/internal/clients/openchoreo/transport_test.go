@@ -98,8 +98,9 @@ func TestImpersonateOrgHeader_UserJWTPath_NoHeader(t *testing.T) {
 
 	resolverCalled := false
 	c, err := newGenClient(Config{
-		BaseURL:      srv.URL,
-		AuthProvider: fakeAuthProvider{tok: "m2m-token"},
+		BaseURL:             srv.URL,
+		AuthProvider:        fakeAuthProvider{tok: "m2m-token"},
+		RequestAuthStrategy: dualModeAuthStrategy{}, // explicit PAS dual-mode seam
 		ImpersonateOrgResolver: func(_ context.Context, _ string) (string, error) {
 			resolverCalled = true
 			return "org-uuid-123", nil
@@ -132,8 +133,9 @@ func TestImpersonateOrgHeader_ServiceIdentity_OverridesUserJWT(t *testing.T) {
 	defer srv.Close()
 
 	c, err := newGenClient(Config{
-		BaseURL:      srv.URL,
-		AuthProvider: fakeAuthProvider{tok: "m2m-token"},
+		BaseURL:             srv.URL,
+		AuthProvider:        fakeAuthProvider{tok: "m2m-token"},
+		RequestAuthStrategy: dualModeAuthStrategy{}, // explicit PAS dual-mode seam
 		ImpersonateOrgResolver: func(_ context.Context, ns string) (string, error) {
 			if ns == "wc-abc" {
 				return "org-uuid-123", nil
