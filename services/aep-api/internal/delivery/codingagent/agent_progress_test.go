@@ -19,6 +19,7 @@ package codingagent
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestParseProgressLine covers the runner NDJSON → event decode and the
@@ -230,13 +231,39 @@ func TestPageEvents(t *testing.T) {
 	for i := 0; i < defaultProgressLimit+10; i++ {
 		b.WriteString(`{"schemaVersion":1,"kind":"log","summary":"x"}` + "\n")
 	}
-	lines, truncated := pageEvents(b.String(), 0)
+	lines, truncated, _ := pageEvents(b.String(), 0)
 	if len(lines) != defaultProgressLimit || !truncated {
 		t.Errorf("pageEvents over-cap = (%d, %v), want (%d, true)", len(lines), truncated, defaultProgressLimit)
 	}
 
-	lines, truncated = pageEvents(`{"schemaVersion":1,"kind":"phase","phase":"p"}`+"\n", 0)
+	lines, truncated, _ = pageEvents(`{"schemaVersion":1,"kind":"phase","phase":"p"}`+"\n", 0)
 	if len(lines) != 1 || truncated {
 		t.Errorf("pageEvents under-cap = (%d, %v), want (1, false)", len(lines), truncated)
+	}
+}
+
+// TestPageEventsHadOutput pins the distinction that keeps the dark-zone
+// narration out of a live stream: hadOutput is a fact about the POD LOG, not
+// about the cursor window. A tail carrying only already-seen lines yields no new
+// lines yet still had output, so the caller must not re-narrate "Starting the
+// agent…" — the console dedups bootstrap lines on a stable seq, so one such
+// mid-stream emission is pinned in place for the rest of the run.
+func TestPageEventsHadOutput(t *testing.T) {
+	t.Parallel()
+
+	const seen = `{"schemaVersion":1,"kind":"log","summary":"first","ts":"2026-07-28T10:00:00.000000000Z"}` + "\n"
+
+	if _, _, hadOutput := pageEvents("", 0); hadOutput {
+		t.Error("empty page: hadOutput = true, want false (the runner has not spoken)")
+	}
+
+	// The agent is mid-thought: the tail still holds the line we already emitted.
+	cursor := time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC).UnixMilli()
+	lines, _, hadOutput := pageEvents(seen, cursor)
+	if len(lines) != 0 {
+		t.Errorf("already-seen page: lines = %d, want 0", len(lines))
+	}
+	if !hadOutput {
+		t.Error("already-seen page: hadOutput = false, want true (the pod HAS produced output)")
 	}
 }

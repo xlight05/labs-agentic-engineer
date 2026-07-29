@@ -190,7 +190,7 @@ func (r *AgentProgressReader) CycleProgress(ctx context.Context, cycle *delivery
 			return nil, fmt.Errorf("read run_cycle_logs: %w", serr)
 		}
 		if snap != nil {
-			resp.Lines, resp.Truncated = pageEvents(snap.LogText, sinceMillis)
+			resp.Lines, resp.Truncated, _ = pageEvents(snap.LogText, sinceMillis)
 			if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
 				resp.CursorMillis = cur
 			}
@@ -236,8 +236,13 @@ func (r *AgentProgressReader) CycleProgress(ctx context.Context, cycle *delivery
 		}
 		return nil, fmt.Errorf("tail cycle pod log: %w", err)
 	}
-	resp.Lines, resp.Truncated = pageEvents(string(body), sinceMillis)
-	if len(resp.Lines) == 0 && live {
+	lines, truncated, hadOutput := pageEvents(string(body), sinceMillis)
+	resp.Lines, resp.Truncated = lines, truncated
+	// Only a pod that has said NOTHING is still booting. A tail that holds output
+	// the caller has already seen means the agent is mid-thought, and narrating
+	// the dark zone there would inject "Starting the agent…" into the middle of a
+	// running stream — where the console's stable-seq dedup then pins it forever.
+	if !hadOutput && live {
 		resp.Lines = []contracts.ProgressEvent{bootstrapEvent(true, "Running", "")}
 		return resp, nil
 	}
@@ -274,7 +279,7 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *delivery.E
 	snap, err := r.logs.GetByRun(ctx, execUUID, row.RunName)
 	switch {
 	case err == nil && snap != nil:
-		resp.Lines, resp.Truncated = pageEvents(snap.LogText, sinceMillis)
+		resp.Lines, resp.Truncated, _ = pageEvents(snap.LogText, sinceMillis)
 		if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
 			resp.CursorMillis = cur
 		}
@@ -336,8 +341,8 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *delivery.E
 		}
 		return nil, fmt.Errorf("tail pod log: %w", err)
 	}
-	all, truncated := textToProgressEvents(string(body))
-	if len(all) == 0 {
+	lines, truncated, hadOutput := pageEvents(string(body), sinceMillis)
+	if !hadOutput {
 		// Container is up but the runner hasn't emitted its first line yet (token
 		// mint / node boot). Name the wait rather than showing nothing.
 		if live {
@@ -345,12 +350,7 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *delivery.E
 		}
 		return resp, nil
 	}
-	newer := filterEventsAfter(all, sinceMillis)
-	if len(newer) > defaultProgressLimit {
-		newer = newer[:defaultProgressLimit]
-		truncated = true
-	}
-	resp.Lines, resp.Truncated = newer, truncated
+	resp.Lines, resp.Truncated = lines, truncated
 	// Advance the cursor only as far as actually-emitted content reaches (NOT
 	// now()), so the next poll's window never skips late-arriving lines.
 	if cur := lastEventMillis(resp.Lines); cur > resp.CursorMillis {
@@ -362,14 +362,20 @@ func (r *AgentProgressReader) AgentProgress(ctx context.Context, row *delivery.E
 // pageEvents parses a raw pod-log page into events newer than sinceMillis,
 // capped at defaultProgressLimit. truncated is true when the raw page exceeded
 // the cap (oldest lines dropped) or the post-filter set still exceeds it.
-func pageEvents(text string, sinceMillis int64) ([]contracts.ProgressEvent, bool) {
+//
+// hadOutput reports whether the page held ANY lines before the cursor filter —
+// the distinction that decides whether a caller may narrate the dark zone. An
+// empty result means "nothing new since your cursor" (the agent is thinking),
+// which is emphatically not "the runner hasn't spoken yet"; conflating the two
+// replays a bootstrap line into the middle of a live stream.
+func pageEvents(text string, sinceMillis int64) (lines []contracts.ProgressEvent, truncated, hadOutput bool) {
 	all, truncated := textToProgressEvents(text)
 	newer := filterEventsAfter(all, sinceMillis)
 	if len(newer) > defaultProgressLimit {
 		newer = newer[:defaultProgressLimit]
 		truncated = true
 	}
-	return newer, truncated
+	return newer, truncated, len(all) > 0
 }
 
 // resolveRemoteWorkerNS maps an OC org handle to its remote-worker namespace
