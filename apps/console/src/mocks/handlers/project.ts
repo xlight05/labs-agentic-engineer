@@ -6,6 +6,7 @@ import {
   componentDeployments,
   componentOpenApi,
   projectBuildRuns,
+  projectCycleBuilds,
   projectBuilds,
   projectComponents,
   projectSectionError,
@@ -90,6 +91,13 @@ export const projectHandlers = [
   // …and one version's whole run story: run rows + cycle records, DB-only.
   http.get("*/api/v1/projects/:projectName/builds/:tag/runs", ({ params }) =>
     respond((s) => ({ ...projectBuildRuns[s], tag: String(params.tag) })),
+  ),
+  // A build session's fan-out. Derived from the cluster on the real server, so
+  // the console only ever asks for a session whose merge landed — and asks per
+  // session, which is why the fixture is keyed by scenario rather than by cycle.
+  http.get(
+    "*/api/v1/projects/:projectName/builds/:tag/cycles/:cycleId/builds",
+    () => respond((s) => ({ items: projectCycleBuilds[s] })),
   ),
   // Cancel: 202 means the SIGNAL was sent — the run row flips to `cancelled`
   // when the supervisor acts on it, which is why there is no body to return.

@@ -1,6 +1,8 @@
 # ADR-0013: The Builds page is one version's run story, and the run state is the only liveness
 
-- **Status:** Accepted
+- **Status:** Accepted; decisions 3, 4b, 6 and 9 superseded in part by
+  [ADR-0014](./ADR-0014-build-session-spine.md), which turns the run card into
+  one rail of staged sections
 - **Date:** 2026-07-27 (issue-driven execution,
   [#286](https://github.com/wso2/labs-agentic-engineer/issues/286) under the
   wayfinder map [#272](https://github.com/wso2/labs-agentic-engineer/issues/272))
@@ -34,6 +36,11 @@ is no ledger list in between.
    polls on a task's status any more.
 
 3. **Loop position renders from the cycle timeline, never from a stored phase.**
+   *(Superseded in part by ADR-0014: the timeline is now a rail of staged
+   sections, and a cycle's learned facts are attached to the stage that learned
+   them rather than shown as a row of em-dashes. The rule this clause exists for
+   — position is read from the cycles, never from a stored phase — is unchanged,
+   and so are the budget counters and the terminal-reason sentences.)*
    One row per dispatch, oldest first, each showing its kind, its per-cycle
    re-dispatch count, and the branch / PR / merge SHA the platform **learned
    from webhooks** — an empty column is the fact "that cycle's agent has not got
@@ -52,7 +59,10 @@ is no ledger list in between.
    *nothing was cancelled*.
 
 4b. **One hold notice on the run card answers "why is nothing moving", and it
-   distinguishes three different answers.** `planning` is the platform writing
+   distinguishes three different answers.** *(Superseded in part by ADR-0014:
+   the three-way split stands, but the two GATE answers moved onto the
+   provisioning stage, which says it per connection. The notice keeps the holds
+   that name no connection.)* `planning` is the platform writing
    the milestone (gates minted, issues planned in) — bounded work in progress,
    shown in the info tone with a spinner and nothing asked of the user. A
    `waiting` run with an open gate is held on a human. A `waiting` run with an
@@ -68,7 +78,12 @@ is no ledger list in between.
    liveness never comes from a row. (Agent replies on row expand are a later
    enhancement: lazy on-expand fetch, gracefully polled, never realtime.)
 
-6. **A gate is part of the run's hold notice, not a row.** While any
+6. **A gate is part of the run's hold notice, not a row.** *(Superseded by
+   ADR-0014 decisions 2, 3 and 10: a gate is now the first STAGE on the run's
+   rail — still not a competing warning, but named per connection with who is
+   acting on it, and listed in the issue register as part of the version's
+   record. A resolved gate no longer disappears: it is how the version came to
+   exist.)* While any
    `aep:provision` issue in the milestone is open the run dispatches nothing, so
    the gate is the *reason nothing is moving*, not one item among many — which
    makes it the run card's business (decision 4b), not the issue list's. The
@@ -91,7 +106,9 @@ is no ledger list in between.
    instead of naming the artifact, because the verdict is finally a fact the
    platform holds. The validation issue never appears in the issue list.
 
-9. **The run feed is one SSE stream, rendered as an accordion by cycle.** One
+9. **The run feed is one SSE stream, rendered as an accordion by cycle.**
+   *(The stream contract is unchanged. Per ADR-0014 the log renders inside the
+   Coding agent STAGE of its build session rather than as the section's body.)* One
    section per cycle record (upserted by id), the newest expanded; every line
    attributed to its cycle, and stamped `subagent` only when a Task subagent
    produced it — an unstamped line *is* the main agent, which is the contract's

@@ -152,6 +152,7 @@ func cycle(id, kind string, ended bool) delivery.RunCycle {
 	c := delivery.RunCycle{
 		ID: id, OrgID: "acme", ProjectID: "widgets", RunID: "r1",
 		Kind: kind, Attempts: 1, JobRef: "ca-" + id,
+		Branch: "aep/m4-" + id, PRNumber: 42, PRURL: cyclePRPage,
 		CreatedAt: time.Date(2026, 7, 1, 10, 5, 0, 0, time.UTC),
 	}
 	if ended {
@@ -209,6 +210,11 @@ func newHarnessWithBuilds(t *testing.T, rows []delivery.MilestoneRun, cycles map
 	return componenttest.New(t, componenttest.Options{Deps: edge.Deps{Delivery: handlers}})
 }
 
+// cyclePRPage is a cycle's recorded pull request page — the HOST's own link, as
+// the webhook reported it. The read must carry it verbatim: the console links it
+// and composes no URL of its own.
+const cyclePRPage = "https://github.com/acme/widgets/pull/42"
+
 const (
 	runsPath     = "/api/v1/projects/widgets/builds/v3/runs"
 	progressPath = "/api/v1/projects/widgets/runs/r1/progress"
@@ -250,6 +256,12 @@ func TestListBuildRuns_ResolvesTheTagThroughRunRows(t *testing.T) {
 	}
 	if len(run.Cycles) != 2 || run.Cycles[0].Kind != "coding" || run.Cycles[1].Kind != "fix" {
 		t.Errorf("cycles not carried in dispatch order: %+v", run.Cycles)
+	}
+	// The pull request travels as the host's own page, not as a number the
+	// console would have to turn into a link itself.
+	if run.Cycles[0].PrNumber != 42 || run.Cycles[0].PrURL != cyclePRPage {
+		t.Errorf("cycle pull request = (#%d, %q), want (#42, %q)",
+			run.Cycles[0].PrNumber, run.Cycles[0].PrURL, cyclePRPage)
 	}
 }
 

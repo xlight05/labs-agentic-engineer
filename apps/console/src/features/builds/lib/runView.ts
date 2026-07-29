@@ -18,6 +18,7 @@
 
 import type { StatusTone } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
+import { openGates } from "../../tasks/lib/issueRows";
 
 type MilestoneRunView = components["schemas"]["MilestoneRunView"];
 type TaskView = components["schemas"]["TaskView"];
@@ -137,23 +138,13 @@ export function gateDrive(gate: TaskView): GateDrive {
  * nothing.
  */
 export interface RunHold {
-  kind:
-    | "planning"
-    | "provisioning"
-    | "gate-failed"
-    | "gates"
-    | "no-work"
-    | "parked";
+  kind: "planning" | "no-work" | "parked";
   /** Warning is reserved for a hold only a human can release; error for one
    *  that already went wrong. The platform doing its own bounded work is
    *  information, not an alarm. */
   tone: "info" | "warning" | "error";
   title: string;
   body: string;
-  /** The gates this notice is about — the failing ones, the stalled ones, or
-   *  the ones being provisioned, never all of them indiscriminately. Empty for
-   *  a hold that names no gate. */
-  gates: TaskView[];
 }
 
 export function runHold(
@@ -167,15 +158,17 @@ export function runHold(
       title: `Planning ${run.milestoneTitle}`,
       body:
         "Creating this version's issues in GitHub. Nothing is held and nothing " +
-        "is needed from you — the first cycle dispatches as soon as the " +
-        "milestone is written.",
-      gates: [],
+        "is needed from you — the first build session dispatches as soon as " +
+        "the milestone is written.",
     };
   }
   if (run.state !== "waiting" || milestone === undefined) return null;
 
-  const gateHold = holdFromGates(milestone.gates);
-  if (gateHold) return gateHold;
+  // A gate hold is answered by the PROVISIONING SECTION on the run's rail, not
+  // here: it names each connection, who is acting on it, and what is needed —
+  // and it sits where the sequence actually stopped. Saying it twice put two
+  // notices on one page competing to explain one fact.
+  if (openGates(milestone.gates).length > 0) return null;
 
   if (milestone.openWork === 0) {
     return {
@@ -186,81 +179,15 @@ export function runHold(
         "This version's milestone holds no open issue to dispatch. The run " +
         "waits rather than settling — a milestone nothing was ever planned " +
         "into is not a version that was delivered.",
-      gates: [],
     };
   }
   return {
     kind: "parked",
     tone: "warning",
-    title: "Parked between cycles",
+    title: "Parked between build sessions",
     body:
       "The wait is unbounded — cancel is its only expiry, and cancelling " +
       "abandons the increment: the way forward is the next build.",
-    gates: [],
-  };
-}
-
-/**
- * The open gates' own notice, or null when there are none.
- *
- * Loudest first, because a mixed set is answered by the gate that needs the
- * most: one broken connection is the story even if three others are still
- * provisioning happily, and one stalled connection is the story even if the
- * rest are in flight — until it is supplied, none of them release the run.
- * Only when EVERY open gate has a run in flight is there nothing to do but
- * wait, and that is the case this whole split exists for.
- */
-function holdFromGates(gates: TaskView[]): RunHold | null {
-  if (gates.length === 0) return null;
-
-  const failed = gates.filter((gate) => gateDrive(gate) === "failed");
-  if (failed.length > 0) {
-    return {
-      kind: "gate-failed",
-      tone: "error",
-      title:
-        failed.length === 1
-          ? "A connection failed to provision"
-          : `${failed.length} connections failed to provision`,
-      body:
-        "The gate issue carries what went wrong. Correct it and build again — " +
-        "the run stays parked until every connection resolves.",
-      gates: failed,
-    };
-  }
-
-  const idle = gates.filter((gate) => gateDrive(gate) === "idle");
-  if (idle.length > 0) {
-    return {
-      kind: "gates",
-      tone: "warning",
-      title:
-        idle.length === 1
-          ? "Held by an unresolved connection"
-          : `Held by ${idle.length} unresolved connections`,
-      body:
-        "The run dispatches nothing while a connection gate is open. Supply " +
-        "the configuration and the remaining issues are released.",
-      gates: idle,
-    };
-  }
-
-  const one = gates.length === 1;
-  return {
-    kind: "provisioning",
-    tone: "info",
-    title: one
-      ? "Provisioning a connection"
-      : `Provisioning ${gates.length} connections`,
-    body: one
-      ? "The platform is standing this connection up and closes the gate " +
-        "itself — nothing is held on you. A database or an identity app takes " +
-        "a few minutes; the first cycle dispatches as soon as it is ready."
-      : "The platform is standing these connections up and closes each gate " +
-        "itself — nothing is held on you. A database or an identity app takes " +
-        "a few minutes; the first cycle dispatches as soon as the last one " +
-        "is ready.",
-    gates,
   };
 }
 
@@ -268,14 +195,14 @@ function holdFromGates(gates: TaskView[]): RunHold | null {
 // the vocabulary), so each gets a sentence rather than a re-worded enum.
 const TERMINAL_REASONS: Record<string, string> = {
   "redispatch-budget":
-    "The coding agent died twice in the same cycle — the per-cycle re-dispatch budget is spent.",
+    "The coding agent died twice in the same build session — the per-session re-dispatch budget is spent.",
   "build-retrigger-budget":
     "A component's build stayed red after its automatic re-trigger, and no fix issue came back.",
-  "fix-chain-budget": "The run spent both of its fix cycles.",
-  "conflict-budget": "The run spent both of its conflict cycles.",
+  "fix-chain-budget": "The run spent both of its fix sessions.",
+  "conflict-budget": "The run spent both of its conflict sessions.",
   "no-progress":
-    "A cycle closed no issues and minted none — the run stopped rather than loop.",
-  "cycle-ceiling": "The run hit its total-cycle ceiling.",
+    "A build session closed no issues and minted none — the run stopped rather than loop.",
+  "cycle-ceiling": "The run hit its ceiling on total build sessions.",
   "validation-failed": "Validation failed against the acceptance criteria.",
 };
 
@@ -286,9 +213,16 @@ export function terminalReasonText(reason: string): string {
   return TERMINAL_REASONS[reason] ?? reason;
 }
 
-/** One cycle's section label — "Cycle 3 · fix". */
-export function cycleLabel(cycle: RunCycleView, index: number): string {
-  return `Cycle ${index + 1} · ${cycle.kind}`;
+/**
+ * One build session's section label — "Build session 3 · fix".
+ *
+ * "Build session" is the CONSOLE's name for a RunCycle: same object, a name that
+ * reads as a unit of work rather than as loop machinery. The wire, the model and
+ * the budgets stay `cycle` (see docs/glossary.md), and the bare word "session"
+ * is never used on its own here — that belongs to the spec-collaboration Room.
+ */
+export function buildSessionLabel(cycle: RunCycleView, index: number): string {
+  return `Build session ${index + 1} · ${cycle.kind}`;
 }
 
 /**
@@ -309,13 +243,37 @@ export function runOriginLabel(origin: string): string {
 }
 
 /**
- * One build's chip.
+ * A completed build's OUTCOME — the one place the console decides what
+ * OpenChoreo's condition Reason means.
  *
- * The tone is decided by `completed` — OpenChoreo's status is a condition
- * Reason string, not a closed set, so it is a LABEL and never a predicate. A
- * completed build reads success or failure from that string only to choose
- * between two terminal tones; an unrecognised terminal Reason shows itself
- * rather than being flattened to one or the other.
+ * The cluster writes `WorkflowSucceeded` / `WorkflowFailed` (its
+ * `controller_conditions.go` reason constants, carried verbatim through the
+ * contract); the bare `Succeeded` / `Failed` spellings are accepted alongside
+ * them because that is what the contract's own examples and the mock layer have
+ * always used. Anything else is `unknown` and shows itself rather than being
+ * flattened into a verdict — the Reason set is open, so an unrecognised terminal
+ * Reason is a fact this console has not learned, not a failure.
+ *
+ * `unknown` deliberately does NOT read as red: a build the console cannot
+ * classify has not been shown to have failed. It does not read as green either,
+ * which is what keeps a session from claiming a deployment it cannot vouch for.
+ */
+export type BuildOutcome = "succeeded" | "failed" | "unknown";
+
+const SUCCEEDED_REASONS = new Set(["WorkflowSucceeded", "Succeeded"]);
+const FAILED_REASONS = new Set(["WorkflowFailed", "Failed"]);
+
+export function buildOutcome(build: CycleBuild): BuildOutcome {
+  if (!build.completed) return "unknown";
+  if (SUCCEEDED_REASONS.has(build.status)) return "succeeded";
+  if (FAILED_REASONS.has(build.status)) return "failed";
+  return "unknown";
+}
+
+/**
+ * One build's chip. The status string is a LABEL and never a predicate; the
+ * verdict comes from `buildOutcome`, and a Reason with no known verdict renders
+ * raw so nothing hides behind a guess.
  */
 export function buildStatusChip(build: CycleBuild): {
   label: string;
@@ -328,9 +286,14 @@ export function buildStatusChip(build: CycleBuild): {
       tone: build.status === "Pending" ? "neutral" : "info",
     };
   }
-  if (build.status === "Succeeded") return { label: "Succeeded", tone: "success" };
-  if (build.status === "Failed") return { label: "Failed", tone: "error" };
-  return { label: build.status || "Completed", tone: "neutral" };
+  switch (buildOutcome(build)) {
+    case "succeeded":
+      return { label: "Succeeded", tone: "success" };
+    case "failed":
+      return { label: "Failed", tone: "error" };
+    default:
+      return { label: build.status || "Completed", tone: "neutral" };
+  }
 }
 
 /** Does this fan-out still have a build that could change? */
@@ -365,19 +328,19 @@ export function spentBudgets(budgets: RunBudgets): SpentBudget[] {
   const spent: SpentBudget[] = [];
   if (budgets.cycleCeiling > 0 && budgets.cyclesTotal >= budgets.cycleCeiling) {
     spent.push({
-      label: "Cycles",
+      label: "Build sessions",
       text: `${budgets.cyclesTotal} / ${budgets.cycleCeiling}`,
     });
   }
   if (budgets.fixCycles >= FIX_CYCLE_BUDGET) {
     spent.push({
-      label: "Fix cycles",
+      label: "Fix sessions",
       text: `${budgets.fixCycles} / ${FIX_CYCLE_BUDGET}`,
     });
   }
   if (budgets.conflictCycles >= CONFLICT_CYCLE_BUDGET) {
     spent.push({
-      label: "Conflict cycles",
+      label: "Conflict sessions",
       text: `${budgets.conflictCycles} / ${CONFLICT_CYCLE_BUDGET}`,
     });
   }

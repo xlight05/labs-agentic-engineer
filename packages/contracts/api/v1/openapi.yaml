@@ -4144,9 +4144,9 @@ components:
       type: object
     RunCycleView:
       additionalProperties: false
-      description: One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS
-        — the agent derives its own branch identity — so they stay empty on a cycle whose agent died
-        before opening a pull request.
+      description: One dispatch within a run. Branch, pull request (number and URL) and merge SHA are
+        LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a
+        cycle whose agent died before opening a pull request.
       properties:
         attempts:
           description: Dispatches of THIS cycle (the per-cycle re-dispatch budget, which resets at every
@@ -4175,11 +4175,54 @@ components:
           - fix
           - validation
           type: string
+        mergeReason:
+          description: >-
+            The merge policy's own words for `mergeVerdict` — the auto-merge
+            decision's reason, or the host's refusal. Written for a reader, not
+            parsed.
+          type: string
         mergeSha:
           type: string
+        mergeVerdict:
+          description: >-
+            Why this cycle's pull request did NOT merge, when something decided
+            so: `declined` is the auto-merge policy saying the pull request is
+            not this run's work, `refused` is the host declining an open pull
+            request (a conflict — a conflict issue is minted and the next cycle
+            works it). Absent on a cycle whose merge was never decided against,
+            which includes every cycle that merged: a merge is recorded by
+            `mergeSha`, and each fresh decision overwrites this field, so a
+            declined pull request that later merges does not keep the verdict.
+          enum:
+          - declined
+          - refused
+          type: string
+        prDraft:
+          description: >-
+            Is the recorded pull request still a draft? A draft is the agent
+            saying it is not finished, so nothing merges while this is true —
+            recorded because a cycle sitting behind a draft is otherwise
+            indistinguishable from one whose agent never opened a pull request.
+          type: boolean
         prNumber:
           format: int64
           type: integer
+        prUrl:
+          description: >-
+            The pull request's own page on the host, as the webhook reported it —
+            never composed from a repo URL and a number, so a console link either
+            is the host's own or is absent. Empty until a pull request is seen.
+          type: string
+        resolves:
+          description: >-
+            The milestone agent-work issues this cycle's pull request claims —
+            the merge policy's matched set, which is what the merge closes.
+            Recorded so a cycle's working set survives its issues being closed;
+            empty until a pull request is seen.
+          items:
+            format: int64
+            type: integer
+          type: array
       required:
       - id
       - kind
@@ -4563,11 +4606,6 @@ components:
           type: string
         origin:
           type: string
-        prUrl:
-          description: >-
-            Link to the task's pull request, recovered from the succeeded coding
-            execution's "pr#N" reason; absent before a PR opens.
-          type: string
         rationale:
           type: string
         title:
@@ -4672,11 +4710,6 @@ components:
         operation:
           type: string
         origin:
-          type: string
-        prUrl:
-          description: >-
-            Link to the task's pull request, recovered from the succeeded coding
-            execution's "pr#N" reason; absent before a PR opens.
           type: string
         rationale:
           type: string

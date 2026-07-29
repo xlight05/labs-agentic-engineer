@@ -25,7 +25,20 @@ type RunProgressEvent = components["schemas"]["RunProgressEvent"];
 type RunProgressLine = components["schemas"]["RunProgressLine"];
 type RunCycleView = components["schemas"]["RunCycleView"];
 
-export type RunProgressPhase = "connecting" | "live" | "reconnecting" | "ended";
+/**
+ * Where the stream is.
+ *
+ * `idle` is NOT a connection state: it means nobody asked for one (the hook was
+ * called with `enabled: false`). It exists because reporting `connecting` for a
+ * stream that was never opened made a collapsed, connection-free surface tell the
+ * user it was "attaching to the run feed" forever.
+ */
+export type RunProgressPhase =
+  | "idle"
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "ended";
 
 /** One cycle's section of the feed: the cycle record plus its own lines. */
 export interface RunProgressCycle {
@@ -95,7 +108,7 @@ export function useRunProgress(
 ): RunProgressState {
   const [cycles, setCycles] = useState<RunProgressCycle[]>([]);
   const [settledState, setSettledState] = useState<string>();
-  const [phase, setPhase] = useState<RunProgressPhase>("connecting");
+  const [phase, setPhase] = useState<RunProgressPhase>("idle");
   const seen = useRef(new Set<string>());
 
   useEffect(() => {
@@ -103,10 +116,14 @@ export function useRunProgress(
     seen.current = new Set();
     setCycles([]);
     setSettledState(undefined);
-    setPhase("connecting");
     // Not enabled = nobody is looking. A settled version whose cycles are all
-    // collapsed must open no connection and replay no history.
-    if (!runId || !enabled) return;
+    // collapsed must open no connection and replay no history — and must not
+    // claim to be connecting either.
+    if (!runId || !enabled) {
+      setPhase("idle");
+      return;
+    }
+    setPhase("connecting");
 
     const controller = new AbortController();
     let disposed = false;

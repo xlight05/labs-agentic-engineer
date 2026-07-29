@@ -19,7 +19,8 @@
 import { describe, expect, it } from "vitest";
 import type { components } from "../../../generated/aep-api";
 import {
-  cycleLabel,
+  buildOutcome,
+  buildSessionLabel,
   gateDrive,
   isTerminalRun,
   runHold,
@@ -183,92 +184,24 @@ describe("runHold", () => {
     expect(runHold(run({ state: "planning" }), undefined)).not.toBeNull();
   });
 
-  it("names the gates when a connection holds dispatch", () => {
+  // The gate story is the PROVISIONING STAGE's now: it sits first on the run's
+  // rail, names each connection and says who is acting on it. A notice here as
+  // well put two warnings on one page competing to explain one fact.
+  it("defers an open gate to the provisioning stage rather than warning twice", () => {
     const hold = runHold(
       run({ state: "waiting" }),
       loaded({
-        gates: [gate(1, "Provide configuration: stripe"), gate(2, "Provide configuration: sendgrid")],
+        gates: [gate(1, "Provide configuration: stripe"), gate(2, "Provision resource: db", "running")],
       }),
     );
-    expect(hold?.kind).toBe("gates");
-    expect(hold?.tone).toBe("warning");
-    expect(hold?.title).toBe("Held by 2 unresolved connections");
-    expect(hold?.gates.map((g) => g.issueNumber)).toEqual([1, 2]);
+    expect(hold).toBeNull();
   });
 
-  it("counts one gate in the singular", () => {
-    expect(
-      runHold(
-        run({ state: "waiting" }),
-        loaded({ gates: [gate(1, "Provide configuration: stripe")] }),
-      )?.title,
-    ).toBe("Held by an unresolved connection");
-  });
-
-  // THE reported bug: a postgres cluster and an identity app take minutes to
-  // stand up, and the platform closes both gates itself. Announcing that as a
-  // warning with a "Resolve connections" button sent the user looking for
-  // something to do that did not exist.
-  it("reads gates the platform is provisioning as work in progress, not a hold", () => {
-    const hold = runHold(
-      run({ state: "waiting" }),
-      loaded({
-        gates: [
-          gate(1, "Provision resource: user-auth (thunder-app)", "running"),
-          gate(4, "Provision resource: ceramics-db (postgres-cnpg)", "running"),
-        ],
-      }),
-    );
-    expect(hold?.kind).toBe("provisioning");
-    expect(hold?.tone).toBe("info");
-    expect(hold?.title).toBe("Provisioning 2 connections");
-    expect(hold?.body).toMatch(/nothing is held on you/);
-    // …and it must not claim the user has configuration to supply.
-    expect(hold?.body).not.toMatch(/Supply/);
-  });
-
-  it("provisions one connection in the singular", () => {
-    expect(
-      runHold(
-        run({ state: "waiting" }),
-        loaded({ gates: [gate(1, "Provision resource: db", "running")] }),
-      )?.title,
-    ).toBe("Provisioning a connection");
-  });
-
-  // A mixed set is answered by the gate that needs the most: until the stalled
-  // one is supplied, the ones in flight release nothing.
-  it("lets one stalled gate speak over gates that are in flight", () => {
-    const hold = runHold(
-      run({ state: "waiting" }),
-      loaded({
-        gates: [
-          gate(1, "Provision resource: db", "running"),
-          gate(2, "Provide configuration: stripe"),
-        ],
-      }),
-    );
-    expect(hold?.kind).toBe("gates");
-    expect(hold?.title).toBe("Held by an unresolved connection");
-    // It names ONLY the gate that is actually stalled.
-    expect(hold?.gates.map((g) => g.issueNumber)).toEqual([2]);
-  });
-
-  it("puts a failed provisioning run above every other gate", () => {
-    const hold = runHold(
-      run({ state: "waiting" }),
-      loaded({
-        gates: [
-          gate(1, "Provision resource: db", "failed"),
-          gate(2, "Provide configuration: stripe"),
-          gate(3, "Provision resource: cache", "running"),
-        ],
-      }),
-    );
-    expect(hold?.kind).toBe("gate-failed");
-    expect(hold?.tone).toBe("error");
-    expect(hold?.title).toBe("A connection failed to provision");
-    expect(hold?.gates.map((g) => g.issueNumber)).toEqual([1]);
+  // A RESOLVED gate holds nothing, so it must not silence the run's own reason
+  // for standing still.
+  it("still explains a park when every gate is resolved", () => {
+    const resolved = { ...gate(1, "Provide configuration: stripe"), derivedStatus: "merged" };
+    expect(runHold(run({ state: "waiting" }), loaded({ gates: [resolved] }))?.kind).toBe("parked");
   });
 
   // Gates and an empty milestone are both `waiting`, and the fix for one is
@@ -304,7 +237,7 @@ describe("runHold", () => {
 describe("terminalReasonText", () => {
   it("spells each failure class as a sentence", () => {
     expect(terminalReasonText("no-progress")).toMatch(/closed no issues/);
-    expect(terminalReasonText("cycle-ceiling")).toMatch(/total-cycle ceiling/);
+    expect(terminalReasonText("cycle-ceiling")).toMatch(/ceiling on total build sessions/);
   });
 
   it("passes an unmapped reason through so it still reaches the user", () => {
@@ -329,6 +262,37 @@ describe("runOriginLabel", () => {
   });
 });
 
+describe("buildOutcome", () => {
+  const b = (status: string, completed = true) => ({
+    component: "api",
+    buildName: "n",
+    status,
+    completed,
+    attempt: 1,
+  });
+
+  // The CLUSTER's own reason constants (controller_conditions.go) are what
+  // arrive in practice; the bare spellings are the contract's examples and the
+  // mock layer's. Recognising only the bare ones read a real red build as green.
+  it("classifies the cluster's reason strings and the bare ones alike", () => {
+    expect(buildOutcome(b("WorkflowSucceeded"))).toBe("succeeded");
+    expect(buildOutcome(b("Succeeded"))).toBe("succeeded");
+    expect(buildOutcome(b("WorkflowFailed"))).toBe("failed");
+    expect(buildOutcome(b("Failed"))).toBe("failed");
+  });
+
+  // The Reason set is OPEN, so an unrecognised one is a fact this console has
+  // not learned — not a failure, and emphatically not a success.
+  it("calls an unrecognised terminal reason unknown, never a verdict", () => {
+    expect(buildOutcome(b("WorkflowTimedOut"))).toBe("unknown");
+    expect(buildOutcome(b(""))).toBe("unknown");
+  });
+
+  it("has no verdict for a build that has not completed", () => {
+    expect(buildOutcome(b("WorkflowSucceeded", false))).toBe("unknown");
+  });
+});
+
 describe("spentBudgets", () => {
   it("reports nothing for a healthy run — an unspent allowance is not the user's business", () => {
     expect(
@@ -342,7 +306,7 @@ describe("spentBudgets", () => {
     const spent = spentBudgets(
       budgets({ cyclesTotal: 8, fixCycles: 2, conflictCycles: 1 }),
     );
-    expect(spent.map((b) => b.label)).toEqual(["Cycles", "Fix cycles"]);
+    expect(spent.map((b) => b.label)).toEqual(["Build sessions", "Fix sessions"]);
   });
 
   it("measures cycles against the run's own snapshotted ceiling, not a hardcoded one", () => {
@@ -371,10 +335,10 @@ describe("validationVerdictChip", () => {
   });
 });
 
-describe("cycleLabel", () => {
-  it("numbers a cycle from 1 and names its kind", () => {
+describe("buildSessionLabel", () => {
+  it("numbers a build session from 1 and names its kind", () => {
     expect(
-      cycleLabel({ id: "c", kind: "fix", attempts: 1, createdAt: "" }, 2),
-    ).toBe("Cycle 3 · fix");
+      buildSessionLabel({ id: "c", kind: "fix", attempts: 1, createdAt: "" }, 2),
+    ).toBe("Build session 3 · fix");
   });
 });

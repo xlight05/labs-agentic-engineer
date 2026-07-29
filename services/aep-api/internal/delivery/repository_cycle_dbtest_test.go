@@ -91,13 +91,58 @@ func TestRunCycleRepository_AppendDispatchAndFinish(t *testing.T) {
 		t.Fatalf("after re-dispatch = (attempts %d, job %q), want (2, job-c1-a2)", second.Attempts, second.JobRef)
 	}
 
-	// Branch and PR arrive on the pull_request webhook, not from dispatch.
-	withPR, err := cycles.NotePullRequest(ctx, cycle.ID, "aep/m4-c1", 42)
+	// Branch and PR arrive on the pull_request webhook, not from dispatch — and a
+	// draft is recorded as one, so a cycle parked behind an unfinished pull
+	// request is distinguishable from one that never opened any.
+	prPage := "https://github.com/acme/widgets/pull/42"
+	draft, err := cycles.NotePullRequest(ctx, cycle.ID, delivery.CyclePullRequest{
+		Branch: "aep/m4-c1", Number: 42, URL: prPage, Draft: true,
+	})
+	if err != nil || draft == nil {
+		t.Fatalf("NotePullRequest(draft) = (%+v, %v)", draft, err)
+	}
+	if draft.Branch != "aep/m4-c1" || draft.PRNumber != 42 || !draft.PRDraft {
+		t.Fatalf("draft PR facts = (%q, %d, draft %v), want (aep/m4-c1, 42, true)",
+			draft.Branch, draft.PRNumber, draft.PRDraft)
+	}
+	// The host's own link is stored verbatim: it is what the console links to, and
+	// nothing in the platform composes one.
+	if draft.PRURL != prPage {
+		t.Fatalf("pull request URL = %q, want %q", draft.PRURL, prPage)
+	}
+	// Ready for review is the SAME pull request, so the flag clears in place.
+	withPR, err := cycles.NotePullRequest(ctx, cycle.ID, delivery.CyclePullRequest{
+		Branch: "aep/m4-c1", Number: 42, URL: prPage, Draft: false,
+	})
 	if err != nil || withPR == nil {
 		t.Fatalf("NotePullRequest = (%+v, %v)", withPR, err)
 	}
-	if withPR.Branch != "aep/m4-c1" || withPR.PRNumber != 42 {
-		t.Fatalf("PR facts = (%q, %d), want (aep/m4-c1, 42)", withPR.Branch, withPR.PRNumber)
+	if withPR.PRDraft || withPR.PRURL != prPage {
+		t.Fatalf("PR facts after ready_for_review = %+v, want draft cleared and the link kept", withPR)
+	}
+
+	// The merge policy's matched set is the cycle's only record of what it
+	// worked; a verdict is written only when the pull request did NOT merge.
+	declined, err := cycles.NoteMergeDecision(ctx, cycle.ID, []int{7, 8},
+		delivery.CycleMergeDeclined, "no resolved issue is agent work in this milestone")
+	if err != nil || declined == nil {
+		t.Fatalf("NoteMergeDecision(declined) = (%+v, %v)", declined, err)
+	}
+	if len(declined.Resolves) != 2 || declined.Resolves[0] != 7 || declined.Resolves[1] != 8 {
+		t.Fatalf("resolves = %v, want [7 8]", declined.Resolves)
+	}
+	if declined.MergeVerdict != delivery.CycleMergeDeclined || declined.MergeReason == "" {
+		t.Fatalf("verdict = (%q, %q), want declined with a reason",
+			declined.MergeVerdict, declined.MergeReason)
+	}
+	// A re-push that now merges must not leave the stale verdict behind: every
+	// decision overwrites, blanks included.
+	merged, err := cycles.NoteMergeDecision(ctx, cycle.ID, []int{7, 8}, "", "resolves agent work in the run's milestone")
+	if err != nil || merged == nil {
+		t.Fatalf("NoteMergeDecision(merge) = (%+v, %v)", merged, err)
+	}
+	if merged.MergeVerdict != "" {
+		t.Fatalf("verdict after a merging decision = %q, want cleared", merged.MergeVerdict)
 	}
 
 	done, err := cycles.Finish(ctx, cycle.ID, "deadbeef")
@@ -112,8 +157,13 @@ func TestRunCycleRepository_AppendDispatchAndFinish(t *testing.T) {
 	if got, err := cycles.NoteDispatch(ctx, cycle.ID, "job-zombie"); err != nil || got != nil {
 		t.Fatalf("NoteDispatch on a closed cycle = (%+v, %v), want (nil, nil)", got, err)
 	}
-	if got, err := cycles.NotePullRequest(ctx, cycle.ID, "other", 99); err != nil || got != nil {
+	if got, err := cycles.NotePullRequest(ctx, cycle.ID, delivery.CyclePullRequest{
+		Branch: "other", Number: 99,
+	}); err != nil || got != nil {
 		t.Fatalf("NotePullRequest on a closed cycle = (%+v, %v), want (nil, nil)", got, err)
+	}
+	if got, err := cycles.NoteMergeDecision(ctx, cycle.ID, []int{99}, delivery.CycleMergeRefused, "late"); err != nil || got != nil {
+		t.Fatalf("NoteMergeDecision on a closed cycle = (%+v, %v), want (nil, nil)", got, err)
 	}
 	if got, err := cycles.Finish(ctx, cycle.ID, "cafebabe"); err != nil || got != nil {
 		t.Fatalf("second Finish = (%+v, %v), want (nil, nil)", got, err)

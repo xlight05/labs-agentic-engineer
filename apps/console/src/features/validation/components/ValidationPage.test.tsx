@@ -72,6 +72,10 @@ const validationCycle = {
   kind: "validation" as const,
   attempts: 1,
   prNumber: 42,
+  // The host's own page, as the webhook reported it. Deliberately NOT
+  // `${repoUrl}/pull/42`: repoUrl is a clone URL, and this page used to compose
+  // one from it — which 404s the moment the clone URL carries a `.git` suffix.
+  prUrl: "https://github.com/acme/demo/pull/42",
   createdAt: "2026-07-10T10:00:00Z",
 };
 

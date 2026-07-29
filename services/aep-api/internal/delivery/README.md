@@ -114,7 +114,10 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   effects are a squash-merge, an issue in a milestone, and a build pinned to a merge SHA.
 - The **milestone run** store: a run row per (org, project, milestone) — origin, small state, terminal
   reason, budget counters, validation verdict — and one **cycle record per dispatch** under it (kind,
-  attempts, Job ref, branch, PR number, merge SHA). The milestone **number** is the key; the title is kept
+  attempts, Job ref, branch, the pull request's number AND its page on the host, merge SHA). The pull
+  request URL is stored as the webhook reported it, never composed from the repo row and the number:
+  the repo URL is a *clone* URL, and a reader that assembles links from it encodes both the host's URL
+  grammar and that spelling. The milestone **number** is the key; the title is kept
   only as the `v<N>` tag a `?tag=` query resolves through. Loop position is read from the latest cycle, and
   per-component build/deploy status is derived from OpenChoreo on read — neither is stored.
 - The **run loop** (`run`): one Temporal workflow per milestone, `run-<org>-<project>-<milestoneNumber>`,

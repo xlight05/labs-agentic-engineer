@@ -9,6 +9,7 @@ type TagList = components["schemas"]["TagList"];
 type BuildList = components["schemas"]["BuildList"];
 type BuildRunList = components["schemas"]["BuildRunList"];
 type MilestoneRunView = components["schemas"]["MilestoneRunView"];
+type CycleBuild = components["schemas"]["CycleBuild"];
 type DeploymentList = components["schemas"]["DeploymentList"];
 type FileMeta = components["schemas"]["FileMeta"];
 type FileContent = components["schemas"]["FileContent"];
@@ -476,7 +477,6 @@ const doneTasks: TaskView[] = buildingTasks.map((t) => ({
 export const validationTask: TaskView = {
   ...task(30, "Validate deployed system against acceptance criteria", "merged"),
   executorClass: "validation",
-  prUrl: `${REPO_URL}/pull/42`,
 };
 
 export const projectTasks: Record<
@@ -544,6 +544,12 @@ function milestoneRun(over: Partial<MilestoneRunView> = {}): MilestoneRunView {
         attempts: 1,
         branch: "aep/m1-c1",
         prNumber: 3,
+        prUrl: `${REPO_URL}/pull/3`,
+        // The merge policy's matched set — what this session's pull request
+        // claimed, and therefore what its merge closed. #9 is closed in the
+        // issue plane, which is exactly why the set has to be recorded: nothing
+        // else can attribute a closed issue to the session that closed it.
+        resolves: [9],
         mergeSha: "dcb1edc5fe0417b2",
         createdAt: "2026-07-10T09:14:00Z",
         endedAt: "2026-07-10T09:41:00Z",
@@ -591,6 +597,8 @@ const settledRun: BuildRunList = {
           attempts: 1,
           branch: "aep/m1-c1",
           prNumber: 3,
+          prUrl: `${REPO_URL}/pull/3`,
+          resolves: [9],
           mergeSha: "dcb1edc5fe0417b2",
           createdAt: "2026-07-10T09:14:00Z",
           endedAt: "2026-07-10T09:41:00Z",
@@ -601,6 +609,7 @@ const settledRun: BuildRunList = {
           attempts: 1,
           branch: "aep/m1-c2",
           prNumber: 4,
+          prUrl: `${REPO_URL}/pull/4`,
           mergeSha: "7ab41c90ee31d5f0",
           createdAt: "2026-07-10T09:45:00Z",
           endedAt: "2026-07-10T10:02:00Z",
@@ -624,6 +633,63 @@ export const projectBuildRuns: Record<
   deployed: settledRun,
   "deploy-failed": settledRun,
   "repo-error": noRuns,
+};
+
+// The build fan-out one build session's merge produced — the Builds stage of the
+// run's rail, and the Deployment stage that reads its verdict.
+//
+// `status` is OpenChoreo's condition Reason carried verbatim, and `completed` is
+// the only terminal gate, so a fixture must set both rather than implying one
+// from the other. `attempt` above 1 is the single automatic re-trigger a red
+// build gets per (component, SHA).
+function cycleBuild(
+  component: string,
+  status: string,
+  completed: boolean,
+  attempt = 1,
+): CycleBuild {
+  return {
+    component,
+    buildName: `demo-shop-${component}-dcb1edc5fe04-${attempt}`,
+    status,
+    completed,
+    attempt,
+    startedAt: "2026-07-10T09:41:30Z",
+  };
+}
+
+const greenFanOut: CycleBuild[] = [
+  cycleBuild("storefront", "Succeeded", true),
+  cycleBuild("catalog-api", "Succeeded", true),
+];
+
+// One component still red after its re-trigger: the case where a session lands
+// its merge and still delivers nothing, and the fix issue comes back into the
+// milestone. This is what makes the `deploy-failed` scenario's name true — it
+// used to serve the same all-green fan-out as `deployed`.
+const redFanOut: CycleBuild[] = [
+  cycleBuild("storefront", "Succeeded", true),
+  cycleBuild("catalog-api", "Failed", true, 2),
+];
+
+const movingFanOut: CycleBuild[] = [
+  cycleBuild("storefront", "Running", false),
+  // OpenChoreo's word for a run that exists but has not started.
+  cycleBuild("catalog-api", "Pending", false),
+];
+
+export const projectCycleBuilds: Record<
+  Exclude<ProjectScenario, "error">,
+  CycleBuild[]
+> = {
+  fresh: [],
+  spec: [],
+  "spec-failed": [],
+  building: movingFanOut,
+  deploying: movingFanOut,
+  deployed: greenFanOut,
+  "deploy-failed": redFanOut,
+  "repo-error": [],
 };
 
 export const projectBuilds: Record<

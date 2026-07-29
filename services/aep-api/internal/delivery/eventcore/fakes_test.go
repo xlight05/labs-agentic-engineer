@@ -134,7 +134,10 @@ type fakeCycles struct {
 	mu      sync.Mutex
 	latest  *delivery.RunCycle
 	notedPR []string
-	closed  []string
+	// decisions records every merge decision written, as
+	// "<cycle>:<verdict>:<resolves…>" — the cycle's record of what it worked.
+	decisions []string
+	closed    []string
 }
 
 func newFakeCycles(cycle *delivery.RunCycle) *fakeCycles { return &fakeCycles{latest: cycle} }
@@ -149,12 +152,26 @@ func (f *fakeCycles) Latest(context.Context, string, string) (*delivery.RunCycle
 	return f.latest, nil
 }
 
-func (f *fakeCycles) NotePullRequest(_ context.Context, id, branch string, prNumber int) error {
+func (f *fakeCycles) NotePullRequest(_ context.Context, id string, pr delivery.CyclePullRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.notedPR = append(f.notedPR, fmt.Sprintf("%s:%s:%d", id, branch, prNumber))
+	// The URL rides the recorded string: it is the fact the console links, so a
+	// writer that drops it has to fail a test.
+	f.notedPR = append(f.notedPR, fmt.Sprintf("%s:%s:%d:%s", id, pr.Branch, pr.Number, pr.URL))
 	if f.latest != nil && f.latest.ID == id && f.latest.EndedAt == nil {
-		f.latest.Branch, f.latest.PRNumber = branch, prNumber
+		f.latest.Branch, f.latest.PRNumber, f.latest.PRDraft = pr.Branch, pr.Number, pr.Draft
+		f.latest.PRURL = pr.URL
+	}
+	return nil
+}
+
+func (f *fakeCycles) NoteMergeDecision(_ context.Context, id string, resolves []int, verdict, reason string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.decisions = append(f.decisions, fmt.Sprintf("%s:%s:%v", id, verdict, resolves))
+	if f.latest != nil && f.latest.ID == id && f.latest.EndedAt == nil {
+		f.latest.Resolves = delivery.IssueNumbers(resolves)
+		f.latest.MergeVerdict, f.latest.MergeReason = verdict, reason
 	}
 	return nil
 }

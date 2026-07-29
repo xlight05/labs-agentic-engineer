@@ -77,8 +77,19 @@ afterEach(() => {
 
 describe("useRunProgress", () => {
   it("opens nothing without a run id", () => {
-    renderHook(() => useRunProgress("acme", undefined));
+    const { result } = renderHook(() => useRunProgress("acme", undefined));
     expect(GET).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("idle");
+  });
+
+  // A stream nobody asked for is IDLE, not connecting. Reporting `connecting`
+  // for it had a connection-free surface (every build session collapsed) telling
+  // the user it was "attaching to the run feed" — forever, since no attach was
+  // ever going to happen.
+  it("is idle, not connecting, while it is disabled", () => {
+    const { result } = renderHook(() => useRunProgress("acme", "run-1", false));
+    expect(GET).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("idle");
   });
 
   it("groups lines under the cycle that produced them", async () => {

@@ -106,11 +106,15 @@ func (e *Events) RegisterHandlers(register RegisterFunc) {
 type pullRequestPayload struct {
 	Action      string `json:"action"`
 	PullRequest struct {
-		Number         int    `json:"number"`
-		Merged         bool   `json:"merged"`
-		Draft          bool   `json:"draft"`
-		State          string `json:"state"`
-		Body           string `json:"body"`
+		Number int    `json:"number"`
+		Merged bool   `json:"merged"`
+		Draft  bool   `json:"draft"`
+		State  string `json:"state"`
+		Body   string `json:"body"`
+		// HTMLURL is the pull request's page for a human. It is recorded on the
+		// cycle so the console can link a build session's pull request without
+		// composing a URL of its own.
+		HTMLURL        string `json:"html_url"`
 		MergeCommitSHA string `json:"merge_commit_sha"`
 		Head           struct {
 			Ref string `json:"ref"`
@@ -119,6 +123,18 @@ type pullRequestPayload struct {
 	Repository struct {
 		FullName string `json:"full_name"`
 	} `json:"repository"`
+}
+
+// cyclePR is the pull request identity this delivery reports, in the shape a
+// cycle record learns it. One projection, so the `opened` write and the `closed`
+// backfill can never record the same pull request differently.
+func (p pullRequestPayload) cyclePR() delivery.CyclePullRequest {
+	return delivery.CyclePullRequest{
+		Branch: p.PullRequest.Head.Ref,
+		Number: p.PullRequest.Number,
+		URL:    p.PullRequest.HTMLURL,
+		Draft:  p.PullRequest.Draft,
+	}
 }
 
 type issuesPayload struct {
@@ -171,27 +187,33 @@ func (e *Events) isEcho(sender string) bool {
 // ---- pull_request ---------------------------------------------------------
 
 // OnPullRequest runs the auto-merge policy seam on a pull request that is open
-// for business (§8 row 1). Drafts are skipped — a draft is the agent saying it
-// is not finished.
+// for business (§8 row 1). Drafts are RECORDED but not decided on — a draft is
+// the agent saying it is not finished, and the cycle still learns which pull
+// request it is waiting behind, because a cycle parked on a draft is otherwise
+// indistinguishable from one whose agent never opened a pull request at all.
+// `ready_for_review` brings the same pull request back through here.
 func (e *Events) OnPullRequest(ctx context.Context, _, _ string, payload []byte) error {
 	var p pullRequestPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil // malformed delivery — swallow (matches the router's no-op policy)
 	}
-	if p.PullRequest.Draft || p.PullRequest.Number == 0 || p.Repository.FullName == "" {
+	if p.PullRequest.Number == 0 || p.Repository.FullName == "" {
 		return nil
 	}
 	owner, err := e.resolvePRRun(ctx, p.Repository.FullName, p.PullRequest.Head.Ref)
-	if err != nil || owner.run == nil || e.p.Issues == nil {
+	if err != nil || owner.run == nil {
 		return err // no run row → not ours → inert
 	}
-	// Learn the branch and PR number onto the run's open cycle — but only for
-	// the AGENT's pull request. The platform never dictates branch identity (the
-	// agent derives it, and reuses one on crash resume), so the webhook is the
-	// only way the cycle learns them; a human's pull request landing during the
-	// same cycle is not that cycle's work and must not overwrite it.
+	// Learn the pull request onto the run's open cycle — but only for the AGENT's
+	// pull request. The platform never dictates branch identity (the agent derives
+	// it, and reuses one on crash resume) or the host's link, so the webhook is
+	// the only way the cycle learns them; a human's pull request landing during
+	// the same cycle is not that cycle's work and must not overwrite it.
 	if owner.agentBranch {
-		e.noteCyclePR(ctx, owner.run, p.PullRequest.Head.Ref, p.PullRequest.Number)
+		e.noteCyclePR(ctx, owner.run, p.cyclePR())
+	}
+	if p.PullRequest.Draft || e.p.Issues == nil {
+		return nil
 	}
 
 	refs := parseResolvesRefs(p.PullRequest.Body)
@@ -200,6 +222,12 @@ func (e *Events) OnPullRequest(ctx context.Context, _, _ string, payload []byte)
 		return err
 	}
 	decision := decideAutoMerge(refs, work)
+	// The verdict is recorded for the AGENT's pull request whichever way it went:
+	// a declined merge is the loudest silence this loop has — the cycle sits at
+	// its landing deadline with a green agent log and nothing else to say.
+	if owner.agentBranch {
+		e.noteCycleMergeDecision(ctx, owner.run, decision)
+	}
 	if !decision.Merge {
 		slog.DebugContext(ctx, "eventcore: auto-merge declined", "pr", p.PullRequest.Number,
 			"milestone", owner.run.MilestoneNumber, "reason", decision.Reason)
@@ -230,7 +258,7 @@ func (e *Events) OnPullRequestClosed(ctx context.Context, _, _ string, payload [
 	// Only the agent's own pull request closes the cycle. A human's merge moves
 	// main (so it still rebuilds), but it is not the cycle's outcome.
 	if owner.agentBranch {
-		e.closeCycle(ctx, owner.run, p.PullRequest.Head.Ref, p.PullRequest.Number, mergeSHA)
+		e.closeCycle(ctx, owner.run, p.cyclePR(), mergeSHA)
 	}
 	e.signal(ctx, owner.run, delivery.SigRunPRMerged, delivery.RunSignal{
 		PRNumber: p.PullRequest.Number,

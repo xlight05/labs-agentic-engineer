@@ -82,10 +82,10 @@ export function ValidationPage({
   const verdict = validationVerdictChip(run?.validation);
   const reportPath = run?.validation?.reportPath ?? "";
   const validationCycle = run?.cycles?.find((c) => c.kind === "validation");
-  const prUrl =
-    status.data?.repoUrl && validationCycle?.prNumber
-      ? `${status.data.repoUrl}/pull/${validationCycle.prNumber}`
-      : undefined;
+  // The cycle carries the pull request's page as the webhook reported it. This
+  // page used to build one from the project's repoUrl and the number, which is a
+  // CLONE url — a `.git` suffix produced a link that 404s.
+  const prUrl = validationCycle?.prUrl;
 
   // A verdict means the run committed its report; before that there is nothing
   // at HEAD to read. Hooks stay unconditional; `enabled` gates them.

@@ -22,16 +22,13 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Divider,
   Stack,
   Typography,
 } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
-import { createLink } from "@tanstack/react-router";
 import { StatusChip } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
-import { gateSubject } from "../../tasks/lib/issueRows";
 import { useCancelRun } from "../api/queries";
 import {
   isTerminalRun,
@@ -41,15 +38,11 @@ import {
   spentBudgets,
   terminalReasonText,
 } from "../lib/runView";
-import { CycleSections } from "./CycleSections";
 import { RunHoldNotice } from "./RunHoldNotice";
+import { RunSpine } from "./RunSpine";
 
 type MilestoneRunView = components["schemas"]["MilestoneRunView"];
 type TaskView = components["schemas"]["TaskView"];
-
-// Router-typed Oxygen Button (the console's createLink pattern) so the hold's
-// way out is a real navigation.
-const LinkButton = createLink(Button);
 
 function when(value: string | null | undefined): string {
   if (!value) return "";
@@ -65,15 +58,19 @@ function when(value: string | null | undefined): string {
 }
 
 /**
- * One run of the version's milestone loop: its state, why it is not moving if
- * it is not, then one section per cycle telling that cycle's whole story —
- * agent, pull request, merge, builds. Budgets are deliberately NOT a standing
- * readout — see `spentBudgets`; they surface only once one is spent, next to
- * the reason it explains.
+ * One run of the version's milestone loop, as ONE NUMBERED FLOW: its connections
+ * first (only when it needs any), then every build session's stages — agent,
+ * pull request, merge, builds, deployment — counting straight through. See
+ * RunSpine.
  *
- * The hold notice lives HERE, and only here. "Why is nothing happening" is a
- * question about the run, so answering it beside the issue list as well left
- * two warnings competing to explain one fact.
+ * Budgets are deliberately NOT a standing readout — see `spentBudgets`; they
+ * surface only once one is spent, next to the reason it explains.
+ *
+ * The gate hold is NOT a notice here. It is the provisioning stage on the rail,
+ * because "why is nothing moving" is best answered at the point where movement
+ * stopped, naming each connection and who is acting on it. What remains a notice
+ * is the handful of holds that name no connection at all: the plan window, an
+ * empty milestone, and the unbounded park between sessions.
  *
  * Cancel is PROMINENT on a waiting run, quiet on a running one, and ABSENT
  * while planning: cancel is a signal to the supervisor, and during the plan
@@ -90,22 +87,24 @@ export function RunStory({
   tag: string;
   run: MilestoneRunView;
   /** The milestone's issue plane, or undefined while it is still loading. It
-   *  is what tells a gate hold apart from an empty working set — and, through
-   *  each OPEN gate's provisioning run, a gate the platform is already working
-   *  on apart from one stalled on a human. */
-  milestone?: { gates: TaskView[]; openWork: number };
+   *  carries the gates the provisioning stage is built from (resolved ones
+   *  included — they are the version's record), and the agent work each build
+   *  session claims. */
+  milestone?: { gates: TaskView[]; work: TaskView[] };
 }) {
   const cancel = useCancelRun(projectName, tag);
   const chip = runStateChip(run);
   const terminal = isTerminalRun(run.state);
   const waiting = run.state === "waiting";
   const planning = run.state === "planning";
-  const hold = runHold(run, milestone);
-  // A gate the platform is provisioning is not held on anybody, so it earns no
-  // way out: the only two holds with somewhere to go are the ones a human has
-  // to act on.
-  const gatesNeedAction =
-    hold?.kind === "gates" || hold?.kind === "gate-failed";
+  const work = milestone?.work ?? [];
+  const hold = runHold(
+    run,
+    milestone && {
+      gates: milestone.gates,
+      openWork: milestone.work.filter((task) => task.derivedStatus === "pending").length,
+    },
+  );
   const reason = terminalReasonText(run.terminalReason ?? "");
   const spent = spentBudgets(run.budgets);
   const started = when(run.startedAt ?? run.createdAt);
@@ -154,45 +153,8 @@ export function RunStory({
             tone={hold.tone}
             title={hold.title}
             body={hold.body}
-            busy={hold.kind === "planning" || hold.kind === "provisioning"}
-            action={
-              gatesNeedAction ? (
-                <LinkButton
-                  size="small"
-                  variant="outlined"
-                  color={hold.tone === "error" ? "error" : "warning"}
-                  to="/projects/$projectName/spec"
-                  params={{ projectName }}
-                  search={{ connections: "open" }}
-                >
-                  Resolve connections
-                </LinkButton>
-              ) : undefined
-            }
-          >
-            {hold.gates.length > 0 && (
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{ mt: 1.25, flexWrap: "wrap", rowGap: 1 }}
-              >
-                {hold.gates.map((gate) => (
-                  <Chip
-                    key={gate.issueNumber}
-                    component="a"
-                    href={gate.issueUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    clickable
-                    size="small"
-                    variant="outlined"
-                    color={hold.tone}
-                    label={gateSubject(gate.title)}
-                  />
-                ))}
-              </Stack>
-            )}
-          </RunHoldNotice>
+            busy={hold.kind === "planning"}
+          />
         )}
 
         {cancel.isError && (
@@ -225,13 +187,19 @@ export function RunStory({
           </Stack>
         )}
 
-        {/* A planning run has provably no cycles — the supervisor that
-            dispatches them has not been started yet — so the section would say
+        {/* A planning run has provably no build sessions — the supervisor that
+            dispatches them has not been started yet — so the rail would say
             only that none exist, under a notice that already said why. */}
         {!planning && (
           <>
             <Divider sx={{ my: 2 }} />
-            <CycleSections projectName={projectName} tag={tag} run={run} />
+            <RunSpine
+              projectName={projectName}
+              tag={tag}
+              run={run}
+              gates={milestone?.gates ?? []}
+              work={work}
+            />
           </>
         )}
       </CardContent>

@@ -21,22 +21,22 @@ import { Box, Button, Stack, Typography } from "@wso2/oxygen-ui";
 import { ScrollText } from "@wso2/oxygen-ui-icons-react";
 import { StatusChip } from "../../../components/StatusChip";
 import type { components } from "../../../generated/aep-api";
-import { useCycleBuilds } from "../api/queries";
 import { useBuildLog } from "../hooks/useBuildLog";
 import { buildStatusChip } from "../lib/runView";
 import { LogNote, LogSurface } from "./AgentLogLines";
 
 type CycleBuild = components["schemas"]["CycleBuild"];
 
-// The builds one cycle's merge produced — the second half of a cycle's story,
-// rendered inside the cycle that caused them.
+// The builds one build session's merge produced, rendered inside the session
+// that caused them.
 //
-// This is where the agent's work stops being the interesting thing: the cycle
+// This is where the agent's work stops being the interesting thing: the session
 // is waiting on exactly these builds to decide whether it landed green, so
 // putting them anywhere else would separate the wait from the thing waited on.
 //
-// Status rides the (polled) list read so a red build is visible WITHOUT opening
-// anything; the log is fetched only when a row is expanded.
+// Status rides the (polled) list read, so a red build reaches the session's
+// collapsed strip without anything being opened; a build's LOG is fetched only
+// when its row is expanded.
 
 function BuildLog({
   projectName,
@@ -142,49 +142,32 @@ function BuildRow({
 }
 
 /**
- * A cycle's build fan-out. Renders nothing at all until the cycle has a merge
- * SHA — before that there is nothing to have built, and an empty box would read
- * as "the builds failed to appear".
+ * The build rows of one build session's fan-out — the per-component detail
+ * behind the Builds stage.
+ *
+ * The builds are HANDED IN rather than fetched here: the stage's own state and
+ * the deployment stage that follows it are both derived from the same read, and
+ * a second query behind this component would let the rows and the stage above
+ * them disagree. Whether the read happens at all is the session's decision (see
+ * RunSpine) — every merged session, since every Builds stage is on the rail.
+ *
+ * Renders nothing when there is nothing yet: the stage above already says
+ * whether the merge has landed and whether the fan-out has appeared, so an empty
+ * box here would only repeat it.
  */
 export function CycleBuilds({
   projectName,
-  tag,
-  cycleId,
-  mergeSha,
+  builds,
 }: {
   projectName: string;
-  tag: string;
-  cycleId: string;
-  mergeSha: string;
+  builds: CycleBuild[] | undefined;
 }) {
-  const hasMerge = Boolean(mergeSha);
-  const { data: builds, isPending } = useCycleBuilds(
-    projectName,
-    tag,
-    cycleId,
-    hasMerge,
-  );
-
-  if (!hasMerge) return null;
-
+  if (builds === undefined || builds.length === 0) return null;
   return (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="overline" color="text.secondary">
-        Builds
-      </Typography>
-      {isPending || builds === undefined ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-          Reading this merge's builds…
-        </Typography>
-      ) : builds.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-          The merge has not produced a build yet.
-        </Typography>
-      ) : (
-        builds.map((build) => (
-          <BuildRow key={build.buildName} projectName={projectName} build={build} />
-        ))
-      )}
+    <Box>
+      {builds.map((build) => (
+        <BuildRow key={build.buildName} projectName={projectName} build={build} />
+      ))}
     </Box>
   );
 }

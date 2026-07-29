@@ -95,13 +95,19 @@ func (h *harness) deliver(t *testing.T, event string, payload []byte) error {
 	return h.router.Dispatch(context.Background(), event, payload)
 }
 
+// prURL is the host's own link, spelled exactly as GitHub spells it in a
+// pull_request payload — the platform records this string and never builds one.
+func prURL(number int) string {
+	return fmt.Sprintf("https://github.com/%s/pull/%d", testRepo, number)
+}
+
 func prBody(action, branch, body string, number int, draft, merged bool, mergeSHA string) []byte {
 	return []byte(fmt.Sprintf(`{
 	  "action": %q,
 	  "pull_request": {"number": %d, "draft": %t, "merged": %t, "state": "open",
-	                   "body": %q, "merge_commit_sha": %q, "head": {"ref": %q}},
+	                   "body": %q, "html_url": %q, "merge_commit_sha": %q, "head": {"ref": %q}},
 	  "repository": {"full_name": %q}
-	}`, action, number, draft, merged, body, mergeSHA, branch, testRepo))
+	}`, action, number, draft, merged, body, prURL(number), mergeSHA, branch, testRepo))
 }
 
 func issueBody(action string, issue, milestone int, label, sender string, topLevelMilestone bool) []byte {
@@ -139,8 +145,49 @@ func TestPullRequestOpened_MergesWhenItResolvesMilestoneWork(t *testing.T) {
 	}
 	// The cycle learns branch + PR from the webhook — the platform never
 	// dictates branch identity.
-	if len(h.cycles.notedPR) != 1 || h.cycles.notedPR[0] != "cycle-1:aep/m7-c1:42" {
-		t.Fatalf("the cycle must learn branch + PR, got %v", h.cycles.notedPR)
+	if len(h.cycles.notedPR) != 1 || h.cycles.notedPR[0] != "cycle-1:aep/m7-c1:42:"+prURL(42) {
+		t.Fatalf("the cycle must learn branch + PR + its host link, got %v", h.cycles.notedPR)
+	}
+	// And it records the MATCHED set, which is the only durable answer to "what
+	// did this cycle work" once the merge closes those issues.
+	if len(h.cycles.decisions) != 1 || h.cycles.decisions[0] != "cycle-1::[12 13]" {
+		t.Fatalf("the cycle must record its resolved set with no verdict, got %v", h.cycles.decisions)
+	}
+}
+
+// A draft is the agent saying it is not finished, but the cycle still records
+// WHICH pull request it is parked behind: without it, a cycle waiting on a draft
+// is indistinguishable from one whose agent never opened a pull request, and the
+// wait looks like the agent hanging.
+func TestPullRequestDraft_IsRecordedOnTheCycleButNotDecided(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.issues.withWork(7, 12)
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #12", 42, true, false, "")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.cycles.notedPR) != 1 || h.cycles.notedPR[0] != "cycle-1:aep/m7-c1:42:"+prURL(42) {
+		t.Fatalf("a draft's identity must still reach the cycle, got %v", h.cycles.notedPR)
+	}
+	if !h.cycles.latest.PRDraft {
+		t.Fatalf("the cycle must record the pull request AS a draft, got %+v", h.cycles.latest)
+	}
+	// The policy is not consulted at all: nothing may merge behind a draft, so
+	// there is no verdict to record either.
+	if len(h.cycles.decisions) != 0 {
+		t.Fatalf("no merge decision may be recorded for a draft, got %v", h.cycles.decisions)
+	}
+
+	// ready_for_review is the SAME pull request arriving by another route.
+	if err := h.deliver(t, "pull_request", prBody("ready_for_review", "aep/m7-c1", "Resolves #12", 42, false, false, "")); err != nil {
+		t.Fatalf("ready_for_review: %v", err)
+	}
+	if h.cycles.latest.PRDraft {
+		t.Fatalf("ready_for_review must clear the draft flag, got %+v", h.cycles.latest)
+	}
+	if len(h.merger.merged) != 1 {
+		t.Fatalf("the pull request must merge once it is ready, got %v", h.merger.merged)
 	}
 }
 
@@ -170,6 +217,7 @@ func TestPullRequestDraft_IsNeverMerged(t *testing.T) {
 
 func TestPullRequestOpened_DeclinedWhenItResolvesNothingInTheMilestone(t *testing.T) {
 	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
 	h.issues.withWork(7, 12) // the PR claims #99, which is not milestone work
 
 	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #99", 42, false, false, "")); err != nil {
@@ -177,6 +225,40 @@ func TestPullRequestOpened_DeclinedWhenItResolvesNothingInTheMilestone(t *testin
 	}
 	if len(h.merger.merged) != 0 {
 		t.Fatalf("a PR claiming nothing in this milestone must be left for a human, got %v", h.merger.merged)
+	}
+	// The decline is RECORDED, not only logged. It is the loudest silence in the
+	// loop: the agent exited green and the cycle then sits at its landing
+	// deadline with nothing on screen to say why.
+	if h.cycles.latest.MergeVerdict != delivery.CycleMergeDeclined {
+		t.Fatalf("the cycle must record the declined verdict, got %+v", h.cycles.latest)
+	}
+	if h.cycles.latest.MergeReason == "" {
+		t.Fatalf("a recorded verdict without its reason explains nothing, got %+v", h.cycles.latest)
+	}
+}
+
+// A verdict is a snapshot of the LATEST decision: the agent clears a decline by
+// pushing, and the row must not keep saying "declined" after the merge lands.
+func TestPullRequestSynchronize_AMergingDecisionClearsAnEarlierDecline(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.issues.withWork(7, 12)
+
+	if err := h.deliver(t, "pull_request", prBody("opened", "aep/m7-c1", "Resolves #99", 42, false, false, "")); err != nil {
+		t.Fatalf("opened: %v", err)
+	}
+	if h.cycles.latest.MergeVerdict != delivery.CycleMergeDeclined {
+		t.Fatalf("precondition: the first decision must decline, got %+v", h.cycles.latest)
+	}
+	// The agent fixes the Resolves list and pushes.
+	if err := h.deliver(t, "pull_request", prBody("synchronize", "aep/m7-c1", "Resolves #12", 42, false, false, "")); err != nil {
+		t.Fatalf("synchronize: %v", err)
+	}
+	if h.cycles.latest.MergeVerdict != "" {
+		t.Fatalf("a merging decision must clear the stale verdict, got %+v", h.cycles.latest)
+	}
+	if len(h.cycles.latest.Resolves) != 1 || h.cycles.latest.Resolves[0] != 12 {
+		t.Fatalf("the matched set must be the latest one, got %v", h.cycles.latest.Resolves)
 	}
 }
 
@@ -205,6 +287,7 @@ func TestPullRequestOpened_IdempotentUnderRedelivery(t *testing.T) {
 
 func TestPullRequestOpened_MergeRefusedOnOpenPR_MintsOneConflictIssue(t *testing.T) {
 	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
 	h.issues.withWork(7, 12)
 	h.merger.err = errors.New("github merge failed (status 405): Pull Request is not mergeable")
 
@@ -222,6 +305,15 @@ func TestPullRequestOpened_MergeRefusedOnOpenPR_MintsOneConflictIssue(t *testing
 	}
 	if got := h.issues.created[0].Body; !strings.Contains(got, "#42") || !strings.Contains(got, "aep/m7-c1") {
 		t.Fatalf("the conflict issue must name the PR and its branch (the agent's rebase target), got:\n%s", got)
+	}
+	// The refusal is the HOST's, not the policy's, and it is recorded as such —
+	// otherwise the merge stage can only say "not merged" about a cycle that is
+	// in fact waiting on a rebase.
+	if h.cycles.latest.MergeVerdict != delivery.CycleMergeRefused {
+		t.Fatalf("the cycle must record the refusal, got %+v", h.cycles.latest)
+	}
+	if !strings.Contains(h.cycles.latest.MergeReason, "not mergeable") {
+		t.Fatalf("the recorded reason must carry the host's words, got %q", h.cycles.latest.MergeReason)
 	}
 	if sigs := h.sup.named(delivery.SigRunConflict); len(sigs) != 2 || sigs[0].PRNumber != 42 {
 		// One signal per delivery is correct — signalling is cheap and the
@@ -255,6 +347,55 @@ func TestPullRequestMerged_BuildsEveryTouchedComponentAtTheMergeSHA(t *testing.T
 	}
 	if sigs := h.sup.named(delivery.SigRunPRMerged); len(sigs) != 1 || sigs[0].MergeSHA != "abc123def456789" {
 		t.Fatalf("the supervisor must be told the PR merged, got %+v", sigs)
+	}
+}
+
+// The `opened` delivery can be missed (an install that predates the run, a
+// dropped delivery), and the merge is then the only place the cycle can learn
+// which pull request it landed — link included, or the finished session would
+// name a pull request the reader cannot open.
+func TestPullRequestMerged_BackfillsTheHostLinkWhenTheOpenedDeliveryWasMissed(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1") // never saw its pull request
+
+	if err := h.deliver(t, "pull_request", prBody("closed", "aep/m7-c1", "Resolves #12", 42, false, true, "abc123def456789")); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if len(h.cycles.notedPR) != 1 || h.cycles.notedPR[0] != "cycle-1:aep/m7-c1:42:"+prURL(42) {
+		t.Fatalf("the backfill must record the pull request WITH its link, got %v", h.cycles.notedPR)
+	}
+	if h.cycles.latest.PRURL != prURL(42) {
+		t.Fatalf("cycle PR link = %q, want %q", h.cycles.latest.PRURL, prURL(42))
+	}
+}
+
+// The link is the console's ONLY route to the pull request — nothing composes
+// one from the repo row — so a delivery that carries no `html_url` must leave a
+// recorded link alone rather than blanking it.
+func TestCycleWrites_NeverBlankARecordedPullRequestLink(t *testing.T) {
+	h := newHarness(t, aRun("run-1", 7, delivery.RunStateRunning))
+	h.cycles.latest = aCycle("cycle-1", "run-1")
+	h.cycles.latest.Branch, h.cycles.latest.PRNumber = "aep/m7-c1", 42
+	h.cycles.latest.PRURL = prURL(42)
+	h.issues.withWork(7, 12)
+
+	// A payload with no html_url at all: an older redelivery, or a host that
+	// omits it.
+	sparse := []byte(fmt.Sprintf(`{
+	  "action": "synchronize",
+	  "pull_request": {"number": 42, "draft": false, "merged": false, "state": "open",
+	                   "body": "Resolves #12", "head": {"ref": "aep/m7-c1"}},
+	  "repository": {"full_name": %q}
+	}`, testRepo))
+	if err := h.deliver(t, "pull_request", sparse); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if h.cycles.latest.PRURL != prURL(42) {
+		t.Fatalf("cycle PR link = %q, want the recorded %q kept", h.cycles.latest.PRURL, prURL(42))
+	}
+	// Nothing changed, so nothing was written — the identity already matched.
+	if len(h.cycles.notedPR) != 0 {
+		t.Fatalf("a delivery that adds no fact must write nothing, got %v", h.cycles.notedPR)
 	}
 }
 

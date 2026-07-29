@@ -298,6 +298,20 @@ never told at dispatch. The run's loop POSITION is read from its latest cycle;
 it is never stored as a phase enum, because fix and conflict cycles re-enter
 earlier phases.
 
+The console calls one of these a **build session** — the same object, under a
+name that reads as a unit of work rather than as loop machinery. The rename is
+copy only: the model, the wire, the routes and the budgets all stay `cycle`
+(`RunCycle`, `cycleCeiling`, `cycle-ceiling`, `/cycles/{cycleId}/builds`). The
+bare word *session* never means this — that belongs to the spec-collaboration
+Room.
+
+A cycle also records what the merge policy decided about its pull request:
+`resolves` (the matched agent-work issues, i.e. what the merge closes — the only
+durable answer to "what did this cycle work", since the boundary read the
+supervisor dispatches on returns counts), and `mergeVerdict` +`mergeReason` when
+something decided against merging (`declined` by the policy, `refused` by the
+host).
+
 ### Working set
 Open, `aep`-labelled issues in the milestone, excluding `aep:provision` gates
 and the `aep:validation` issue. A run settles when it is empty and validation

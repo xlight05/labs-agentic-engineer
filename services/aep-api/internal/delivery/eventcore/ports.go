@@ -70,9 +70,10 @@ type MilestoneRef struct {
 	Title  string
 }
 
-// CycleStore is the cycle-record write surface: the event plane learns branch,
-// PR number and merge SHA from webhooks and records them on the run's current
-// cycle. Satisfied by an adapter over delivery.RunCycleRepository.
+// CycleStore is the cycle-record write surface: the event plane learns the
+// branch, the pull request and the merge SHA from webhooks and records them on
+// the run's current cycle. Satisfied by an adapter over
+// delivery.RunCycleRepository.
 //
 // Every mutator is a no-op on a closed cycle (the repository's guard), so a
 // redelivered webhook cannot rewrite a recorded outcome.
@@ -80,8 +81,11 @@ type CycleStore interface {
 	// Latest returns the run's newest cycle, or (nil, nil) before its first
 	// dispatch.
 	Latest(ctx context.Context, orgID, runID string) (*delivery.RunCycle, error)
-	// NotePullRequest records the branch and PR the agent actually opened.
-	NotePullRequest(ctx context.Context, cycleID, branch string, prNumber int) error
+	// NotePullRequest records the pull request the agent actually opened.
+	NotePullRequest(ctx context.Context, cycleID string, pr delivery.CyclePullRequest) error
+	// NoteMergeDecision records the merge policy's matched issue set and, when
+	// the pull request did not merge, the verdict and its reason.
+	NoteMergeDecision(ctx context.Context, cycleID string, resolves []int, verdict, reason string) error
 	// FinishCycle closes the cycle and records the merge SHA it landed.
 	FinishCycle(ctx context.Context, cycleID, mergeSHA string) error
 }

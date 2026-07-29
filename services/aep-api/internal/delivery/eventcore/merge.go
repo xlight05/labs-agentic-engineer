@@ -106,6 +106,7 @@ func (e *Events) onMergeRefused(ctx context.Context, orgID, projectID string, ru
 	}
 	slog.WarnContext(ctx, "eventcore: merge refused on an open pull request — treating as a conflict",
 		"pr", prNumber, "milestone", run.MilestoneNumber, "error", mergeErr)
+	e.noteCycleMergeRefused(ctx, run, mergeErr.Error())
 	issueNumber, err := e.mintConflictIssue(ctx, orgID, projectID, run, prNumber, branch, mergeErr)
 	if err != nil {
 		return err

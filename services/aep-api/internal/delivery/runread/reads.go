@@ -132,15 +132,24 @@ func validationView(verdict string) gen.RunValidation {
 // so a list read and a stream frame can never describe the same cycle
 // differently.
 func CycleView(c *delivery.RunCycle) gen.RunCycleView {
+	resolves := make([]int64, 0, len(c.Resolves))
+	for _, n := range c.Resolves {
+		resolves = append(resolves, int64(n))
+	}
 	return gen.RunCycleView{
-		ID:        c.ID,
-		Kind:      gen.RunCycleViewKind(c.Kind),
-		Attempts:  int64(c.Attempts),
-		JobRef:    c.JobRef,
-		Branch:    c.Branch,
-		PrNumber:  int64(c.PRNumber),
-		MergeSha:  c.MergeSHA,
-		CreatedAt: c.CreatedAt,
-		EndedAt:   c.EndedAt,
+		ID:           c.ID,
+		Kind:         gen.RunCycleViewKind(c.Kind),
+		Attempts:     int64(c.Attempts),
+		JobRef:       c.JobRef,
+		Branch:       c.Branch,
+		PrNumber:     int64(c.PRNumber),
+		PrURL:        c.PRURL,
+		PrDraft:      c.PRDraft,
+		Resolves:     resolves,
+		MergeSha:     c.MergeSHA,
+		MergeVerdict: gen.RunCycleViewMergeVerdict(c.MergeVerdict),
+		MergeReason:  c.MergeReason,
+		CreatedAt:    c.CreatedAt,
+		EndedAt:      c.EndedAt,
 	}
 }

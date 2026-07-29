@@ -208,6 +208,24 @@ func (e RunCycleViewKind) Valid() bool {
 	}
 }
 
+// Defines values for RunCycleViewMergeVerdict.
+const (
+	Declined RunCycleViewMergeVerdict = "declined"
+	Refused  RunCycleViewMergeVerdict = "refused"
+)
+
+// Valid indicates whether the value is a known member of the RunCycleViewMergeVerdict enum.
+func (e RunCycleViewMergeVerdict) Valid() bool {
+	switch e {
+	case Declined:
+		return true
+	case Refused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RunProgressEventType.
 const (
 	RunProgressEventTypeCycle RunProgressEventType = "cycle"
@@ -1169,7 +1187,7 @@ type RunBudgets struct {
 	FixCycles    int64 `json:"fixCycles"`
 }
 
-// RunCycleView One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
+// RunCycleView One dispatch within a run. Branch, pull request (number and URL) and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
 type RunCycleView struct {
 	// Attempts Dispatches of THIS cycle (the per-cycle re-dispatch budget, which resets at every cycle boundary).
 	Attempts  int64      `json:"attempts"`
@@ -1179,18 +1197,36 @@ type RunCycleView struct {
 	ID        string     `json:"id"`
 
 	// JobRef The dispatched runner Job for the current attempt; replaced on re-dispatch.
-	JobRef   string           `json:"jobRef,omitempty"`
-	Kind     RunCycleViewKind `json:"kind"`
-	MergeSha string           `json:"mergeSha,omitempty"`
-	PrNumber int64            `json:"prNumber,omitempty"`
+	JobRef string           `json:"jobRef,omitempty"`
+	Kind   RunCycleViewKind `json:"kind"`
+
+	// MergeReason The merge policy's own words for `mergeVerdict` — the auto-merge decision's reason, or the host's refusal. Written for a reader, not parsed.
+	MergeReason string `json:"mergeReason,omitempty"`
+	MergeSha    string `json:"mergeSha,omitempty"`
+
+	// MergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it). Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
+	MergeVerdict RunCycleViewMergeVerdict `json:"mergeVerdict,omitempty"`
+
+	// PrDraft Is the recorded pull request still a draft? A draft is the agent saying it is not finished, so nothing merges while this is true — recorded because a cycle sitting behind a draft is otherwise indistinguishable from one whose agent never opened a pull request.
+	PrDraft  bool  `json:"prDraft,omitempty"`
+	PrNumber int64 `json:"prNumber,omitempty"`
+
+	// PrURL The pull request's own page on the host, as the webhook reported it — never composed from a repo URL and a number, so a console link either is the host's own or is absent. Empty until a pull request is seen.
+	PrURL string `json:"prUrl,omitempty"`
+
+	// Resolves The milestone agent-work issues this cycle's pull request claims — the merge policy's matched set, which is what the merge closes. Recorded so a cycle's working set survives its issues being closed; empty until a pull request is seen.
+	Resolves []int64 `json:"resolves,omitempty"`
 }
 
 // RunCycleViewKind defines model for RunCycleView.Kind.
 type RunCycleViewKind string
 
+// RunCycleViewMergeVerdict Why this cycle's pull request did NOT merge, when something decided so: `declined` is the auto-merge policy saying the pull request is not this run's work, `refused` is the host declining an open pull request (a conflict — a conflict issue is minted and the next cycle works it). Absent on a cycle whose merge was never decided against, which includes every cycle that merged: a merge is recorded by `mergeSha`, and each fresh decision overwrites this field, so a declined pull request that later merges does not keep the verdict.
+type RunCycleViewMergeVerdict string
+
 // RunProgressEvent One SSE frame on the run progress stream. `type` discriminates the payload: `cycle` carries a RunCycleView (client upserts by id and renders one accordion section per cycle), `line` one RunProgressLine attributed to its cycle, and `done` the terminal run state (the server then closes the stream).
 type RunProgressEvent struct {
-	// Cycle One dispatch within a run. Branch, PR number and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
+	// Cycle One dispatch within a run. Branch, pull request (number and URL) and merge SHA are LEARNED FROM WEBHOOKS — the agent derives its own branch identity — so they stay empty on a cycle whose agent died before opening a pull request.
 	Cycle RunCycleView `json:"cycle,omitempty"`
 
 	// Line One line of a cycle's agent log: the runner's progress envelope (phase | tool_use | git_commit | git_push | gh_action | log | result) plus the attribution the console groups on — which cycle produced it, and whether the main agent or one of its Task subagents did.
@@ -1374,11 +1410,8 @@ type TaskDetail struct {
 	Lineage       Lineage                 `json:"lineage"`
 	Operation     string                  `json:"operation,omitempty"`
 	Origin        string                  `json:"origin,omitempty"`
-
-	// PrURL Link to the task's pull request, recovered from the succeeded coding execution's "pr#N" reason; absent before a PR opens.
-	PrURL     string `json:"prUrl,omitempty"`
-	Rationale string `json:"rationale,omitempty"`
-	Title     string `json:"title"`
+	Rationale     string                  `json:"rationale,omitempty"`
+	Title         string                  `json:"title"`
 }
 
 // TaskDetailExecutorClass Label-derived kind of the issue, and the only classification the platform makes of one: `coding` for agent work (the `aep` label), `provision` for a dispatch gate (`aep:provision`), `validation` for the run's validation issue, `ledger` for a bare human issue that joined the milestone carrying none of them. Nothing here is parsed out of the body — issue bodies are prose the platform writes for the agent and never reads back.
@@ -1419,11 +1452,8 @@ type TaskView struct {
 	Lineage       Lineage               `json:"lineage"`
 	Operation     string                `json:"operation,omitempty"`
 	Origin        string                `json:"origin,omitempty"`
-
-	// PrURL Link to the task's pull request, recovered from the succeeded coding execution's "pr#N" reason; absent before a PR opens.
-	PrURL     string `json:"prUrl,omitempty"`
-	Rationale string `json:"rationale,omitempty"`
-	Title     string `json:"title"`
+	Rationale     string                `json:"rationale,omitempty"`
+	Title         string                `json:"title"`
 
 	// Usage Actual token usage for one unit of agent work or an aggregate (#245). Tokens + model are the persisted truth; costUsd is derived at read time from the configured model rates (ADR-0011) and null when no rate is configured for the model.
 	Usage Usage `json:"usage,omitempty"`

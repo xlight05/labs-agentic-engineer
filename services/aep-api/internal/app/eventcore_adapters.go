@@ -118,8 +118,13 @@ func (a eventcoreCycles) Latest(ctx context.Context, orgID, runID string) (*deli
 	return a.cycles.Latest(ctx, orgID, runID)
 }
 
-func (a eventcoreCycles) NotePullRequest(ctx context.Context, cycleID, branch string, prNumber int) error {
-	_, err := a.cycles.NotePullRequest(ctx, cycleID, branch, prNumber)
+func (a eventcoreCycles) NotePullRequest(ctx context.Context, cycleID string, pr delivery.CyclePullRequest) error {
+	_, err := a.cycles.NotePullRequest(ctx, cycleID, pr)
+	return err
+}
+
+func (a eventcoreCycles) NoteMergeDecision(ctx context.Context, cycleID string, resolves []int, verdict, reason string) error {
+	_, err := a.cycles.NoteMergeDecision(ctx, cycleID, resolves, verdict, reason)
 	return err
 }
 

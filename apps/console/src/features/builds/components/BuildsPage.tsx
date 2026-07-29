@@ -34,7 +34,7 @@ import { PageHeader } from "../../../components/PageHeader";
 import { IssueSections } from "../../tasks/components/IssueSections";
 import { useAllTasks } from "../../tasks/api/queries";
 import { taskKeys } from "../../tasks/api/keys";
-import { openGates, partitionIssues } from "../../tasks/lib/issueRows";
+import { partitionIssues } from "../../tasks/lib/issueRows";
 import { useBuildRuns, useBuilds } from "../api/queries";
 import { versionIsLive } from "../lib/runView";
 import { RunStory } from "./RunStory";
@@ -79,15 +79,14 @@ export function BuildsPage({
   // strength of a list that has not arrived.
   const issues = useAllTasks(projectName, selectedTag, { live });
   const partition = issues.data ? partitionIssues(issues.data) : undefined;
+  // Both populations WHOLE, closed members included. The run's rail is the
+  // version's story, and a provisioned connection is as much a part of how a
+  // version came to exist as a merged pull request — while a build session's own
+  // issues are closed by the very merge that completed it, so narrowing to the
+  // open ones would empty every finished session.
   const milestone = partition && {
-    // OPEN gates only. The list below keeps the resolved ones as the version's
-    // record; a hold notice speaks only for what is still holding.
-    gates: openGates(partition.gates),
-    // OPEN work only. The work list keeps its closed members — that is the
-    // version's record of what got done — but a milestone of finished issues
-    // has nothing left to dispatch.
-    openWork: partition.work.filter((task) => task.derivedStatus === "pending")
-      .length,
+    gates: partition.gates,
+    work: partition.work,
   };
 
   // One final issue fetch at settle. The GitHub-backed list stops polling the

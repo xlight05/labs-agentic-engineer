@@ -46,10 +46,20 @@ type RunCycleRepository interface {
 	// per-cycle re-dispatch budget is spent. Guarded on the cycle being open.
 	NoteDispatch(ctx context.Context, id, jobRef string) (*RunCycle, error)
 
-	// NotePullRequest records the branch and PR the agent actually opened,
-	// learned from the pull_request webhook — the platform never dictates branch
-	// identity, it observes it. Guarded on the cycle being open.
-	NotePullRequest(ctx context.Context, id, branch string, prNumber int) (*RunCycle, error)
+	// NotePullRequest records the pull request the agent actually opened, learned
+	// from the pull_request webhook — the platform never dictates branch identity
+	// or link, it observes them. Guarded on the cycle being open.
+	NotePullRequest(ctx context.Context, id string, pr CyclePullRequest) (*RunCycle, error)
+
+	// NoteMergeDecision records what the merge policy decided about the cycle's
+	// pull request: the matched issue set, and the verdict (with its reason) when
+	// the pull request did not merge.
+	//
+	// It is a SEPARATE mutator from NotePullRequest on purpose. Pull request
+	// identity is backfilled from the merge webhook too, and a backfill has no
+	// decision in hand — folding both into one update would let it clobber a
+	// recorded verdict with zero values. Guarded on the cycle being open.
+	NoteMergeDecision(ctx context.Context, id string, resolves []int, verdict, reason string) (*RunCycle, error)
 
 	// Finish closes the cycle: it stamps ended_at and records the merge SHA the
 	// cycle landed. mergeSHA is empty for a cycle that ended without a merge
@@ -111,11 +121,28 @@ func (r *runCycleRepository) NoteDispatch(ctx context.Context, id, jobRef string
 	})
 }
 
-func (r *runCycleRepository) NotePullRequest(ctx context.Context, id, branch string, prNumber int) (*RunCycle, error) {
+func (r *runCycleRepository) NotePullRequest(ctx context.Context, id string, pr CyclePullRequest) (*RunCycle, error) {
 	return r.updateOpen(ctx, id, map[string]any{
-		"branch":    branch,
-		"pr_number": prNumber,
+		"branch":    pr.Branch,
+		"pr_number": pr.Number,
+		"pr_url":    pr.URL,
+		"pr_draft":  pr.Draft,
 	})
+}
+
+func (r *runCycleRepository) NoteMergeDecision(ctx context.Context, id string, resolves []int, verdict, reason string) (*RunCycle, error) {
+	// A STRUCT update, not the map the other mutators use: resolves is a
+	// serializer-backed jsonb column, and only the struct path runs the schema's
+	// serializer. Select names the three columns so blanks are written too — the
+	// row is a snapshot of the LATEST decision, so a pull request that was
+	// declined and then re-pushed into a merge must not keep its stale verdict.
+	return r.updateOpenColumns(ctx, id,
+		[]string{"resolves", "merge_verdict", "merge_reason"},
+		RunCycle{
+			Resolves:     IssueNumbers(resolves),
+			MergeVerdict: verdict,
+			MergeReason:  reason,
+		})
 }
 
 func (r *runCycleRepository) Finish(ctx context.Context, id, mergeSHA string) (*RunCycle, error) {
@@ -175,10 +202,24 @@ func (r *runCycleRepository) DeleteByProject(ctx context.Context, orgID, project
 // fence lives, so every mutator inherits it — and the (nil, nil) no-op contract
 // on RowsAffected == 0.
 func (r *runCycleRepository) updateOpen(ctx context.Context, id string, updates map[string]any) (*RunCycle, error) {
-	res := r.db.WithContext(ctx).
+	return r.applyOpen(ctx, id, nil, updates)
+}
+
+// updateOpenColumns is updateOpen for a STRUCT update: the named columns are
+// written even when their value is a zero value, and serializer-backed columns
+// go through the schema rather than being handed to the driver raw.
+func (r *runCycleRepository) updateOpenColumns(ctx context.Context, id string, columns []string, values RunCycle) (*RunCycle, error) {
+	return r.applyOpen(ctx, id, columns, values)
+}
+
+func (r *runCycleRepository) applyOpen(ctx context.Context, id string, columns []string, values any) (*RunCycle, error) {
+	tx := r.db.WithContext(ctx).
 		Model(&RunCycle{}).
-		Where("id = ? AND ended_at IS NULL", id).
-		Updates(updates)
+		Where("id = ? AND ended_at IS NULL", id)
+	if len(columns) > 0 {
+		tx = tx.Select(columns)
+	}
+	res := tx.Updates(values)
 	if res.Error != nil {
 		return nil, res.Error
 	}

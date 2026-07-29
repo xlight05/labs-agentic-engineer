@@ -26,7 +26,6 @@ import type { BuildLogState } from "../hooks/useBuildLog";
 type CycleBuild = components["schemas"]["CycleBuild"];
 
 let mockBuilds: CycleBuild[] = [];
-let mockPending = false;
 // Every (buildName, open) the log hook was called with — proves a collapsed
 // build costs no read.
 let logCalls: Array<{ buildName: string; open: boolean }> = [];
@@ -36,10 +35,6 @@ let mockLog: BuildLogState = {
   loading: false,
   error: undefined,
 };
-
-vi.mock("../api/queries", () => ({
-  useCycleBuilds: () => ({ data: mockBuilds, isPending: mockPending }),
-}));
 
 vi.mock("../hooks/useBuildLog", () => ({
   useBuildLog: (_p: string, _c: string, buildName: string, open: boolean) => {
@@ -61,26 +56,29 @@ function build(over: Partial<CycleBuild> = {}): CycleBuild {
   };
 }
 
-function renderBuilds(mergeSha = "4a91c2f8ab31") {
-  render(
-    <CycleBuilds projectName="acme" tag="v2" cycleId="c1" mergeSha={mergeSha} />,
-  );
+function renderBuilds() {
+  render(<CycleBuilds projectName="acme" builds={mockBuilds} />);
 }
 
 afterEach(() => {
   mockBuilds = [];
-  mockPending = false;
   logCalls = [];
   mockLog = { entries: [], complete: true, loading: false, error: undefined };
 });
 
 describe("CycleBuilds", () => {
-  // Before the merge there is nothing to have built, and an empty box would
-  // read as "the builds failed to appear".
-  it("renders nothing at all for a cycle that has not merged", () => {
+  // Whether the merge has landed, whether the fan-out has appeared, and whether
+  // it was read at all are all said by the Builds STAGE above these rows, so
+  // there is nothing left for this component to say when it has no builds.
+  it("renders nothing when the builds have not been read", () => {
     const { container } = render(
-      <CycleBuilds projectName="acme" tag="v2" cycleId="c1" mergeSha="" />,
+      <CycleBuilds projectName="acme" builds={undefined} />,
     );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders nothing for a fan-out that has not appeared yet", () => {
+    const { container } = render(<CycleBuilds projectName="acme" builds={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -143,9 +141,4 @@ describe("CycleBuilds", () => {
     expect(screen.getByText(/No log retained for this build/)).toBeInTheDocument();
   });
 
-  it("says the merge has produced no build yet rather than showing an empty list", () => {
-    mockBuilds = [];
-    renderBuilds();
-    expect(screen.getByText(/has not produced a build yet/)).toBeInTheDocument();
-  });
 });

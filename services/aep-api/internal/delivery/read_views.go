@@ -73,10 +73,10 @@ type ExecutionView struct {
 type TaskView struct {
 	IssueNumber int    `json:"issueNumber"`
 	Title       string `json:"title"`
-	IssueURL    string `json:"issueUrl"`
-	// PRURL links the task's pull request, recovered from the succeeded coding
-	// Execution's "pr#N" reason (no live PR query); empty before a PR opens.
-	PRURL         string                   `json:"prUrl,omitempty"`
+	IssueURL string `json:"issueUrl"`
+	// A task carries no pull request of its own: agent work is claimed by a BUILD
+	// SESSION's pull request, whose identity lives on the run's cycle record
+	// (delivery.RunCycle) because that is what the merge policy decided about.
 	ExecutorClass string                   `json:"executorClass"`
 	Origin        string                   `json:"origin,omitempty"`
 	Component     string                   `json:"component,omitempty"`
