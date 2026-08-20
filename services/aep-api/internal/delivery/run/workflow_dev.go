@@ -111,7 +111,7 @@ func (l *loop) fillMilestone(ctx workflow.Context) (settled bool, res RunResult,
 			"milestone", l.in.MilestoneNumber, "tag", l.in.Tag)
 		return false, RunResult{}, nil
 	}
-	if perr := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).PlanMilestone, in).Get(ctx, nil); perr != nil {
+	if perr := workflow.ExecuteActivity(planActivityCtx(ctx), (*Activities).PlanMilestone, in).Get(ctx, nil); perr != nil {
 		res, err = l.settle(ctx, delivery.RunStateFailed, delivery.RunReasonPlanFailed)
 		if err != nil {
 			return true, l.result(), err

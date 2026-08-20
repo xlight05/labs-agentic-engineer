@@ -31,9 +31,22 @@ import (
 
 // Cadences. Only two of them are load-bearing.
 const (
-	// activityTimeout bounds one activity call. Every activity is a single
-	// GitHub, OpenChoreo or database round trip.
+	// activityTimeout bounds one activity call. Almost every activity is a
+	// single GitHub, OpenChoreo or database round trip — planActivityTimeout
+	// covers the one that is not.
 	activityTimeout = 2 * time.Minute
+
+	// planActivityTimeout bounds PlanMilestone, the only activity that waits on
+	// an agent turn rather than a round trip. A healthy plan turn has no upper
+	// bound on its total length — only on its SILENCE, and the plan tap's own
+	// idle watchdog already enforces that (task.planDrainIdleTimeout, 90s
+	// against ~15s keep-alives). So a short bound here never caught a hung
+	// turn, it only killed a slow healthy one: the turn kept draining past the
+	// timeout, holding the per-project plan lock, and every retry Temporal
+	// scheduled meanwhile failed with ErrPlanInProgress until the original
+	// finished — then re-ran the whole turn to get an answer it had already
+	// thrown away. Generous enough that only a dead worker reaches it.
+	planActivityTimeout = 30 * time.Minute
 
 	// waitPollInterval re-reads the milestone while the run is WAITING. The wait
 	// itself stays unbounded — this timer never ends it, it only re-derives the
@@ -676,6 +689,14 @@ func (l *loop) cancelled(ctx workflow.Context) (bool, error) {
 func activityCtx(ctx workflow.Context) workflow.Context {
 	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: activityTimeout,
+	})
+}
+
+// planActivityCtx is activityCtx for the planning turn: same unbounded retry
+// policy, a timeout sized to an agent turn instead of a round trip.
+func planActivityCtx(ctx workflow.Context) workflow.Context {
+	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: planActivityTimeout,
 	})
 }
 
