@@ -112,16 +112,31 @@ project → `visibility: namespace` plus `project:` (and the provider must alrea
 list `namespace` / be org-published). That "not `external`" is the SPA's
 **dependency** entry only — not the service's own `endpoints[].visibility`.
 
-The SPA browser calls `/api` on its own host; nginx in the SPA pod reverse-proxies
-to the project Service URL injected as `<DEP_NAME>_URL`. That pod env var is not
-a `window._env_` key.
+The SPA browser calls `/api` on its own host; nginx in the SPA pod
+reverse-proxies to the sibling. For a sibling whose design declares
+`exposesAPI.auth` the platform also injects `<DEP_NAME>_GATEWAY_URL` — the
+auth-terminating address — and the proxy prefers it over the direct
+`<DEP_NAME>_URL` (`react-webapp` owns that rule). Both are pod env vars, never
+`window._env_` keys.
 
 **Provider endpoint visibility:** a service a sibling SPA calls lists
-`visibility: [project, external]` — `project` for the nginx hop, `external` so
-the API remains curl-able on the public gateway. Write both YAML list items.
-A single-item `project` list is wrong even when the SPA uses `/api`, and
-`design.json` `exposure: intranet` does not drop `external`. The SPA must not
-fetch that public URL. Org-published services still add `namespace` as below.
+`visibility: [project, internal, external]`. Each item earns its place:
+
+- `internal` — **required for a protected service.** It is the only value that
+  admits the API gateway to the component's NetworkPolicy. Without it the
+  gateway authenticates the caller and then cannot reach the upstream, so every
+  call through the SPA's `/api` proxy returns `503`.
+- `project` — the same-namespace lane, for a trusted service-to-service caller.
+- `external` — so the API remains curl-able on the public gateway.
+
+Write all three YAML list items. A single-item `project` list is wrong even when
+the SPA uses `/api`, and `design.json` `exposure: intranet` does not drop
+`external`. The SPA must not fetch that public URL — its nginx proxies to the
+gateway's IN-CLUSTER address (`react-webapp`). Org-published services still add
+`namespace` as below.
+
+`namespace` is NOT a substitute for `internal`: it widens pod-to-pod reach to
+sibling projects and grants the gateway nothing.
 
 **Org-published services.** If the component's `design.json` sets
 `exposesAPI.orgPublished: true`, components in OTHER projects consume it — also

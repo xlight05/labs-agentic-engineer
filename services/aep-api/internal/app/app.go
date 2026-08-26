@@ -1174,6 +1174,14 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// The deployment service's two config inputs, wired here because both are
 	// built after it.
 	deploymentService.SetConfigSources(configService, runtimeConfigSvc)
+	// The address a consumer reaches a protected sibling's managed API on. Config
+	// carries only an override; the default lives beside the context-path builder
+	// it has to agree with.
+	if host := cfg.APIGatewayHost; host != "" {
+		deploymentService.SetAPIGatewayHost(host)
+	} else {
+		deploymentService.SetAPIGatewayHost(projects.DefaultAPIGatewayHost)
+	}
 	configService.SetConverger(deploymentService)
 	// The cross-project access grant is the only deploy observer left. The two
 	// that rode beside it — the env-config.js re-emit and the api-configuration
