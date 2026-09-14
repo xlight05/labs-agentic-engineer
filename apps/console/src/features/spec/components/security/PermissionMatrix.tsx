@@ -137,8 +137,8 @@ export function PermissionMatrix({
         a permission.
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        Tick a cell to move a grant between roles. New permissions, roles or
-        screens come from chat.
+        Tick a cell to move a grant between roles. New permissions or roles,
+        and changing what an operation requires, come from chat.
       </Typography>
 
       <FindingLines findings={findings.document} />

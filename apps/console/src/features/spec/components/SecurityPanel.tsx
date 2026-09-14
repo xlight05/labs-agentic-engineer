@@ -279,8 +279,13 @@ function SecurityDocument({
       ],
       // Derived from the architecture, never authored — see
       // `signInlessComponents` for why that is the only honest source.
+      //
+      // Each entry names its KIND, the way the rows above name theirs
+      // (`GET /me`, `screen My account (expense-spa)`). This row lists
+      // COMPONENTS while those list operations and screens, and the sub-header
+      // they share cannot say so for all three — so the entry says it.
       openComponents: dependencies
-        ? componentsWithoutSignIn(dependencies)
+        ? componentsWithoutSignIn(dependencies).map(componentLine)
         : null,
     };
   }, [matrix, references, dependencies]);
@@ -386,6 +391,11 @@ function ResourceServerLine({
 /** One baseline screen, as the design writes it: `screen Find a slot (booking-site)`. */
 function screenLine(entry: { component: string; screen: string }): string {
   return `screen ${entry.screen} (${entry.component})`;
+}
+
+/** One baseline component: `component booking-site`. */
+function componentLine(component: string): string {
+  return `component ${component}`;
 }
 
 /**
