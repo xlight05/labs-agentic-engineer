@@ -142,10 +142,11 @@ function TypeTag({ label }: { label: string }) {
 function grantLine(protection: Protection, roles: ScopeRoles | undefined): string {
   if (!roles) return "";
   if (protection.kind === "public") return "anyone · no token needed";
-  // "any signed-in user", never "everyone": this line sits one row from the
+  // "any signed-in person", never "everyone": this line sits one row from the
   // public row's "anyone · no token needed" and beside a padlock, where the
-  // shorter word reads as the opposite of what it means.
-  if (protection.kind === "signedIn") return "any signed-in user";
+  // shorter word reads as the opposite of what it means. "person" rather than
+  // "user" is the word the Security page's baseline row uses, one click away.
+  if (protection.kind === "signedIn") return "any signed-in person";
   const grant = roles[protection.scope];
   if (!grant) return "";
   const names = Array.isArray(grant) ? grant : grant.roles;

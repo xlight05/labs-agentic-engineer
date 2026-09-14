@@ -94,8 +94,11 @@ describe("the permission matrix, laid out", () => {
     renderMatrix();
 
     const table = page.getByRole("table").element();
+    // The screens block below the grid says "Any signed-in person" too, so the
+    // baseline label is read out of the table rather than off the whole page.
     const baselineCell = page
-      .getByText("any signed-in user")
+      .getByRole("table")
+      .getByText("Any signed-in person")
       .element()
       .closest("td")!.nextElementSibling!;
 

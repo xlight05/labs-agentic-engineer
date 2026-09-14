@@ -54,7 +54,7 @@ describe("OpenApiView — protection on the operation row", () => {
   it("says nothing about who may reach a row when the roles map is absent", () => {
     render(<OpenApiView spec={SPEC} />);
     expect(screen.queryByText(/Employee/)).not.toBeInTheDocument();
-    expect(screen.queryByText("any signed-in user")).not.toBeInTheDocument();
+    expect(screen.queryByText("any signed-in person")).not.toBeInTheDocument();
     expect(screen.queryByText(/no token needed/)).not.toBeInTheDocument();
   });
 
@@ -67,7 +67,7 @@ describe("OpenApiView — protection on the operation row", () => {
   // padlock, where it reads as the opposite of what it means.
   it("spells the signed-in baseline out rather than calling it everyone", () => {
     render(<OpenApiView spec={SPEC} roles={{ "claims:read": ["Employee"] }} />);
-    expect(screen.getByText("any signed-in user")).toBeInTheDocument();
+    expect(screen.getByText("any signed-in person")).toBeInTheDocument();
     expect(screen.queryByText("everyone")).not.toBeInTheDocument();
   });
 
