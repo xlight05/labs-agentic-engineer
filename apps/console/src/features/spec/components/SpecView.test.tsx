@@ -2039,7 +2039,7 @@ describe("SpecView — the Security page's architecture facts", () => {
   it("names the components that provision no sign-in at all", () => {
     openSecurity();
 
-    const row = screen.getByText("open to everyone").closest("tr")!;
+    const row = screen.getByText("No sign-in at all").closest("tr")!;
     expect(within(row).getByText(/public-site/)).toBeInTheDocument();
     expect(within(row).queryByText(/orders-api/)).not.toBeInTheDocument();
   });
@@ -2055,8 +2055,12 @@ describe("SpecView — the Security page's architecture facts", () => {
 
     // The other two baseline rows still render — this is one absent fact, not
     // a broken page.
-    expect(screen.getByText("any signed-in user")).toBeInTheDocument();
-    expect(screen.queryByText("open to everyone")).not.toBeInTheDocument();
+    expect(screen.getByText("Any signed-in person")).toBeInTheDocument();
+    expect(screen.queryByText("No sign-in at all")).not.toBeInTheDocument();
+    // The sub-header stands on the two rows that always render.
+    expect(
+      screen.getByText("Reachable without a permission"),
+    ).toBeInTheDocument();
   });
 
   it("says so when every component provisions sign-in", () => {
@@ -2080,7 +2084,7 @@ describe("SpecView — the Security page's architecture facts", () => {
     openSecurity();
 
     expect(
-      screen.getByText("Every component in this project provisions sign-in."),
+      screen.getByText("Every component signs people in."),
     ).toBeInTheDocument();
   });
 });

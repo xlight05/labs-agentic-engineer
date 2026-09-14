@@ -32,7 +32,8 @@
  *
  * Everything else on the page stays read-only. Adding a resource, an action or
  * a role touches `openapi.yaml` and `wireframes.dsl` too, so it is a design
- * conversation; the page says so where a reader would look for the control.
+ * conversation; the matrix says so in its intro, ABOVE the grid — a reader has
+ * to know it before they go hunting for a control that is not there, not after.
  */
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -101,8 +102,8 @@ export interface SecurityPanelProps {
   /**
    * Every component's declared dependencies, from the Spec view's own
    * design-dependencies read. `undefined` while that read is in flight or after
-   * it failed — the "open to everyone" row is then omitted rather than claiming
-   * that every component provisions sign-in.
+   * it failed — the "No sign-in at all" row is then omitted rather than
+   * claiming that every component provisions sign-in.
    */
   dependencies?: ComponentDependencies[] | undefined;
 }
@@ -242,8 +243,17 @@ function SecurityDocument({
   if (failure !== null && failure.at !== text) setFailure(null);
 
   const matrix = useMemo(() => securityMatrix(doc), [doc]);
+  // A presentation filter, not a rule change. The rules are untouched and the
+  // gate still raises every `info` — the design agent does benefit from being
+  // told an assignment is legal. But an `info` is a note saying nothing is
+  // wrong, written in the gate's vocabulary (`groups[]`, `list_groups`), and
+  // the one this document raises — `assign_to_directory_checked` — is already
+  // rendered better and from the LIVE directory as the role card's group chip.
   const findings = useMemo(
-    () => securityReferenceFindings(doc, references),
+    () =>
+      securityReferenceFindings(doc, references).filter(
+        (finding) => finding.severity !== "info",
+      ),
     [doc, references],
   );
   const routed = useMemo(() => {
@@ -325,7 +335,6 @@ function SecurityDocument({
 
         <GroupsBlock doc={doc} />
         <RolesIntro />
-        <DisposableWarning />
         {doc.roles.map((role) => (
           <RoleCard
             key={role.name}
@@ -397,19 +406,6 @@ function PatchFailureAlert({ failure }: { failure: PatchFailure }) {
         : failure.kind === "last-grant"
           ? `Couldn't clear that grant: every role must grant at least one permission, and that is all "${failure.role}" has left. Grant it something else first, or ask in chat to remove the role.`
           : `Couldn't change that grant: the document could not be read (${failure.message}).`}
-    </Alert>
-  );
-}
-
-function DisposableWarning() {
-  return (
-    <Alert severity="warning">
-      <AlertTitle>
-        Disposable accounts for agents, not for real people
-      </AlertTitle>
-      Each role gets a test user so the validation agent can sign in and check
-      what that role can actually do. Usernames live here; passwords are shown
-      on Deploy after Build publishes them — never name a real person.
     </Alert>
   );
 }
