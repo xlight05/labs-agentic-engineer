@@ -171,6 +171,18 @@ function cell(role: string, handle: string): HTMLElement {
   return screen.getByRole("checkbox", { name: `${role} grants ${handle}` });
 }
 
+/**
+ * The bordered card a role's name heads: name → its Stack → the card. The role
+ * is also a column heading in the grid, so the card's copy is the one OUTSIDE
+ * the table.
+ */
+function roleCard(name: string): HTMLElement {
+  const heading = screen
+    .getAllByText(name)
+    .find((element) => element.closest("table") === null)!;
+  return heading.closest("div")!.parentElement!;
+}
+
 describe("SecurityPanel — reading the document", () => {
   it("shows a spinner while the committed document is loading, not the empty copy", () => {
     setup({ securityJson: null, isPending: true });
@@ -373,6 +385,26 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
     expect(index("Open before sign-in")).toBeLessThan(index("No sign-in at all"));
   });
 
+  // Rows 1 and 2 name their kind in every entry (`GET /me`, `screen My
+  // account (expense-spa)`); row 3 lists a different kind again, and the
+  // sub-header the three share cannot say so for all of them.
+  it("names the kind in the third baseline row's entries too", () => {
+    expenseTracker({
+      dependencies: [
+        { componentName: "expense-api", dependencies: [] },
+        { componentName: "expense-spa", dependencies: [] },
+      ],
+    });
+
+    const grid = screen.getByRole("table");
+    const row = within(grid)
+      .getByText("No sign-in at all")
+      .closest("tr")!;
+    expect(
+      within(row).getByText("component expense-api · component expense-spa"),
+    ).toBeInTheDocument();
+  });
+
   it("says each baseline bucket is empty rather than drawing a blank row", () => {
     setup({ dependencies: [] });
 
@@ -401,7 +433,7 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
 
     expect(
       screen.getByText(
-        "Tick a cell to move a grant between roles. New permissions, roles or screens come from chat.",
+        "Tick a cell to move a grant between roles. New permissions or roles, and changing what an operation requires, come from chat.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -421,6 +453,50 @@ describe("SecurityPanel — warnings on the row they name", () => {
 
     // And nowhere else on the page.
     expect(screen.getAllByText(/declared, used nowhere/i)).toHaveLength(1);
+  });
+
+  /**
+   * The `byRole` branch of `routeFindings`, which change 3's severity filter
+   * left uncovered when the only test of it was an `info` rule.
+   *
+   * Every rule that still reaches a role card is an error: an admin-enrolment
+   * role with no `assignTo` is the cheapest of them. The claim is about
+   * ROUTING, not about the rule — a finding carrying a `role` param belongs on
+   * that role's card, not on the row above and not in the document block.
+   */
+  it("renders a role-scoped finding on that role's card, not above the matrix", () => {
+    setup({
+      securityJson: design({
+        roles: [
+          role("Ledger Admin"),
+          { ...role("Shopper"), enrolment: "self-service" },
+        ],
+      }),
+    });
+
+    const found = screen.getAllByTestId("finding-admin_role_needs_assign_to");
+    expect(found).toHaveLength(1);
+    expect(found[0]!).toHaveTextContent(/"Ledger Admin"/);
+
+    // On the card of the role it names, and on no other card.
+    expect(
+      within(roleCard("Ledger Admin")).getByTestId(
+        "finding-admin_role_needs_assign_to",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(roleCard("Shopper")).queryByTestId(
+        "finding-admin_role_needs_assign_to",
+      ),
+    ).not.toBeInTheDocument();
+
+    // And below the grid, so it cannot have fallen through to the document
+    // block that renders above it.
+    const table = screen.getByRole("table");
+    expect(
+      table.compareDocumentPosition(found[0]!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   // The Expense Tracker raises both severities: `assign_to_directory_checked`

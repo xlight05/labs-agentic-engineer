@@ -2040,7 +2040,9 @@ describe("SpecView — the Security page's architecture facts", () => {
     openSecurity();
 
     const row = screen.getByText("No sign-in at all").closest("tr")!;
-    expect(within(row).getByText(/public-site/)).toBeInTheDocument();
+    // Named as a COMPONENT, the way the rows above name an operation or a
+    // screen — the sub-header they share cannot say it for all three.
+    expect(within(row).getByText("component public-site")).toBeInTheDocument();
     expect(within(row).queryByText(/orders-api/)).not.toBeInTheDocument();
   });
 
@@ -2054,12 +2056,17 @@ describe("SpecView — the Security page's architecture facts", () => {
     openSecurity();
 
     // The other two baseline rows still render — this is one absent fact, not
-    // a broken page.
-    expect(screen.getByText("Any signed-in person")).toBeInTheDocument();
-    expect(screen.queryByText("No sign-in at all")).not.toBeInTheDocument();
+    // a broken page. Read out of the GRID: the screens block says "Any
+    // signed-in person" too, and this assertion exists to prove the baseline
+    // row, so it must not be satisfiable by the block below it.
+    const grid = screen.getByRole("table");
+    expect(within(grid).getByText("Any signed-in person")).toBeInTheDocument();
+    expect(
+      within(grid).queryByText("No sign-in at all"),
+    ).not.toBeInTheDocument();
     // The sub-header stands on the two rows that always render.
     expect(
-      screen.getByText("Reachable without a permission"),
+      within(grid).getByText("Reachable without a permission"),
     ).toBeInTheDocument();
   });
 
