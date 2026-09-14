@@ -293,9 +293,13 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
     // `claims:read` is also what the "My Claims" screen requires, so it appears
     // once in the grid and once in the screens list below it.
     expect(screen.getAllByText("claims:read")).toHaveLength(2);
-    // own: read, submit. any: read-all, approve, reject, reports:read, export.
-    expect(screen.getAllByText("own")).toHaveLength(2);
-    expect(screen.getAllByText("any")).toHaveLength(5);
+    // The chip says what the schema's `own` / `any` MEAN — a reader of this
+    // page has never seen the schema. own: read, submit. any: read-all,
+    // approve, reject, reports:read, export.
+    expect(screen.getAllByText("own records")).toHaveLength(2);
+    expect(screen.getAllByText("all records")).toHaveLength(5);
+    expect(screen.queryByText("own")).not.toBeInTheDocument();
+    expect(screen.queryByText("any")).not.toBeInTheDocument();
     expect(screen.getByText("See own claims")).toBeInTheDocument();
     expect(screen.getByText("Download CSV")).toBeInTheDocument();
   });
@@ -329,29 +333,80 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
   it("puts the baseline in the same grid — signed-in and public, operations and screens", () => {
     expenseTracker();
 
-    const signedIn = screen.getByText("any signed-in user").closest("tr")!;
+    // The screens block says "Any signed-in person" too, so the baseline row
+    // is read out of the grid rather than off the whole page.
+    const grid = screen.getByRole("table");
+    const signedIn = within(grid).getByText("Any signed-in person").closest("tr")!;
     expect(within(signedIn).getByText(/GET \/me/)).toBeInTheDocument();
     expect(within(signedIn).getByText(/screen My account \(expense-spa\)/)).toBeInTheDocument();
 
-    const open = screen.getByText("public").closest("tr")!;
+    const open = within(grid).getByText("Open before sign-in").closest("tr")!;
     expect(within(open).getByText(/GET \/health/)).toBeInTheDocument();
   });
 
-  it("says the baseline is empty rather than drawing a blank row", () => {
+  // The three rows list different KINDS of thing and are a ladder of
+  // decreasing protection; nothing on screen said either until the sub-header
+  // and these labels did.
+  it("heads the baseline rows and names each rung of the ladder", () => {
+    expenseTracker({ dependencies: [] });
+
+    const grid = screen.getByRole("table");
+    const header = within(grid).getByText("Reachable without a permission");
+    expect(header).toBeInTheDocument();
+    for (const label of [
+      "Any signed-in person",
+      "Open before sign-in",
+      "No sign-in at all",
+    ]) {
+      expect(within(grid).getByText(label)).toBeInTheDocument();
+    }
+    // In that order, under the header, at the foot of the same grid.
+    const rows = [...header.closest("tbody")!.querySelectorAll("tr")];
+    const index = (text: string) =>
+      rows.findIndex((row) => row.textContent?.startsWith(text));
+    expect(index("Reachable without a permission")).toBeLessThan(
+      index("Any signed-in person"),
+    );
+    expect(index("Any signed-in person")).toBeLessThan(
+      index("Open before sign-in"),
+    );
+    expect(index("Open before sign-in")).toBeLessThan(index("No sign-in at all"));
+  });
+
+  it("says each baseline bucket is empty rather than drawing a blank row", () => {
+    setup({ dependencies: [] });
+
+    expect(
+      screen.getByText("Nothing — everything needs a permission."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Nothing is open before sign-in.")).toBeInTheDocument();
+    expect(screen.getByText("Every component signs people in.")).toBeInTheDocument();
+  });
+
+  // The sub-header is not conditional on the third row: the first two always
+  // render, so the header always has rows to head.
+  it("keeps the sub-header when the dependency read has not answered", () => {
     setup();
 
     expect(
-      screen.getByText("Nothing is reachable on a token alone."),
+      screen.getByText("Reachable without a permission"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Nothing is open before sign-in.")).toBeInTheDocument();
+    expect(screen.queryByText("No sign-in at all")).not.toBeInTheDocument();
   });
 
-  it("says that adding a resource, an action or a role is a design conversation", () => {
+  // The fact belongs before the point of decision, not in a footnote after it,
+  // and it says where the missing controls are rather than what we edit.
+  it("says in the intro that a cell only moves a grant, and the rest comes from chat", () => {
     expenseTracker();
 
     expect(
-      screen.getByText(/Adding a resource, an action or a role/i),
-    ).toHaveTextContent(/is a design conversation/i);
+      screen.getByText(
+        "Tick a cell to move a grant between roles. New permissions, roles or screens come from chat.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/is a design conversation/i),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -368,14 +423,37 @@ describe("SecurityPanel — warnings on the row they name", () => {
     expect(screen.getAllByText(/declared, used nowhere/i)).toHaveLength(1);
   });
 
-  it("renders a role-scoped note on that role's card", () => {
+  // The Expense Tracker raises both severities: `assign_to_directory_checked`
+  // (Approver is assigned to "Finance", which groups[] does not declare) and
+  // `handle_used_nowhere` (reports:export). The info one is a note saying
+  // nothing is wrong, in the gate's own vocabulary — it is filtered out of the
+  // page while the rule itself still runs for the design agent.
+  it("keeps an info note off the page while the warnings stay", () => {
     expenseTracker();
 
-    // Finance is an org group this document does not declare: legal, and
-    // resolved against the directory at Build.
-    const note = screen.getByText(/is assigned to group "Finance"/i);
-    expect(note).toBeInTheDocument();
-    expect(note.closest("div")!.textContent).toMatch(/build gate resolves it/i);
+    expect(
+      screen.queryByTestId("finding-assign_to_directory_checked"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/is assigned to group "Finance"/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/build gate resolves it/i)).not.toBeInTheDocument();
+
+    expect(screen.getByTestId("finding-handle_used_nowhere")).toBeInTheDocument();
+  });
+
+  // The fact itself is not lost: the role card renders it from the LIVE
+  // directory, which is a better answer than the document could give.
+  it("still shows what became of that group, from the directory", () => {
+    expenseTracker({
+      live: live({
+        roles: [
+          liveRole("Employees"),
+          liveRole("Finance", { projects: 2, memberCount: 4 }),
+        ],
+      }),
+    });
+
+    expect(screen.getByText("Finance: Reused")).toBeInTheDocument();
+    expect(screen.getByText("· holds roles in 2 projects")).toBeInTheDocument();
   });
 
   // The page reports the document the toggle produced; it does not refuse the
@@ -872,22 +950,29 @@ describe("SecurityPanel — the rest of the page", () => {
     expect(screen.queryByText("New org groups")).not.toBeInTheDocument();
   });
 
-  it("warns once, however many roles, that the accounts are disposable", () => {
+  // It is how the platform works on every healthy project, so it is said once,
+  // quietly, under the Roles & users heading — not as a warning alert that
+  // would cry wolf on every project that has nothing wrong with it.
+  it("says once, however many roles, that the accounts are disposable", () => {
     setup({
       securityJson: design({
         roles: [role("Admin"), role("Viewer"), role("Auditor")],
       }),
     });
 
-    const warnings = screen.getAllByText(
+    const notes = screen.getAllByText(
       /Disposable accounts for agents, not for real people/i,
     );
-    expect(warnings).toHaveLength(1);
-    const body = warnings[0]!.parentElement!;
-    expect(body).toHaveTextContent(
+    expect(notes).toHaveLength(1);
+    const block = notes[0]!.parentElement!;
+    expect(block).toHaveTextContent(
       /passwords are shown on Deploy after Build publishes them/i,
     );
-    expect(body).not.toHaveTextContent(/roles gate ticket/i);
+    expect(block).toHaveTextContent(/never name a real person/i);
+    expect(block).not.toHaveTextContent(/roles gate ticket/i);
+    // Under the heading it belongs to, and not borrowing an alert's severity.
+    expect(block).toHaveTextContent(/Roles & users/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows what each screen takes to reach, including public and signed-in", () => {
@@ -903,7 +988,12 @@ describe("SecurityPanel — the rest of the page", () => {
 
     expect(screen.getByText("Orders")).toBeInTheDocument();
     expect(screen.getByText("Open to everyone, no sign-in")).toBeInTheDocument();
-    expect(screen.getByText("Any signed-in person")).toBeInTheDocument();
+    // "Any signed-in person" is also the matrix's first baseline label now, so
+    // this one is read off the screen row it belongs to.
+    const myAccount = screen.getByText("My account").closest("div")!;
+    expect(
+      within(myAccount).getByText("Any signed-in person"),
+    ).toBeInTheDocument();
   });
 
   it("omits the screens block for an API-only project", () => {

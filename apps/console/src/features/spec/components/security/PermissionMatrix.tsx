@@ -24,15 +24,16 @@
  * and the component that owns it; columns are the user-kind roles; a filled
  * mark is a grant.
  *
- * Three rows sit under the grid rather than in it, because they cross no
- * column: what any signed-in caller reaches without holding a handle, what is
- * open before sign-in, and which components provision no sign-in at all.
+ * Three rows sit at the foot of the grid under a "Reachable without a
+ * permission" sub-header, because they cross no column: what any signed-in
+ * person reaches without holding a handle, what is open before sign-in, and
+ * which components provision no sign-in at all. They are a ladder of
+ * decreasing protection and the labels are written to be read as one.
  *
- * The last two are adjacent and deliberately not merged. A public screen or
- * operation belongs to a component that DOES have sign-in and has chosen to
- * leave this one door open; a component with no sign-in dependency has no door
- * to close — a reader deciding whether this project exposes anything has to be
- * able to tell them apart.
+ * The last two are adjacent and deliberately not merged. "Open before sign-in"
+ * is a door deliberately left open in a component that DOES sign people in;
+ * "No sign-in at all" is a component with no door to close — a reader deciding
+ * whether this project exposes anything has to be able to tell them apart.
  *
  * Service-kind roles are not columns. A service principal holds an application
  * token and reaches no screen, so a column beside the roles a person holds
@@ -106,6 +107,15 @@ function ownershipWords(ownership: Ownership): string {
     : "any — every record of this resource";
 }
 
+/**
+ * The chip's label. The schema's words are `own` and `any`; a reader of this
+ * page has never seen them, so the chip carries the meaning and the tooltip
+ * above becomes the longer answer rather than the only one.
+ */
+function ownershipLabel(ownership: Ownership): string {
+  return ownership === "own" ? "own records" : "all records";
+}
+
 export function PermissionMatrix({
   matrix,
   baseline,
@@ -121,10 +131,14 @@ export function PermissionMatrix({
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
         Permissions
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <Typography variant="body2" color="text.secondary">
         Everything this project protects, and which role may do it. A role
         grants these by name and the API asks for them by name — nothing else is
         a permission.
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        Tick a cell to move a grant between roles. New permissions, roles or
+        screens come from chat.
       </Typography>
 
       <FindingLines findings={findings.document} />
@@ -154,24 +168,35 @@ export function PermissionMatrix({
                 span={span}
               />
             ))}
+            {/*
+              The sub-header stands even when the third row is omitted: the
+              first two always render, and a ladder of two still needs saying.
+            */}
+            <ListingTable.Row>
+              <ListingTable.Cell colSpan={span} sx={{ bgcolor: "action.hover" }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Reachable without a permission
+                </Typography>
+              </ListingTable.Cell>
+            </ListingTable.Row>
             <BaselineRow
-              label="any signed-in user"
+              label="Any signed-in person"
               entries={baseline.signedIn}
               span={span}
-              empty="Nothing is reachable on a token alone."
+              empty="Nothing — everything needs a permission."
             />
             <BaselineRow
-              label="public"
+              label="Open before sign-in"
               entries={baseline.open}
               span={span}
               empty="Nothing is open before sign-in."
             />
             {baseline.openComponents !== null && (
               <BaselineRow
-                label="open to everyone"
+                label="No sign-in at all"
                 entries={baseline.openComponents}
                 span={span}
-                empty="Every component in this project provisions sign-in."
+                empty="Every component signs people in."
               />
             )}
           </ListingTable.Body>
@@ -179,17 +204,6 @@ export function PermissionMatrix({
       </ListingTable.Container>
 
       <ServiceRoles columns={matrix.serviceColumns} />
-
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ display: "block", mt: 1.5 }}
-      >
-        Adding a resource, an action or a role, or changing what an operation
-        requires, is a design conversation — it touches the API contract and the
-        wireframes too. Ask in chat and the design agent edits them together. A
-        cell here only moves a grant between roles that already exist.
-      </Typography>
     </Box>
   );
 }
@@ -241,7 +255,11 @@ function ResourceGroup({
                   {row.handle}
                 </Typography>
                 <Tooltip title={ownershipWords(row.ownership)}>
-                  <Chip size="small" variant="outlined" label={row.ownership} />
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={ownershipLabel(row.ownership)}
+                  />
                 </Tooltip>
               </Stack>
               <FindingLines findings={rowFindings} dense />

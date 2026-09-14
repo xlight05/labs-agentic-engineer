@@ -18,7 +18,8 @@
 
 /**
  * The parts of the page the matrix does not draw: the org groups this project
- * introduces, the heading that opens the role cards, and what each wireframe
+ * introduces, the heading that opens the role cards — with the one thing a
+ * reader must not miss about the test accounts — and what each wireframe
  * screen takes to reach.
  *
  * The two document sections are here rather than in the matrix because neither
@@ -61,16 +62,37 @@ export function GroupsBlock({ doc }: { doc: SecurityDesign }) {
   );
 }
 
+/**
+ * The heading the role cards open under, and the standing fact about the test
+ * accounts that sits with them.
+ *
+ * The accounts note is NOT an alert. It is how the platform works on every
+ * healthy project, so a severity would cry wolf on all of them; what a reader
+ * must not miss is the last clause, and that gets its weight from being bold in
+ * quiet text rather than from borrowing a warning's colour.
+ */
 export function RolesIntro() {
   return (
     <Box>
       <Typography variant="h5" sx={{ mb: 0.5 }}>
         Roles &amp; users
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
         These roles are created on the platform identity provider when you
         click Build — the same directory every project shares, so a role
         another project already uses is reused rather than duplicated.
+      </Typography>
+      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+        Disposable accounts for agents, not for real people
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Each role gets a test user so the validation agent can sign in and check
+        what that role can actually do. Usernames live here; passwords are shown
+        on Deploy after Build publishes them —{" "}
+        <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>
+          never name a real person
+        </Box>
+        .
       </Typography>
     </Box>
   );
