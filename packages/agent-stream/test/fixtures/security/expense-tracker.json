@@ -42,12 +42,6 @@
       "assignableBy": ["Approver"]
     }
   ],
-  "screens": [
-    { "component": "expense-webapp", "screen": "My Claims", "requires": "claims:read" },
-    { "component": "expense-webapp", "screen": "Submit Claim", "requires": "claims:submit" },
-    { "component": "expense-webapp", "screen": "Approvals", "requires": "claims:approve" },
-    { "component": "expense-webapp", "screen": "Reports", "requires": "reports:read" }
-  ],
   "testUsers": [
     { "username": "test-employee", "roles": ["Employee"] },
     { "username": "test-approver", "roles": ["Approver"] }

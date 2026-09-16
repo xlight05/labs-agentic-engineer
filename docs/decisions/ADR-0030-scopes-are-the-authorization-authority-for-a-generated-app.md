@@ -6,7 +6,10 @@ operation reaches is its path; `ownership` and the `read-all` widening idiom are
 gone) · **point 5 superseded** by
 [ADR-0032](ADR-0032-the-gateway-assertion-replaces-the-service-scope-recheck.md)
 on 2026-09-16 (the service verifies the gateway's signed assertion and holds no
-scope table). Every other point stands.
+scope table) · **point 1 amended** by
+[ADR-0033](ADR-0033-screen-gates-derive-from-operations.md) on 2026-09-16
+(`security.json` no longer says which operation a screen reaches; a screen's
+gate is the scope of the operation it loads). Every other point stands.
 **Supersedes the role half of:** [ADR-0022](ADR-0022-roles-and-test-users-are-shared-directory-objects.md),
 whose group and test-account model stands unchanged.
 

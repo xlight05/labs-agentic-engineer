@@ -42,18 +42,21 @@ over the issue text when the two differ.
   `thunder-authentication`'s `authz` asset, and their absence is a defect even
   though no wireframe names them.
 
-  Gate each screen on the handle `specs/design/security.json` gives it in
-  `screens[].requires`, through `thunder-authentication`'s `authz` assets —
-  copied verbatim, never re-implemented: `<RequireScope scope="…" />` around the
-  route and `<Can scope="…">` around the nav item that reaches it, with the
-  scope read from the generated `SCREENS` table rather than typed into JSX.
-  `requires: null` is any signed-in user; `requires: "public"` is reachable
-  before sign-in. Treat all of it as **presentation only** — the backend
-  enforces the same handle and answers 403. A user who holds scopes but opens a
-  gated screen by URL sees `Forbidden` **inside** the shell, rail intact; a user
-  who can reach nothing at all sees `NoAccess` **instead of** the shell. Never
-  read a groups claim, and never fall back to a default role. A component with
-  no auth dependency has no roles: build the screen as drawn.
+  Gate each screen on the **operation it loads** — the call whose answer the
+  screen renders on open — through `thunder-authentication`'s `authz` assets,
+  copied verbatim and never re-implemented: name the operation once in
+  `src/authz/screens.ts` (`loads: "GET /me/claims"`), then
+  `<RequireOperation op={…} />` around the route and `<Can op={…}>` around the
+  nav item that reaches it, both reading the generated operations table rather
+  than a handle typed into JSX. A screen with no load call is any signed-in
+  user's (`loads: null`); a screen in a flow with no `role` line is public and
+  is routed above the sign-in guard. Treat all of it as **presentation only** —
+  the gateway enforces the operation's scope and answers 401 whatever the
+  reason. A user who holds scopes but opens a gated screen by URL sees
+  `Forbidden` **inside** the shell, rail intact; a user who can reach nothing
+  at all sees `NoAccess` **instead of** the shell. Never read a groups claim,
+  and never fall back to a default role. A component with no auth dependency
+  has no roles: build the screen as drawn.
 
   The screen name `security.json` uses is the one a person reads (`"My Claims"`);
   the DSL cannot carry a space and spells it `MyClaims`. The two are matched

@@ -32,8 +32,8 @@
  *
  *  1. the Zod object shape — publishable as JSON Schema, so the Go gate gets it
  *     for free;
- *  2. Zod refinements on leaf strings (handle spelling, the `screens[].requires`
- *     literal). These are deliberately NOT `z.string().regex()`: the Go
+ *  2. Zod refinements on leaf strings (handle spelling). These are
+ *     deliberately NOT `z.string().regex()`: the Go
  *     interpreter (`internal/platform/jsonschema`) does not implement `pattern`
  *     and IGNORES what it does not implement, so emitting one would leave the
  *     platform's gate silently validating less than the agent's. Expressed as
@@ -45,9 +45,12 @@
  *
  * **v1 and v2 are not accepted.** A stale document fails with one message
  * naming what its version got wrong, rather than a Zod dump about a `const`
- * mismatch plus unknown keys. v2's one difference is `actions[].ownership`:
- * v3 has no row axis in this file, because which rows an operation reaches is
- * its path in `openapi.yaml` (ADR-0031).
+ * mismatch plus unknown keys. v2's differences are `actions[].ownership` and
+ * `screens[]`: v3 has no row axis in this file, because which rows an operation
+ * reaches is its path in `openapi.yaml` (ADR-0031), and no screen table,
+ * because a screen's gate is the scope of the operation that loads it
+ * (ADR-0033). `strictObject` is what refuses a v3 document that still carries
+ * `screens` — Zod names the unrecognized key, which is the whole answer.
  */
 
 import { z } from "zod";
@@ -57,7 +60,6 @@ import type {
   Action,
   Group,
   Role,
-  Screen,
   TestUser,
 } from "./contracts/security-design.js";
 import type { Equal } from "./type-equal.js";
@@ -80,9 +82,6 @@ export const TEST_USERNAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
  * space-separated claim has no room for a quoting convention.
  */
 export const HANDLE_SEGMENT_RE = /^[a-z][a-z0-9-]*$/;
-
-/** `screens[].requires` for a screen shown before sign-in. */
-export const PUBLIC_SCREEN = "public";
 
 /** True when `value` is a full `<resource>:<action>` catalog handle. */
 export function isHandle(value: string): boolean {
@@ -135,18 +134,6 @@ const roleSchema = z.strictObject({
   kind: z.enum(["user", "service"]).optional(),
 });
 
-const screenSchema = z.strictObject({
-  component: z.string().min(1),
-  screen: z.string().min(1),
-  requires: z
-    .string()
-    .min(1)
-    .refine((v) => v === PUBLIC_SCREEN || isHandle(v), {
-      message: `must be one catalog handle, null for any signed-in user, or the literal "${PUBLIC_SCREEN}"`,
-    })
-    .nullable(),
-});
-
 const testUserSchema = z.strictObject({
   username: z.string().min(1),
   roles: z.array(z.string().min(1)).min(1),
@@ -157,7 +144,6 @@ export const securityDesignSchema = z.strictObject({
   permissions: z.array(permissionSchema).min(1),
   groups: z.array(groupSchema),
   roles: z.array(roleSchema).min(1),
-  screens: z.array(screenSchema),
   testUsers: z.array(testUserSchema),
 });
 
@@ -167,14 +153,12 @@ const _driftPermission: Equal<z.infer<typeof permissionSchema>, Permission> = tr
 const _driftAction: Equal<z.infer<typeof actionSchema>, Action> = true;
 const _driftGroup: Equal<z.infer<typeof groupSchema>, Group> = true;
 const _driftRole: Equal<z.infer<typeof roleSchema>, Role> = true;
-const _driftScreen: Equal<z.infer<typeof screenSchema>, Screen> = true;
 const _driftTestUser: Equal<z.infer<typeof testUserSchema>, TestUser> = true;
 void _driftSecurity;
 void _driftPermission;
 void _driftAction;
 void _driftGroup;
 void _driftRole;
-void _driftScreen;
 void _driftTestUser;
 
 /** Matches the one authored security document. */
@@ -251,7 +235,6 @@ function v1Refusal(parsed: unknown): string | null {
 export {
   checkSecurityReferences,
   securityReferenceFindings,
-  normalizeScreenName,
 } from "./security-design-references.js";
 export type {
   SecurityReferenceFinding,

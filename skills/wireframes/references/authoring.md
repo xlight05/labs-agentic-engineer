@@ -125,13 +125,18 @@ Rules of thumb:
   screen itself, not spelled out in a caption.
 - A screen that is genuinely identical for everyone (a public landing page, a
   generic detail page) stays single — don't fork it just to have a matching set.
-- **Every screen you draw needs a `screens[]` row in `security.json`.** That
-  file is written before this one, so a screen you add here is one it does not
-  have — and a screen missing from `screens[]` is reachable by any signed-in
-  person, which is never what a role-split wireframe means. When you finish the
-  DSL, re-emit `security.json` with a row for every screen in it. The gate
-  refuses the document that is short one, naming every screen it missed, so
-  leaving it is not an option — only a later round trip.
+- **Nothing about a screen's permission is written anywhere.** A screen is
+  reachable for whoever may call the operation it loads, and that operation's
+  one handle is already in `openapi.yaml`; the coding agent binds each screen
+  to its load operation, and the walk proves each role reaches its flow's
+  entry screen as that role. What this file decides is the **role split**:
+  which role's flow walks which screens. A flow with a `role` line is that
+  role's journey; **a flow with no `role` line is the public journey**, and
+  its screens are the ones a visitor sees before sign-in — write one only for
+  a journey the PRD genuinely gives to a visitor (a checkout, a public
+  catalogue), never as a default. When you finish the DSL, `security-design`
+  re-checks each role's `grants` against the operations the screens in its flow
+  load.
 
 ## Proven screen anatomies
 

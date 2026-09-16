@@ -100,7 +100,6 @@ export type {
   Enrolment,
   RoleKind,
   Role,
-  Screen,
   TestUser,
 } from "./contracts/security-design.js";
 export type {
@@ -186,7 +185,6 @@ export {
   SECURITY_DESIGN_JSON_RE,
   TEST_USERNAME_RE,
   HANDLE_SEGMENT_RE,
-  PUBLIC_SCREEN,
   isHandle,
 } from "./security-design-schema.js";
 export type { SecurityDesignProblem } from "./security-design-schema.js";
@@ -198,7 +196,6 @@ export {
 export {
   checkSecurityReferences,
   securityReferenceFindings,
-  normalizeScreenName,
 } from "./security-design-references.js";
 export type {
   SecurityReferenceFinding,

@@ -29,7 +29,7 @@
 
 import { http, HttpResponse, type RequestHandler } from "msw";
 import { setupWorker } from "msw/browser";
-import { gatewayHandlers } from "./gateway";
+import { gatewayHandlers } from "./authz/gateway";
 import { handlers } from "./handlers";
 
 // Closes the API surface, and it has to be closed explicitly: MSW passes an

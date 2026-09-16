@@ -106,9 +106,9 @@ export function RoleCard({
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
         {/*
           A card title, deliberately NOT a heading element. `subtitle1` maps to
-          `<h6>` by default, which is the level the three sections use — so a
-          role would have announced itself as a peer of Permissions and Screens
-          rather than as one item inside a section.
+          `<h6>` by default, which is the level the page's sections use — so a
+          role would have announced itself as a peer of Permissions rather than
+          as one item inside a section.
         */}
         <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600 }}>
           {role.name}

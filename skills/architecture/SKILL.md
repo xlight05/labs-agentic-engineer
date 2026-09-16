@@ -53,12 +53,15 @@ Never substitute a design system the organization defaults do not name.
 **Pin the design system; do not consult it.** A design system is built against,
 not designed with — it is the coding run's to load, and its theming is a settled
 organization decision that no design-time question reopens. Never ask the user
-about colors, themes, or look and feel. Add `"api-management"` to any service
-that sits behind the gateway, and `"thunder-authentication"` to **both** sides
-of sign-in — the SPA *and* every
-protected backend it calls, since that skill owns how each resolves the caller's
-role. It is a JSON key on the component's design object, so include it when you
-write that `design.json` (addFile/editFile) — `design.json` is its only home.
+about colors, themes, or look and feel. **Pin the auth skills the same way,
+never leave them to a description:** `"thunder-authentication"` on **both**
+sides of sign-in — every component that declares the `thunder-app` dependency,
+the SPA *and* each protected backend it calls — and `"api-management"` on every
+service that sits behind the gateway. The first owns the SPA's sign-in, its
+screen gates and the backend's verification of the gateway's assertion; the
+second owns the gateway's contract. It is a JSON key on the component's design
+object, so include it when you write that `design.json` (addFile/editFile) —
+`design.json` is its only home.
 Each component carries only the skills its own build needs.
 
 Writing the whole enriched file yourself (removeFile + addFile with every

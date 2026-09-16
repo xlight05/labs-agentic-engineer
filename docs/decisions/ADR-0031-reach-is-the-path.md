@@ -1,6 +1,10 @@
 # ADR-0031 — Which rows an operation reaches is its path
 
-**Status:** Accepted · 2026-09-16
+**Status:** Accepted · 2026-09-16 · **point 6's screen rule superseded** by
+[ADR-0033](ADR-0033-screen-gates-derive-from-operations.md) the same day
+(`security.json` carries no `screens[]`; a screen's gate is the scope of the
+operation it loads, and no design gate compares screens against grants).
+Version 3 stays version 3, redefined: no `ownership`, no `screens[]`.
 **Supersedes point 3 of:** [ADR-0030](ADR-0030-scopes-are-the-authorization-authority-for-a-generated-app.md)
 ("the all handle widens the rows, it never replaces the operation"). Every
 other point of ADR-0030 stands.

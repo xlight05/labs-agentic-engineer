@@ -16,36 +16,27 @@
  * under the License.
  */
 
-// Copied VERBATIM to <app-path>/src/authz-core.ts.
+// Copied VERBATIM, with the rest of app/, to <app-path>/src/authz/core.ts.
 //
-// The pure half of authorization: scope parsing, the screen gate, the role
+// The pure half of authorization: scope parsing, the operation gate, the role
 // projection, token expiry and the one rule that decides what an unauthorized
 // answer means. No React, no `window`, no session, no import of ANY other
-// module in the app — not even ./scopes.gen, which is why every function that
+// module in the app — not even ./roles.gen, which is why every function that
 // needs the generated tables takes them as an argument.
 //
 // WHY THIS FILE EXISTS AT ALL. src/env.ts throws at module load when
-// `window._env_` is absent and src/auth.ts constructs a UserManager at module
-// load. Anything that imports src/auth.ts therefore drags a browser into the
-// import graph and cannot be loaded by a unit test in a plain node
-// environment. Keeping the rules here — and only the wiring in authz.tsx,
-// auth.ts and api-client.ts — is what makes them testable with no DOM, no jsdom
-// and no stub of the IdP. src/authz.tsx re-exports what callers need, so the
-// module surface the platform's skills target is unchanged.
+// `window._env_` is absent and src/authz/session.ts constructs a UserManager at
+// module load. Anything that imports session.ts therefore drags a browser into
+// the import graph and cannot be loaded by a unit test in a plain node
+// environment. Keeping the rules here — and only the wiring in gates.tsx,
+// session.ts and client.ts — is what makes them testable with no DOM, no jsdom
+// and no stub of the IdP. src/authz/gates.tsx re-exports what callers need, so
+// the module surface the platform's skills target is unchanged.
 //
 // Scope comparison is a WHOLE-STRING match, everywhere, deliberately. A token
 // that carries `claims:read-all` does NOT satisfy `claims:read`: the gateway
 // does not treat one as a superset of the other, and neither does the service
 // middleware, so neither may the SPA. A role that needs both holds both.
-
-/** `screens[].requires` for a screen shown BEFORE sign-in. */
-export const PUBLIC_SCREEN = "public";
-
-/**
- * What `security.json` puts on a screen: one catalog handle, `null` for "any
- * signed-in caller", or the literal `"public"`.
- */
-export type ScreenRequirement = string | null;
 
 /**
  * Split an access token's `scope` claim into the handles it carries.
@@ -69,19 +60,35 @@ export function granted(scopes: ReadonlySet<string>, scope: string): boolean {
 }
 
 /**
- * Can a caller holding `scopes` open a screen declared with `requires`?
- *
- *   null       any signed-in caller — the caller already has a session here
- *   "public"   before sign-in, so always
- *   a handle   exactly that handle, whole-string
+ * What an API operation demands of its caller, as
+ * `src/authz/operations.gen.ts` projects it out of `openapi.yaml`. Restated
+ * here structurally, with `scope` widened to `string`, so this module keeps
+ * importing nothing (see the header).
  */
-export function canReach(
-  requires: ScreenRequirement,
+export type OperationRequirement =
+  | { kind: "public" }
+  | { kind: "signedIn" }
+  | { kind: "scope"; scope: string };
+
+/**
+ * May a caller holding `scopes` (signed in or not) call an operation with this
+ * requirement?
+ *
+ *   public    served to anyone, session or not
+ *   signedIn  any caller with a session, whatever they hold
+ *   scope     exactly that handle, whole-string
+ *
+ * This is also the SCREEN gate: a screen is reachable when its load operation
+ * is callable. There is no second rule and no screen table anywhere.
+ */
+export function canCall(
+  requirement: OperationRequirement,
   scopes: ReadonlySet<string>,
+  signedIn: boolean,
 ): boolean {
-  if (requires === null) return true;
-  if (requires === PUBLIC_SCREEN) return true;
-  return granted(scopes, requires);
+  if (requirement.kind === "public") return true;
+  if (requirement.kind === "signedIn") return signedIn;
+  return granted(scopes, requirement.scope);
 }
 
 /**
@@ -89,7 +96,7 @@ export function canReach(
  * holding two of an Approver's five handles does not make anybody an Approver.
  *
  * `roleGrants` is the generated `ROLE_GRANTS` table. Passed in rather than
- * imported so this module stays free of ./scopes.gen (see the header).
+ * imported so this module stays free of ./roles.gen (see the header).
  */
 export function heldRoles<R extends string, S extends string>(
   scopes: ReadonlySet<string>,
@@ -180,7 +187,7 @@ export interface UnauthorizedHandlerDeps {
 }
 
 /**
- * Builds the response hook `src/api-client.ts` runs on every answer.
+ * Builds the response hook `src/authz/client.ts` runs on every answer.
  *
  * `signIn` is guarded to ONE call per page load. A burst of parallel requests
  * from one screen answers 401 several times over; without the guard each answer
@@ -208,7 +215,7 @@ export function createUnauthorizedHandler(deps: UnauthorizedHandlerDeps): (
       signInStarted = true;
       void Promise.resolve(deps.signIn()).catch((err) => {
         signInStarted = false;
-        console.error("api-client: sign-in failed", err);
+        console.error("authz/client: sign-in failed", err);
       });
     }
     return outcome;

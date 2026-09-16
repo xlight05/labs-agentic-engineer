@@ -460,37 +460,27 @@ export function rolesGranting(doc: SecurityDesign, handle: string): string[] {
  * The sibling spec files the referential cross-checks read for THIS document.
  *
  * `securityReferenceFindings` needs a `{ read(path) }` over the rest of the
- * design, and which files that is depends on the document: `design.cell` always,
- * the OpenAPI contract of every component that OWNS a resource (that is the
- * spec a catalog handle can be judged against), and the wireframes of every
- * component a screen names. Deriving the list here rather than inside the hook
- * keeps "which files does this document depend on?" a question answerable
- * without React, and testable.
+ * design, and which files that is depends on the document: `design.cell`
+ * always, and the OpenAPI contract of every component that OWNS a resource —
+ * that is the spec a catalog handle can be judged against, because a handle is
+ * used by being named on an operation. No wireframe is read: a screen's gate is
+ * the scope of the operation the screen loads (ADR-0033), so nothing about
+ * screens is authored in this document or checked against the DSL. Deriving the
+ * list here rather than inside the hook keeps "which files does this document
+ * depend on?" a question answerable without React, and testable.
  *
  * Both OpenAPI spellings are listed because the rules try `.yaml` then `.yml`;
  * a caller resolves whichever exists and answers `undefined` for the other.
  * Paths come back deduplicated, in a stable order.
  *
- * `known` is every spec path the project has anywhere — the committed tree plus
- * the room's live files. It is what makes EVERY wireframe readable rather than
- * only the ones this document already mentions, and the ungated-screen rule
- * needs exactly that: a web application whose screens are all ungated names
- * itself nowhere in `screens[]`, so a path list derived from the document alone
- * would skip the one component the rule exists to catch. The PRD rides along
- * for the same reason — the page shows the actors a reader compares the roles
- * against, and no field of this document names that file.
+ * The PRD rides along although no field of this document names it: the page
+ * shows the actors a reader compares the roles against.
  */
-export function referencePaths(doc: SecurityDesign, known: readonly string[] = []): string[] {
+export function referencePaths(doc: SecurityDesign): string[] {
   const paths = new Set<string>([DESIGN_CELL_PATH, PRD_PATH]);
   for (const component of new Set(doc.permissions.map((p) => p.component))) {
     paths.add(`${componentDir(component)}/openapi.yaml`);
     paths.add(`${componentDir(component)}/openapi.yml`);
-  }
-  for (const component of new Set(doc.screens.map((s) => s.component))) {
-    paths.add(`${componentDir(component)}/wireframes.dsl`);
-  }
-  for (const path of known) {
-    if (path.endsWith("/wireframes.dsl")) paths.add(path);
   }
   return [...paths];
 }

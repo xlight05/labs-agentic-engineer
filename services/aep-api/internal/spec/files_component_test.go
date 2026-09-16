@@ -550,8 +550,8 @@ func TestApply_SchemaViolationWarning_NonBlocking(t *testing.T) {
 // The security design's COVERAGE notices ride the same soft-warning channel as
 // every other non-blocking note (plan §5 decision 3). They are the one class
 // that cannot be computed from the written file alone — a handle is "used
-// nowhere" only relative to the component specs and the screens — so the apply
-// path assembles the bundle the batch lands and judges that.
+// nowhere" only relative to the component specs — so the apply path assembles
+// the bundle the batch lands and judges that.
 func TestApply_SecurityDesignCoverageWarnings(t *testing.T) {
 	fixture := func(rel string) string {
 		t.Helper()
@@ -563,14 +563,13 @@ func TestApply_SecurityDesignCoverageWarnings(t *testing.T) {
 	}
 	catalog := fixture("expense-tracker.json")
 	r := newFilesRig(t, map[string]string{
-		"specs/design/security.json":                            catalog,
-		"specs/design/design.cell":                              fixture("expense-tracker/design.cell"),
-		"specs/design/components/expense-api/openapi.yaml":      fixture("expense-tracker/expense-api.openapi.yaml"),
-		"specs/design/components/expense-webapp/wireframes.dsl": fixture("expense-tracker/expense-webapp.wireframes.dsl"),
+		"specs/design/security.json":                       catalog,
+		"specs/design/design.cell":                         fixture("expense-tracker/design.cell"),
+		"specs/design/components/expense-api/openapi.yaml": fixture("expense-tracker/expense-api.openapi.yaml"),
 	})
 
-	// One more action nobody grants, no screen requires and no operation
-	// guards: the shape of a handle renamed in the spec but not in the catalog.
+	// One more action nobody grants and no operation guards: the shape of a
+	// handle renamed in the spec but not in the catalog.
 	withOrphan := strings.Replace(catalog,
 		`{ "handle": "submit", "description": "Create and send a claim" }`,
 		`{ "handle": "submit", "description": "Create and send a claim" },

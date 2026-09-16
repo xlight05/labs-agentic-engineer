@@ -245,7 +245,7 @@ func authService(id, stories string) string {
 
 // rolesDoc is a security.json v3 for the lunch design: one resource owned by
 // lunch-api, one role that grants from it and is assigned to an org group, one
-// screen the wireframe declares, one test user.
+// test user.
 func rolesDoc(stories string) string {
 	return `{"version":3,` +
 		`"permissions":[{"resource":"rounds","component":"lunch-api","actions":[` +
@@ -253,7 +253,6 @@ func rolesDoc(stories string) string {
 		`"groups":[{"name":"Lunch Members","description":"Everyone who orders lunch"}],` +
 		`"roles":[{"name":"Member","description":"Joins today's order.","stories":[` + stories + `],` +
 		`"grants":["rounds:read","rounds:join"],"assignTo":["Lunch Members"]}],` +
-		`"screens":[{"component":"lunch-web","screen":"home","requires":"rounds:read"}],` +
 		`"testUsers":[{"username":"test-member","roles":["Member"]}]}`
 }
 
@@ -273,8 +272,8 @@ paths: {}
 `
 
 // lunchAPISpec is lunch-api's openapi.yaml with real operations, so the rules
-// that read a component spec — the screen→operation cross-check and the two
-// coverage warnings — have something to read.
+// that read a component spec — the two coverage warnings — have something to
+// read.
 const lunchAPISpec = `openapi: 3.0.3
 components:
   securitySchemes:
@@ -356,22 +355,11 @@ func TestBuildGate_RolesDocumentBreakingAReferentialRule(t *testing.T) {
 }
 
 // The rules that need MORE than security.json run here and nowhere else: only
-// the gate holds the cell, the wireframes and every component spec at once.
+// the gate holds the cell and every component spec at once.
 func TestBuildGate_RulesThatNeedTheWholeBundle(t *testing.T) {
 	cases := map[string]func(files map[string]string){
-		"a screen the wireframe does not declare": func(files map[string]string) {
-			files["security.json"] = strings.Replace(rolesDoc("1"), `"screen":"home"`, `"screen":"Archive"`, 1)
-		},
 		"a resource owned by a component the cell does not declare": func(files map[string]string) {
 			files["security.json"] = strings.Replace(rolesDoc("1"), `"component":"lunch-api"`, `"component":"ghost-api"`, 1)
-		},
-		// Δ P6 §5: the screen is gated on rounds:join, the list it renders is
-		// GET /rounds (rounds:read), and the role grants only the first — a live
-		// 401 the SPA cannot tell from an expired session.
-		"a role reaching a screen whose operation it cannot call": func(files map[string]string) {
-			files["components/lunch-api/openapi.yaml"] = lunchAPISpec
-			doc := strings.Replace(rolesDoc("1"), `"grants":["rounds:read","rounds:join"]`, `"grants":["rounds:join"]`, 1)
-			files["security.json"] = strings.Replace(doc, `"requires":"rounds:read"`, `"requires":"rounds:join"`, 1)
 		},
 	}
 	for name, edit := range cases {
@@ -467,51 +455,5 @@ func TestBuildGate_RolesDocumentValidatedEvenWithoutSignIn(t *testing.T) {
 	errs := gateErrors(t, files)
 	if !slices.Contains(codesOf(errs), codeUnknownRoleStory) {
 		t.Fatalf("want %s, got %+v", codeUnknownRoleStory, errs)
-	}
-}
-
-// TestBuildGate_ScreenWithoutReadRefusesTheTag — the reviewer's live-proof
-// question, pinned as a test.
-//
-// A role that reaches a screen must be able to READ the resource the screen
-// renders — hold at least one handle guarding a safe operation on it. A role
-// that holds none reaches a screen it cannot load: the app looks provisioned
-// and 401s in the user's face, which the SPA cannot tell from an expired
-// session (ADR-0030 §6, ADR-0031).
-//
-// The apply path reports it as a WARNING, which is that path's contract (§8's
-// soft tier: a write is never refused). This is the gate that must refuse, and
-// the test exists because "it warned at apply" was read once as "a tag could be
-// cut".
-func TestBuildGate_ScreenWithoutReadRefusesTheTag(t *testing.T) {
-	files := signInDesignFiles()
-	files["components/lunch-api/openapi.yaml"] = lunchAPISpec
-	files["security.json"] = `{"version":3,` +
-		`"permissions":[{"resource":"rounds","component":"lunch-api","actions":[` +
-		`{"handle":"read"},{"handle":"join"}]}],` +
-		`"groups":[{"name":"Lunch Members","description":"Everyone who orders lunch"}],` +
-		`"roles":[` +
-		`{"name":"Member","description":"Joins today's order.","stories":[1],` +
-		`"grants":["rounds:read","rounds:join"],"assignTo":["Lunch Members"]},` +
-		// The defect: reaches the screen on rounds:join, can call no read of rounds.
-		`{"name":"Joiner","description":"Only joins.","stories":[2],` +
-		`"grants":["rounds:join"],"assignTo":["Lunch Members"]}],` +
-		`"screens":[{"component":"lunch-web","screen":"home","requires":"rounds:join"}],` +
-		`"testUsers":[{"username":"test-member","roles":["Member"]},` +
-		`{"username":"test-joiner","roles":["Joiner"]}]}`
-
-	errs := gateErrors(t, files)
-	if !slices.Contains(codesOf(errs), codeInvalidRolesDocument) {
-		t.Fatalf("want %s — a tag must not be cut over this document, got %+v",
-			codeInvalidRolesDocument, errs)
-	}
-	var carried bool
-	for _, e := range errs {
-		if strings.Contains(e.Message, `"Joiner"`) && strings.Contains(e.Message, `"rounds:read"`) {
-			carried = true
-		}
-	}
-	if !carried {
-		t.Fatalf("the refusal does not name the role and the read it lacks: %+v", errs)
 	}
 }

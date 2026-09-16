@@ -25,7 +25,7 @@
 //   /env-config.js          window._env_ AND the gateway's operation table:
 //                           both must be set BEFORE the bundle runs, and the
 //                           worker starts inside it
-//   src/auth.ts             a module swap, not a request
+//   src/authz/session.ts    a module swap, not a request
 //   /mockServiceWorker.js   served out of node_modules, so the worker script
 //                           never enters public/ and never reaches dist/
 //   the operation table     read out of the sibling's openapi.yaml, which is a
@@ -39,8 +39,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { mockEnv } from "./env";
-import { projectOperations } from "./contract";
-import type { MockOperation, MockOperationTable } from "./gateway";
+import { projectOperations } from "./authz/contract";
+import type { MockOperation, MockOperationTable } from "./authz/gateway";
 
 export interface MockModeOptions {
   /**
@@ -81,14 +81,17 @@ export function mockMode(options: MockModeOptions = {}): Plugin {
       root = config.root;
     },
 
-    // Sign-in without an IDP: every import that resolves to src/auth.ts gets
-    // mock/auth.ts instead, so no module under src/ knows mock mode exists.
+    // Sign-in without an IDP: every import that resolves to src/authz/session.ts
+    // gets mock/authz/session.ts instead, so no module under src/ knows mock
+    // mode exists.
     async resolveId(source, importer, options) {
       if (!importer || importer.includes(`${path.sep}mock${path.sep}`)) return null;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved) return null;
       const file = resolved.id.split("?")[0];
-      return file === path.join(root, "src", "auth.ts") ? path.join(root, "mock", "auth.ts") : null;
+      return file === path.join(root, "src", "authz", "session.ts")
+        ? path.join(root, "mock", "authz", "session.ts")
+        : null;
     },
 
     configureServer(server) {
@@ -144,7 +147,7 @@ function findContracts(dir: string, depth: number, suffix: string): string[] {
 }
 
 /**
- * The operation table mock/gateway.ts enforces, read off the project's own
+ * The operation table mock/authz/gateway.ts enforces, read off the project's own
  * contracts.
  *
  * Returns null when nothing declares an `oauth2` scheme — an app with no

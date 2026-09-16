@@ -112,7 +112,6 @@ func buildRolesJSON(t *testing.T, roles []string, declareGroups bool, users ...u
 		}},
 		"groups":    groupEntries,
 		"roles":     roleEntries,
-		"screens":   []any{},
 		"testUsers": userEntries,
 	}
 	raw, err := json.Marshal(doc)
@@ -221,7 +220,7 @@ func TestEnsureForTagIsNotDeclaredWhenTheDesignCarriesNoRolesDocument(t *testing
 func TestEnsureForTagReportsDeclaredWhenTheRolesDocumentDoesNotParse(t *testing.T) {
 	for name, doc := range map[string]string{
 		"not JSON":         `{`,
-		"schema violation": `{"version": 3, "permissions": [], "groups": [], "roles": [], "screens": [], "testUsers": []}`,
+		"schema violation": `{"version": 3, "permissions": [], "groups": [], "roles": [], "testUsers": []}`,
 		"a v1 document": rolesJSONRaw(`{"version":1,"coldStartRole":null,"publicComponents":[],` +
 			`"roles":[{"name":"Viewer","description":"d","stories":[1],"grantedBy":"g",` +
 			`"permissions":[{"component":"api","actions":["read"]}]}],"testUsers":[],` +
@@ -229,7 +228,7 @@ func TestEnsureForTagReportsDeclaredWhenTheRolesDocumentDoesNotParse(t *testing.
 		"a grant naming no catalog handle": rolesJSONRaw(`{"version":3,` +
 			`"permissions":[{"resource":"claims","component":"api","actions":[{"handle":"read"}]}],` +
 			`"groups":[],"roles":[{"name":"Viewer","description":"d","stories":[1],` +
-			`"grants":["claims:audit"],"assignTo":["Viewers"]}],"screens":[],"testUsers":[]}`),
+			`"grants":["claims:audit"],"assignTo":["Viewers"]}],"testUsers":[]}`),
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(doc)
@@ -1908,7 +1907,6 @@ func dropRoleFromExpenseTracker(t *testing.T) string {
 	}
 	doc["roles"] = []any{doc["roles"].([]any)[0]}
 	doc["testUsers"] = []any{doc["testUsers"].([]any)[0]}
-	doc["screens"] = []any{doc["screens"].([]any)[0], doc["screens"].([]any)[1]}
 	raw, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

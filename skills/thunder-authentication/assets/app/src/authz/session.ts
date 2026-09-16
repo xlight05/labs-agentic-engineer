@@ -16,7 +16,8 @@
  * under the License.
  */
 
-// Copied to <app-path>/src/auth.ts. Change ONLY the `USER_AUTH_` prefix, to
+// Copied, with the rest of app/, to <app-path>/src/authz/session.ts. Change
+// ONLY the `USER_AUTH_` prefix, to
 // whatever your component's identity dependency is named in design.json
 // (UPPER_SNAKE(depName)); everything else is verbatim.
 //
@@ -26,18 +27,18 @@
 //
 // `userManager` is NOT exported. Every other module reaches the session through
 // the functions below, and that is exactly what lets mock mode substitute this
-// whole module (mock/auth.ts) with nothing under src/ changing. A single
+// whole module (mock/authz/session.ts) with nothing under src/ changing. A single
 // `export const userManager` re-opens the library to the whole app and the
 // substitution stops being total.
 //
-// MODULE-LOAD SIDE EFFECTS, on purpose: ./env throws if the platform's
+// MODULE-LOAD SIDE EFFECTS, on purpose: ../env throws if the platform's
 // /env-config.js did not load, and the UserManager is constructed here. Nothing
 // that imports this file can be loaded in a node unit test. The rules that need
-// testing therefore live in ./authz-core, which imports nothing.
+// testing therefore live in ./core, which imports nothing.
 
 import { UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
-import { env } from "./env";
-import { tokenIsValid as expiryIsValid } from "./authz-core";
+import { env } from "../env";
+import { tokenIsValid as expiryIsValid } from "./core";
 
 // RFC 8707 resource indicator: the project's resource-server identifier. The
 // IdP mints an access token whose `aud` is this value and whose `scope` is
@@ -84,9 +85,9 @@ const RESOURCE_TOKEN_PARAMS = { resource: RESOURCE } as const;
  * and 60 is that same renew window: an `expires_at` that has only just passed
  * means a renew is in flight, not that the session is gone. Wider would keep
  * calling a dead session alive for longer; narrower would call a live one dead,
- * and that is the direction that loops (see ./authz-core#tokenIsValid).
+ * and that is the direction that loops (see ./core#tokenIsValid).
  *
- * NOT exported: mock/auth.ts substitutes this whole module, so every name that
+ * NOT exported: mock/authz/session.ts substitutes this whole module, so every name that
  * leaves it is a name the mock has to carry too.
  */
 const CLOCK_SKEW_SECONDS = 60;
@@ -163,12 +164,12 @@ export async function accessToken(): Promise<string | null> {
 /**
  * Is the session's own access token still alive? Reads the STORED user's
  * `expires_at` against the clock — no network, no renew, no sign-in, so
- * src/api-client.ts can call it on every response without recursing into the
+ * src/authz/client.ts can call it on every response without recursing into the
  * thing it is deciding about. Deliberately NOT `currentUser()`, which renews.
  *
  * This is the second half of the 401 rule: the gateway answers 401 for a
  * missing scope exactly as it does for a dead token, and this local value is
- * the only thing that tells the two apart. See ./authz-core#classifyApiFailure.
+ * the only thing that tells the two apart. See ./core#classifyApiFailure.
  */
 export async function tokenIsValid(): Promise<boolean> {
   const user = await userManager.getUser();

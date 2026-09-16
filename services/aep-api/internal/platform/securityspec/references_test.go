@@ -24,11 +24,10 @@ import (
 )
 
 // The rules that read sibling spec files. The three worked examples come with
-// the files their cross-checks need — a design.cell, the owning components'
-// openapi.yaml, the web apps' wireframes.dsl — copied from the agent's fixtures
-// so both gates judge the SAME bundle. All three must come out clean: a rule
-// that would refuse one of the design's own documents fails here rather than in
-// a live run.
+// the files their cross-checks need — a design.cell and the owning components'
+// openapi.yaml — copied from the agent's fixtures so both gates judge the SAME
+// bundle. All three must come out clean: a rule that would refuse one of the
+// design's own documents fails here rather than in a live run.
 
 // bundleOf folds one fixture directory into the paths the real spec tree uses.
 // On disk the files are flat (`expense-api.openapi.yaml`) so the directory
@@ -53,9 +52,6 @@ func bundleOf(t *testing.T, scenario string) DesignBundle {
 		case strings.HasSuffix(name, ".openapi.yaml"):
 			component := strings.TrimSuffix(name, ".openapi.yaml")
 			bundle["components/"+component+"/openapi.yaml"] = string(body)
-		case strings.HasSuffix(name, ".wireframes.dsl"):
-			component := strings.TrimSuffix(name, ".wireframes.dsl")
-			bundle["components/"+component+"/wireframes.dsl"] = string(body)
 		}
 	}
 	return bundle
@@ -98,52 +94,6 @@ func TestEveryDesignFixtureIsCleanAgainstItsOwnBundle(t *testing.T) {
 	}
 }
 
-// Δ P6 §5 — the rule the design's own example failed. `Approvals` is gated on
-// `claims:approve` and renders a list of claims; an Approver who can read no
-// claims at all reaches a screen that loads into a bare 401 the SPA cannot tell
-// from an expired session. The resource has two reads at two reaches, and the
-// refusal names both, leaving which one to the design.
-func TestScreenWithoutRead(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		roleNamed(t, m, "Approver")["grants"] = []any{"claims:approve", "claims:reject", "reports:read"}
-	})
-	f, ok := firstOfKind(found, MsgScreenWithoutRead)
-	if !ok {
-		t.Fatalf("want %s, got %+v", MsgScreenWithoutRead, found)
-	}
-	for _, want := range []string{"Approver", "Approvals", `"claims:read", "claims:read-all"`} {
-		if !strings.Contains(f.Message, want) {
-			t.Errorf("message %q does not name %q", f.Message, want)
-		}
-	}
-}
-
-// Holding ANY read of the resource satisfies the rule: an Approver who reads
-// every claim (GET /claims) but not their own (GET /me/claims) still renders
-// Approvals. Nothing implies anything, and nothing here picks the list.
-func TestAnyReadOfTheResourceSatisfiesTheScreen(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		roleNamed(t, m, "Approver")["grants"] = []any{"claims:read-all", "claims:approve", "claims:reject", "reports:read"}
-	})
-	for _, f := range found {
-		if f.Severity == SeverityError {
-			t.Fatalf("unexpected error: %s", f.Message)
-		}
-	}
-}
-
-// A service role holds an app principal's token and reaches no screen, so the
-// reachability loop must skip it — otherwise the Vendor Portal's nightly job
-// would be refused for not holding a screen's scope.
-func TestReachabilitySkipsServiceRoles(t *testing.T) {
-	found := findingsFor(t, "vendor", nil)
-	for _, f := range found {
-		if f.Key == MsgScreenWithoutRead {
-			t.Fatalf("a service role was judged against a screen: %s", f.Message)
-		}
-	}
-}
-
 func TestSiblingFileRules(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -159,22 +109,6 @@ func TestSiblingFileRules(t *testing.T) {
 			},
 			key: MsgResourceComponentUnknown,
 		},
-		{
-			name:     "a screen on a component the cell does not declare",
-			scenario: "expense-tracker",
-			edit: func(m map[string]any) {
-				m["screens"].([]any)[0].(map[string]any)["component"] = "ghost-webapp"
-			},
-			key: MsgScreenComponentUnknown,
-		},
-		{
-			name:     "a screen the wireframe does not declare",
-			scenario: "expense-tracker",
-			edit: func(m map[string]any) {
-				m["screens"].([]any)[0].(map[string]any)["screen"] = "Archive"
-			},
-			key: MsgScreenUnknown,
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -186,160 +120,11 @@ func TestSiblingFileRules(t *testing.T) {
 	}
 }
 
-// `"My Claims"` in the document and `screen MyClaims` in the wireframe are the
-// same screen; neither file format changes to make them look alike.
-func TestScreenNamesAreComparedNormalized(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		m["screens"].([]any)[0].(map[string]any)["screen"] = "my-claims!"
-	})
-	if f, ok := firstOfKind(found, MsgScreenUnknown); ok {
-		t.Fatalf("a differently punctuated spelling must still match: %s", f.Message)
-	}
-}
-
-// The wireframe grammar anchors the WHOLE line, so trailing junk is not a
-// declaration. A looser reading here would invent the screen `Approvals` out of
-// a line the compiler ignores, and the design would pass a rule the wireframe
-// cannot satisfy.
-func TestScreenDeclarationMustMatchTheWholeGrammar(t *testing.T) {
-	doc, err := Parse(fixture(t, "expense-tracker.json"))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	bundle := bundleOf(t, "expense-tracker")
-	dsl := bundle["components/expense-webapp/wireframes.dsl"]
-	if !strings.Contains(dsl, "screen Approvals \"Claims waiting on me\"") {
-		t.Fatal("fixture no longer declares Approvals — rewrite this case")
-	}
-	bundle["components/expense-webapp/wireframes.dsl"] = strings.Replace(dsl,
-		"screen Approvals \"Claims waiting on me\"", "screen Approvals bar baz", 1)
-
-	f, ok := firstOfKind(ReferenceFindings(doc, bundle), MsgScreenUnknown)
-	if !ok {
-		t.Fatalf("`screen Approvals bar baz` is not a declaration, so Approvals must be unknown")
-	}
-	if !strings.Contains(f.Message, "Approvals") {
-		t.Errorf("message %q does not name the screen", f.Message)
-	}
-}
-
-// The OTHER direction of the screens rule. A screen the wireframe draws with no
-// screens[] row is reachable by any signed-in person, and the document that
-// fails to say so looks complete — the live defect this rule exists for.
-func TestScreenDrawnButNotGated(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		kept := []any{}
-		for _, row := range m["screens"].([]any) {
-			if row.(map[string]any)["screen"] != "Approvals" {
-				kept = append(kept, row)
-			}
-		}
-		m["screens"] = kept
-	})
-	f, ok := firstOfKind(found, MsgScreenNotGated)
-	if !ok {
-		t.Fatalf("want %s, got %+v", MsgScreenNotGated, found)
-	}
-	for _, want := range []string{"expense-webapp", `"Approvals"`} {
-		if !strings.Contains(f.Message, want) {
-			t.Errorf("message %q does not name %q", f.Message, want)
-		}
-	}
-}
-
-// One finding per COMPONENT, not per screen: the agent's write gate hands the
-// model one sentence per round trip, so three missing screens are one fix.
-func TestEveryUngatedScreenOfAComponentIsOneFinding(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		kept := []any{}
-		for _, row := range m["screens"].([]any) {
-			if row.(map[string]any)["screen"] == "My Claims" {
-				kept = append(kept, row)
-			}
-		}
-		m["screens"] = kept
-	})
-	var gated []Finding
-	for _, f := range found {
-		if f.Key == MsgScreenNotGated {
-			gated = append(gated, f)
-		}
-	}
-	if len(gated) != 1 {
-		t.Fatalf("want exactly one %s, got %d: %+v", MsgScreenNotGated, len(gated), gated)
-	}
-	// Named in the order the wireframe draws them, so the author reads the list
-	// in the order they will fix it.
-	if want := `"SubmitClaim", "Approvals", "Reports"`; !strings.Contains(gated[0].Message, want) {
-		t.Errorf("message %q does not carry %q", gated[0].Message, want)
-	}
-}
-
-// The case a scan of screens[] can never reach: a web application that names
-// itself nowhere in the document, every screen it draws open. Found because the
-// component list comes from the CELL.
-func TestWebAppWithNoScreenRowsAtAllIsCaught(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		m["screens"] = []any{}
-	})
-	f, ok := firstOfKind(found, MsgScreenNotGated)
-	if !ok {
-		t.Fatalf("want %s, got %+v", MsgScreenNotGated, found)
-	}
-	if !strings.Contains(f.Message, "expense-webapp") {
-		t.Errorf("message %q does not name the component", f.Message)
-	}
-}
-
-// No wireframes.dsl, no ground truth — the rule is skipped like every other
-// sibling rule whose file the bundle does not hold.
-func TestUngatedScreensSkippedWithoutTheWireframe(t *testing.T) {
-	doc, err := Parse(mutate(t, "expense-tracker.json", func(m map[string]any) {
-		m["screens"] = []any{}
-	}))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	bundle := bundleOf(t, "expense-tracker")
-	delete(bundle, "components/expense-webapp/wireframes.dsl")
-	if f, ok := firstOfKind(ReferenceFindings(doc, bundle), MsgScreenNotGated); ok {
-		t.Fatalf("no wireframe means no rule, got: %s", f.Message)
-	}
-}
-
-// A row and a declaration are the same screen across spelling, here as
-// everywhere else — so a gated screen is never reported as ungated.
-func TestUngatedScreensMatchesAcrossSpelling(t *testing.T) {
-	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		m["screens"].([]any)[0].(map[string]any)["screen"] = "my-claims!"
-	})
-	if f, ok := firstOfKind(found, MsgScreenNotGated); ok {
-		t.Fatalf("`my-claims!` gates `screen MyClaims`, got: %s", f.Message)
-	}
-}
-
-// A wireframes.dsl this package cannot read is NOT "a wireframe with no
-// screens": the rule has no ground truth, so it is skipped — the same verdict
-// the agent side reaches when compileWireframes fails.
-func TestUnreadableWireframeSkipsTheScreenRule(t *testing.T) {
-	doc, err := Parse(fixture(t, "expense-tracker.json"))
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	bundle := bundleOf(t, "expense-tracker")
-	bundle["components/expense-webapp/wireframes.dsl"] = "{ this is not the DSL at all }\n  screen Indented\n"
-
-	if f, ok := firstOfKind(ReferenceFindings(doc, bundle), MsgScreenUnknown); ok {
-		t.Fatalf("an unreadable wireframe must skip the rule, got: %s", f.Message)
-	}
-}
-
 // A rule whose input the bundle does not hold is skipped in SILENCE: the design
 // lineup writes security.json before the component artifacts exist, and a
 // refusal there would make the agent fix a file that is not written yet.
 func TestSiblingRulesAreSkippedWhenTheFileIsAbsent(t *testing.T) {
 	doc, err := Parse(mutate(t, "expense-tracker.json", func(m map[string]any) {
-		m["screens"].([]any)[0].(map[string]any)["screen"] = "Archive"
 		m["permissions"].([]any)[0].(map[string]any)["component"] = "ghost-api"
 	}))
 	if err != nil {
@@ -434,9 +219,8 @@ func TestRoleNameCharset(t *testing.T) {
 func TestCoverageWarnings(t *testing.T) {
 	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
 		// reports:export is required by GET /reports/export and granted by no
-		// role; claims:reject stops being required once the Approver keeps it
-		// but the screen set never names it — it stays used by an operation, so
-		// the "used nowhere" case is made with a fresh handle instead.
+		// role. Every other catalog handle IS required by an operation, so the
+		// "used nowhere" case is made with a fresh handle no operation names.
 		perms := m["permissions"].([]any)
 		reports := perms[1].(map[string]any)
 		reports["actions"] = append(reports["actions"].([]any),
@@ -455,10 +239,10 @@ func TestCoverageWarnings(t *testing.T) {
 	}
 }
 
-// `X:read-all` guards no operation and no screen by design — the service reads
-// it off the token while serving `X:read` — so warning about it every time
-// would make the line noise. It only speaks when even `X:read` is unused.
-func TestReadAllIsExemptFromTheUsedNowhereWarning(t *testing.T) {
+// `claims:read-all` guards `GET /claims` — an operation of its own, at its own
+// reach (ADR-0031) — so it is used like any other handle and nothing is exempt
+// by name.
+func TestReadAllIsUsedLikeAnyOtherHandle(t *testing.T) {
 	for _, f := range findingsFor(t, "expense-tracker", nil) {
 		if f.Key == MsgHandleUsedNowhere && f.Params["handle"] == "claims:read-all" {
 			t.Fatalf("claims:read-all must not warn while claims:read is used: %s", f.Message)

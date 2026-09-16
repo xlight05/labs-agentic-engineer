@@ -16,16 +16,21 @@
  * under the License.
  */
 
-// Mock mode — copied verbatim to <app-path>/mock/contract.ts, never edited.
+// Mock mode — copied verbatim, with the rest of app/, to
+// <app-path>/mock/authz/contract.ts, never edited.
 //
 // Projects an OpenAPI document's `security` blocks into the table
-// `mock/gateway.ts` refuses from. This is the same reading the platform does
+// `mock/authz/gateway.ts` refuses from. This is the same reading the platform does
 // when it renders the real gateway (aep-api's OpenAPIOperations), so the mock
 // and the deployed API agree by construction rather than by review.
 //
 // It takes a PARSED document, not a file: the YAML parse lives in
 // mock/plugin.ts, which is the only half that needs a dependency, and keeping
 // the rules here means they can be exercised against plain objects.
+//
+// scripts/gen-authz.mjs RESTATES these rules in JavaScript — a .mjs script
+// cannot import a .ts module — and the two are tested against one fixture so
+// the screen gates and the mock gateway cannot read a contract differently.
 //
 // Every refusal below THROWS rather than degrading. A contract this cannot read
 // is one the real gateway would also refuse to serve, and a mock that guessed

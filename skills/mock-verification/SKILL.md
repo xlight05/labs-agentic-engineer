@@ -49,12 +49,12 @@ smoke.
 
 ### Once per app
 
-- **Roles** (`mock/roles.ts` exists): each flow's entry screen under its own
+- **Roles** (`mock/authz/roles.gen.ts` exists): each flow's entry screen under its own
   role (`?role=<name>`), and once under a role the DSL gives no flow there.
   Both directions are defects. Then three more, which the scope model makes
   walkable and which no build can see:
   - **Every role, and the no-role visitor.** Walk `?role=<name>` for each role
-    in `mock/roles.ts`, then `?role=` (empty — signed in, holding nothing).
+    in `mock/authz/roles.gen.ts`, then `?role=` (empty — signed in, holding nothing).
     The empty one must give **`NoAccess` replacing the shell**, naming the
     groups to ask to be added to. A shell with an empty nav around it is a
     defect; so is being let into a screen.
@@ -155,7 +155,7 @@ it and run `up` again.
 
 Before the browser opens, post the plan from the map alone: one numbered item
 per screen in each flow, in walking order under its role, then screens in no
-flow, then Roles (with `mock/roles.ts`), Session (with an auth dependency),
+flow, then Roles (with `mock/authz/roles.gen.ts`), Session (with an auth dependency),
 Probes, and Console. Posting it first puts your coverage in front of the
 person watching while there is still time to say a screen is missing.
 
@@ -212,7 +212,7 @@ in your reply.
   else. A handler bent until a screen passes hides the defect from the deployed
   system too. A `501` is a handler you never wrote: write it against the
   contract.
-- **Widen a scope to make a walk pass.** Not in `mock/roles.ts`, not in a route
+- **Widen a scope to make a walk pass.** Not in `mock/authz/roles.gen.ts`, not in a route
   guard, and not by adding a check to a handler that overrides the gateway
   layer. Scope comparison is a whole-string match at the gateway, so a mock bent
   to accept a sibling handle passes a walk the deployed system 401s. A role that

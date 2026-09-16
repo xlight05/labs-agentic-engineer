@@ -35,32 +35,40 @@
 //     The opposite case: the caller holds other scopes and has somewhere to go,
 //     so the rail stays. /forbidden is a route inside the shell branch.
 //
-//   /forbidden is WIRED INTO api-client once, from the router.
-//     api-client.ts imports no router, so it cannot navigate by itself: it
-//     calls the navigator this file hands it. Without that call, a refusal the
-//     screen gate did not catch — a typed URL, a stale bundle, a race past a
-//     narrowed renew — logs an error and routes nowhere, which looks exactly
-//     like a screen that renders nothing.
+//   /forbidden is WIRED INTO authz/client once, from the router.
+//     client.ts imports no router, so it cannot navigate by itself: it calls
+//     the navigator this file hands it. Without that call, a refusal the screen
+//     gate did not catch — a typed URL, a stale bundle, a race past a narrowed
+//     renew — logs an error and routes nowhere, which looks exactly like a
+//     screen that renders nothing.
 //
-//   Every gated route is wrapped in <RequireScope>, with the handle taken from
-//     SCREEN_ROUTES — never a handle typed here.
+//   Every gated route is wrapped in <RequireOperation>, with the OPERATION
+//     taken from SCREEN_ROUTES — never a handle or an operation typed here.
 //
-//   A "public" screen is routed ABOVE the sign-in guard.
-//     `requires: "public"` means reachable BEFORE sign-in. SignedIn() below
-//     redirects anyone without a session to the IdP, so a public screen routed
-//     inside it can never be seen by the visitor it exists for. It keeps the
-//     session provider (so <Can> and useScopes work on it) and loses the app
-//     shell, which is the honest shape: there is no signed-in chrome to draw.
+//   A `public` screen is routed ABOVE the sign-in guard.
+//     `public: true` is a screen in a flow with no `role` line, reachable
+//     BEFORE sign-in. SignedIn() below redirects anyone without a session to
+//     the IdP, so a public screen routed inside it can never be seen by the
+//     visitor it exists for. It keeps the session provider (so <Can> and
+//     useScopes work on it) and loses the app shell, which is the honest shape:
+//     there is no signed-in chrome to draw.
 //
 //   /callback is routed OUTSIDE the provider: there is no session to read until
 //     the redirect has been processed.
 
 import { useEffect, type ReactElement } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { AuthzProvider, Forbidden, NoAccess, RequireScope, useScopes, useAuthz } from "./authz";
-import { SCREEN_ROUTES, reachableScreens } from "./screens";
-import { setForbiddenNavigator } from "./api-client";
-import { signIn } from "./auth";
+import {
+  AuthzProvider,
+  Forbidden,
+  NoAccess,
+  RequireOperation,
+  useAuthz,
+  useScopes,
+} from "./authz/gates";
+import { SCREEN_ROUTES, reachableScreens } from "./authz/screens";
+import { setForbiddenNavigator } from "./authz/client";
+import { signIn } from "./authz/session";
 import { AppShell } from "./shell/AppShell";
 import { CallbackPage } from "./pages/Callback";
 import { MyClaimsPage } from "./pages/MyClaims";
@@ -70,7 +78,7 @@ import { ReportsPage } from "./pages/Reports";
 
 const APP_NAME = "Expense Tracker";
 
-/** YOUR pages, keyed by the normalized screen name src/screens.ts produces. */
+/** YOUR pages, keyed by the screen keys src/authz/screens.ts declares. */
 const PAGE_BY_KEY: Record<string, ReactElement> = {
   myclaims: <MyClaimsPage />,
   submitclaim: <SubmitClaimPage />,
@@ -79,7 +87,7 @@ const PAGE_BY_KEY: Record<string, ReactElement> = {
 };
 
 /** The screens reachable before sign-in — routed above the guard, below. */
-const PUBLIC_SCREENS = SCREEN_ROUTES.filter((screen) => screen.requires === "public");
+const PUBLIC_SCREENS = SCREEN_ROUTES.filter((screen) => screen.public);
 
 export function App(): ReactElement {
   return (
@@ -110,7 +118,7 @@ export function App(): ReactElement {
 }
 
 /**
- * Hands api-client.ts the route a refusal goes to. ONCE, from inside the
+ * Hands src/authz/client.ts the route a refusal goes to. ONCE, from inside the
  * router and above every route, so it is wired before the first request can be
  * answered. `replace` keeps the refused URL out of the history, so Back does
  * not walk the user straight into the same 403.
@@ -145,7 +153,7 @@ function SignedIn(): ReactElement {
 
   if (!signedIn) return <Splash />;
 
-  const reachable = reachableScreens(scopes);
+  const reachable = reachableScreens(scopes, signedIn);
 
   // NoAccess REPLACES the shell. It is returned here, above the <Routes> that
   // carry AppShell, so there is no rail to wrap it.
@@ -158,19 +166,20 @@ function SignedIn(): ReactElement {
       <Route element={<AppShell />}>
         <Route index element={<Navigate to={landing} replace />} />
         {SCREEN_ROUTES.map((screen) => {
-          // "public" screens are routed above this guard, in App(), and their
+          // `public` screens are routed above this guard, in App(), and their
           // path never reaches here.
-          if (screen.requires === "public") return null;
+          if (screen.public) return null;
           const page = PAGE_BY_KEY[screen.key];
-          // null needs no scope — anyone with a session is in.
-          if (screen.requires === null) {
+          // No load call: anyone with a session is in.
+          if (screen.loads === null) {
             return <Route key={screen.key} path={screen.path} element={page} />;
           }
-          // The scope comes from the generated table, never from this file.
+          // The requirement comes from the contract, through the generated
+          // table — never from this file.
           return (
             <Route
               key={screen.key}
-              element={<RequireScope scope={screen.requires} screen={screen.label} />}
+              element={<RequireOperation op={screen.loads} screen={screen.label} />}
             >
               <Route path={screen.path} element={page} />
             </Route>
