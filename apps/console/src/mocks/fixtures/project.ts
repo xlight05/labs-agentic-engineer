@@ -1430,18 +1430,18 @@ sequenceDiagram
 // Screens are exactly the three `storefront/wireframes.dsl` declares, one of
 // each kind: `public`, `null` (any signed-in account) and a handle.
 const securityJson = `{
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "orders",
       "component": "orders-api",
       "description": "Customer orders and the money moved against them",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "See own orders" },
-        { "handle": "read-all", "ownership": "any", "description": "See every order" },
-        { "handle": "place", "ownership": "own", "description": "Place an order" },
-        { "handle": "approve", "ownership": "any", "description": "Approve a held order" },
-        { "handle": "refund", "ownership": "any", "description": "Refund a paid order" }
+        { "handle": "read", "description": "See own orders" },
+        { "handle": "read-all", "description": "See every order" },
+        { "handle": "place", "description": "Place an order" },
+        { "handle": "approve", "description": "Approve a held order" },
+        { "handle": "refund", "description": "Refund a paid order" }
       ]
     },
     {
@@ -1449,8 +1449,8 @@ const securityJson = `{
       "component": "catalog-api",
       "description": "The product catalogue",
       "actions": [
-        { "handle": "read", "ownership": "any", "description": "Browse the product catalogue" },
-        { "handle": "export", "ownership": "any", "description": "Download the catalogue as CSV" }
+        { "handle": "read", "description": "Browse the product catalogue" },
+        { "handle": "export", "description": "Download the catalogue as CSV" }
       ]
     }
   ],

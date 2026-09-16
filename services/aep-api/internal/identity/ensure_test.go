@@ -105,10 +105,10 @@ func buildRolesJSON(t *testing.T, roles []string, declareGroups bool, users ...u
 		userEntries = append(userEntries, map[string]any{"username": u.username, "roles": []string{u.role}})
 	}
 	doc := map[string]any{
-		"version": 2,
+		"version": 3,
 		"permissions": []any{map[string]any{
 			"resource": "claims", "component": "expense-api",
-			"actions": []any{map[string]any{"handle": "read", "ownership": "own"}},
+			"actions": []any{map[string]any{"handle": "read"}},
 		}},
 		"groups":    groupEntries,
 		"roles":     roleEntries,
@@ -221,13 +221,13 @@ func TestEnsureForTagIsNotDeclaredWhenTheDesignCarriesNoRolesDocument(t *testing
 func TestEnsureForTagReportsDeclaredWhenTheRolesDocumentDoesNotParse(t *testing.T) {
 	for name, doc := range map[string]string{
 		"not JSON":         `{`,
-		"schema violation": `{"version": 2, "permissions": [], "groups": [], "roles": [], "screens": [], "testUsers": []}`,
+		"schema violation": `{"version": 3, "permissions": [], "groups": [], "roles": [], "screens": [], "testUsers": []}`,
 		"a v1 document": rolesJSONRaw(`{"version":1,"coldStartRole":null,"publicComponents":[],` +
 			`"roles":[{"name":"Viewer","description":"d","stories":[1],"grantedBy":"g",` +
 			`"permissions":[{"component":"api","actions":["read"]}]}],"testUsers":[],` +
 			`"thunder":{"name":"Expense Tracker","type":"browser"}}`),
-		"a grant naming no catalog handle": rolesJSONRaw(`{"version":2,` +
-			`"permissions":[{"resource":"claims","component":"api","actions":[{"handle":"read","ownership":"own"}]}],` +
+		"a grant naming no catalog handle": rolesJSONRaw(`{"version":3,` +
+			`"permissions":[{"resource":"claims","component":"api","actions":[{"handle":"read"}]}],` +
 			`"groups":[],"roles":[{"name":"Viewer","description":"d","stories":[1],` +
 			`"grants":["claims:audit"],"assignTo":["Viewers"]}],"screens":[],"testUsers":[]}`),
 	} {
@@ -1569,12 +1569,12 @@ func TestEnsureDeletesOnlyTheActionTheNextTagDropped(t *testing.T) {
 	h.dir.Calls = nil
 
 	h.setDoc(strings.Replace(designFixture(t, "expense-tracker.json"),
-		`        { "handle": "export", "ownership": "any", "description": "Download CSV" }`, "", 1))
+		`        { "handle": "export", "description": "Download CSV" }`, "", 1))
 	// The action above is the last in its list, so the comma before it goes too.
 	h.setDoc(strings.NewReplacer(
-		`{ "handle": "read", "ownership": "any", "description": "Monthly totals" },`,
-		`{ "handle": "read", "ownership": "any", "description": "Monthly totals" }`,
-		`        { "handle": "export", "ownership": "any", "description": "Download CSV" }`, "",
+		`{ "handle": "read", "description": "Monthly totals" },`,
+		`{ "handle": "read", "description": "Monthly totals" }`,
+		`        { "handle": "export", "description": "Download CSV" }`, "",
 	).Replace(designFixture(t, "expense-tracker.json")))
 
 	h.run(t)
@@ -1649,8 +1649,8 @@ func TestEnsureRewritesAChangedDescriptionWithoutRecreatingTheObject(t *testing.
 	h.setDoc(strings.NewReplacer(
 		`"description": "Expense claims and their approval"`,
 		`"description": "Expense claims, and who may approve them"`,
-		`{ "handle": "read", "ownership": "any", "description": "Monthly totals" }`,
-		`{ "handle": "read", "ownership": "any", "description": "Monthly totals, per team" }`,
+		`{ "handle": "read", "description": "Monthly totals" }`,
+		`{ "handle": "read", "description": "Monthly totals, per team" }`,
 	).Replace(designFixture(t, "expense-tracker.json")))
 
 	h.run(t)

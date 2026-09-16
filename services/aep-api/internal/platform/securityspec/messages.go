@@ -48,7 +48,7 @@ import (
 )
 
 // placeholderRE is what counts as a `{slot}`. The v1 refusal's own text quotes
-// the v2 shape (`actions[{handle, ownership}]`), which is prose, not a slot.
+// the v3 shape (`actions[{handle, description}]`), which is prose, not a slot.
 var placeholderRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*$`)
 
 //go:embed security-design-messages.json
@@ -99,13 +99,18 @@ const (
 	MsgScreenUnknown = "screen_unknown"
 	// MsgScreenRequiresUnknownHandle {component} {screen} {handle}
 	MsgScreenRequiresUnknownHandle = "screen_requires_unknown_handle"
-	// MsgScreenOperationNotGranted {role} {screen} {handle} — needs the owning
-	// component's openapi.yaml.
-	MsgScreenOperationNotGranted = "screen_operation_not_granted"
-	// MsgReadAllWithoutRead {role} {allHandle} {readHandle}
-	MsgReadAllWithoutRead = "read_all_without_read"
+	// MsgScreenWithoutRead {role} {screen} {resource} {handles} — needs the
+	// owning component's openapi.yaml. {handles} is every handle that guards a
+	// safe operation on the resource, quoted and comma-joined.
+	MsgScreenWithoutRead = "screen_without_read"
+	// MsgScreenNotGated {component} {screens} — needs the component's
+	// wireframes.dsl. One finding per COMPONENT, naming every screen it draws
+	// that screens[] does not gate.
+	MsgScreenNotGated = "screen_not_gated"
 	// MsgV1Document {fields}
 	MsgV1Document = "v1_document"
+	// MsgV2Document — no slots; the whole migration is one fixed sentence.
+	MsgV2Document = "v2_document"
 	// MsgHandleUsedNowhere {handle} — build-gate WARNING, never a refusal.
 	MsgHandleUsedNowhere = "handle_used_nowhere"
 	// MsgHandleUnreachable {handle} — build-gate WARNING, never a refusal.
@@ -148,6 +153,9 @@ const (
 	// MsgReservedOIDCScope {scope} {where} — an OIDC scope emitted as an API
 	// scope fails wide open, silently.
 	MsgReservedOIDCScope = "reserved_oidc_scope"
+	// MsgHandleMixedReach {scope} {inside} {outside} — one reach per handle
+	// (ADR-0031); the two slots are the first operation on each side.
+	MsgHandleMixedReach = "handle_mixed_reach"
 	// MsgIdentityHeaderRequired {method} {path} {header}
 	MsgIdentityHeaderRequired = "identity_header_required"
 	// MsgPublicOperationDeclaresIdentityHeader {method} {path} {header}
@@ -176,9 +184,10 @@ var MessageKeys = []string{
 	MsgScreenComponentUnknown,
 	MsgScreenUnknown,
 	MsgScreenRequiresUnknownHandle,
-	MsgScreenOperationNotGranted,
-	MsgReadAllWithoutRead,
+	MsgScreenWithoutRead,
+	MsgScreenNotGated,
 	MsgV1Document,
+	MsgV2Document,
 	MsgHandleUsedNowhere,
 	MsgHandleUnreachable,
 	MsgMissingOAuth2Scheme,
@@ -196,6 +205,7 @@ var MessageKeys = []string{
 	MsgFlowScopeNotInCatalog,
 	MsgFlowScopeNotOwned,
 	MsgReservedOIDCScope,
+	MsgHandleMixedReach,
 	MsgIdentityHeaderRequired,
 	MsgPublicOperationDeclaresIdentityHeader,
 }

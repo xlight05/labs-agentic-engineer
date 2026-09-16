@@ -35,7 +35,7 @@
  * byte-identically. `patchGrants.test.ts` holds that claim against the fixture.
  *
  * Nothing here is widened or repaired. Granting `X:read-all` does not add
- * `X:read`: that implication is a gate RULE, reported as a finding on the page,
+ * `X:read`: nothing implies anything, and a role that needs both holds both —
  * and applying it silently here would make the page disagree with both the
  * gate and the gateway.
  *

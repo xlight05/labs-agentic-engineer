@@ -32,7 +32,7 @@ import type { SecurityReferenceContext } from "@aep/agent-stream";
 
 /** `specs/design/security.json` — the design's Expense Tracker, verbatim. */
 export const EXPENSE_TRACKER_TEXT = `{
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "claims",
@@ -41,27 +41,22 @@ export const EXPENSE_TRACKER_TEXT = `{
       "actions": [
         {
           "handle": "read",
-          "ownership": "own",
           "description": "See own claims"
         },
         {
           "handle": "read-all",
-          "ownership": "any",
           "description": "See every claim"
         },
         {
           "handle": "submit",
-          "ownership": "own",
           "description": "Create and send a claim"
         },
         {
           "handle": "approve",
-          "ownership": "any",
           "description": "Approve a submitted claim"
         },
         {
           "handle": "reject",
-          "ownership": "any",
           "description": "Reject a submitted claim"
         }
       ]
@@ -72,12 +67,10 @@ export const EXPENSE_TRACKER_TEXT = `{
       "actions": [
         {
           "handle": "read",
-          "ownership": "any",
           "description": "Monthly totals"
         },
         {
           "handle": "export",
-          "ownership": "any",
           "description": "Download CSV"
         }
       ]
@@ -166,7 +159,9 @@ const CELL = `cell expense-tracker {
  * `specs/design/components/expense-api/openapi.yaml`, cut to what the Security
  * page reads: every operation's protection. `/health` is open, `/me` inherits
  * the document default, and the rest name one handle each — which is what makes
- * `reports:export` "declared, used nowhere".
+ * `reports:export` "declared, used nowhere". The caller's claims live under
+ * `/me/claims`; everything else reaches every row (ADR-0031), and the chip
+ * beside each handle on the page is read off exactly that.
  */
 const EXPENSE_API_OPENAPI = `openapi: 3.0.3
 info:
@@ -193,9 +188,9 @@ paths:
       responses:
         "200":
           description: ok
-  /claims:
+  /me/claims:
     get:
-      summary: List claims
+      summary: The caller's claims
       security:
         - oauth2: ["claims:read"]
       responses:
@@ -208,6 +203,14 @@ paths:
       responses:
         "201":
           description: created
+  /claims:
+    get:
+      summary: Every claim
+      security:
+        - oauth2: ["claims:read-all"]
+      responses:
+        "200":
+          description: ok
   /claims/{claimId}/approve:
     post:
       summary: Approve a claim
@@ -234,12 +237,47 @@ paths:
           description: ok
 `;
 
+/**
+ * `specs/design/components/expense-spa/wireframes.dsl` — the screens the web
+ * app draws. Exactly the two the document gates, so the example stays clean;
+ * a test that wants the ungated-screen rule takes a row OUT of the document
+ * rather than adding a screen here, which is the shape the live defect had.
+ */
+const EXPENSE_SPA_WIREFRAMES = `screen MyClaims "An employee's own claims"
+  navbar "Expense Tracker"
+  text "Your claims"
+
+screen MyAccount "The signed-in account"
+  navbar "Expense Tracker"
+  text "Your details"
+`;
+
+/**
+ * `specs/requirements/prd.md`, cut to its Actors section — the only part the
+ * page reads. The two actors are the two roles, which is what a reader is
+ * checking when they look at the line above the role cards.
+ */
+const EXPENSE_TRACKER_PRD = `# Expense Tracker
+
+## Actors
+
+- **Employee** — submits claims and follows their own.
+- **Approver** — approves or rejects submitted claims.
+
+## User Stories
+
+1. As an Employee, I want to submit a claim.
+`;
+
 /** The sibling spec files, as the panel's `references` prop delivers them. */
 export const EXPENSE_TRACKER_REFERENCES: SecurityReferenceContext = {
   read(path: string): string | undefined {
     if (path === "specs/design/design.cell") return CELL;
     if (path === "specs/design/components/expense-api/openapi.yaml")
       return EXPENSE_API_OPENAPI;
+    if (path === "specs/design/components/expense-spa/wireframes.dsl")
+      return EXPENSE_SPA_WIREFRAMES;
+    if (path === "specs/requirements/prd.md") return EXPENSE_TRACKER_PRD;
     return undefined;
   },
 };

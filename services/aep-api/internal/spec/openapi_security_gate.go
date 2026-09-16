@@ -42,6 +42,7 @@ package spec
 //     does not have.
 
 import (
+	"slices"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -533,7 +534,55 @@ func checkProtectedComponent(
 			return problem
 		}
 	}
+	if problem := mixedReachProblem(ops); problem != "" {
+		return problem
+	}
 	return identityHeaderProblem(ops)
+}
+
+// IsCallerPath reports whether a path reaches the CALLER's rows — `/me` or
+// anything under `/me/`. Every other path reaches every row (ADR-0031). This is
+// the whole of the row axis a design has, so the console and the Security page
+// derive what they show beside a handle from this one predicate.
+func IsCallerPath(path string) bool {
+	return path == "/me" || strings.HasPrefix(path, "/me/")
+}
+
+// mixedReachProblem applies the one-reach-per-handle rule. A handle that guards
+// an operation under /me/ AND one outside it would let the gateway admit a
+// caller to the every-row operation on the strength of a grant the design meant
+// as "their own rows" — the confusion ADR-0031 removes by making the path the
+// row axis. Reported once, naming the first operation on each side. Mirrors
+// mixedReachProblem in the agent's openapi-security.ts.
+func mixedReachProblem(ops []specOperationNode) string {
+	firstInside := map[string]string{}
+	firstOutside := map[string]string{}
+	var order []string
+	for _, op := range ops {
+		requirement, problem := operationRequirement(op, signedInRequirement)
+		if problem != "" || requirement.Kind != RequirementScope {
+			continue
+		}
+		side := firstOutside
+		if IsCallerPath(op.Path) {
+			side = firstInside
+		}
+		if _, seen := side[requirement.Scope]; !seen {
+			side[requirement.Scope] = op.Method + " " + op.Path
+		}
+		if !slices.Contains(order, requirement.Scope) {
+			order = append(order, requirement.Scope)
+		}
+	}
+	for _, scope := range order {
+		inside, in := firstInside[scope]
+		outside, out := firstOutside[scope]
+		if in && out {
+			return securityspec.Msg(securityspec.MsgHandleMixedReach,
+				"scope", scope, "inside", inside, "outside", outside)
+		}
+	}
+	return ""
 }
 
 // checkOperationSecurity accepts absent, `[]`, or ONE requirement object naming

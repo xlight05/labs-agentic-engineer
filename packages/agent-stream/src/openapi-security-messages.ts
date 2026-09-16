@@ -80,6 +80,8 @@ export const OPENAPI_SECURITY_MESSAGES = {
     "`{scope}` is an OIDC scope, not a permission handle. It rides EVERY access token the identity provider issues, so an operation guarded on it admits every signed-in account in the organization while looking guarded — the gateway reports nothing and the operation fails wide open. Remove it from {where} and name a handle from the permission catalog in specs/design/security.json.",
 
   // --- the injected identity header ----------------------------------------
+  handle_mixed_reach:
+    "the scope `{scope}` guards {inside} under /me/ and {outside} outside it. A handle names what a caller may do; WHICH ROWS an operation reaches is its path — under /me/ the caller's own (or the rows of the relation the path names), anywhere else every row — so one handle cannot guard both: the gateway would admit a caller to the every-row operation on the strength of a grant that meant their own rows. Split them: give the every-row operation its own handle (`<resource>:read-all` beside `<resource>:read`), or move the operation under /me/.",
   identity_header_required:
     "{method} {path} declares the header parameter {header} as `required: true`. The generated server binds parameters before the authentication middleware runs, so a request that carries no verified identity is answered 400 by the parameter binder instead of 401 by the middleware. Declare it `required: false`; the gateway injects it on every protected operation.",
   public_operation_declares_identity_header:

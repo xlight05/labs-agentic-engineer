@@ -35,7 +35,9 @@ browser config — they are pod env for nginx.
    how the generated client types, and every later page repeats the pattern.
 4. **Mock mode** — author `mock/` per `references/mock-mode.md`, including the four
    wiring files in its §2. It stands the same app up with no cluster, no sibling
-   service and no IDP behind it, and the build eliminates it as dead code.
+   service and no IDP behind it — with the API gateway's own refusals modelled
+   from `openapi.yaml`, so a role that cannot reach a screen fails here the way
+   it fails in a cell. The build eliminates all of it as dead code.
 5. **Verify** — from the app path:
    ```bash
    npm install                   # regenerates package-lock.json
@@ -144,11 +146,11 @@ which is why you copy it rather than write it:
 
 - **Preserve the context prefix.** The gateway routes on it; a rewrite that
   strips it 404s every call.
-- **Clear inbound `X-User-*`.** Identity is the gateway's to assert
-  (`api-management`), and a browser that sets those headers itself must not be
-  believed. The asset clears all five, **`X-User-Scopes` included**: on a public
-  operation and on the direct-Service fallback lane, this proxy is the only
-  thing standing between a hand-set header and the handler's scope check.
+- **Clear inbound identity.** Identity is the gateway's to assert
+  (`api-management`), and nothing a browser sends on this lane may stand in for
+  it. The asset clears six headers: **`x-jwt-assertion`** — the gateway-signed
+  statement the service actually believes, which on a public operation the
+  gateway overwrites with nothing — and the five unsigned `X-User-*`.
 
 Copy the assets in Layout; do not hand-write a different `proxy_pass`, do not add
 `/oidc/` (token endpoint stays cross-origin; `thunder-authentication`), do not
@@ -246,19 +248,18 @@ name, and do not delete the fallback — an unprotected sibling has no gateway
 address.
 
 **Done when:** `nginx/default.conf` contains `location /api/`,
-`proxy_pass http://$api_backend`, the `__API_CONTEXT__` rewrite and **all five
-`proxy_set_header X-User-* ""` lines** — `X-User-Id`, `X-User-Name`,
-`X-User-Groups`, `X-User-Ou` and `X-User-Scopes`; the drop-in
+`proxy_pass http://$api_backend`, the `__API_CONTEXT__` rewrite and **all six
+`proxy_set_header` clearing lines** — `x-jwt-assertion`, `X-User-Id`,
+`X-User-Name`, `X-User-Groups`, `X-User-Ou` and `X-User-Scopes`; the drop-in
 script's two `API_URL=` lines use that
 primary `<DEP>_URL`; there is no `/oidc/` location.
 
-**Count the five.** This proxy is a lane into the service that the API gateway
-does not sit on, and the service is required to believe those headers: a browser
-that sets `X-User-Scopes` on a call to this SPA's own `/api` would otherwise
-grant itself every permission in the catalog, and `X-User-Id` would let it pick
-whose rows to read. An app whose conf carries four of the five looks correct in
-every other respect and is a total authorization bypass — which is why the check
-is a count, not "it looks like the asset".
+**Count the six.** This proxy is a lane into the service that the API gateway
+does not sit on. `x-jwt-assertion` is the line that matters most: it is what the
+service verifies and believes, and on a public operation the gateway replaces
+nothing, so one that arrives here arrives intact. An app whose conf is missing a
+line looks correct in every other respect — which is why the check is a count,
+not "it looks like the asset".
 
 Extra component-kind siblings: add one `location /api/<component-name>/` block
 each (same `proxy_pass` pattern, rewrite stripping that prefix) and a matching
@@ -409,5 +410,5 @@ place rather than stripping `external` because this SPA uses `/api`
 | Types in `src/generated/*` don't match the live service | Upstream `openapi.yaml` changed since last generation | Re-run the `openapi-typescript` command and commit the diff. |
 | Docker build succeeds but ships stale/hand-written shapes, or fails `ENOENT ../specs/...` | `src/generated/` or `src/scopes.gen.ts` wasn't committed — the per-component build context is this app's folder alone | Generate and commit BOTH before PR. `gen-scopes.mjs` prints `…is out of reach (per-component build context); keeping the committed src/scopes.gen.ts` when it falls back; with nothing committed it exits 1 and the image build fails. |
 | The deployed bundle gates a screen on a handle the design dropped, or a newly added handle reaches nothing | A **stale bundle**: `build` ran without `gen`, or `src/scopes.gen.ts` was committed before the last design change | `build` is `npm run gen && tsc --noEmit && vite build`; re-run `gen` and commit the diff whenever `security.json` changes. A stale generated union type-checks green. |
-| A role opens its own screen, and the screen's list call answers 401/403 | The role holds the screen's `requires` handle but not the handle of an **operation** that screen calls — whole-string match, so `x:read-all` is not `x:read` | A design finding, not a code one: name the role, the screen and the operation's handle in your report. Never widen a guard or a mock to hide it. |
+| A role opens its own screen, and the screen's list call answers 401 | The role holds the screen's `requires` handle but not the handle of the **operation** that screen calls — whole-string match, so `x:read-all` (`GET /x`) is not `x:read` (`GET /me/x`); or the screen calls the wrong reach for its role | A design finding, not a code one: in mock mode the console line names the operation and the handle. Report the role, the screen and that handle. Never widen a guard or a mock to hide it. |
 | Build red on `TS2307: Cannot find module './generated/…'` (plus a burst of `TS7006` implicit-`any`) while `tsc --noEmit` is clean locally | `src/generated/` is **git-ignored**, usually by an unanchored `generated/` in the repo-root `.gitignore` written for a backend component. `git add` skipped it at exit 0 and `git status` stayed clean | `git check-ignore -v src/generated/*` names the offending line. Anchor that pattern (`/onboarding-api/generated/`), then re-add. The `TS7006` rows are downstream of the missing types and vanish with them. Never `git add -f`. |

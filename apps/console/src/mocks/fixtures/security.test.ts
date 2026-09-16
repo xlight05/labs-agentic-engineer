@@ -57,8 +57,8 @@ const projectRoles = projectRolesView.projectRoles ?? [];
 const liveUsers = projectRolesView.testUsers ?? [];
 
 describe("the mock security design", () => {
-  it("is a version-2 document the console's own parser accepts", () => {
-    expect(design.version).toBe(2);
+  it("is a version-3 document the console's own parser accepts", () => {
+    expect(design.version).toBe(3);
   });
 
   it("names only screens the fixture's wireframes declare", () => {
@@ -71,11 +71,10 @@ describe("the mock security design", () => {
     }
   });
 
-  // One of each kind, so the panel's two baseline rows are both non-empty.
+  // One of each kind, so the Screens block shows every wording it has.
   it("carries a public screen and a signed-in screen", () => {
-    const { signedInScreens, publicScreens } = securityMatrix(design).baseline;
-    expect(publicScreens).toHaveLength(1);
-    expect(signedInScreens).toHaveLength(1);
+    expect(design.screens.filter((s) => s.requires === "public")).toHaveLength(1);
+    expect(design.screens.filter((s) => s.requires === null)).toHaveLength(1);
   });
 
   it("leaves one action granted by nobody, for the matrix's empty row", () => {

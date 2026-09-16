@@ -214,7 +214,7 @@ test("gen-scopes", { skip: FIXTURES ? false : "design fixtures not in this check
     doc.permissions.push({
       resource: "claims",
       component: "expense-api",
-      actions: [{ handle: "read", ownership: "own" }],
+      actions: [{ handle: "read" }],
     });
     writeFileSync(spec, JSON.stringify(doc));
 
@@ -222,7 +222,7 @@ test("gen-scopes", { skip: FIXTURES ? false : "design fixtures not in this check
     assert.equal(result.status, 1);
     assert.match(result.out, /duplicate handles in the catalog: claims:read/);
   });
-  // --- the document has to BE a version-2 security.json ----------------------
+  // --- the document has to BE a version-3 security.json ----------------------
 
   await t.test("a v1 document is refused — it is not read as an empty catalog", () => {
     // The failure this catches is silent: v1 has no permissions[]/screens[] in
@@ -259,7 +259,7 @@ test("gen-scopes", { skip: FIXTURES ? false : "design fixtures not in this check
     assert.equal(result.generated(), committed);
   });
 
-  await t.test("a version-2 document missing screens[] is refused", () => {
+  await t.test("a version-3 document missing screens[] is refused", () => {
     const { root, app } = project("expense-tracker.json");
     rewriteSpec(root, (doc) => {
       delete doc.screens;

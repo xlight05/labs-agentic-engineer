@@ -184,16 +184,16 @@ paths:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
-  /claims:
+  /me/claims:
     parameters:
       - $ref: '#/components/parameters/UserId'
     get:
-      operationId: listClaims
+      operationId: listMyClaims
       tags: [claims]
-      summary: List expense claims
+      summary: List the caller's expense claims
       description: >-
-        The caller's own claims. A caller who also holds claims:read-all sees
-        every claim.
+        The caller's own claims — the path says so; every claim is GET /claims,
+        guarded by claims:read-all.
       security:
         - oauth2: [claims:read]
       parameters:
@@ -229,17 +229,16 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /claims/{claimId}:
+  /me/claims/{claimId}:
     parameters:
       - $ref: '#/components/parameters/ClaimId'
       - $ref: '#/components/parameters/UserId'
     get:
-      operationId: getClaim
+      operationId: getMyClaim
       tags: [claims]
-      summary: One expense claim
+      summary: One of the caller's expense claims
       description: >-
-        The caller's own claim. A caller who also holds claims:read-all may read
-        any claim.
+        The caller's own claim; somebody else's is a 404 here, not a 403.
       security:
         - oauth2: [claims:read]
       responses:

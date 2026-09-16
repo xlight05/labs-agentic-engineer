@@ -99,21 +99,35 @@ func TestEveryDesignFixtureIsCleanAgainstItsOwnBundle(t *testing.T) {
 }
 
 // Δ P6 §5 — the rule the design's own example failed. `Approvals` is gated on
-// `claims:approve`; the list it renders is `GET /claims`, guarded on
-// `claims:read`; an Approver granted neither reaches a screen that loads into a
-// bare 401 the SPA cannot tell from an expired session.
-func TestScreenOperationNotGranted(t *testing.T) {
+// `claims:approve` and renders a list of claims; an Approver who can read no
+// claims at all reaches a screen that loads into a bare 401 the SPA cannot tell
+// from an expired session. The resource has two reads at two reaches, and the
+// refusal names both, leaving which one to the design.
+func TestScreenWithoutRead(t *testing.T) {
 	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
-		// read-all goes too, or B1's rule fires first and this one never runs.
 		roleNamed(t, m, "Approver")["grants"] = []any{"claims:approve", "claims:reject", "reports:read"}
 	})
-	f, ok := firstOfKind(found, MsgScreenOperationNotGranted)
+	f, ok := firstOfKind(found, MsgScreenWithoutRead)
 	if !ok {
-		t.Fatalf("want %s, got %+v", MsgScreenOperationNotGranted, found)
+		t.Fatalf("want %s, got %+v", MsgScreenWithoutRead, found)
 	}
-	for _, want := range []string{"Approver", "Approvals", "claims:read"} {
+	for _, want := range []string{"Approver", "Approvals", `"claims:read", "claims:read-all"`} {
 		if !strings.Contains(f.Message, want) {
 			t.Errorf("message %q does not name %q", f.Message, want)
+		}
+	}
+}
+
+// Holding ANY read of the resource satisfies the rule: an Approver who reads
+// every claim (GET /claims) but not their own (GET /me/claims) still renders
+// Approvals. Nothing implies anything, and nothing here picks the list.
+func TestAnyReadOfTheResourceSatisfiesTheScreen(t *testing.T) {
+	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
+		roleNamed(t, m, "Approver")["grants"] = []any{"claims:read-all", "claims:approve", "claims:reject", "reports:read"}
+	})
+	for _, f := range found {
+		if f.Severity == SeverityError {
+			t.Fatalf("unexpected error: %s", f.Message)
 		}
 	}
 }
@@ -124,7 +138,7 @@ func TestScreenOperationNotGranted(t *testing.T) {
 func TestReachabilitySkipsServiceRoles(t *testing.T) {
 	found := findingsFor(t, "vendor", nil)
 	for _, f := range found {
-		if f.Key == MsgScreenOperationNotGranted {
+		if f.Key == MsgScreenWithoutRead {
 			t.Fatalf("a service role was judged against a screen: %s", f.Message)
 		}
 	}
@@ -206,6 +220,101 @@ func TestScreenDeclarationMustMatchTheWholeGrammar(t *testing.T) {
 	}
 	if !strings.Contains(f.Message, "Approvals") {
 		t.Errorf("message %q does not name the screen", f.Message)
+	}
+}
+
+// The OTHER direction of the screens rule. A screen the wireframe draws with no
+// screens[] row is reachable by any signed-in person, and the document that
+// fails to say so looks complete — the live defect this rule exists for.
+func TestScreenDrawnButNotGated(t *testing.T) {
+	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
+		kept := []any{}
+		for _, row := range m["screens"].([]any) {
+			if row.(map[string]any)["screen"] != "Approvals" {
+				kept = append(kept, row)
+			}
+		}
+		m["screens"] = kept
+	})
+	f, ok := firstOfKind(found, MsgScreenNotGated)
+	if !ok {
+		t.Fatalf("want %s, got %+v", MsgScreenNotGated, found)
+	}
+	for _, want := range []string{"expense-webapp", `"Approvals"`} {
+		if !strings.Contains(f.Message, want) {
+			t.Errorf("message %q does not name %q", f.Message, want)
+		}
+	}
+}
+
+// One finding per COMPONENT, not per screen: the agent's write gate hands the
+// model one sentence per round trip, so three missing screens are one fix.
+func TestEveryUngatedScreenOfAComponentIsOneFinding(t *testing.T) {
+	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
+		kept := []any{}
+		for _, row := range m["screens"].([]any) {
+			if row.(map[string]any)["screen"] == "My Claims" {
+				kept = append(kept, row)
+			}
+		}
+		m["screens"] = kept
+	})
+	var gated []Finding
+	for _, f := range found {
+		if f.Key == MsgScreenNotGated {
+			gated = append(gated, f)
+		}
+	}
+	if len(gated) != 1 {
+		t.Fatalf("want exactly one %s, got %d: %+v", MsgScreenNotGated, len(gated), gated)
+	}
+	// Named in the order the wireframe draws them, so the author reads the list
+	// in the order they will fix it.
+	if want := `"SubmitClaim", "Approvals", "Reports"`; !strings.Contains(gated[0].Message, want) {
+		t.Errorf("message %q does not carry %q", gated[0].Message, want)
+	}
+}
+
+// The case a scan of screens[] can never reach: a web application that names
+// itself nowhere in the document, every screen it draws open. Found because the
+// component list comes from the CELL.
+func TestWebAppWithNoScreenRowsAtAllIsCaught(t *testing.T) {
+	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
+		m["screens"] = []any{}
+	})
+	f, ok := firstOfKind(found, MsgScreenNotGated)
+	if !ok {
+		t.Fatalf("want %s, got %+v", MsgScreenNotGated, found)
+	}
+	if !strings.Contains(f.Message, "expense-webapp") {
+		t.Errorf("message %q does not name the component", f.Message)
+	}
+}
+
+// No wireframes.dsl, no ground truth — the rule is skipped like every other
+// sibling rule whose file the bundle does not hold.
+func TestUngatedScreensSkippedWithoutTheWireframe(t *testing.T) {
+	doc, err := Parse(mutate(t, "expense-tracker.json", func(m map[string]any) {
+		m["screens"] = []any{}
+	}))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	bundle := bundleOf(t, "expense-tracker")
+	delete(bundle, "components/expense-webapp/wireframes.dsl")
+	if f, ok := firstOfKind(ReferenceFindings(doc, bundle), MsgScreenNotGated); ok {
+		t.Fatalf("no wireframe means no rule, got: %s", f.Message)
+	}
+}
+
+// A row and a declaration are the same screen across spelling, here as
+// everywhere else — so a gated screen is never reported as ungated.
+func TestUngatedScreensMatchesAcrossSpelling(t *testing.T) {
+	found := findingsFor(t, "expense-tracker", func(m map[string]any) {
+		m["screens"].([]any)[0].(map[string]any)["screen"] = "my-claims!"
+	})
+	if f, ok := firstOfKind(found, MsgScreenNotGated); ok {
+		t.Fatalf("`my-claims!` gates `screen MyClaims`, got: %s", f.Message)
 	}
 }
 
@@ -331,7 +440,7 @@ func TestCoverageWarnings(t *testing.T) {
 		perms := m["permissions"].([]any)
 		reports := perms[1].(map[string]any)
 		reports["actions"] = append(reports["actions"].([]any),
-			map[string]any{"handle": "archive", "ownership": "any"})
+			map[string]any{"handle": "archive"})
 	})
 	unused, ok := firstOfKind(found, MsgHandleUsedNowhere)
 	if !ok || unused.Params["handle"] != "reports:archive" {

@@ -131,9 +131,10 @@ func TestMessagesRenderEveryPlaceholder(t *testing.T) {
 		MsgScreenComponentUnknown:      {"component", "screen"},
 		MsgScreenUnknown:               {"component", "screen"},
 		MsgScreenRequiresUnknownHandle: {"component", "handle", "screen"},
-		MsgScreenOperationNotGranted:   {"handle", "role", "screen"},
-		MsgReadAllWithoutRead:          {"allHandle", "readHandle", "role"},
+		MsgScreenWithoutRead:           {"handles", "resource", "role", "screen"},
+		MsgScreenNotGated:              {"component", "screens"},
 		MsgV1Document:                  {"fields"},
+		MsgV2Document:                  {},
 		MsgHandleUsedNowhere:           {"handle"},
 		MsgHandleUnreachable:           {"handle"},
 
@@ -153,6 +154,7 @@ func TestMessagesRenderEveryPlaceholder(t *testing.T) {
 		MsgFlowScopeNotInCatalog:                 {"scope"},
 		MsgFlowScopeNotOwned:                     {"owner", "scope"},
 		MsgReservedOIDCScope:                     {"scope", "where"},
+		MsgHandleMixedReach:                      {"inside", "outside", "scope"},
 		MsgIdentityHeaderRequired:                {"header", "method", "path"},
 		MsgPublicOperationDeclaresIdentityHeader: {"header", "method", "path"},
 	}

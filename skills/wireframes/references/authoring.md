@@ -82,12 +82,15 @@ different for each*. This is the single most common thing wireframes get wrong:
 they show one generic view and hide the fact that an admin and a regular user
 actually see different screens. Don't do that.
 
-**First, identify the roles.** Read the PRD and the design's flow files for distinct user types —
-admin/manager/owner vs. member/employee/developer vs. viewer/customer (the
-flows usually spell the actors out; the requirements add the detail, and a
-`design.json` auth dependency is a strong hint a signed-in role exists). If the
-app has more than one, roles are in scope even when the prompt doesn't say "per
-role."
+**First, take the roles — do not re-derive them.** `specs/design/security.json`
+already decided them: `roles[]` is the set, written from the PRD's actors before
+this step runs. Use those names verbatim, so the wireframe, the permission
+catalog and the console's Security page all say `FinanceReviewer` rather than
+three near-misses. Only where that file does not exist — a design with no
+sign-in — do you read the PRD and the design's flow files for distinct user
+types (admin/manager/owner vs. member/employee/developer vs. viewer/customer).
+If the app has more than one role, roles are in scope even when the prompt
+doesn't say "per role."
 
 **Then, for each role, show its main view and how it differs.** At minimum,
 give every role its own `screen` for the primary task they do, named and
@@ -122,6 +125,13 @@ Rules of thumb:
   screen itself, not spelled out in a caption.
 - A screen that is genuinely identical for everyone (a public landing page, a
   generic detail page) stays single — don't fork it just to have a matching set.
+- **Every screen you draw needs a `screens[]` row in `security.json`.** That
+  file is written before this one, so a screen you add here is one it does not
+  have — and a screen missing from `screens[]` is reachable by any signed-in
+  person, which is never what a role-split wireframe means. When you finish the
+  DSL, re-emit `security.json` with a row for every screen in it. The gate
+  refuses the document that is short one, naming every screen it missed, so
+  leaving it is not an option — only a later round trip.
 
 ## Proven screen anatomies
 

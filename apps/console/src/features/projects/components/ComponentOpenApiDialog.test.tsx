@@ -70,7 +70,7 @@ beforeEach(() => {
     error: null,
   });
   mockUseApiViewSecurity.mockReturnValue({
-    roles: { "orders:read": { roles: ["Shopper"], note: "own rows" } },
+    roles: { "orders:read": { roles: ["Shopper"], note: "filtered by caller" } },
     resourceServer: RESOURCE_SERVER,
   });
 });
@@ -92,7 +92,7 @@ describe("ComponentOpenApiDialog", () => {
     open();
 
     expect(screen.getByText("orders:read")).toBeInTheDocument();
-    expect(screen.getByText("Shopper · own rows")).toBeInTheDocument();
+    expect(screen.getByText("Shopper · filtered by caller")).toBeInTheDocument();
   });
 
   it("names the audience the scopes are granted on", () => {

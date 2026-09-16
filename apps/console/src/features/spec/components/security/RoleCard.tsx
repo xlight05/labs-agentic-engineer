@@ -17,152 +17,100 @@
  */
 
 /**
- * One role, as a card: what it is for, which PRD stories it serves, who signs
- * in as it, who may hand it out, and which org groups carry it.
+ * One role, as a card in a grid: what it is for, which PRD stories it serves,
+ * who may hand it out, which org groups carry it and who signs in as it.
  *
- * The card says nothing about WHICH handles the role grants — the matrix above
+ * The card says nothing about WHICH handles the role grants — the matrix below
  * is where grants are read and compared, and repeating them here would give a
- * reader two places to check and one of them would eventually be stale.
+ * reader two places to check and one of them would eventually be stale. It says
+ * nothing about whether a group already exists either: that is the Groups list
+ * above, once per group, rather than once per role that names it.
  *
- * The group line is the design's aggregation: a group the directory already
- * holds is SHOWN with how many projects bind a role to it, not hidden. That
- * count is the thing a designer needs before reusing `Finance` — it is the
- * blast radius of the grant they are about to make.
+ * What the card is sized for is a grid cell. Four roles at full width were four
+ * bands of whitespace and most of the page's scroll.
  */
 
 import {
   Box,
   Chip,
-  Divider,
+  IconButton,
   Stack,
   Tooltip,
   Typography,
 } from "@wso2/oxygen-ui";
+import { Info } from "@wso2/oxygen-ui-icons-react";
 
 import type { SecurityReferenceFinding } from "@aep/agent-stream";
 
-import type { ProjectRolesLiveState } from "../../api/roles";
 import { plannedUsersFor, type SecurityDesign } from "../../api/securityDesign";
 import { FindingLines } from "./FindingLine";
 
 type Role = SecurityDesign["roles"][number];
 
-/** One line saying how a person comes to hold this role. */
-function enrolmentLine(role: Role): string {
+/**
+ * The standing fact about test accounts, on the thing it is about.
+ *
+ * It used to be a bold heading and a paragraph above every role on every
+ * project — true of a healthy project as much as a broken one, and therefore
+ * read by nobody after the first time. On the hover of the label it describes,
+ * it is there for the reader who is asking and invisible to the one who is not.
+ * Nothing is dropped, least of all the last clause.
+ */
+const TEST_USER_NOTE =
+  "Disposable accounts for agents, not for real people. Each role gets one so " +
+  "the validation agent can sign in and check what the role can actually do. " +
+  "Passwords are shown on Deploy once Build publishes them — never name a real " +
+  "person here.";
+
+/**
+ * One line saying how a person comes to hold this role, or null when the
+ * `Held by` chips below say it better — a group name in a chip beside the
+ * label is the same sentence with less of it.
+ */
+function enrolmentLine(role: Role): string | null {
   if ((role.kind ?? "user") === "service") {
     return "Held by a service, not by a person.";
   }
   if (role.enrolment === "self-service") {
     return "Self-service — the application assigns it when an account is created.";
   }
-  const groups = role.assignTo ?? [];
-  return groups.length > 0
-    ? `Assigned to everyone in ${groups.join(", ")}.`
-    : "Assigned by an administrator.";
+  if ((role.assignTo ?? []).length > 0) return null;
+  return "Assigned by an administrator.";
 }
 
-/**
- * One directory chip: an `assignTo` GROUP of this role, judged against the
- * catalog the BFF returns.
- *
- * The live half is a group catalog, never a role catalog — a project role is
- * not an object on the directory, it reaches the app through the groups it is
- * assigned to. So the chip is per assignTo group, and a role with no assignTo
- * (a service role, a self-service one) gets none: there is nothing about it for
- * the directory to already hold.
- */
-interface GroupStatus {
-  group: string;
-  label: string;
-  color: "info" | "success" | "warning";
-  why: string;
-  /**
-   * The design's "holds roles in n projects", or null when the count does not
-   * apply (a group the directory does not have yet) or the BFF did not send one.
-   */
-  reach: string | null;
-}
-
-function groupStatuses(
-  role: Role,
-  live: ProjectRolesLiveState | undefined,
-): GroupStatus[] {
-  if (!live?.directoryAvailable) return [];
-  // The platform's own record of THIS role, which carries the reach per
-  // assignment. Absent before the first Build; the group catalog's own count is
-  // then the best answer there is.
-  const owned = live.projectRoles.find(
-    (r) => r.name.toLowerCase() === role.name.toLowerCase(),
-  );
-  return (role.assignTo ?? []).map((group) => {
-    const liveGroup = live.roles.find(
-      (r) => r.name.toLowerCase() === group.toLowerCase(),
-    );
-    const members =
-      (liveGroup?.memberCount ?? 0) > 0
-        ? ` ${liveGroup?.memberCount} ${liveGroup?.memberCount === 1 ? "member" : "members"} today.`
-        : "";
-    if (!liveGroup) {
-      return {
-        group,
-        label: "New at Build",
-        color: "info" as const,
-        why: `${group} does not exist on the identity provider yet — Build creates it.`,
-        reach: null,
-      };
-    }
-    const reach = projectReach(
-      owned?.assignedTo?.find(
-        (a) => a.group.toLowerCase() === group.toLowerCase(),
-      )?.projects ?? liveGroup.projects,
-    );
-    if (liveGroup.platformCreated) {
-      return {
-        group,
-        label: "Reused",
-        color: "success" as const,
-        why: `${group} is already on the identity provider, created by the platform.${members}`,
-        reach,
-      };
-    }
-    return {
-      group,
-      label: "Not ours",
-      color: "warning" as const,
-      why: `This group already exists and the platform did not create it, so it will be left alone.${members}`,
-      reach,
-    };
-  });
-}
-
-/**
- * How far a group already reaches. Absent rather than "0 projects": the BFF
- * omits the field when it could not count, and a confident zero would read as
- * "nobody uses this" when the truth is "we do not know".
- */
-function projectReach(projects: number | undefined): string | null {
-  if (projects === undefined || projects <= 0) return null;
-  return `holds roles in ${projects} ${projects === 1 ? "project" : "projects"}`;
+/** The org groups whose members hold this role — none for a service role. */
+function heldByGroups(role: Role): string[] {
+  if ((role.kind ?? "user") === "service") return [];
+  if (role.enrolment === "self-service") return [];
+  return role.assignTo ?? [];
 }
 
 export function RoleCard({
   doc,
   role,
-  live,
   findings,
 }: {
   doc: SecurityDesign;
   role: Role;
-  live: ProjectRolesLiveState | undefined;
   findings: readonly SecurityReferenceFinding[];
 }) {
-  const statuses = groupStatuses(role, live);
   const planned = plannedUsersFor(doc, role.name);
+  const groups = heldByGroups(role);
+  const enrolment = enrolmentLine(role);
 
   return (
-    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+    <Box
+      data-testid="role-card"
+      sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}
+    >
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+        {/*
+          A card title, deliberately NOT a heading element. `subtitle1` maps to
+          `<h6>` by default, which is the level the three sections use — so a
+          role would have announced itself as a peer of Permissions and Screens
+          rather than as one item inside a section.
+        */}
+        <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600 }}>
           {role.name}
         </Typography>
         {(role.kind ?? "user") === "service" && (
@@ -178,9 +126,11 @@ export function RoleCard({
           {role.stories.join(", ")}.
         </Typography>
       )}
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-        {enrolmentLine(role)}
-      </Typography>
+      {enrolment && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          {enrolment}
+        </Typography>
+      )}
       {role.assignableBy && role.assignableBy.length > 0 && (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
           Handed out by {role.assignableBy.join(", ")}.
@@ -189,54 +139,79 @@ export function RoleCard({
 
       <FindingLines findings={findings} />
 
-      {statuses.length > 0 && (
-        <Stack spacing={0.5} sx={{ mt: 1.5 }}>
-          {statuses.map((status) => (
-            <Stack
-              key={status.group}
-              direction="row"
-              spacing={1}
-              alignItems="center"
-            >
-              <Tooltip title={status.why}>
-                <Chip
-                  size="small"
-                  color={status.color}
-                  label={`${status.group}: ${status.label}`}
-                />
-              </Tooltip>
-              {status.reach && (
-                <Typography variant="caption" color="text.secondary">
-                  · {status.reach}
-                </Typography>
-              )}
-            </Stack>
+      {groups.length > 0 && (
+        <LabelledRow label="Held by">
+          {groups.map((group) => (
+            <Chip key={group} size="small" variant="outlined" label={group} />
           ))}
-        </Stack>
+        </LabelledRow>
       )}
 
       {planned.length > 0 && (
-        <>
-          <Divider sx={{ mt: 1.5, mb: 1 }} />
-          <Typography variant="overline" color="text.secondary">
-            Test users
-          </Typography>
-          <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-            {planned.map((u) => (
-              <Stack key={u.username} direction="row" spacing={1} alignItems="center">
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {u.username}
-                </Typography>
-                {u.supplied && (
-                  <Tooltip title="You didn't name a test user for this role, so the platform will use this name.">
-                    <Chip size="small" variant="outlined" label="Platform-supplied" />
-                  </Tooltip>
-                )}
-              </Stack>
-            ))}
-          </Stack>
-        </>
+        <LabelledRow
+          label={planned.length === 1 ? "Test user" : "Test users"}
+          note={TEST_USER_NOTE}
+          noteLabel="About test users"
+        >
+          {planned.map((u) => (
+            <Stack key={u.username} direction="row" spacing={0.5} alignItems="center">
+              <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                {u.username}
+              </Typography>
+              {u.supplied && (
+                <Tooltip title="You didn't name a test user for this role, so the platform will use this name.">
+                  <Chip size="small" variant="outlined" label="Platform-supplied" />
+                </Tooltip>
+              )}
+            </Stack>
+          ))}
+        </LabelledRow>
       )}
     </Box>
+  );
+}
+
+/**
+ * A quiet label with its values beside it, and optionally the ⓘ that carries
+ * what the page no longer says out loud.
+ *
+ * The note hangs on an `IconButton` rather than plain text because a tooltip a
+ * reader cannot reach is a tooltip half the readers do not have: the button is
+ * in the tab order and answers to a keyboard, which a styled span is not.
+ */
+function LabelledRow({
+  label,
+  note,
+  noteLabel,
+  children,
+}: {
+  label: string;
+  note?: string;
+  noteLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      flexWrap="wrap"
+      useFlexGap
+      sx={{ mt: 1 }}
+    >
+      <Stack direction="row" spacing={0.25} alignItems="center">
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        {note && (
+          <Tooltip title={note}>
+            <IconButton size="small" aria-label={noteLabel} sx={{ p: 0.25 }}>
+              <Info size={13} aria-hidden />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Stack>
+      {children}
+    </Stack>
   );
 }

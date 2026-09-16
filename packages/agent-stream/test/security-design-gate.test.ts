@@ -112,8 +112,35 @@ test("a half-migrated document still carrying a removed field is refused as v1",
   assert.match(problem!.message, /v1 is not accepted: remove thunder/);
 });
 
-test("a version other than 2 is refused", () => {
-  assert.equal(checkSecurityDesign(PATH, doc({ version: 3 }))?.code, "SCHEMA_VIOLATION");
+test("a version other than 3 is refused", () => {
+  assert.equal(checkSecurityDesign(PATH, doc({ version: 4 }))?.code, "SCHEMA_VIOLATION");
+});
+
+// --- v2 is refused with one sentence too ------------------------------------
+
+test("a version-2 document is refused with the migration sentence", () => {
+  const problem = checkSecurityDesign(PATH, doc({ version: 2 }));
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /v2 is not accepted: remove actions\[\]\.ownership and set version to 3/);
+  assert.match(problem!.message, /its PATH in openapi\.yaml/);
+});
+
+test("a half-migrated document — version 3 but an action still carrying ownership — is refused as v2", () => {
+  const problem = checkSecurityDesign(
+    PATH,
+    doc({
+      permissions: [
+        { resource: "claims", component: "expense-api", actions: [{ handle: "read", ownership: "own" }] },
+      ],
+    }),
+  );
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /v2 is not accepted/);
+});
+
+test("a v1 document that also carries ownership is told about v1, not v2", () => {
+  const problem = checkSecurityDesign(PATH, doc({ version: 1 }));
+  assert.match(problem!.message, /v1 is not accepted/);
 });
 
 // --- shape ------------------------------------------------------------------
@@ -143,35 +170,6 @@ test("an unknown nested field is rejected — no secret can be smuggled in", () 
   assert.match(problem!.message, /password/);
 });
 
-test("an action without ownership is rejected", () => {
-  const problem = checkSecurityDesign(
-    PATH,
-    doc({
-      permissions: [
-        { resource: "claims", component: "expense-api", actions: [{ handle: "read" }] },
-      ],
-    }),
-  );
-  assert.equal(problem?.code, "SCHEMA_VIOLATION");
-  assert.match(problem!.message, /ownership/);
-});
-
-test("an ownership other than own or any is rejected", () => {
-  const problem = checkSecurityDesign(
-    PATH,
-    doc({
-      permissions: [
-        {
-          resource: "claims",
-          component: "expense-api",
-          actions: [{ handle: "read", ownership: "self" }],
-        },
-      ],
-    }),
-  );
-  assert.equal(problem?.code, "SCHEMA_VIOLATION");
-});
-
 test("a handle segment outside [a-z][a-z0-9-]* is rejected", () => {
   for (const bad of ["Read", "read_all", "2fa", "read all", ""]) {
     const problem = checkSecurityDesign(
@@ -181,7 +179,7 @@ test("a handle segment outside [a-z][a-z0-9-]* is rejected", () => {
           {
             resource: "claims",
             component: "expense-api",
-            actions: [{ handle: bad, ownership: "any" }],
+            actions: [{ handle: bad }],
           },
         ],
       }),
@@ -344,7 +342,7 @@ test("an empty testUsers list passes the gate — the build supplies the missing
 test("the FileBundle refuses a bad security.json and stays byte-for-byte unchanged", () => {
   const bundle = new FileBundle({ [PATH]: fixture("expense-tracker") });
   const before = bundle.snapshot()[PATH];
-  const res = bundle.editFile(PATH, '"version": 2', '"version": 9');
+  const res = bundle.editFile(PATH, '"version": 3', '"version": 9');
   assert.equal(res.ok, false);
   if (res.ok) throw new Error("expected rejection");
   assert.equal(res.code, "SCHEMA_VIOLATION");

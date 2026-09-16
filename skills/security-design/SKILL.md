@@ -46,18 +46,22 @@ Walk the PRD's capabilities, not its endpoints:
 - A handle is `<resource>:<action>`, unique in the project. Each segment is
   `[a-z][a-z0-9-]*`.
 
-**Every action states its `ownership`, and it is required.**
+**An action says what a caller may do. Which rows it reaches is not in this
+file.** Reach is the operation's **path** in `openapi.yaml`: an operation under
+`/me/` reaches the caller's rows (or, through a relation noun, rows of theirs —
+`/me/team/claims`); an operation anywhere else reaches every row. So a
+capability that exists at two reaches is **two actions** guarding two
+operations — `read` on `GET /me/claims` and `read-all` on `GET /claims` — and
+nothing about either action says so; the paths do. `openapi-conventions` owns
+the rule and the gate that refuses one handle guarding both sides of `/me/`.
+There is no `ownership`, no `own`/`any`, and no widening: a role that needs both
+reaches holds both handles, and nothing implies anything.
 
-| `ownership` | Means | The handler |
-|---|---|---|
-| `own` | the caller reaches their own rows | filters by the caller's identity (`X-User-Id`, or the mapping the description names) |
-| `any` | the caller reaches every row | does not filter |
-
-A capability that needs both is **two actions**, `read` (own) and `read-all`
-(any). Without the split, a role holding a bare `read` lists everybody's rows
-the first time a coding agent guesses — which is exactly how prose-only
-permissions get implemented. The word is `ownership`, not "scope", because
-scope already means the OAuth scope in this file.
+Name the every-row action so a reader can tell it from the caller's-rows one
+(`read-all`, `manage`, `export`), and keep the description honest about it —
+"every claim", not "claims". The Security page shows each handle's reach beside
+it, read off the contract; a description that contradicts the path is the one
+thing the page cannot catch.
 
 `openid`, `profile`, `email`, `group` and `ou` are reserved OIDC scopes. They
 ride every access token, so one of them as a handle would admit every signed-in
@@ -82,25 +86,26 @@ the role is for **already form that group** — `Finance` beats a fresh
 only when no existing one is those people. A group already in the directory is
 never redeclared.
 
-The tool describes itself in the same words, and that description is the
-contract between it and this skill:
+The tool's own description says what each field means; it is the contract
+between the tool and this skill, and it is not copied here — the two ship on
+different clocks and a copy would go stale with nothing to catch it.
 
-> **`list_groups`** — Lists the directory groups in this organization's
-> environment directory. Use it before writing `security.json`
-> `roles[].assignTo`: reuse an existing group name when the people who should
-> hold the role already form a group; otherwise declare a new name in `groups[]`
-> (it is created at build). `memberCount` is the number of users in the group
-> today; `projects` is how many projects already bind a role to it;
-> `platformCreated` says whether this platform created it.
-
-A group with `platformCreated: false` was made by hand — most notably
-`Administrators`, which administers the platform itself. Bind to it only when it
+A group with `platformCreated: false` was made by hand. Bind to one only when it
 genuinely is the population the role is for.
+
+**Whether a new group may be introduced at all is the organisation's call, not
+this skill's.** `organization`'s **Security & compliance** section holds it,
+along with the groups this org prefers and the ones a role may never be assigned
+to. Read it before you write `groups[]`: a filled line there is the decision.
 
 ## Every PRD actor gets a role, and no role exists without an actor
 
 Roles come from the PRD's Actors section. Define no role the PRD has no actor
-for, and give every actor a row. Each role cites in `stories` the PRD story
+for, and give every actor a row. **When the actor noun is also the group's name**
+— a PRD actor `Finance` whose people are the org's `Finance` group — the group
+keeps the name and the role takes what the actor DOES here (`FinanceReviewer`),
+naming the actor in its `description`. A role and a group cannot share a name,
+and the group's is the organisation's to keep. Each role cites in `stories` the PRD story
 numbers it serves — **at least one, and the build gate checks one direction
 only**: every story a role cites must be a real PRD story, or the design and the
 requirements have drifted. The reverse is not checked here — a story no role
@@ -118,38 +123,48 @@ so the literal cannot collide.
 
 Write the screen name as `wireframes.dsl` spells it; spaces and case are
 ignored when the two are compared (`"My Claims"` matches `screen MyClaims`). A
-screen the wireframe does not draw is refused. The reverse is **your** job: a
-screen you leave out of `screens[]` is reachable by any signed-in user, which is
-almost never what a gated app means.
+screen the wireframe does not draw is refused, **and so is a screen the
+wireframe draws that `screens[]` leaves out** — one refusal per component,
+naming every screen it missed. A screen with no row is reachable by any
+signed-in user whatever role they hold, which is almost never what a gated app
+means, and the omission is silent by construction: the document that forgets a
+screen looks complete.
 
-## The two grant rules
+That check cannot bite here. This file is written **before** the wireframes, so
+the screen set you gate is the one you intend to draw, not the one that exists,
+and a rule whose sibling file is missing is skipped in silence. **Re-emit
+`security.json` once `wireframes.dsl` is written**, with a row for every screen
+in it — and with the grants the grant rule then asks for, which needs the
+`openapi.yaml` that does not exist yet either. Until that pass runs the document
+validates and says nothing about the half of it nobody can check; on that pass
+the gate names what is missing, one sentence at a time, and the build gate is
+the backstop if the pass never happens.
+
+## The grant rule
 
 Scopes are compared as whole strings, everywhere — the gateway, the service
 middleware and the directory. Nothing implies anything: a token carrying
-`claims:read-all` is refused by an operation that requires `claims:read`. Two
-rules follow, and both are unconditional.
+`claims:read-all` is refused by an operation that requires `claims:read`. One
+rule follows, and it is unconditional.
 
-**(a) Every role that reaches a screen holds the scope of every operation that
-screen calls.** Before writing a role's `grants`, open the `openapi.yaml` of the
-component behind each screen that role unlocks and list the operations the
-screen calls. Every one of those scopes goes in `grants`. In the worked example
-below, `Approvals` is gated on `claims:approve`, but the queue it renders is
-`GET /claims`, which requires `claims:read` — so `Approver` grants both.
+**Every role that reaches a screen can read the resource that screen renders.**
+A screen gated on `<resource>:<action>` draws that resource, so the role that
+holds `<action>` must also hold at least one handle that guards a `GET` on the
+resource — which one is your call, and it is the reach the screen shows: an
+Approvals queue that lists every claim is `GET /claims` on `claims:read-all`; a
+My Claims page is `GET /me/claims` on `claims:read`. Before writing a role's
+`grants`, open the `openapi.yaml` of the component behind each screen that role
+unlocks and grant the read the screen actually calls.
 
-**(b) A role granted `X:read-all` is also granted `X:read`.** The "all" handle
-widens the *rows* an operation returns; it does not replace the *operation*'s own
-handle. Both go in `grants`, and ownership then does its job: the same
-`GET /claims` returns the caller's rows for an Employee and every row for an
-Approver.
+Miss it and the build gate refuses the design, naming the role, the screen and
+every handle that would satisfy it. Miss it on a plane where the gateway
+answers **401** for every failure — no token, expired token, missing scope, all
+byte-identical — and the symptom is not a tidy 403: the SPA cannot tell a
+missing scope from an expired session, so it restarts sign-in and a
+correctly-provisioned user sits in an **infinite sign-in loop** on the one
+screen their role exists for.
 
-Miss either and the build gate refuses the design, naming the role, the screen
-and the missing handle. Miss it on a plane where the gateway answers **401** for
-every failure — no token, expired token, missing scope, all byte-identical — and
-the symptom is not a tidy 403: the SPA cannot tell a missing scope from an
-expired session, so it restarts sign-in and a correctly-provisioned user sits in
-an **infinite sign-in loop** on the one screen their role exists for.
-
-**One scope per operation is the invariant both rules protect.** Never propose
+**One scope per operation is the invariant this rule protects.** Never propose
 listing alternatives on an operation, and never ask for a handle to imply
 another: the fix for a role that is one handle short is one more entry in
 `grants`.
@@ -182,26 +197,26 @@ property at any level where one could go, and a write that adds one is rejected.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "claims",
       "component": "expense-api",
       "description": "Expense claims and their approval",
       "actions": [
-        { "handle": "read",     "ownership": "own", "description": "See own claims" },
-        { "handle": "read-all", "ownership": "any", "description": "See every claim" },
-        { "handle": "submit",   "ownership": "own", "description": "Create and send a claim" },
-        { "handle": "approve",  "ownership": "any", "description": "Approve a submitted claim" },
-        { "handle": "reject",   "ownership": "any", "description": "Reject a submitted claim" }
+        { "handle": "read",     "description": "The caller's own claims" },
+        { "handle": "read-all", "description": "Every claim" },
+        { "handle": "submit",   "description": "Create and send a claim" },
+        { "handle": "approve",  "description": "Approve a submitted claim" },
+        { "handle": "reject",   "description": "Reject a submitted claim" }
       ]
     },
     {
       "resource": "reports",
       "component": "expense-api",
       "actions": [
-        { "handle": "read",   "ownership": "any", "description": "Monthly totals" },
-        { "handle": "export", "ownership": "any", "description": "Download CSV" }
+        { "handle": "read",   "description": "Monthly totals" },
+        { "handle": "export", "description": "Download CSV" }
       ]
     }
   ],
@@ -240,15 +255,16 @@ property at any level where one could go, and a write that adds one is rejected.
 
 `Finance` is not in `groups[]`: `list_groups` returned it, so `Approver` is
 assigned to the people who already are Finance. `Employees` is new to this
-project and is declared. `Approver` grants `claims:read` **and**
-`claims:read-all` — rule (b) — and it grants `claims:read` because `Approvals`
-calls `GET /claims` — rule (a).
+project and is declared. `Approver` grants `claims:read-all` because
+`Approvals` lists every claim — `GET /claims` in the contract — and
+`claims:read` because an approver has claims of their own too; neither grant is
+implied by the other, and the `openapi.yaml` beside this file is where
+`GET /me/claims` and `GET /claims` say which rows each returns.
 
 | Field | Rule |
 |---|---|
-| `version` | Always `2`. |
+| `version` | Always `3`. |
 | `permissions[]` | The catalog. `resource` unique in the project; `component` names a `service` in the cell; at least one action; action handles unique within their resource (`claims:read` and `reports:read` legally coexist). |
-| `permissions[].actions[].ownership` | **Required.** `own` or `any`, per the table above. |
 | `groups[]` | Organisation groups this project introduces: `name`, `description`. Created if absent, never renamed or deleted. A group already in the directory is not redeclared. |
 | `roles[].name` | A PRD actor noun, unique in the project (case-insensitively), never a group name. It becomes `<project>/<name>` on the directory. |
 | `roles[].description` | What the role is for. Project-owned: the platform writes it on every build. |
@@ -262,12 +278,12 @@ calls `GET /claims` — rule (a).
 | `testUsers[].username` | Lowercase letters, digits, `.`, `_`, `-`. |
 | `testUsers[].roles` | One or more declared `kind: user` roles. The account is enrolled in every `assignTo` group of every role listed. |
 
-Nothing else goes in the file. There is no `coldStartRole`, no
-`publicComponents`, no `thunder` block, no `grantedBy`: a component is protected
-because it depends on sign-in, an operation is public because its `security` is
-empty, a screen is public because `requires` is `"public"`, the OAuth client's
-name and scope list are derived, and `assignableBy` records who hands a role
-out.
+Nothing else goes in the file. There is no `ownership`, no `coldStartRole`, no
+`publicComponents`, no `thunder` block, no `grantedBy`: which rows an operation
+reaches is its path, a component is protected because it depends on sign-in, an
+operation is public because its `security` is empty, a screen is public because
+`requires` is `"public"`, the OAuth client's name and scope list are derived,
+and `assignableBy` records who hands a role out.
 
 ## The signed-in baseline
 
@@ -296,7 +312,8 @@ customer opening an account — gets `"enrolment": "self-service"` and **no**
 the legitimate cold start and a concept every identity provider has. Such a role
 gets no test user and no group binding.
 
-Use it only where the PRD genuinely describes people who sign themselves up.
+Use it only where the PRD genuinely describes people who sign themselves up,
+and only where `organization`'s **Security & compliance** section permits it.
 Everything else is `admin`.
 
 ## What the user has to know about a grant change
@@ -314,6 +331,7 @@ The `organization` skill's Security & compliance and Authentication defaults
 apply before you invent policy — a filled org entry is the decision. Nothing
 here creates anything: the platform creates the resource server, the roles, the
 groups and the test users when the user clicks Build. `openapi-conventions` owns
-how an operation names a handle, `wireframes` owns how a screen is gated by one,
+how an operation names a handle and which rows it reaches (its path),
+`wireframes` owns how a screen is gated by one,
 `thunder-authentication` owns the build-time mechanics the coding agent
 implements; this skill owns the decisions all three consume.

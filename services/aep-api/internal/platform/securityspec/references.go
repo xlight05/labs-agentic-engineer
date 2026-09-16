@@ -37,18 +37,18 @@ package securityspec
 //     some of those files exist, so a rule whose input is missing is SKIPPED IN
 //     SILENCE — the build gate re-runs the whole list against the tag, where
 //     every file is present by construction.
-//  3. **The reachability cross-check.** For every role, the operation behind
-//     every screen that role can reach must be granted by that role. This is
-//     the rule the design's own Expense Tracker example fails, and on the
-//     pinned gateway the failure is a bare 401 the SPA cannot tell from an
-//     expired session — an infinite sign-in loop. Caught here it is one
-//     sentence at authoring time.
+//  3. **The reachability cross-check.** Every role that reaches a screen must
+//     be able to READ the resource that screen renders — hold at least one
+//     handle that guards a safe operation on it. This is the class the design's
+//     first Expense Tracker draft fell into, and on the pinned gateway the
+//     failure is a bare 401 the SPA cannot tell from an expired session — an
+//     infinite sign-in loop. Caught here it is one sentence at authoring time.
 //
-// Nothing implies anything: the gateway compares scopes whole-string, so
-// `claims:read-all` does not admit a caller to an operation guarded on
-// `claims:read`. Rather than widen grants silently — which would make the gate
-// disagree with the runtime — a role holding `X:read-all` without `X:read` is
-// an error naming both (ADR-0030).
+// Nothing implies anything, and nothing here is about rows. The gateway
+// compares scopes whole-string. Which rows an operation reaches is its PATH in
+// openapi.yaml — under /me/ the caller's, otherwise every row (ADR-0031) — so a
+// handle is a handle: `claims:read-all` is not a wider `claims:read`, it is the
+// handle of a different operation, and a role that needs both holds both.
 
 import (
 	"regexp"
@@ -149,18 +149,23 @@ func cellComponents(src FileSource) map[string]bool {
 // a different one.
 var dslScreenRE = regexp.MustCompile(`(?i)^screen[ \t]+([\w-]+)(?:[ \t]+"(?:[^"\\]|\\.)*")?(?:[ \t]+\d+[ \t]*x[ \t]*\d+)?$`)
 
-// wireframeScreens returns the screen names a wireframes.dsl declares,
-// normalized, or nil when the file yields none. It reads the declarations
-// rather than compiling the DSL — the compiler lives in a TypeScript package,
-// and the only fact needed here is which names exist.
+// wireframeScreens returns the screen names a wireframes.dsl declares, in the
+// order it draws them and spelled as it spells them, or nil when the file
+// yields none. It reads the declarations rather than compiling the DSL — the
+// compiler lives in a TypeScript package, and the only fact needed here is
+// which names exist.
+//
+// Raw rather than normalized because the two rules that read it want different
+// things: the row-names-a-real-screen rule normalizes at the comparison, while
+// ungatedScreens puts the name in a message the author has to match.
 //
 // Nil means UNREADABLE, not "no screens": a wireframes.dsl with no declaration
 // this grammar recognizes is one this package cannot judge, and the caller must
 // skip the screen rule rather than refuse every screen the document cites. It
 // is the same verdict the agent side reaches when compileWireframes fails
 // (packages/agent-stream/src/security-design-references.ts).
-func wireframeScreens(dsl string) map[string]bool {
-	var names map[string]bool
+func wireframeScreens(dsl string) []string {
+	var names []string
 	for _, raw := range strings.Split(dsl, "\n") {
 		// A declaration is legal only at indent level 0, so any leading
 		// whitespace disqualifies the line; trailing whitespace is stripped
@@ -173,10 +178,7 @@ func wireframeScreens(dsl string) map[string]bool {
 		if m == nil {
 			continue
 		}
-		if names == nil {
-			names = map[string]bool{}
-		}
-		names[NormalizeScreenName(m[1])] = true
+		names = append(names, m[1])
 	}
 	return names
 }
@@ -298,8 +300,6 @@ func resourceOf(handle string) string {
 	return resource
 }
 
-func isReadAll(handle string) bool { return strings.HasSuffix(handle, ":read-all") }
-
 // validRoleName reports whether a role name is made only of letters, digits,
 // spaces, "-", "_" and ".".
 //
@@ -402,26 +402,10 @@ func ReferenceFindings(doc *Document, src FileSource) []Finding {
 		if groupNamesLower[key] {
 			found.add(SeverityError, MsgRoleNameIsGroupName, "role", role.Name)
 		}
-		grants := map[string]bool{}
 		for _, handle := range role.Grants {
-			grants[handle] = true
 			if !catalog[handle] {
 				found.add(SeverityError, MsgGrantUnknownHandle, "role", role.Name, "handle", handle)
 			}
-		}
-		// The "all" handle widens the ROWS a caller may see; it does not replace
-		// the operation's own handle, and the gateway compares scopes
-		// whole-string (ADR-0030).
-		for _, handle := range role.Grants {
-			if !isReadAll(handle) {
-				continue
-			}
-			read := resourceOf(handle) + ":read"
-			if !catalog[read] || grants[read] {
-				continue
-			}
-			found.add(SeverityError, MsgReadAllWithoutRead,
-				"role", role.Name, "allHandle", handle, "readHandle", read)
 		}
 	}
 
@@ -499,42 +483,124 @@ func ReferenceFindings(doc *Document, src FileSource) []Finding {
 		if declared == nil {
 			continue // unreadable wireframes.dsl — the rule has no ground truth
 		}
-		if !declared[NormalizeScreenName(screen.Screen)] {
+		if !slices.Contains(normalizeAll(declared), NormalizeScreenName(screen.Screen)) {
 			found.add(SeverityError, MsgScreenUnknown,
 				"component", screen.Component, "screen", screen.Screen)
 		}
 	}
 
 	if src != nil {
+		ungatedScreens(doc, src, cellIDs, found)
 		reachabilityRules(doc, src, catalog, ownerOf, found)
 	}
 	return found.all
 }
 
-// reachabilityRules are the rules that need the component specs: the
-// screen→operation cross-check and the two catalog-coverage warnings.
+// normalizeAll is NormalizeScreenName over a list.
+func normalizeAll(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, NormalizeScreenName(name))
+	}
+	return out
+}
+
+// ungatedScreens is the OTHER direction of the screens rule: a screen the
+// wireframe draws and screens[] does not gate.
 //
-// # How a screen's operations are derived
+// The per-screen loop checks that every row names a screen that exists. That
+// direction alone leaves the dangerous one open, because the omission is silent
+// by construction — a screen with no row is reachable by any signed-in person,
+// and the document that fails to say so looks complete. The first live project
+// to reach this gate gated six of the eight screens its wireframe drew, and the
+// two it missed were the approve/reject screens, the only ones a role split
+// existed for.
+//
+// Which components are looked at: every component the CELL declares, not every
+// component screens[] names. A web application whose screens are ALL ungated
+// names itself nowhere in the document, so a scan of screens[] could never
+// reach it — which is the worst case, not an edge one. A component with no
+// wireframes.dsl (a service, a database) is skipped by the read.
+//
+// One finding per component rather than per screen: the agent's write gate
+// hands the model ONE sentence per round trip, so a component missing four
+// screens is one fix rather than four.
+//
+// This mirrors ungatedScreens in the agent's security-design-references.ts.
+func ungatedScreens(doc *Document, src FileSource, cellIDs map[string]bool, found *findings) {
+	// Without the cell there is no component list, so the rule falls back to
+	// the components this document already names.
+	components := make([]string, 0, len(cellIDs))
+	if cellIDs != nil {
+		for id := range cellIDs {
+			components = append(components, id)
+		}
+	} else {
+		seen := map[string]bool{}
+		for _, screen := range doc.Screens {
+			if !seen[screen.Component] {
+				seen[screen.Component] = true
+				components = append(components, screen.Component)
+			}
+		}
+	}
+	slices.Sort(components)
+
+	for _, component := range components {
+		dsl, ok := src.Read(componentDir(component) + "/wireframes.dsl")
+		if !ok || strings.TrimSpace(dsl) == "" {
+			continue
+		}
+		drawn := wireframeScreens(dsl)
+		if drawn == nil {
+			continue // unreadable wireframes.dsl — the rule has no ground truth
+		}
+		gated := map[string]bool{}
+		for _, screen := range doc.Screens {
+			if screen.Component == component {
+				gated[NormalizeScreenName(screen.Screen)] = true
+			}
+		}
+		var missing []string
+		for _, name := range drawn {
+			if !gated[NormalizeScreenName(name)] {
+				missing = append(missing, `"`+name+`"`)
+			}
+		}
+		if len(missing) == 0 {
+			continue
+		}
+		found.add(SeverityError, MsgScreenNotGated,
+			"component", component, "screens", strings.Join(missing, ", "))
+	}
+}
+
+// reachabilityRules are the rules that need the component specs: the
+// screen→read cross-check and the two catalog-coverage warnings.
+//
+// # How a screen's read is derived
 //
 // The wireframes DSL has no screen→operation binding — its grammar is screens,
-// elements and flows — so the operation set is derived through the CATALOG
-// instead, from two facts the document does state:
+// elements and flows — so the check goes through the CATALOG, from two facts
+// the document does state:
 //
 //   - a screen gated on `<resource>:<action>` RENDERS that resource, and
 //   - the component that owns the resource declares the operations on it.
 //
-// So the operation a screen cannot avoid calling is the resource's own read:
-// the SAFE (GET/HEAD) operation guarded on `<resource>:read` in the owning
-// component's spec. If the role that reaches the screen cannot call that, the
-// page loads into a 401 — exactly the class the design's example broke on.
+// A screen cannot render a resource it cannot read, so the role that reaches
+// the screen must hold at least ONE handle that guards a safe (GET/HEAD)
+// operation on that resource. Which one is the design's business — the
+// resource may have several reads at several reaches (`GET /me/claims` on
+// `claims:read`, `GET /claims` on `claims:read-all`) — and the rule does not
+// pick between them; it only refuses a role that holds none, which is the case
+// that loads the page into a 401 the SPA cannot tell from an expired session.
 //
 // The rule deliberately stops there rather than demanding every scoped operation
-// of the resource: `GET /reports/export` guarded on `reports:export` sits behind
-// a button the page can hide, while the list GET runs on load, so requiring the
-// whole set would refuse a correct document. A screen requiring null names no
-// resource and has no derivable operation set; a public screen is outside
-// authorization entirely. Both are skipped, and a per-screen binding — if the
-// DSL ever grows one — replaces this derivation without moving the rule.
+// of the resource: a `GET /reports/export` sits behind a button the page can
+// hide, while a list runs on load. A screen requiring null names no resource
+// and has no derivable read; a public screen is outside authorization entirely.
+// Both are skipped, and a per-screen binding — if the DSL ever grows one —
+// replaces this derivation without moving the rule.
 //
 // This mirrors reachabilityRules in the agent's security-design-references.ts.
 func reachabilityRules(doc *Document, src FileSource, catalog map[string]bool, ownerOf map[string]string, found *findings) {
@@ -567,7 +633,8 @@ func reachabilityRules(doc *Document, src FileSource, catalog map[string]bool, o
 		if !required || !catalog[requires] {
 			continue
 		}
-		owner, known := ownerOf[resourceOf(requires)]
+		resource := resourceOf(requires)
+		owner, known := ownerOf[resource]
 		if !known {
 			continue
 		}
@@ -575,17 +642,21 @@ func reachabilityRules(doc *Document, src FileSource, catalog map[string]bool, o
 		if !present {
 			continue
 		}
-		// The one operation the page cannot avoid: the resource's read, if some
-		// safe operation of the owner is guarded on it.
-		readHandle := resourceOf(requires) + ":read"
-		var loads bool
+		// Every handle that reads the resource, once each, sorted — this side
+		// decodes YAML into maps and cannot promise spec order, so the one order
+		// both gates can agree on is alphabetical.
+		var reads []string
 		for _, op := range operations {
-			if !op.Public && op.Scope == readHandle && safeMethods[op.Method] {
-				loads = true
-				break
+			if op.Public || op.Scope == "" || !safeMethods[op.Method] {
+				continue
 			}
+			if resourceOf(op.Scope) != resource || slices.Contains(reads, op.Scope) {
+				continue
+			}
+			reads = append(reads, op.Scope)
 		}
-		if !loads {
+		sort.Strings(reads)
+		if len(reads) == 0 {
 			continue
 		}
 		for _, role := range doc.Roles {
@@ -593,11 +664,26 @@ func reachabilityRules(doc *Document, src FileSource, catalog map[string]bool, o
 			if role.RoleKind() != KindUser {
 				continue
 			}
-			if !slices.Contains(role.Grants, requires) || slices.Contains(role.Grants, readHandle) {
+			if !slices.Contains(role.Grants, requires) {
 				continue
 			}
-			found.add(SeverityError, MsgScreenOperationNotGranted,
-				"role", role.Name, "screen", screen.Screen, "handle", readHandle)
+			holdsARead := false
+			for _, handle := range reads {
+				if slices.Contains(role.Grants, handle) {
+					holdsARead = true
+					break
+				}
+			}
+			if holdsARead {
+				continue
+			}
+			quoted := make([]string, 0, len(reads))
+			for _, handle := range reads {
+				quoted = append(quoted, `"`+handle+`"`)
+			}
+			found.add(SeverityError, MsgScreenWithoutRead,
+				"role", role.Name, "screen", screen.Screen, "resource", resource,
+				"handles", strings.Join(quoted, ", "))
 		}
 	}
 
@@ -623,13 +709,7 @@ func reachabilityRules(doc *Document, src FileSource, catalog map[string]bool, o
 		}
 	}
 	for _, handle := range CatalogHandles(doc) {
-		// `X:read-all` is a ROW widener, not an operation guard: the design's own
-		// example puts it on no operation and no screen, and the service reads it
-		// off the token while serving `X:read`. Warning about it every time would
-		// make this line noise, so it only fires when even `X:read` is unused.
-		widensAUsedRead := isReadAll(handle) &&
-			(requiredByOperations[resourceOf(handle)+":read"] || requiredByScreens[resourceOf(handle)+":read"])
-		if !requiredByOperations[handle] && !requiredByScreens[handle] && !widensAUsedRead {
+		if !requiredByOperations[handle] && !requiredByScreens[handle] {
 			found.add(SeverityWarning, MsgHandleUsedNowhere, "handle", handle)
 		}
 		if requiredByOperations[handle] && !granted[handle] {

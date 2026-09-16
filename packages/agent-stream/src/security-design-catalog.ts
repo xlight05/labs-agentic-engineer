@@ -17,7 +17,7 @@
  */
 
 /**
- * Pure projections of a parsed `SecurityDesign` v2 — the permission catalog as
+ * Pure projections of a parsed `SecurityDesign` — the permission catalog as
  * a lookup, and a role's grants as a lookup.
  *
  * Every gate that has to answer "is this handle declared?" or "does this role
@@ -50,8 +50,7 @@ export function catalogHandles(doc: SecurityDesign): Set<string> {
 
 /**
  * Role name (verbatim, as authored) → the handles that role grants. Built from
- * `grants` alone: the `X:read-all` ⇒ `X:read` widening is a gate RULE, checked
- * and reported against the authored list, not silently applied here.
+ * `grants` alone: nothing implies anything, so nothing is added here.
  */
 export function roleGrants(doc: SecurityDesign): Map<string, Set<string>> {
   const byRole = new Map<string, Set<string>>();

@@ -1,24 +1,24 @@
 {
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "claims",
       "component": "expense-api",
       "description": "Expense claims and their approval",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "See own claims" },
-        { "handle": "read-all", "ownership": "any", "description": "See every claim" },
-        { "handle": "submit", "ownership": "own", "description": "Create and send a claim" },
-        { "handle": "approve", "ownership": "any", "description": "Approve a submitted claim" },
-        { "handle": "reject", "ownership": "any", "description": "Reject a submitted claim" }
+        { "handle": "read", "description": "See own claims" },
+        { "handle": "read-all", "description": "See every claim" },
+        { "handle": "submit", "description": "Create and send a claim" },
+        { "handle": "approve", "description": "Approve a submitted claim" },
+        { "handle": "reject", "description": "Reject a submitted claim" }
       ]
     },
     {
       "resource": "reports",
       "component": "expense-api",
       "actions": [
-        { "handle": "read", "ownership": "any", "description": "Monthly totals" },
-        { "handle": "export", "ownership": "any", "description": "Download CSV" }
+        { "handle": "read", "description": "Monthly totals" },
+        { "handle": "export", "description": "Download CSV" }
       ]
     }
   ],

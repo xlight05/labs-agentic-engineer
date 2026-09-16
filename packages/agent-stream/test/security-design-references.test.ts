@@ -159,14 +159,14 @@ test("the two coverage warnings fire on the Expense Tracker catalog", () => {
   const warnings = only(found, "warning").map((f) => `${f.key}:${f.params["handle"]}`);
   // reports:export is required by GET /reports/export and granted by no role.
   assert.ok(warnings.includes("handle_unreachable:reports:export"), warnings.join(", "));
-  // claims:read-all guards no operation, but it widens a read that IS used —
-  // the design's own shape, so it must not be reported as unused.
-  assert.ok(!warnings.some((w) => w.startsWith("handle_used_nowhere:claims:read-all")), warnings.join(", "));
+  // claims:read-all guards GET /claims — an operation of its own, at its own
+  // reach — so it is used like any other handle. Nothing is exempt by name.
+  assert.ok(!warnings.some((w) => w.startsWith("handle_used_nowhere:")), warnings.join(", "));
 });
 
 test("a catalog handle nothing requires is reported as declared, used nowhere", () => {
   const doc = expense((d) => {
-    d.permissions[0]!.actions.push({ handle: "archive", ownership: "any" });
+    d.permissions[0]!.actions.push({ handle: "archive" });
   });
   const warnings = only(securityReferenceFindings(doc, contextFor("expense-tracker")), "warning");
   assert.ok(warnings.some((w) => w.key === "handle_used_nowhere" && w.params["handle"] === "claims:archive"));
@@ -174,34 +174,49 @@ test("a catalog handle nothing requires is reported as declared, used nowhere", 
 
 // --- THE reachability cross-check (plan §1.2, Δ P6 §5) -----------------------
 
-test("the design's own Expense Tracker defect is refused: Approver reaches Approvals without claims:read", () => {
-  // Verbatim the shape the design shipped and P6 §5 measured: Approvals is
-  // gated on claims:approve, the list it renders is GET /claims (claims:read),
-  // and Approver grants only claims:read-all. Live, that was a 401 the SPA read
-  // as an expired session — an infinite sign-in loop.
+test("the design's own Expense Tracker defect is refused: Approver reaches Approvals and can read no claims", () => {
+  // The shape the design shipped and P6 §5 measured: Approvals is gated on
+  // claims:approve and renders a list of claims the role could not call. Live,
+  // that was a 401 the SPA read as an expired session — an infinite sign-in
+  // loop. The resource has two reads at two reaches (GET /me/claims on
+  // claims:read, GET /claims on claims:read-all); the rule refuses a role that
+  // holds NEITHER and names both, leaving which one to the design.
+  const doc = expense((d) => {
+    const approver = role(d, "Approver");
+    approver.grants = approver.grants.filter((g) => g !== "claims:read" && g !== "claims:read-all");
+  });
+  const found = errors(securityReferenceFindings(doc, contextFor("expense-tracker")));
+  const reach = found.find((f) => f.key === "screen_without_read");
+  if (!reach) throw new Error(`no reachability error; got: ${found.map((f) => f.message).join(" | ")}`);
+  assert.deepEqual(reach.params, {
+    role: "Approver",
+    screen: "Approvals",
+    resource: "claims",
+    handles: '"claims:read", "claims:read-all"',
+  });
+  assert.match(reach.message, /role "Approver" reaches screen "Approvals"/);
+});
+
+test("holding ANY read of the resource satisfies the rule — the reach is the design's choice", () => {
+  // An Approver who reads every claim (GET /claims) but not their own
+  // (GET /me/claims) can still render Approvals. Nothing implies anything, and
+  // nothing here says which list the screen shows; only that it can show one.
   const doc = expense((d) => {
     const approver = role(d, "Approver");
     approver.grants = approver.grants.filter((g) => g !== "claims:read");
   });
-  const found = errors(securityReferenceFindings(doc, contextFor("expense-tracker")));
-  const reach = found.find((f) => f.key === "screen_operation_not_granted");
-  if (!reach) throw new Error(`no reachability error; got: ${found.map((f) => f.message).join(" | ")}`);
-  assert.deepEqual(reach.params, { role: "Approver", screen: "Approvals", handle: "claims:read" });
-  assert.match(reach.message, /role "Approver" reaches screen "Approvals"/);
-  assert.match(reach.message, /claims:read/);
-  // Decision B1 names the same omission from the other side.
-  assert.ok(found.some((f) => f.key === "read_all_without_read"));
+  assert.deepEqual(errors(securityReferenceFindings(doc, contextFor("expense-tracker"))), []);
 });
 
 test("the reachability rule is silent when the owning component's spec is not in the bundle", () => {
   const doc = expense((d) => {
     const approver = role(d, "Approver");
-    approver.grants = approver.grants.filter((g) => g !== "claims:read");
+    approver.grants = approver.grants.filter((g) => g !== "claims:read" && g !== "claims:read-all");
   });
   const files = bundleFiles("expense-tracker");
   delete files["specs/design/components/expense-api/openapi.yaml"];
   const found = errors(securityReferenceFindings(doc, { read: (p) => files[p] }));
-  assert.ok(!found.some((f) => f.key === "screen_operation_not_granted"));
+  assert.ok(!found.some((f) => f.key === "screen_without_read"));
 });
 
 test("a service role reaches no screen, so the reachability rule skips it", () => {
@@ -225,8 +240,10 @@ test('a screen name normalizes on both sides — "My Claims" is the DSL\'s MyCla
 });
 
 test("a screen the wireframe does not declare is refused", () => {
+  // Added rather than renamed: renaming the row would ALSO leave the screen it
+  // used to gate ungated, and this case is about one rule.
   const doc = expense((d) => {
-    d.screens[0]!.screen = "My Claim";
+    d.screens.push({ component: "expense-webapp", screen: "My Claim", requires: "claims:read" });
   });
   assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_unknown", {
     component: "expense-webapp",
@@ -252,20 +269,6 @@ test("a grant naming a handle the catalog does not declare", () => {
   assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "grant_unknown_handle", {
     role: "Employee",
     handle: "claims:archive",
-  });
-});
-
-test("read-all without read, named from both ends (decision B1)", () => {
-  const doc = expense((d) => {
-    const approver = role(d, "Approver");
-    approver.grants = ["claims:read-all", "claims:approve", "claims:reject", "reports:read"];
-    // Take the Approvals screen out so only the B1 rule speaks.
-    d.screens = d.screens.filter((s) => s.requires !== "claims:approve");
-  });
-  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "read_all_without_read", {
-    role: "Approver",
-    allHandle: "claims:read-all",
-    readHandle: "claims:read",
   });
 });
 
@@ -363,7 +366,7 @@ test("a resource declared twice", () => {
     d.permissions.push({
       resource: "claims",
       component: "expense-api",
-      actions: [{ handle: "archive", ownership: "any" }],
+      actions: [{ handle: "archive" }],
     });
   });
   assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "duplicate_resource", {
@@ -375,7 +378,7 @@ test("an action handle declared twice on ONE resource — while the same handle 
   const clean = securityReferenceFindings(fixtureDoc("expense-tracker"), contextFor("expense-tracker"));
   assert.deepEqual(errors(clean), []); // claims:read and reports:read coexist
   const doc = expense((d) => {
-    d.permissions[0]!.actions.push({ handle: "read", ownership: "any" });
+    d.permissions[0]!.actions.push({ handle: "read" });
   });
   assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "duplicate_action", {
     resource: "claims",
@@ -486,14 +489,81 @@ test("a role name of letters, digits, spaces, dots, hyphens and underscores is a
 });
 
 test("a screen on a component the cell does not draw", () => {
+  // Added, not moved — see the note on the wireframe-does-not-declare case.
   const doc = expense((d) => {
-    d.screens[0]!.component = "expense-admin";
+    d.screens.push({ component: "expense-admin", screen: "My Claims", requires: "claims:read" });
   });
   assertOnlyError(
     securityReferenceFindings(doc, contextFor("expense-tracker")),
     "screen_component_unknown",
     { component: "expense-admin", screen: "My Claims" },
   );
+});
+
+// --- screens the wireframe draws and the document does not gate --------------
+
+test("a screen the wireframe draws with no screens[] row is refused", () => {
+  const doc = expense((d) => {
+    d.screens = d.screens.filter((s) => s.screen !== "Approvals");
+  });
+  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_not_gated", {
+    component: "expense-webapp",
+    screens: '"Approvals"',
+  });
+});
+
+test("every ungated screen of one component is ONE finding, in the order drawn", () => {
+  // The write-gate hands the model one sentence per round trip, so four missing
+  // screens must be one fix rather than four.
+  const doc = expense((d) => {
+    d.screens = d.screens.filter((s) => s.screen === "My Claims");
+  });
+  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_not_gated", {
+    component: "expense-webapp",
+    screens: '"SubmitClaim", "Approvals", "Reports"',
+  });
+});
+
+test("a web app with NO screens[] row at all is still caught — via the cell", () => {
+  // The case a scan of screens[] can never reach: the component names itself
+  // nowhere in the document, and every screen it draws is open.
+  const doc = expense((d) => {
+    d.screens = [];
+  });
+  const found = errors(securityReferenceFindings(doc, contextFor("expense-tracker")));
+  assert.deepEqual(
+    found.map((f) => f.key),
+    ["screen_not_gated"],
+  );
+  assert.equal(found[0]!.params["component"], "expense-webapp");
+});
+
+test("the rule is silent when the component has no wireframes.dsl", () => {
+  const files = bundleFiles("expense-tracker");
+  delete files["specs/design/components/expense-webapp/wireframes.dsl"];
+  const doc = expense((d) => {
+    d.screens = [];
+  });
+  assert.deepEqual(errors(securityReferenceFindings(doc, { read: (path) => files[path] })), []);
+});
+
+test("without the cell the rule falls back to the components screens[] names", () => {
+  const files = bundleFiles("expense-tracker");
+  delete files["specs/design/design.cell"];
+  const doc = expense((d) => {
+    d.screens = d.screens.filter((s) => s.screen === "My Claims");
+  });
+  assertOnlyError(securityReferenceFindings(doc, { read: (path) => files[path] }), "screen_not_gated", {
+    component: "expense-webapp",
+    screens: '"SubmitClaim", "Approvals", "Reports"',
+  });
+});
+
+test("a screen name is matched across spelling, so a gated screen is never reported", () => {
+  const doc = expense((d) => {
+    for (const screen of d.screens) if (screen.screen === "My Claims") screen.screen = "myclaims";
+  });
+  assert.deepEqual(errors(securityReferenceFindings(doc, contextFor("expense-tracker"))), []);
 });
 
 test("a screen requiring a handle the catalog does not declare", () => {

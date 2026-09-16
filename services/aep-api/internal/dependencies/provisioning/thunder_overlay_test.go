@@ -67,12 +67,12 @@ func (f *fakeSecurityJSON) ReadSecurityJSON(_ context.Context, _, _, tag string)
 func securityJSONV2(t *testing.T) []byte {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
-		"version": 2,
+		"version": 3,
 		"permissions": []any{map[string]any{
 			"resource": "claims", "component": "api",
 			"actions": []any{
-				map[string]any{"handle": "read", "ownership": "own"},
-				map[string]any{"handle": "approve", "ownership": "any"},
+				map[string]any{"handle": "read"},
+				map[string]any{"handle": "approve"},
 			},
 		}},
 		"groups": []any{},
