@@ -80,7 +80,6 @@ func securityJSONV2(t *testing.T) []byte {
 			"name": "Viewer", "description": "Reads own claims.", "stories": []int{1},
 			"grants": []string{"claims:read"}, "assignTo": []string{"Viewers"},
 		}},
-		"screens":   []any{},
 		"testUsers": []any{map[string]any{"username": "test-viewer", "roles": []string{"Viewer"}}},
 	})
 	if err != nil {

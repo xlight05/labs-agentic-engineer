@@ -146,39 +146,6 @@
         "additionalProperties": false
       }
     },
-    "screens": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "component": {
-            "type": "string",
-            "minLength": 1
-          },
-          "screen": {
-            "type": "string",
-            "minLength": 1
-          },
-          "requires": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "component",
-          "screen",
-          "requires"
-        ],
-        "additionalProperties": false
-      }
-    },
     "testUsers": {
       "type": "array",
       "items": {
@@ -210,7 +177,6 @@
     "permissions",
     "groups",
     "roles",
-    "screens",
     "testUsers"
   ],
   "additionalProperties": false

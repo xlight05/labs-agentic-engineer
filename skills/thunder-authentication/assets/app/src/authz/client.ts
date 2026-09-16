@@ -16,10 +16,11 @@
  * under the License.
  */
 
-// Copied VERBATIM to <app-path>/src/api-client.ts. Your per-service client
-// (src/api.ts, generated types and all) calls `apiFetch` — or, with a generated
-// openapi-fetch client, `authorizationHeader()` and `classifyResponse()` from
-// its middleware — and adds NOTHING of its own about authorization.
+// Copied VERBATIM, with the rest of app/, to <app-path>/src/authz/client.ts.
+// Your per-service client (src/api.ts, generated types and all) calls
+// `apiFetch` — or, with a generated openapi-fetch client,
+// `authorizationHeader()` and `classifyResponse()` from its middleware — and
+// adds NOTHING of its own about authorization.
 //
 // Two jobs, and only two: attach the bearer, and decide what an unauthorized
 // answer means.
@@ -34,13 +35,13 @@
 // hypothetical: it was observed on real accounts, 160 ms per cycle.
 //
 // The decision comes from what the SPA already holds: its own `expires_at`.
-// See ./authz-core#classifyApiFailure for the three cases. src/authz.tsx is
+// See ./core#classifyApiFailure for the three cases. src/authz/gates.tsx is
 // what keeps them rare — it gates before the call, so a screen the token does
 // not unlock is never rendered and its operations are never invoked — but a
 // typed URL, a stale bundle or a race past a narrowed renew still get here.
 
-import { accessToken, signIn, tokenIsValid } from "./auth";
-import { createUnauthorizedHandler, type ApiFailure } from "./authz-core";
+import { accessToken, signIn, tokenIsValid } from "./session";
+import { createUnauthorizedHandler, type ApiFailure } from "./core";
 
 /** Where the app routes a refusal. Wired once, at start-up, from the router. */
 export type ForbiddenNavigator = (context: { status: number }) => void;
@@ -49,7 +50,7 @@ let navigateToForbidden: ForbiddenNavigator = () => {
   // Until the router is up there is nowhere to go. Say so rather than swallow
   // it: a silent no-op here looks exactly like a screen that renders nothing.
   console.error(
-    "api-client: a request was refused before the router was ready — " +
+    "authz/client: a request was refused before the router was ready — " +
       "call setForbiddenNavigator() once from your router's root.",
   );
 };

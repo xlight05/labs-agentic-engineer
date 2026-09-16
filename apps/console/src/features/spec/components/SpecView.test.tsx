@@ -1960,7 +1960,6 @@ const SECURITY_DOC = JSON.stringify(
         grants: ["orders:read"],
       },
     ],
-    screens: [],
     testUsers: [],
   },
   null,

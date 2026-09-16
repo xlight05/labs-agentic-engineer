@@ -58,7 +58,6 @@ function design(over: Partial<SecurityDesign> = {}): string {
     ],
     groups: [],
     roles: [role("Admin")],
-    screens: [],
     testUsers: [],
     ...over,
   });
@@ -318,9 +317,7 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
     ]) {
       expect(screen.getByText(handle)).toBeInTheDocument();
     }
-    // `claims:read` is also what the "My Claims" screen requires, so it appears
-    // once in the grid and once in the screens list below it.
-    expect(screen.getAllByText("claims:read")).toHaveLength(2);
+    expect(screen.getByText("claims:read")).toBeInTheDocument();
     // No row-reach chip: which rows a handle reaches is its operations' path,
     // and the API view draws the path on the row (ADR-0031) — nothing to
     // restate here.
@@ -358,8 +355,8 @@ describe("SecurityPanel — the permission matrix (Expense Tracker)", () => {
   });
 
   // The only row under the catalog is the exposure the page alone can state:
-  // a component that provisions no sign-in. Operations and screens that need
-  // no permission are the API view's and the Screens block's to name.
+  // a component that provisions no sign-in. An operation that needs no
+  // permission is the API view's to name.
   it("names the components that provision no sign-in, under their own sub-header", () => {
     expenseTracker({
       dependencies: [
@@ -470,38 +467,6 @@ describe("SecurityPanel — warnings on the row they name", () => {
       permissions.compareDocumentPosition(found[0]!) &
         Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
-  });
-
-  /**
-   * The finding a reader most needs, and the one the page could not show:
-   * a screen the WIREFRAME draws with no row in this document. It is invisible
-   * in the list of gated screens by construction — that list is the rows the
-   * document has — so it renders on the Screens block, which is where a reader
-   * who is asking "what is reachable" is already looking.
-   */
-  it("shows a screen the wireframe draws and the document does not gate", () => {
-    const ungated = JSON.parse(EXPENSE_TRACKER_TEXT) as {
-      screens: { screen: string }[];
-    };
-    ungated.screens = ungated.screens.filter((s) => s.screen !== "My Claims");
-    expenseTracker({ securityJson: JSON.stringify(ungated, null, 2) });
-
-    const found = screen.getByTestId("finding-screen_not_gated");
-    expect(found).toHaveTextContent(/"MyClaims"/);
-    expect(found).toHaveTextContent(/reachable by any signed-in person/i);
-
-    // On the Screens block, below the grid — not in the document block above it.
-    const table = screen.getByRole("table");
-    expect(
-      table.compareDocumentPosition(found) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  // Every screen gated is the ordinary case, and it says nothing.
-  it("says nothing about the screen set when every drawn screen has a row", () => {
-    expenseTracker();
-
-    expect(screen.queryByTestId("finding-screen_not_gated")).not.toBeInTheDocument();
   });
 
   /**
@@ -1139,28 +1104,12 @@ describe("SecurityPanel — the rest of the page", () => {
     expect(tooltip).not.toHaveTextContent(/roles gate ticket/i);
   });
 
-  it("shows what each screen takes to reach, including public and signed-in", () => {
-    setup({
-      securityJson: design({
-        screens: [
-          { component: "storefront", screen: "Orders", requires: "orders:read" },
-          { component: "storefront", screen: "Catalog", requires: "public" },
-          { component: "storefront", screen: "My account", requires: null },
-        ],
-      }),
-    });
+  // A screen's gate is the scope of the operation it loads (ADR-0033), so this
+  // page never lists screens: it shows permissions, roles, groups and the test
+  // users, and reads no wireframe at all.
+  it("lists no screens", () => {
+    expenseTracker();
 
-    expect(screen.getByText("Orders")).toBeInTheDocument();
-    expect(screen.getByText("Open to everyone, no sign-in")).toBeInTheDocument();
-    const myAccount = screen.getByText("My account").closest("div")!;
-    expect(
-      within(myAccount).getByText("Any signed-in person"),
-    ).toBeInTheDocument();
-  });
-
-  it("omits the screens block for an API-only project", () => {
-    setup();
-
-    expect(screen.queryByText("Screens")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Screens" })).not.toBeInTheDocument();
   });
 });

@@ -30,7 +30,6 @@ function doc(over: Partial<SecurityDesign> = {}): SecurityDesign {
     ],
     groups: [],
     roles: [],
-    screens: [],
     testUsers: [],
     ...over,
   };

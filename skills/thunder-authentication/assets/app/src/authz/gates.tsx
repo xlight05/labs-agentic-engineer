@@ -16,29 +16,35 @@
  * under the License.
  */
 
-// Copied VERBATIM to <app-path>/src/authz.tsx.
+// Copied VERBATIM, with the rest of app/, to <app-path>/src/authz/gates.tsx.
 //
 // The app's ONE authorization surface. It reads the caller's granted scopes
-// from the access token's `scope` string, which src/auth.ts already surfaces,
-// and answers every "may this user…" question the UI asks. It reads NO groups
-// claim, holds no role table of its own, and decodes no JWT. Roles exist here
-// only as a label for the header badge and for the copy that tells a user what
-// to ask for, and they are DERIVED from the scopes held against ROLE_GRANTS.
+// from the access token's `scope` string, which src/authz/session.ts already
+// surfaces, and answers every "may this user…" question the UI asks. It reads
+// NO groups claim, holds no role table of its own, and decodes no JWT. Roles
+// exist here only as a label for the header badge and for the copy that tells a
+// user what to ask for, and they are DERIVED from the scopes held against
+// ROLE_GRANTS.
+//
+// EVERY GATE IS AN OPERATION. There is no screen table and no handle typed into
+// JSX: a screen is reachable when the caller may call the operation that LOADS
+// it, and that operation's one scope is already in openapi.yaml, projected into
+// ./operations.gen.ts. src/authz/screens.ts names each screen's load operation
+// once, and this file answers from OPERATIONS.
 //
 // Deliberately identical between production and mock mode: mock mode
-// substitutes src/auth.ts, and this module only ever talks to src/auth.ts,
-// src/authz-core.ts and src/scopes.gen.ts. Do not add an `import.meta.env`
-// branch here.
+// substitutes src/authz/session.ts, and this module only ever talks to
+// ./session, ./core, ./roles.gen and ./operations.gen. Do not add an
+// `import.meta.env` branch here.
 //
-// Filename: the design calls this module `src/authz.ts`. It exports React
-// components, so on disk it is `.tsx`; every importer still writes
-// `from "./authz"` and the module identity is unchanged.
+// Filename: it exports React components, so on disk it is `.tsx`; every
+// importer still writes `from "./authz/gates"`.
 //
-// Surface (do not rename — the platform's skills, the wireframe mapping and
-// the mock harness all target these names): granted, can, useScopes, Can,
-// RequireScope, Forbidden, NoAccess, heldRoles. The prop both gates take is
-// `scope`, spelled the way the design of record spells it:
-// <RequireScope scope="claims:approve" />.
+// Surface (do not rename — the platform's skills, the screen table and the mock
+// harness all target these names): granted, can, useScopes, Can,
+// RequireOperation, Forbidden, NoAccess, heldRoles, rolesGranting. The prop
+// both gates take is `op`, an OperationKey spelled the way the CONTRACT spells
+// it: <RequireOperation op="POST /claims/{claimId}/approve" />.
 //
 // Style it with the pinned design system; the markup below is structure, not a
 // design. Keep the words.
@@ -53,15 +59,14 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { currentUser } from "./auth";
+import { currentUser } from "./session";
 import {
-  canReach,
-  granted as holdsScope,
+  canCall,
   heldRoles as rolesFor,
   parseScopes,
   rolesGranting as rolesGrantingHandle,
-  type ScreenRequirement,
-} from "./authz-core";
+} from "./core";
+import { OPERATIONS, type OperationKey } from "./operations.gen";
 import {
   ROLES,
   ROLE_ASSIGNABLE_BY,
@@ -69,7 +74,7 @@ import {
   ROLE_GRANTS,
   type Role,
   type Scope,
-} from "./scopes.gen";
+} from "./roles.gen";
 
 // --- the session, resolved once ---------------------------------------------
 
@@ -92,9 +97,9 @@ let snapshot: ReadonlySet<string> = new Set<string>();
 
 /**
  * Resolves the session's scope set ONCE and publishes it, so `Can`,
- * `RequireScope` and every nav item read it synchronously. Awaiting the session
- * in each component instead would make every route and every nav item its own
- * suspense problem, and two of them could disagree mid-renew.
+ * `RequireOperation` and every nav item read it synchronously. Awaiting the
+ * session in each component instead would make every route and every nav item
+ * its own suspense problem, and two of them could disagree mid-renew.
  *
  * `fallback` renders while the session resolves — nothing below can observe the
  * pre-load state.
@@ -162,9 +167,13 @@ export async function granted(): Promise<Set<string>> {
   return parseScopes(user?.scope);
 }
 
-/** Does the caller hold this scope? Whole-string, never a prefix match. */
-export async function can(scope: Scope): Promise<boolean> {
-  return holdsScope(await granted(), scope);
+/**
+ * May the caller make this API call? The requirement comes from the CONTRACT,
+ * through ./operations.gen — never from a handle typed at the call site.
+ */
+export async function can(op: OperationKey): Promise<boolean> {
+  const user = await currentUser();
+  return canCall(OPERATIONS[op], parseScopes(user?.scope), user !== null);
 }
 
 /**
@@ -186,54 +195,52 @@ export function rolesGranting(scope: Scope): Role[] {
   return rolesGrantingHandle(scope, ROLE_GRANTS);
 }
 
-/** Can the caller open a screen declared with this `requires`? */
-export function canReachScreen(requires: ScreenRequirement, scopes: ReadonlySet<string>): boolean {
-  return canReach(requires, scopes);
-}
-
 // --- the gates --------------------------------------------------------------
 
 /**
- * Renders `children` only when the caller holds `scope`. Wrap every nav item
+ * Renders `children` only when the caller may call `op`. Wrap every nav item
  * and every action button in one of these: the rail is ONE rail whose items are
  * each gated, which is also what makes a user holding two roles see the union.
+ *
+ * The op is the one the click would CALL — the approve button is gated on the
+ * approve operation, so the button and the 401 can never disagree.
  */
 export function Can({
-  scope,
+  op,
   children,
   fallback = null,
 }: {
-  scope: Scope;
+  op: OperationKey;
   children: ReactNode;
   fallback?: ReactNode;
 }): ReactElement {
-  const scopes = useScopes();
-  return <>{holdsScope(scopes, scope) ? children : fallback}</>;
+  const { scopes, signedIn } = useAuthz();
+  return <>{canCall(OPERATIONS[op], scopes, signedIn) ? children : fallback}</>;
 }
 
 /**
- * Route guard for a screen whose security.json `requires` names a handle:
+ * Route guard for a screen, gated on the operation that LOADS it:
  *
- *   <Route element={<RequireScope scope="claims:approve" screen="Approvals" />}>
+ *   <Route element={<RequireOperation op="GET /claims" screen="Approvals" />}>
  *     <Route path="/approvals" element={<Approvals />} />
  *   </Route>
  *
  * A caller who reaches the URL without the scope gets Forbidden INSIDE the
  * shell — never a redirect to sign-in, which loops, and never a blank page.
  */
-export function RequireScope({
-  scope,
+export function RequireOperation({
+  op,
   screen,
 }: {
-  scope: Scope;
+  op: OperationKey;
   screen?: string;
 }): ReactElement {
-  const scopes = useScopes();
-  if (holdsScope(scopes, scope)) return <Outlet />;
-  return <Navigate to="/forbidden" replace state={{ scope, screen }} />;
+  const { scopes, signedIn } = useAuthz();
+  if (canCall(OPERATIONS[op], scopes, signedIn)) return <Outlet />;
+  return <Navigate to="/forbidden" replace state={{ op, screen }} />;
 }
 
-type ForbiddenState = { scope?: Scope; screen?: string };
+type ForbiddenState = { op?: OperationKey; screen?: string };
 
 /**
  * "You hold other things, just not this one." Rendered INSIDE the app shell, so
@@ -243,7 +250,9 @@ type ForbiddenState = { scope?: Scope; screen?: string };
  * wireframe .dsl and they are the carve-out from "no invented screens".
  */
 export function Forbidden(): ReactElement {
-  const { scope, screen } = (useLocation().state ?? {}) as ForbiddenState;
+  const { op, screen } = (useLocation().state ?? {}) as ForbiddenState;
+  const requirement = op ? OPERATIONS[op] : undefined;
+  const scope = requirement?.kind === "scope" ? requirement.scope : undefined;
   const unlockedBy = scope ? rolesGranting(scope) : [];
   const what = screen ?? "That screen";
 
@@ -271,7 +280,7 @@ export function Forbidden(): ReactElement {
  * when NO screen is reachable, and render it ABOVE the shell route, never
  * inside it (see App.example.tsx).
  *
- * Every name in this copy comes from security.json through scopes.gen.ts: the
+ * Every name in this copy comes from security.json through roles.gen.ts: the
  * roles that exist, the groups they are assigned to, and who may hand them out.
  * NEVER hardcode a role, a group or an administrator here.
  */

@@ -70,13 +70,6 @@
       "grants": ["invoices:read", "invoices:read-all", "payments:read"]
     }
   ],
-  "screens": [
-    { "component": "vendor-webapp", "screen": "Orders", "requires": "orders:read" },
-    { "component": "vendor-webapp", "screen": "Place order", "requires": "orders:place" },
-    { "component": "vendor-webapp", "screen": "Confirm orders", "requires": "orders:confirm" },
-    { "component": "vendor-webapp", "screen": "Invoices", "requires": "invoices:read" },
-    { "component": "vendor-webapp", "screen": "Payments", "requires": "payments:read" }
-  ],
   "testUsers": [
     { "username": "test-buyer", "roles": ["Buyer"] },
     { "username": "test-supplier", "roles": ["Supplier"] },

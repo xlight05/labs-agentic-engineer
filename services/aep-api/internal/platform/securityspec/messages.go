@@ -93,20 +93,6 @@ const (
 	MsgDuplicateRoleName = "duplicate_role_name"
 	// MsgRoleNameIsGroupName {role}
 	MsgRoleNameIsGroupName = "role_name_is_group_name"
-	// MsgScreenComponentUnknown {component} {screen} — needs design.cell.
-	MsgScreenComponentUnknown = "screen_component_unknown"
-	// MsgScreenUnknown {component} {screen} — needs the component's wireframes.dsl.
-	MsgScreenUnknown = "screen_unknown"
-	// MsgScreenRequiresUnknownHandle {component} {screen} {handle}
-	MsgScreenRequiresUnknownHandle = "screen_requires_unknown_handle"
-	// MsgScreenWithoutRead {role} {screen} {resource} {handles} — needs the
-	// owning component's openapi.yaml. {handles} is every handle that guards a
-	// safe operation on the resource, quoted and comma-joined.
-	MsgScreenWithoutRead = "screen_without_read"
-	// MsgScreenNotGated {component} {screens} — needs the component's
-	// wireframes.dsl. One finding per COMPONENT, naming every screen it draws
-	// that screens[] does not gate.
-	MsgScreenNotGated = "screen_not_gated"
 	// MsgV1Document {fields}
 	MsgV1Document = "v1_document"
 	// MsgV2Document — no slots; the whole migration is one fixed sentence.
@@ -181,11 +167,6 @@ var MessageKeys = []string{
 	MsgAssignToDirectoryChecked,
 	MsgDuplicateRoleName,
 	MsgRoleNameIsGroupName,
-	MsgScreenComponentUnknown,
-	MsgScreenUnknown,
-	MsgScreenRequiresUnknownHandle,
-	MsgScreenWithoutRead,
-	MsgScreenNotGated,
 	MsgV1Document,
 	MsgV2Document,
 	MsgHandleUsedNowhere,

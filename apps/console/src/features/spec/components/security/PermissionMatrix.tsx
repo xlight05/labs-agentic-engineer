@@ -28,16 +28,15 @@
  * permission" sub-header, and only when it has something to say: the
  * components that provision no sign-in at all, so whatever they serve they
  * serve to everyone. It is the one exposure fact nothing else on the page or
- * in the API view states. Operations and screens that need no permission are
- * NOT repeated here — the API view names every operation's protection and the
- * Screens block below names every screen's — and a chip saying which rows a
- * handle reaches was dropped for the same reason: the path on the API view
- * already says it (ADR-0031).
+ * in the API view states. An operation that needs no permission is NOT
+ * repeated here — the API view names every operation's protection — and a chip
+ * saying which rows a handle reaches was dropped for the same reason: the path
+ * on the API view already says it (ADR-0031).
  *
  * Service-kind roles are not columns. A service principal holds an application
- * token and reaches no screen, so a column beside the roles a person holds
- * would invite reading a login into a grant that has none; they get their own
- * list, with the principal they attach to.
+ * token and signs nobody in, so a column beside the roles a person holds would
+ * invite reading a login into a grant that has none; they get their own list,
+ * with the principal they attach to.
  *
  * The model is `securityMatrix` — a pure fold shared with the tests, so the
  * shape of this page is asserted without React.
@@ -282,8 +281,8 @@ function ServiceRoles({ columns }: { columns: MatrixColumn[] }) {
         Service principals
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        Held by an application, not by a person — no login, no group, no screen.
-        The principal each attaches to arrives with the project&apos;s service
+        Held by an application, not by a person — no login and no group. The
+        principal each attaches to arrives with the project&apos;s service
         identity; until then the job forwards no token at all.
       </Typography>
       <Stack spacing={0.5}>

@@ -21,10 +21,11 @@
 //
 // The PERMISSION CATALOG is at the centre. A project owns one OAuth
 // resource server; `permissions[]` declares its resources and the actions on
-// them, and everything else in the document — and in `openapi.yaml` and the
-// wireframes — references those `<resource>:<action>` handles rather than
-// restating prose. Roles grant handles; screens require one; operations name
-// one in their security block.
+// them, and everything else in the document — and in `openapi.yaml` —
+// references those `<resource>:<action>` handles rather than restating prose.
+// Roles grant handles; operations name one in their security block. Screens are
+// NOT in this document: a screen's gate is the scope of the operation that
+// LOADS it, and that scope is already in openapi.yaml (ADR-0033).
 //
 // It is the sibling of designspec, and for the same reason: the single schema
 // definition is packages/contracts/schemas/security-design.schema.json
@@ -39,9 +40,9 @@
 //     `checkSecurityReferences`, phrased from the same vendored message table
 //     (messages.go) so the model never meets one rule in two wordings. Parse
 //     applies the half that one file can answer; the half that needs a sibling
-//     spec file (a component the design cell declares, a screen the wireframe
-//     declares, the operation behind a screen) is applied by the build gate,
-//     which is the only caller that holds the whole bundle;
+//     spec file (a component the design cell declares, the operations the
+//     owner's openapi.yaml declares) is applied by the build gate, which is the
+//     only caller that holds the whole bundle;
 //   - `Plan`, the deterministic expansion of the document into the exact set of
 //     org groups, project roles and test accounts the build must ensure.
 //     Making that expansion a pure function here — rather than a loop inside
@@ -89,10 +90,6 @@ const (
 
 	EnrolmentAdmin       = "admin"
 	EnrolmentSelfService = "self-service"
-
-	// PublicScreen is `screens[].requires` for a screen shown before sign-in.
-	// A handle always carries a colon, so the literal cannot collide with one.
-	PublicScreen = "public"
 )
 
 // OIDCScopes are the scopes the identity provider puts on every access token.
@@ -136,7 +133,6 @@ type Document struct {
 	Permissions []Permission `json:"permissions"`
 	Groups      []Group      `json:"groups"`
 	Roles       []Role       `json:"roles"`
-	Screens     []Screen     `json:"screens"`
 	TestUsers   []TestUser   `json:"testUsers"`
 }
 
@@ -202,23 +198,6 @@ func (r Role) NeedsTestUser() bool {
 	return r.RoleKind() == KindUser && r.EnrolmentKind() == EnrolmentAdmin
 }
 
-// Screen is one screen of one web application and what it takes to reach it.
-// Requires is one catalog handle, nil for any signed-in user, or PublicScreen.
-type Screen struct {
-	Component string  `json:"component"`
-	Screen    string  `json:"screen"`
-	Requires  *string `json:"requires"`
-}
-
-// RequiresHandle returns the catalog handle this screen requires, and whether
-// it requires one at all (a public or signed-in-baseline screen does not).
-func (s Screen) RequiresHandle() (string, bool) {
-	if s.Requires == nil || *s.Requires == PublicScreen {
-		return "", false
-	}
-	return *s.Requires, true
-}
-
 // TestUser is one account that exists so a role's behaviour can be exercised. A
 // username and role names, and nothing else, ever — a password here would be
 // committed to git and pinned into the version tag.
@@ -262,7 +241,7 @@ func Parse(raw []byte) (*Document, error) {
 
 // checkRefinements mirrors the Zod REFINEMENTS of the agent's schema — the
 // rules that sit between the object shape and the referential checks: handle
-// spelling, and the `screens[].requires` literal.
+// spelling.
 //
 // They are refinements rather than schema keywords on purpose. The Go schema
 // interpreter (internal/platform/jsonschema) does not implement `pattern` and
@@ -292,14 +271,6 @@ func checkRefinements(doc *Document) string {
 			}
 		}
 	}
-	for i, screen := range doc.Screens {
-		if screen.Requires == nil || *screen.Requires == PublicScreen {
-			continue
-		}
-		if !IsHandle(*screen.Requires) {
-			return fmt.Sprintf("screens.%d.requires: must be one catalog handle, null for any signed-in user, or the literal %q", i, PublicScreen)
-		}
-	}
 	return ""
 }
 
@@ -307,9 +278,8 @@ func checkRefinements(doc *Document) string {
 const handleHint = `must be a catalog handle "<resource>:<action>", each half lowercase letters, digits or "-" starting with a letter`
 
 // IsHandle reports whether value is a full `<resource>:<action>` catalog
-// handle. It is the Go twin of isHandle in the agent's schema module, and it is
-// what makes the `screens[].requires` literal unambiguous: a handle always
-// carries exactly one colon, so "public" cannot collide with one.
+// handle. It is the Go twin of isHandle in the agent's schema module: a handle
+// carries exactly one colon, each half spelled as handleSegmentRE says.
 func IsHandle(value string) bool {
 	resource, action, ok := strings.Cut(value, ":")
 	if !ok || strings.Contains(action, ":") {

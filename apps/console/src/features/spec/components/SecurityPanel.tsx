@@ -17,12 +17,11 @@
  */
 
 /**
- * Spec → Security: one scroll over `security.json` v3, in three sections.
+ * Spec → Security: one scroll over `security.json` v3, in two sections.
  *
  * **Groups, roles & users** comes first — the people: every org group this
  * design touches, then a card per role. **Permissions** is the matrix, every
- * handle the project declares against every role a person can hold. **Screens**
- * is what each drawn screen takes to reach.
+ * handle the project declares against every role a person can hold.
  *
  * The cast before the grid. A reader meeting the matrix first meets a column
  * header per role and no way to learn what any of them is for; meeting the
@@ -81,7 +80,6 @@ import { routeFindings } from "../lib/securityFindings";
 import {
   GroupsBlock,
   IdentityIntro,
-  ScreensBlock,
   SubLabel,
 } from "./security/DocumentSections";
 import { PermissionMatrix } from "./security/PermissionMatrix";
@@ -389,8 +387,6 @@ function SecurityDocument({
           readOnlyReason={writer ? undefined : NO_ROOM_REASON}
           onToggleGrant={onToggleGrant}
         />
-
-        <ScreensBlock doc={doc} findings={routed.screens} />
       </Stack>
     </Box>
   );

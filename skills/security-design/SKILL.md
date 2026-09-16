@@ -1,6 +1,6 @@
 ---
 name: security-design
-description: "Write specs/design/security.json when a design has sign-in, permissions, roles or test users — the permission catalog every API and screen is gated on."
+description: "Write specs/design/security.json when a design has sign-in, permissions, roles or test users — the permission catalog every API operation is gated on."
 metadata:
   aep:
     kind: platform
@@ -11,10 +11,11 @@ metadata:
 
 Write `specs/design/security.json` when the design has sign-in, permissions or
 test users. It is the **permission catalog** for the project: every scope an
-operation requires, every screen a role unlocks and every role the platform
-provisions is authored here and referenced everywhere else. `openapi.yaml`
-references handles from this file; it never defines them. A wireframe's screens
-are gated by handles from this file.
+operation requires and every role the platform provisions is authored here and
+referenced everywhere else. `openapi.yaml` references handles from this file; it
+never defines them. Nothing about screens is written here: a screen is gated by
+the operation it loads, whose one handle is already in `openapi.yaml`
+(`authorization-model` states the invariants this file lives under).
 
 There is exactly **one** control point. A caller's permissions are the
 intersection of the roles their groups hold with the resource server the token
@@ -114,60 +115,34 @@ names is not an error, because PRD coverage is carried by each component's
 you finish and ask whether an actor-bearing story is really served by the role
 you gave it.
 
-## Screens
+## Grants follow the screens' loads
 
-One `screens[]` row per screen a web application's wireframe draws, with
-`requires` naming one handle, `null` for any signed-in user, or the literal
-`"public"` for a screen shown before sign-in. A handle always contains a colon,
-so the literal cannot collide.
+Scopes are compared as whole strings, everywhere — the gateway and the
+directory. Nothing implies anything: a token carrying `claims:read-all` is
+refused by an operation that requires `claims:read`.
 
-Write the screen name as `wireframes.dsl` spells it; spaces and case are
-ignored when the two are compared (`"My Claims"` matches `screen MyClaims`). A
-screen the wireframe does not draw is refused, **and so is a screen the
-wireframe draws that `screens[]` leaves out** — one refusal per component,
-naming every screen it missed. A screen with no row is reachable by any
-signed-in user whatever role they hold, which is almost never what a gated app
-means, and the omission is silent by construction: the document that forgets a
-screen looks complete.
+A screen is reachable for whoever holds the scope of the operation it **loads**
+— the list or detail call whose answer the screen renders on open. Nothing
+about that is written here: the SPA reads it off `openapi.yaml`. What this file
+decides is whether each role holds that scope. So before writing a role's
+`grants`, walk the flow `wireframes.dsl` gives that role, open the
+`openapi.yaml` of the component behind each screen in it, and grant the handle
+of the operation each screen loads — at the reach the screen shows. An
+Approvals queue that lists every claim loads `GET /claims`, so the Approver
+holds `claims:read-all`; a My Claims page loads `GET /me/claims`, so the
+Employee holds `claims:read`. Then grant the actions the screen's controls call.
 
-That check cannot bite here. This file is written **before** the wireframes, so
-the screen set you gate is the one you intend to draw, not the one that exists,
-and a rule whose sibling file is missing is skipped in silence. **Re-emit
-`security.json` once `wireframes.dsl` is written**, with a row for every screen
-in it — and with the grants the grant rule then asks for, which needs the
-`openapi.yaml` that does not exist yet either. Until that pass runs the document
-validates and says nothing about the half of it nobody can check; on that pass
-the gate names what is missing, one sentence at a time, and the build gate is
-the backstop if the pass never happens.
-
-## The grant rule
-
-Scopes are compared as whole strings, everywhere — the gateway, the service
-middleware and the directory. Nothing implies anything: a token carrying
-`claims:read-all` is refused by an operation that requires `claims:read`. One
-rule follows, and it is unconditional.
-
-**Every role that reaches a screen can read the resource that screen renders.**
-A screen gated on `<resource>:<action>` draws that resource, so the role that
-holds `<action>` must also hold at least one handle that guards a `GET` on the
-resource — which one is your call, and it is the reach the screen shows: an
-Approvals queue that lists every claim is `GET /claims` on `claims:read-all`; a
-My Claims page is `GET /me/claims` on `claims:read`. Before writing a role's
-`grants`, open the `openapi.yaml` of the component behind each screen that role
-unlocks and grant the read the screen actually calls.
-
-Miss it and the build gate refuses the design, naming the role, the screen and
-every handle that would satisfy it. Miss it on a plane where the gateway
+No gate refuses a role that is one handle short at design time; the build's
+mock walk does, opening each flow's entry screen as its role and naming the
+screen, the operation and the handle it wanted. On a plane where the gateway
 answers **401** for every failure — no token, expired token, missing scope, all
-byte-identical — and the symptom is not a tidy 403: the SPA cannot tell a
-missing scope from an expired session, so it restarts sign-in and a
-correctly-provisioned user sits in an **infinite sign-in loop** on the one
-screen their role exists for.
+byte-identical — the same omission in a deployed app is not a tidy 403 either:
+the SPA hides the screen, or a typed URL lands on `Forbidden`, and the fix is
+one more entry in `grants`.
 
-**One scope per operation is the invariant this rule protects.** Never propose
-listing alternatives on an operation, and never ask for a handle to imply
-another: the fix for a role that is one handle short is one more entry in
-`grants`.
+**One scope per operation is the invariant this guidance protects.** Never
+propose listing alternatives on an operation, and never ask for a handle to
+imply another.
 
 ## Every admin-enrolment role gets a test user
 
@@ -240,12 +215,6 @@ property at any level where one could go, and a write that adds one is rejected.
       "assignableBy": ["Approver"]
     }
   ],
-  "screens": [
-    { "component": "expense-webapp", "screen": "My Claims",    "requires": "claims:read" },
-    { "component": "expense-webapp", "screen": "Submit Claim", "requires": "claims:submit" },
-    { "component": "expense-webapp", "screen": "Approvals",    "requires": "claims:approve" },
-    { "component": "expense-webapp", "screen": "Reports",      "requires": "reports:read" }
-  ],
   "testUsers": [
     { "username": "test-employee", "roles": ["Employee"] },
     { "username": "test-approver", "roles": ["Approver"] }
@@ -255,11 +224,12 @@ property at any level where one could go, and a write that adds one is rejected.
 
 `Finance` is not in `groups[]`: `list_groups` returned it, so `Approver` is
 assigned to the people who already are Finance. `Employees` is new to this
-project and is declared. `Approver` grants `claims:read-all` because
-`Approvals` lists every claim — `GET /claims` in the contract — and
-`claims:read` because an approver has claims of their own too; neither grant is
-implied by the other, and the `openapi.yaml` beside this file is where
-`GET /me/claims` and `GET /claims` say which rows each returns.
+project and is declared. `Approver` grants `claims:read-all` because the
+Approvals screen loads `GET /claims` — every claim — and `claims:read` because
+an approver has claims of their own too; neither grant is implied by the other,
+and the `openapi.yaml` beside this file is where `GET /me/claims` and
+`GET /claims` say which rows each returns. No screen is named in this file: the
+SPA gates each one on the operation it loads.
 
 | Field | Rule |
 |---|---|
@@ -269,21 +239,22 @@ implied by the other, and the `openapi.yaml` beside this file is where
 | `roles[].name` | A PRD actor noun, unique in the project (case-insensitively), never a group name. It becomes `<project>/<name>` on the directory. |
 | `roles[].description` | What the role is for. Project-owned: the platform writes it on every build. |
 | `roles[].stories` | PRD story numbers this role serves. At least one. |
-| `roles[].grants` | Handles from `permissions[]`. At least one. A handle no role grants is a warning ("unreachable by any role"); a handle no operation and no screen requires is a warning ("declared, used nowhere"). |
+| `roles[].grants` | Handles from `permissions[]`. At least one. A handle no role grants is a warning ("unreachable by any role"); a handle no operation requires is a warning ("declared, used nowhere"). |
 | `roles[].assignTo` | Organisation groups the role is assigned to. Each must be declared in `groups[]` or exist in the directory (`list_groups`) — anything else is refused, so a typo cannot create a group. Required for `enrolment: admin` user roles; absent for self-service and service roles. |
 | `roles[].enrolment` | Optional. `admin` (default) or `self-service`. See **self-service actors**. |
 | `roles[].assignableBy` | Optional role names, validated against `roles[]`. Records who may hand this role out. |
 | `roles[].kind` | Optional. `user` (default) or `service`. A service role is assigned to an application principal, never to a group, and gets no test user. |
-| `screens[]` | `component`, `screen`, `requires`: one catalog handle, `null` for any signed-in user, or `"public"`. |
 | `testUsers[].username` | Lowercase letters, digits, `.`, `_`, `-`. |
 | `testUsers[].roles` | One or more declared `kind: user` roles. The account is enrolled in every `assignTo` group of every role listed. |
 
-Nothing else goes in the file. There is no `ownership`, no `coldStartRole`, no
-`publicComponents`, no `thunder` block, no `grantedBy`: which rows an operation
-reaches is its path, a component is protected because it depends on sign-in, an
-operation is public because its `security` is empty, a screen is public because
-`requires` is `"public"`, the OAuth client's name and scope list are derived,
-and `assignableBy` records who hands a role out.
+Nothing else goes in the file. There is no `screens[]`, no `ownership`, no
+`coldStartRole`, no `publicComponents`, no `thunder` block, no `grantedBy`:
+which rows an operation reaches is its path, a component is protected because
+it depends on sign-in, an operation is public because its `security` is empty,
+a screen is gated by the operation it loads and is public when its flow carries
+no `role`, the OAuth client's name and scope list are derived, and
+`assignableBy` records who hands a role out. A document that carries
+`screens[]` is refused with the key named.
 
 ## The signed-in baseline
 
@@ -295,7 +266,8 @@ that is a designed state, not a hole:
   with no `security` override inherits the document default and needs a valid
   token and no scope. `GET /me` is the usual one. Nothing in this file declares
   them; `openapi.yaml` does, by saying nothing.
-- **Screens** work the same way with `requires: null`.
+- **Screens** work the same way: a screen whose load operation is one of
+  those, or that loads nothing, is every signed-in user's.
 - A caller who can reach **nothing** sees the SPA's `NoAccess` page — signed in,
   told which groups would help, given their username to quote — instead of an
   empty shell. The API agrees with it: the same scope is missing at both ends.
@@ -332,6 +304,7 @@ apply before you invent policy — a filled org entry is the decision. Nothing
 here creates anything: the platform creates the resource server, the roles, the
 groups and the test users when the user clicks Build. `openapi-conventions` owns
 how an operation names a handle and which rows it reaches (its path),
-`wireframes` owns how a screen is gated by one,
-`thunder-authentication` owns the build-time mechanics the coding agent
-implements; this skill owns the decisions all three consume.
+`wireframes` owns which screens exist and which role's flow walks them,
+`thunder-authentication` owns how the SPA gates each screen on the operation it
+loads; this skill owns the decisions all three consume, and
+`authorization-model` states the invariants they share.

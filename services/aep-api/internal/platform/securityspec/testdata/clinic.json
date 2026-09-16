@@ -62,13 +62,6 @@
       "grants": ["appointments:read", "schedule:read", "records:read"]
     }
   ],
-  "screens": [
-    { "component": "booking-site", "screen": "Find a slot", "requires": "public" },
-    { "component": "booking-site", "screen": "My appointments", "requires": "appointments:book" },
-    { "component": "staff-webapp", "screen": "Front desk", "requires": "appointments:manage" },
-    { "component": "staff-webapp", "screen": "Schedule", "requires": "schedule:read" },
-    { "component": "staff-webapp", "screen": "Patient records", "requires": "records:read" }
-  ],
   "testUsers": [
     { "username": "test-receptionist", "roles": ["Receptionist"] },
     { "username": "test-doctor", "roles": ["Doctor"] }
