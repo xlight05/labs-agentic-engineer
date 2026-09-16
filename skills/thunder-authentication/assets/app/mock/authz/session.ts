@@ -16,24 +16,26 @@
  * under the License.
  */
 
-// Mock mode — copied to <app-path>/mock/auth.ts.
+// Mock mode — copied with the rest of app/ to <app-path>/mock/authz/session.ts.
 //
 // This is the one mock file that is NOT verbatim. It is a module substitution,
-// so its export list has to be your src/auth.ts's export list: add a mock of
-// anything your auth module adds, drop what it does not have. Everything below
-// is the standard surface — signIn, signOut, handleCallback, currentUser,
-// accessToken, tokenIsValid — plus scopesFromToken for the mock handlers.
+// so its export list has to be your src/authz/session.ts's export list: add a
+// mock of anything your session module adds, drop what it does not have.
+// Everything below is the standard surface — signIn, signOut, handleCallback,
+// currentUser, accessToken, tokenIsValid — plus scopesFromToken for the mock
+// handlers.
 //
-// mock/plugin.ts resolves every import of src/auth.ts to this file under
-// `--mode mock`, so it exports the same names and nothing under src/ changes.
-// src/authz.tsx and src/authz-core.ts are NOT substituted: they read
-// `user.scope` from whatever auth module is in play, so the REAL authorization
-// code runs in mock mode too. That is the whole value of the walk.
+// mock/plugin.ts resolves every import of src/authz/session.ts to this file
+// under `--mode mock`, so it exports the same names and nothing under src/
+// changes. src/authz/gates.tsx and src/authz/core.ts are NOT substituted: they
+// read `user.scope` from whatever session module is in play, so the REAL
+// authorization code runs in mock mode too. That is the whole value of the
+// walk.
 //
 // There is no IDP, no redirect and no real token: the caller is always signed
 // in, and `?role=` on the URL says as whom.
 //
-//   /claims                 the first role in ./roles.ts
+//   /claims                 the first role in ./roles.gen.ts
 //   /claims?role=Approver   that role, holding exactly that role's grants
 //   /claims?role=           signed in holding NO project scope at all — this is
 //                           the NoAccess case, and it must be walkable
@@ -43,17 +45,18 @@
 //                           Without this every sign-in story is unwalkable.
 //
 // Switching roles is a navigation, so a reviewer compares two roles against one
-// running server. A role absent from ./roles.ts is honoured too — it simply
+// running server. A role absent from ./roles.gen.ts is honoured too — it simply
 // grants nothing, which is how a screen is checked against a role that must NOT
 // reach it.
 //
-// THE MOCK NEVER WIDENS. `mockRoles` carries each role's grants exactly as
-// security.json declares them, and mock/gateway.ts enforces the exact handle
-// the CONTRACT declares — read out of openapi.yaml, never transcribed. A role
-// that cannot reach its own screen is a DESIGN DEFECT to report, never a mock
-// to loosen.
+// THE MOCK NEVER WIDENS. `mockRoles` is GENERATED from security.json's roles[]
+// (scripts/gen-authz.mjs), so it carries each role's grants exactly as the
+// design declares them, and mock/authz/gateway.ts enforces the exact handle the
+// CONTRACT declares — read out of openapi.yaml, never transcribed. A role that
+// cannot reach its own screen is a DESIGN DEFECT to report, never a mock to
+// loosen.
 
-import { mockRoles } from "./roles";
+import { mockRoles } from "./roles.gen";
 import { scopesFromToken } from "./gateway";
 
 // The OIDC scopes the platform always requests beside the project handles. They
@@ -146,7 +149,7 @@ function user(): MockUser {
 /**
  * The scopes carried by an `Authorization: Bearer mock:claims:read,…` header.
  *
- * Re-exported from mock/gateway.ts rather than defined here, because in
+ * Re-exported from mock/authz/gateway.ts rather than defined here, because in
  * production it is the GATEWAY that reads a token. This module mints one in
  * that format; the handlers import this name for ownership WIDENING, which is
  * the one thing a real service reads the scope claim for. Whether an operation
@@ -192,7 +195,7 @@ export async function accessToken(): Promise<string | null> {
 
 /**
  * The mock session never expires, so this answers "is somebody signed in?".
- * src/api-client.ts asks it on every 401: with a session, the refusal is about
+ * src/authz/client.ts asks it on every 401: with a session, the refusal is about
  * SCOPE and routes to Forbidden; without one it signs in. That is the whole of
  * the 401 rule, and mock mode is where it is walked — the gateway answers 401
  * for both cases and this is the only thing that tells them apart. Returning

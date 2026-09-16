@@ -26,10 +26,11 @@ browser config — they are pod env for nginx.
    `npm install` itself); without one, `npm install`.
 2. **Prepare shared interfaces** — write `src/env.ts`, generate `src/generated/`
    from each dependency's OpenAPI contract, and write `src/api.ts` with a
-   **same-origin** `baseUrl`. With auth, establish `src/auth.ts` and its exports
-   now (mock mode substitutes that module), copy the rest of
-   `thunder-authentication`'s assets, and run `npm run gen` once so
-   `src/scopes.gen.ts` exists for the type-check.
+   **same-origin** `baseUrl`. With auth, copy `thunder-authentication`'s
+   `assets/app/` tree (one `cp -r`, which lays down `src/authz/` and
+   `mock/authz/`), set the `USER_AUTH_` prefix in `src/authz/session.ts` (mock
+   mode substitutes that module), and run `npm run gen` once so the three
+   generated tables exist for the type-check.
 3. **Implement pages** — follow Constraints, and check `src/api.ts` against the
    **first** page with `npx tsc --noEmit` before writing the rest: that pair proves
    how the generated client types, and every later page repeats the pattern.
@@ -81,11 +82,12 @@ browser config — they are pod env for nginx.
    may not disable emit`, and unwinding that costs more than it buys.
 
    **With an auth dependency `build` gains a `gen` step in front:**
-   `npm run gen && tsc --noEmit && vite build`, where `gen` regenerates
-   `src/scopes.gen.ts` from the permission catalog. It is not optional and it
-   must come BEFORE the type-check — a stale generated union type-checks
-   perfectly green while the app gates on handles the design no longer has
-   (`thunder-authentication`).
+   `npm run gen && tsc --noEmit && vite build`, where `gen` regenerates the
+   authorization tables (`src/authz/roles.gen.ts`, `src/authz/operations.gen.ts`,
+   `mock/authz/roles.gen.ts`) from the permission catalog and the contracts.
+   It is not optional and it must come BEFORE the type-check — a stale
+   generated union type-checks perfectly green while the app gates on
+   operations the design no longer has (`thunder-authentication`).
 
    Verification ends at exit 0. **Never run `npm audit` or `npm audit fix`** —
    the advisories land on Vite's dev-only transitive dependencies, which never
@@ -159,11 +161,12 @@ copy `apps/console/docker-entrypoint.sh`. Keep the official `nginx:alpine`
 
 **Auth.** If the component declares an auth `platform-resource` dependency, its
 sign-in, screen gating and API-client wiring are `thunder-authentication`'s:
-copy that skill's assets into `src/auth.ts`, `src/authz-core.ts`,
-`src/authz.tsx`, `src/api-client.ts` and `scripts/gen-scopes.mjs`, and reach the
-API through `apiFetch`/`apiJson` rather than attaching a bearer by hand. Screens
-are gated on `specs/design/security.json`'s `screens[].requires`, through the
-generated `src/scopes.gen.ts`.
+copy that skill's `assets/app/` tree as one (`src/authz/`, `mock/authz/`,
+`scripts/gen-authz.mjs`), and reach the API through `apiFetch`/`apiJson` rather
+than attaching a bearer by hand. A screen is gated on the **operation it
+loads**, named once in `src/authz/screens.ts` and checked against the generated
+`src/authz/operations.gen.ts`; nothing about screens is in `security.json`
+(`authorization-model`).
 
 **Never `exposesAPI`.** That toggle is for backends only; a web-app expresses
 auth through its auth dependency instead.
@@ -171,7 +174,7 @@ auth through its auth dependency instead.
 **The UI comes from the organization's design system.** Every component, layout
 primitive and style under `src/` comes from the design-system skill pinned on
 this component — no raw HTML styling, no second component or styling library.
-The one carve-out is `thunder-authentication`'s copied assets: `src/authz.tsx`'s
+The one carve-out is `thunder-authentication`'s copied assets: `src/authz/gates.tsx`'s
 `Forbidden` and `NoAccess` ship as plain `<main>/<section>/<h1>` so the file is
 copied verbatim into any app, whatever design system it pins. Treat that markup
 as structure to restyle with the design system's components after copying, and
@@ -200,22 +203,24 @@ per-component Docker build's context is this app's own folder alone.
 ├── vite.config.ts        # no `base` — served at host root
 ├── index.html
 ├── scripts/
-│   └── gen-scopes.mjs    # only with an auth dependency — copied verbatim, run by `npm run gen`
+│   └── gen-authz.mjs     # only with an auth dependency — copied verbatim, run by `npm run gen`
 ├── src/
 │   ├── main.tsx
 │   ├── App.tsx
 │   ├── env.ts            # typed window._env_ shim
 │   ├── generated/        # openapi-typescript output, one file per dependency — commit, never hand-edit
 │   ├── api.ts            # openapi-fetch client(s), typed against generated/
-│   ├── auth.ts           # ┐ only with an auth dependency — thunder-authentication owns
-│   ├── authz-core.ts     # │ all six. auth/authz-core/authz/api-client are copied
-│   ├── authz.tsx         # │ verbatim; screens.ts is a pattern you adapt; scopes.gen.ts
-│   ├── api-client.ts     # │ is GENERATED and COMMITTED — the per-component build
-│   ├── screens.ts        # │ context cannot see ../specs, so an uncommitted one fails
-│   ├── scopes.gen.ts     # ┘ the image build
+│   ├── authz/            # ┐ only with an auth dependency — thunder-authentication owns
+│   │   ├── session.ts    # │ the whole directory. session/core/gates/client arrive
+│   │   ├── core.ts       # │ verbatim with one `cp -r`; screens.ts is a pattern you
+│   │   ├── gates.tsx     # │ adapt; the two *.gen.ts are GENERATED and COMMITTED —
+│   │   ├── client.ts     # │ the per-component build context cannot see ../specs,
+│   │   ├── screens.ts    # │ so an uncommitted one fails the image build
+│   │   ├── roles.gen.ts  # │
+│   │   └── operations.gen.ts # ┘
 │   ├── shell/AppShell.tsx # the app chrome — every gated screen renders inside it
 │   └── pages/            # design-system components only, never raw HTML
-├── mock/                 # mock mode — references/mock-mode.md
+├── mock/                 # mock mode — references/mock-mode.md (mock/authz/ comes with the tree above)
 ├── nginx/
 │   ├── default.conf      # copied from the skill assets, then /api locations kept
 │   └── 15-aep-api-proxy.sh
@@ -408,7 +413,7 @@ place rather than stripping `external` because this SPA uses `/api`
 | `/api` 404 from the gateway | The rewrite dropped the context prefix | `nginx/default.conf` must rewrite to `__API_CONTEXT__/$1`, not `/$1`. |
 | `/api` 503 through the gateway | The gateway authenticated but cannot reach the service | The provider endpoint needs `internal` in its `workload.yaml` visibility (`workload-and-wiring`). |
 | Types in `src/generated/*` don't match the live service | Upstream `openapi.yaml` changed since last generation | Re-run the `openapi-typescript` command and commit the diff. |
-| Docker build succeeds but ships stale/hand-written shapes, or fails `ENOENT ../specs/...` | `src/generated/` or `src/scopes.gen.ts` wasn't committed — the per-component build context is this app's folder alone | Generate and commit BOTH before PR. `gen-scopes.mjs` prints `…is out of reach (per-component build context); keeping the committed src/scopes.gen.ts` when it falls back; with nothing committed it exits 1 and the image build fails. |
-| The deployed bundle gates a screen on a handle the design dropped, or a newly added handle reaches nothing | A **stale bundle**: `build` ran without `gen`, or `src/scopes.gen.ts` was committed before the last design change | `build` is `npm run gen && tsc --noEmit && vite build`; re-run `gen` and commit the diff whenever `security.json` changes. A stale generated union type-checks green. |
-| A role opens its own screen, and the screen's list call answers 401 | The role holds the screen's `requires` handle but not the handle of the **operation** that screen calls — whole-string match, so `x:read-all` (`GET /x`) is not `x:read` (`GET /me/x`); or the screen calls the wrong reach for its role | A design finding, not a code one: in mock mode the console line names the operation and the handle. Report the role, the screen and that handle. Never widen a guard or a mock to hide it. |
+| Docker build succeeds but ships stale/hand-written shapes, or fails `ENOENT ../specs/...` | `src/generated/` or one of the three `*.gen.ts` tables wasn't committed — the per-component build context is this app's folder alone | Generate and commit ALL of them before PR. `gen-authz.mjs` says on stdout that the specs are out of reach and that it is keeping the committed outputs when it falls back; with any output missing it exits 1 and the image build fails. |
+| The deployed bundle gates a screen on an operation the design dropped, or a newly added handle reaches nothing | A **stale bundle**: `build` ran without `gen`, or the generated tables were committed before the last design change | `build` is `npm run gen && tsc --noEmit && vite build`; re-run `gen` and commit the diff whenever `security.json` or an `openapi.yaml` changes. A stale generated union type-checks green. |
+| A role's own screen is hidden for it, or opens and its list call answers 401 | The role's grants lack the handle of the operation the screen **loads** — whole-string match, so `x:read-all` (`GET /x`) is not `x:read` (`GET /me/x`); or `loads` names the wrong reach for the screen | A design finding, not a code one: in mock mode the console line names the operation and the handle. Report the role, the screen and that handle. Never widen `loads`, a guard or a mock to hide it. |
 | Build red on `TS2307: Cannot find module './generated/…'` (plus a burst of `TS7006` implicit-`any`) while `tsc --noEmit` is clean locally | `src/generated/` is **git-ignored**, usually by an unanchored `generated/` in the repo-root `.gitignore` written for a backend component. `git add` skipped it at exit 0 and `git status` stayed clean | `git check-ignore -v src/generated/*` names the offending line. Anchor that pattern (`/onboarding-api/generated/`), then re-add. The `TS7006` rows are downstream of the missing types and vanish with them. Never `git add -f`. |

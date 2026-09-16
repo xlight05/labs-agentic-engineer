@@ -61,22 +61,6 @@ describe("the mock security design", () => {
     expect(design.version).toBe(3);
   });
 
-  it("names only screens the fixture's wireframes declare", () => {
-    const wireframes = projectSpecFiles.deployed.find(
-      (f) => f.path === "specs/design/components/storefront/wireframes.dsl",
-    );
-    expect(wireframes).toBeDefined();
-    for (const screen of design.screens) {
-      expect(wireframes?.content).toContain(`screen ${screen.screen} `);
-    }
-  });
-
-  // One of each kind, so the Screens block shows every wording it has.
-  it("carries a public screen and a signed-in screen", () => {
-    expect(design.screens.filter((s) => s.requires === "public")).toHaveLength(1);
-    expect(design.screens.filter((s) => s.requires === null)).toHaveLength(1);
-  });
-
   it("leaves one action granted by nobody, for the matrix's empty row", () => {
     const ungranted = securityMatrix(design)
       .groups.flatMap((g) => g.rows)

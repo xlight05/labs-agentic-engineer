@@ -18,8 +18,7 @@
 
 /**
  * The parts of the page the matrix does not draw: the heading that opens the
- * identity half, the org groups under it, and what each wireframe screen takes
- * to reach.
+ * identity half, and the org groups under it.
  *
  * Groups and roles are ONE section. They were two — a card of declared groups
  * above a separate "Roles & users" heading — and the split cost the reader the
@@ -28,20 +27,14 @@
  * role card named it. Now every group this design touches is one list, each
  * with a New / Existing chip, and the role cards below it name the group they
  * are held by.
- *
- * Screens stay their own section because a screen's requirement is a single
- * handle and crosses no role — a column would be a column of one.
  */
 
 import { Box, Stack, Typography } from "@wso2/oxygen-ui";
 import type { ReactNode } from "react";
 
-import type { SecurityReferenceFinding } from "@aep/agent-stream";
-
 import type { ProjectRolesLiveState } from "../../api/roles";
 import type { SecurityDesign } from "../../api/securityDesign";
 import { groupReachLine, groupRows } from "../../lib/groupRows";
-import { FindingLines } from "./FindingLine";
 import { GroupChip } from "./GroupChip";
 
 /** A bordered list of rows, divided rather than boxed one card each. */
@@ -64,7 +57,7 @@ function RowList({ children }: { children: ReactNode }) {
 /**
  * The quiet label over a sub-list inside a section. It is deliberately not a
  * heading: Groups and Roles are two halves of one section, and promoting them
- * would put four headings on a page with three sections.
+ * would put four headings on a page with two sections.
  */
 export function SubLabel({ children }: { children: ReactNode }) {
   return (
@@ -181,72 +174,5 @@ function ActorsLine({ actors }: { actors: readonly string[] }) {
       . Every one of them should have a role below — by description, not by
       name: a role cannot take a name an org group already owns.
     </Typography>
-  );
-}
-
-/**
- * What a caller must hold to reach each screen the wireframes declare — and the
- * findings about the screen set as a whole.
- *
- * The findings are why this block renders even with no rows. The rule a reader
- * most needs is a screen the wireframe DRAWS and this document does not gate,
- * and that one is invisible in a list of gated screens by construction: the
- * page can only draw the rows the document has. An empty block that says "these
- * four screens are open to anyone signed in" is the whole point.
- */
-export function ScreensBlock({
-  doc,
-  findings = [],
-}: {
-  doc: SecurityDesign;
-  findings?: readonly SecurityReferenceFinding[];
-}) {
-  if (doc.screens.length === 0 && findings.length === 0) return null;
-  return (
-    <Box>
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-        Screens
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-        What a person must hold to reach each screen.
-      </Typography>
-      <FindingLines findings={findings} />
-      {doc.screens.length > 0 && (
-        <Box sx={{ mt: 1 }}>
-          <RowList>
-            {doc.screens.map((screen) => (
-              <Stack
-                key={`${screen.component}:${screen.screen}`}
-                direction="row"
-                spacing={1}
-                alignItems="baseline"
-                flexWrap="wrap"
-                useFlexGap
-              >
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {screen.screen}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {screen.component}
-                </Typography>
-                {screen.requires === null ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Any signed-in person
-                  </Typography>
-                ) : screen.requires === "public" ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Open to everyone, no sign-in
-                  </Typography>
-                ) : (
-                  <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                    {screen.requires}
-                  </Typography>
-                )}
-              </Stack>
-            ))}
-          </RowList>
-        </Box>
-      )}
-    </Box>
   );
 }

@@ -294,14 +294,6 @@ func TestParseRejects(t *testing.T) {
 			},
 			want: `permissions.1.resource: must be lowercase letters`,
 		},
-		{
-			name:    "a screen requiring a handle the catalog does not declare",
-			fixture: expenseTracker,
-			edit: func(t *testing.T, m map[string]any) {
-				m["screens"].([]any)[0].(map[string]any)["requires"] = "claims:audit"
-			},
-			want: `requires "claims:audit"`,
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -354,6 +346,27 @@ func TestParseRefusesAHalfMigratedDocument(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "coldStartRole") {
 		t.Fatalf("the refusal does not name the removed field: %s", err.Error())
+	}
+}
+
+// v3 carries NO screen table: a screen's gate is the scope of the operation
+// that LOADS it, and that scope is already in openapi.yaml (ADR-0033). The
+// schema's `additionalProperties: false` is what refuses a document that still
+// carries one, and the refusal has to NAME the key — the agent's gate answers
+// the same document with Zod's unrecognized-key message, so both gates say
+// "screens".
+func TestParseRefusesAVersion3DocumentThatStillCarriesScreens(t *testing.T) {
+	raw := mutate(t, expenseTracker, func(m map[string]any) {
+		m["screens"] = []any{
+			map[string]any{"component": "expense-webapp", "screen": "My Claims", "requires": "claims:read"},
+		}
+	})
+	_, err := Parse(raw)
+	if err == nil {
+		t.Fatal("a v3 document carrying screens[] must not parse")
+	}
+	if !strings.Contains(err.Error(), "screens") {
+		t.Fatalf("the refusal does not name the key: %s", err.Error())
 	}
 }
 
@@ -574,10 +587,9 @@ func TestPlanDisambiguatesAGeneratedNameThatCollidesWithAnAuthoredOne(t *testing
 }
 
 // The property the whole expansion exists for: every role the platform owes a
-// login gets one, and every handle a screen requires is granted by some role —
-// so nothing a user can reach is unreachable, and nothing reachable is
-// unexercisable. A self-service role is the deliberate exception: its accounts
-// come from the app's own registration flow, not from the build.
+// login gets one — so nothing reachable is unexercisable. A self-service role
+// is the deliberate exception: its accounts come from the app's own
+// registration flow, not from the build.
 func TestPlanGivesEveryReachableScopeARoleAndEveryRoleALogin(t *testing.T) {
 	for _, name := range []string{expenseTracker, clinic, vendorPortal} {
 		t.Run(name, func(t *testing.T) {
@@ -586,18 +598,6 @@ func TestPlanGivesEveryReachableScopeARoleAndEveryRoleALogin(t *testing.T) {
 				t.Fatalf("Parse: %v", err)
 			}
 			plan := Plan(doc)
-
-			granted := map[string]bool{}
-			for _, handles := range plan.Grants {
-				for _, handle := range handles {
-					granted[handle] = true
-				}
-			}
-			for _, screen := range doc.Screens {
-				if handle, required := screen.RequiresHandle(); required && !granted[handle] {
-					t.Errorf("screen %q requires %q, which no role grants", screen.Screen, handle)
-				}
-			}
 
 			withLogin := map[string]bool{}
 			for _, u := range plan.Users {
@@ -641,24 +641,5 @@ func TestRoleSlug(t *testing.T) {
 		if got := RoleSlug(in); got != want {
 			t.Errorf("RoleSlug(%q) = %q, want %q", in, got, want)
 		}
-	}
-}
-
-// `"My Claims"` in security.json and `screen MyClaims` in the DSL are the same
-// screen: the grammar takes no space, the design file is written for a reader,
-// and neither format changes.
-func TestNormalizeScreenName(t *testing.T) {
-	for _, pair := range [][2]string{
-		{"My Claims", "MyClaims"},
-		{"Submit Claim", "submit-claim"},
-		{"Front desk", "FrontDesk"},
-	} {
-		if NormalizeScreenName(pair[0]) != NormalizeScreenName(pair[1]) {
-			t.Errorf("%q and %q must normalize alike, got %q and %q",
-				pair[0], pair[1], NormalizeScreenName(pair[0]), NormalizeScreenName(pair[1]))
-		}
-	}
-	if NormalizeScreenName("Reports") == NormalizeScreenName("Report") {
-		t.Error("normalization must not collapse two different screen names")
 	}
 }

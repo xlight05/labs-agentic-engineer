@@ -44,7 +44,6 @@ vi.mock("../api/roles", () => ({
 // under test are the ones that ship. Only the two network reads are doubles.
 
 const OPENAPI_PATH = "specs/design/components/orders-api/openapi.yaml";
-const WIREFRAMES_PATH = "specs/design/components/storefront/wireframes.dsl";
 
 function entry(path: string, sha = "abc"): SpecFileEntry {
   return { path, sha, group: "designs" } as SpecFileEntry;
@@ -52,7 +51,7 @@ function entry(path: string, sha = "abc"): SpecFileEntry {
 
 const FILE = entry(SECURITY_JSON_PATH);
 
-/** A v2 document naming one owning component and one screen component. */
+/** A v3 document naming one owning component. */
 function designText(): string {
   const doc: SecurityDesign = {
     version: 3,
@@ -72,7 +71,6 @@ function designText(): string {
         grants: ["orders:read"],
       },
     ],
-    screens: [{ component: "storefront", screen: "Orders", requires: "orders:read" }],
     testUsers: [],
   };
   return serializeSecurityDesign(doc);
@@ -96,8 +94,7 @@ function room(files: Record<string, string> | null): {
   const text = (path: string) => map.get(path) ?? null;
   return {
     // `docPaths` is the room's own file list, which is exactly the files map's
-    // keys — the hook reads it to find every wireframe the project has, not
-    // only the ones this document already names.
+    // keys.
     collab: {
       peers: [],
       doc,
@@ -392,14 +389,14 @@ describe("useSecurityEntry — references", () => {
       roomFiles: {
         ...withDocument(designText()),
         [DESIGN_CELL_PATH]: 'component "orders-api" service',
-        [WIREFRAMES_PATH]: "screen Orders",
+        [OPENAPI_PATH]: "openapi: 3.1.0",
       },
     });
 
     expect(result.current.references.read(DESIGN_CELL_PATH)).toBe(
       'component "orders-api" service',
     );
-    expect(result.current.references.read(WIREFRAMES_PATH)).toBe("screen Orders");
+    expect(result.current.references.read(OPENAPI_PATH)).toBe("openapi: 3.1.0");
   });
 
   it("falls back to the committed copy for a sibling the room does not hold", () => {

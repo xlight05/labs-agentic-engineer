@@ -17,7 +17,7 @@
  */
 
 /**
- * The referential rules of `specs/design/security.json` v2 — everything a
+ * The referential rules of `specs/design/security.json` v3 — everything a
  * standalone JSON Schema cannot express, because it is a statement ABOUT two
  * places in the document, or about the document and a sibling spec file.
  *
@@ -27,22 +27,20 @@
  *     names a declared, admin-enrolment user role; a role name is not a group
  *     name. These need nothing but the parsed document, so they run on every
  *     write of security.json.
- *  2. **Against a sibling the bundle may hold.** A permission's component and a
- *     screen's component are nodes of `design.cell`; a screen name exists in
- *     that component's `wireframes.dsl`. The design lineup writes security.json
- *     before some of those files exist, so **a rule whose input is missing is
- *     skipped in silence** — the build gate re-runs the whole list with the
- *     full tag, where every file is present by construction.
- *  3. **The reachability cross-check.** Every role that reaches a screen must
- *     be able to READ the resource that screen renders — hold at least one
- *     handle that guards a safe operation on it. This is the class the design's
- *     first Expense Tracker draft fell into: `Approvals` gated on
- *     `claims:approve`, a list behind it the role could not call. On the pinned
- *     gateway that is a bare 401 with no `WWW-Authenticate`, which the SPA
- *     cannot tell from an expired session: the observed symptom was an
- *     infinite sign-in loop. Caught here it is one sentence at authoring time.
+ *  2. **Against a sibling the bundle may hold.** A permission's component is a
+ *     node of `design.cell`. The design lineup writes security.json before some
+ *     of those files exist, so **a rule whose input is missing is skipped in
+ *     silence** — the build gate re-runs the whole list with the full tag,
+ *     where every file is present by construction.
+ *  3. **The catalog-coverage warnings.** Read against the owner components'
+ *     `openapi.yaml`: a handle no operation requires is declared for nothing,
+ *     and a handle an operation requires that no role grants is an operation
+ *     nobody can call. Both are warnings, both read the same specs.
  *
- * **Nothing implies anything, and nothing here is about rows.** The gateway
+ * **Nothing about screens is here, and nothing here is about rows.** A screen's
+ * gate is a projection of the API contract — a screen is reachable when the
+ * token holds the scope of the operation that LOADS it (ADR-0033) — so there is
+ * nothing about screens to author and nothing to cross-check. The gateway
  * compares scopes whole-string. Which rows an operation reaches is its PATH in
  * `openapi.yaml` — under `/me/` the caller's, otherwise every row (ADR-0031) —
  * so a handle is a handle: `claims:read-all` is not a wider `claims:read`, it
@@ -56,7 +54,6 @@
  * not redeclared in `groups[]`).
  */
 
-import { compileWireframes } from "@aep/excalidraw-dsl";
 import { parse as parseYaml } from "yaml";
 
 import type { SecurityDesign } from "./contracts/security-design.js";
@@ -84,9 +81,6 @@ const TEST_USERNAME = /^[a-z0-9][a-z0-9._-]*$/;
  */
 const ROLE_NAME = /^[\p{L}\p{N} ._-]+$/u;
 
-/** `screens[].requires` for a screen shown before sign-in. */
-const PUBLIC = "public";
-
 /** How loudly a finding speaks. Only `error` refuses a write. */
 export type SecurityFindingSeverity = "error" | "warning" | "info";
 
@@ -102,9 +96,10 @@ export interface SecurityReferenceFinding {
 }
 
 /**
- * The sibling files the rules read. `FileBundle` satisfies it, and so does any
- * map of the tag's spec tree — which is how the build gate will call the same
- * rules.
+ * The sibling files the rules read — `design.cell` and the owner components'
+ * `openapi.yaml`, and nothing else: no wireframe is read here any more.
+ * `FileBundle` satisfies it, and so does any map of the tag's spec tree —
+ * which is how the build gate calls the same rules.
  */
 export interface SecurityReferenceContext {
   read(path: string): string | undefined;
@@ -126,10 +121,6 @@ function readOpenapi(ctx: SecurityReferenceContext, component: string): string |
   );
 }
 
-function readWireframes(ctx: SecurityReferenceContext, component: string): string | undefined {
-  return ctx.read(`${componentDir(component)}/wireframes.dsl`);
-}
-
 /**
  * The component ids a `design.cell` declares, or null when the cell is not in
  * the bundle.
@@ -145,42 +136,11 @@ function cellComponents(ctx: SecurityReferenceContext): Set<string> | null {
   return new Set(cellNodeIds(source).components);
 }
 
-/**
- * A screen name as both sides may spell it. `security.json` writes the label a
- * person reads ("My Claims"); the wireframe grammar is `/^screen\s+([\w-]+)/`,
- * so the same screen is `MyClaims` there. Neither file format changes: the
- * comparison drops everything that is not a letter or a digit and lowercases
- * the rest.
- */
-export function normalizeScreenName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-}
-
-/**
- * The screen names a wireframes.dsl declares, in the order it draws them and
- * spelled as it spells them. Null when the DSL does not compile — a rule about
- * a document that has no screens yet says nothing.
- *
- * Raw rather than normalized because the two rules that read it want different
- * things: the row-names-a-real-screen rule compares (and normalizes at the
- * comparison), while `ungatedScreens` puts the name in a message the author has
- * to match, where a normalized `myclaims` would be a worse instruction than the
- * `MyClaims` on the line they wrote.
- */
-function wireframeScreens(dsl: string): string[] | null {
-  const compiled = compileWireframes(dsl, null);
-  if (!compiled.ok) return null;
-  return compiled.screenOrder;
-}
-
 // -------------------------------------------------------------------------
 // openapi.yaml → operations
 // -------------------------------------------------------------------------
 
 const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"] as const;
-
-/** The methods that only READ. A screen cannot render without them. */
-const SAFE_METHODS = new Set<string>(["get", "head"]);
 
 /** One operation of one component spec, reduced to what authorization cares about. */
 interface SpecOperation {
@@ -257,11 +217,6 @@ class Findings {
     for (const [k, v] of Object.entries(params)) flat[k] = String(v);
     this.all.push({ severity, key, params: flat, message: securityMessage(key, params) });
   }
-}
-
-/** The resource half of a `<resource>:<action>` handle. */
-function resourceOf(handle: string): string {
-  return handle.split(":")[0] ?? handle;
 }
 
 /** A role's enrolment and kind, with the schema's defaults applied. */
@@ -412,133 +367,36 @@ export function securityReferenceFindings(
     }
   }
 
-  // --- screens -------------------------------------------------------------
-  for (const screen of doc.screens) {
-    if (cellIds && !cellIds.has(screen.component)) {
-      found.add("error", "screen_component_unknown", {
-        component: screen.component,
-        screen: screen.screen,
-      });
-      continue;
-    }
-    if (screen.requires !== null && screen.requires !== PUBLIC && !catalog.has(screen.requires)) {
-      found.add("error", "screen_requires_unknown_handle", {
-        component: screen.component,
-        screen: screen.screen,
-        handle: screen.requires,
-      });
-    }
-    if (!ctx) continue;
-    const dsl = readWireframes(ctx, screen.component);
-    if (dsl === undefined) continue;
-    const declared = wireframeScreens(dsl);
-    if (declared === null) continue;
-    if (!declared.map(normalizeScreenName).includes(normalizeScreenName(screen.screen))) {
-      found.add("error", "screen_unknown", {
-        component: screen.component,
-        screen: screen.screen,
-      });
-    }
-  }
-
-  if (ctx) ungatedScreens(doc, ctx, cellIds, found);
-  if (ctx) reachabilityRules(doc, ctx, catalog, ownerOf, found);
+  if (ctx) coverageWarnings(doc, ctx, catalog, ownerOf, found);
   return found.all;
 }
 
 /**
- * The OTHER direction of the screens rule: a screen the wireframe draws and
- * `screens[]` does not gate.
+ * The two catalog-coverage warnings, read against the OWNER components'
+ * `openapi.yaml`.
  *
- * The per-screen loop above checks that every row names a screen that exists.
- * That direction alone leaves the dangerous one open, because the omission is
- * silent by construction — a screen with no row is reachable by any signed-in
- * person, and the document that fails to say so looks complete. The first live
- * project to reach the gate gated six of the eight screens its wireframe drew,
- * and the two it missed were the approve/reject screens, the only ones a role
- * split existed for.
+ * A resource is declared by the component that owns it, so those are the specs
+ * the catalog can be judged against. Nothing else in this file needs them, and
+ * a bundle holding none of them skips the pair in silence like every other
+ * cross-file rule.
  *
- * **Why it can only be judged here.** The design lineup writes security.json
- * BEFORE the wireframes, so at that write the screen set is the one the author
- * intends, not the one that exists, and this rule is skipped in silence like
- * every other cross-file rule. It bites on the reconciliation pass the lineup
- * schedules after the per-component artifacts (`design`'s step 7) and, failing
- * that, at the build gate, which runs the whole list against the full tag.
+ *  - `handle_used_nowhere` — the catalog declares a handle no operation
+ *    requires. Nothing can ever ask for it, so it is either a typo or a scope
+ *    somebody meant to put on an operation.
+ *  - `handle_unreachable` — an operation requires a handle no role grants. The
+ *    operation exists and nobody can call it.
  *
- * **Which components are looked at.** Every component the CELL declares, not
- * every component `screens[]` names: a web application whose screens are all
- * ungated names itself nowhere in this document, and a scan of `screens[]`
- * could never reach it — which is the worst case, not an edge one. A component
- * with no wireframes.dsl (a service, a database) is skipped by the read.
- *
- * One finding per component rather than per screen: the write-gate hands the
- * model ONE sentence per round trip, so a component missing four screens is one
- * fix, not four.
+ * Both are warnings rather than errors: the design lineup writes security.json
+ * before the component specs, so the first pass would refuse a document that is
+ * merely early.
  */
-function ungatedScreens(
-  doc: SecurityDesign,
-  ctx: SecurityReferenceContext,
-  cellIds: Set<string> | null,
-  found: Findings,
-): void {
-  // Without the cell there is no component list, so the rule falls back to the
-  // components this document already names — less than the cell would give,
-  // and still more than nothing.
-  const components = cellIds ?? new Set(doc.screens.map((s) => s.component));
-  for (const component of [...components].sort()) {
-    const dsl = readWireframes(ctx, component);
-    if (dsl === undefined) continue;
-    const drawn = wireframeScreens(dsl);
-    if (drawn === null) continue;
-    const gated = new Set(
-      doc.screens
-        .filter((s) => s.component === component)
-        .map((s) => normalizeScreenName(s.screen)),
-    );
-    const missing = drawn.filter((name) => !gated.has(normalizeScreenName(name)));
-    if (missing.length === 0) continue;
-    found.add("error", "screen_not_gated", {
-      component,
-      screens: missing.map((name) => `"${name}"`).join(", "),
-    });
-  }
-}
-
-/**
- * The rules that need the component specs: the screen→read cross-check and the
- * two catalog-coverage warnings.
- *
- * **How a screen's read is derived.** The wireframes DSL has no
- * screen→operation binding — its grammar is screens, elements and flows — so
- * the check goes through the CATALOG, from two facts the document does state:
- *
- *  - a screen gated on `<resource>:<action>` RENDERS that resource, and
- *  - the component that owns the resource declares the operations on it.
- *
- * A screen cannot render a resource it cannot read, so the role that reaches
- * the screen must hold at least ONE handle that guards a safe (`GET`/`HEAD`)
- * operation on that resource. Which one is the design's business — the
- * resource may have several reads at several reaches (`GET /me/claims` on
- * `claims:read`, `GET /claims` on `claims:read-all`), and the rule does not
- * pick between them; it only refuses a role that holds none, which is the case
- * that loads the page into a 401 the SPA cannot tell from an expired session.
- *
- * The rule deliberately stops there rather than demanding every scoped
- * operation of the resource: a `GET /reports/export` sits behind a button the
- * page can hide, while a list runs on load. A screen requiring `null` names no
- * resource and so has no derivable read; a `"public"` screen is outside
- * authorization entirely. Both are skipped, and a per-screen binding — if the
- * DSL ever grows one — replaces this derivation without moving the rule.
- */
-function reachabilityRules(
+function coverageWarnings(
   doc: SecurityDesign,
   ctx: SecurityReferenceContext,
   catalog: Set<string>,
   ownerOf: Map<string, string>,
   found: Findings,
 ): void {
-  // Owner components only: a resource is declared by the component that owns
-  // it, so those are the specs the catalog can be judged against.
   const operationsByComponent = new Map<string, SpecOperation[]>();
   for (const component of new Set(ownerOf.values())) {
     const source = readOpenapi(ctx, component);
@@ -549,58 +407,17 @@ function reachabilityRules(
   }
   if (operationsByComponent.size === 0) return;
 
-  // --- the reachability cross-check ---------------------------------------
-  for (const screen of doc.screens) {
-    const requires = screen.requires;
-    if (requires === null || requires === PUBLIC || !catalog.has(requires)) continue;
-    const resource = resourceOf(requires);
-    const owner = ownerOf.get(resource);
-    if (!owner) continue;
-    const operations = operationsByComponent.get(owner);
-    if (!operations) continue;
-
-    // Every handle that reads the resource, once each, sorted — the Go mirror
-    // decodes YAML into maps and cannot promise spec order, so the one order
-    // both gates can agree on is alphabetical.
-    const reads: string[] = [];
-    for (const o of operations) {
-      if (o.isPublic || o.scope === null || !SAFE_METHODS.has(o.method)) continue;
-      if (resourceOf(o.scope) !== resource || reads.includes(o.scope)) continue;
-      reads.push(o.scope);
-    }
-    reads.sort();
-    if (reads.length === 0) continue;
-
-    for (const role of doc.roles) {
-      // A service role holds an app principal's token; it reaches no screen.
-      if (kindOf(role) !== "user") continue;
-      if (!role.grants.includes(requires)) continue;
-      if (reads.some((handle) => role.grants.includes(handle))) continue;
-      found.add("error", "screen_without_read", {
-        role: role.name,
-        screen: screen.screen,
-        resource,
-        handles: reads.map((h) => `"${h}"`).join(", "),
-      });
-    }
-  }
-
-  // --- the two coverage warnings ------------------------------------------
   const requiredByOperations = new Set<string>();
   for (const operations of operationsByComponent.values()) {
     for (const operation of operations) {
       if (operation.scope !== null) requiredByOperations.add(operation.scope);
     }
   }
-  const requiredByScreens = new Set<string>();
-  for (const screen of doc.screens) {
-    if (screen.requires !== null && screen.requires !== PUBLIC) requiredByScreens.add(screen.requires);
-  }
   const granted = new Set<string>();
   for (const role of doc.roles) for (const handle of role.grants) granted.add(handle);
 
   for (const handle of catalog) {
-    if (!requiredByOperations.has(handle) && !requiredByScreens.has(handle)) {
+    if (!requiredByOperations.has(handle)) {
       found.add("warning", "handle_used_nowhere", { handle });
     }
     if (requiredByOperations.has(handle) && !granted.has(handle)) {

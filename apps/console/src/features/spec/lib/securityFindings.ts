@@ -31,16 +31,7 @@
  *
  * The rule, in one line: a finding that names a handle the matrix draws belongs
  * on that row; otherwise one that names a role belongs on that card; otherwise
- * one about the screen set belongs on the Screens block; otherwise it is about
- * the document as a whole.
- *
- * The screen bucket is the one routed by KEY rather than by params, and
- * deliberately: "which section of the page" is not a fact any parameter
- * carries — `component` appears on catalog findings too — while the set of
- * rules that are ABOUT screens is closed and named below. It matters because
- * the rule a reader most needs (a screen the wireframe draws and the document
- * does not gate) is invisible in the list of gated screens by construction:
- * the page can only draw the rows the document HAS.
+ * it is about the document as a whole.
  */
 
 import type { SecurityReferenceFinding } from "@aep/agent-stream";
@@ -49,8 +40,6 @@ import type { SecurityReferenceFinding } from "@aep/agent-stream";
 export interface RoutedFindings {
   /** Above the matrix — nothing narrower fits. */
   document: SecurityReferenceFinding[];
-  /** On the Screens block: the rules about the screen set itself. */
-  screens: SecurityReferenceFinding[];
   /** Keyed by the FULL `<resource>:<action>` handle of the row. */
   byHandle: Map<string, SecurityReferenceFinding[]>;
   /** Keyed by the role name, compared lowercase. */
@@ -61,19 +50,6 @@ export interface RoutedFindings {
 function handleOf(finding: SecurityReferenceFinding): string | undefined {
   return finding.params["handle"];
 }
-
-/**
- * The rules that are about the screen set. `screen_without_read` is NOT one of
- * them: it names a role, and what the reader has to change is that role's
- * grants, so it belongs on the role card — which the role check above reaches
- * first anyway.
- */
-const SCREEN_KEYS: ReadonlySet<string> = new Set([
-  "screen_not_gated",
-  "screen_unknown",
-  "screen_component_unknown",
-  "screen_requires_unknown_handle",
-]);
 
 /**
  * Route every finding to its place. `rows` is the set of handles the matrix
@@ -87,7 +63,6 @@ export function routeFindings(
 ): RoutedFindings {
   const routed: RoutedFindings = {
     document: [],
-    screens: [],
     byHandle: new Map(),
     byRole: new Map(),
   };
@@ -100,10 +75,6 @@ export function routeFindings(
     const role = finding.params["role"];
     if (role !== undefined) {
       push(routed.byRole, role.toLowerCase(), finding);
-      continue;
-    }
-    if (SCREEN_KEYS.has(finding.key)) {
-      routed.screens.push(finding);
       continue;
     }
     routed.document.push(finding);

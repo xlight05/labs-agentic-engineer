@@ -135,16 +135,15 @@ turn — apply them directly, and load one only if you find you do not have it.
 6. **Per-component artifacts** — every `service` gets `openapi.yaml`
    (`openapi-conventions`); every `web-application` gets `wireframes.dsl`
    (`wireframes`).
-7. **Security reconciliation** (`security-design`) — re-emit
-   `specs/design/security.json` now that the screens and the operations exist.
-   Step 5 wrote it against a design it could only intend: a `screens[]` row for
-   every screen the wireframe actually draws, and the grants each role needs
-   for the operations behind the screens it reaches, are decidable only here.
-   Skip it only when step 5 wrote no security.json at all. This is the ONE
-   place those rules can be satisfied — every one of them is skipped in silence
-   at step 5, so a design that stops there is gated on paper and open in fact.
-   The gate answers this write with one sentence at a time: fix what it names
-   and re-emit until it is quiet.
+7. **Grants pass** (`security-design`) — re-read `specs/design/security.json`
+   now that the screens and the operations exist. Step 5 wrote each role's
+   `grants` against a design it could only intend; the operations the screens
+   in each role's flow load are decidable only here. Walk each flow, open the
+   contract behind each screen, and make sure the role holds the handle of the
+   operation each screen loads. Re-emit the file only if a grant changes. Skip
+   the step only when step 5 wrote no security.json at all. No gate refuses a
+   role that is one handle short — the build's mock walk is what catches it, as
+   a hidden screen — so this pass is where it is cheap.
 8. **Validation criteria** (`validation-criteria`) — mint
    `specs/validation/validation-criteria.json` LAST. A design without its
    acceptance oracle is unfinished — never skip this.

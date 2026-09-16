@@ -75,29 +75,17 @@ export const SECURITY_DESIGN_MESSAGES = {
   test_user_role_not_user_kind:
     'test user "{username}" holds role "{role}", which is not an admin-enrolment user role — a service role belongs to an app principal and a self-service role is taken at registration, so neither gets a test account.',
 
-  // --- screens -------------------------------------------------------------
-  screen_component_unknown:
-    'screen "{screen}" names component "{component}", which specs/design/design.cell does not declare — a screens[] row belongs to a web application the cell draws.',
-  screen_unknown:
-    'component "{component}" has no screen "{screen}" — its wireframes.dsl declares no matching `screen` (names are compared ignoring case and punctuation). Declare the screen in the wireframe, or correct the name here.',
-  screen_requires_unknown_handle:
-    'screen "{screen}" of component "{component}" requires "{handle}", which permissions[] does not declare — require a declared handle, null for any signed-in user, or "public".',
-  screen_without_read:
-    'role "{role}" reaches screen "{screen}", which renders "{resource}", but grants none of the handles that read it ({handles}) — the screen loads into a 401 that the SPA cannot tell from an expired session. Grant "{role}" the one of those handles whose path is the rows this screen shows, or gate the screen on a handle "{role}" does not hold.',
-  screen_not_gated:
-    'component "{component}" draws {screens} in its wireframes.dsl, and screens[] has no row for it — a screen this document does not gate is reachable by any signed-in person, whatever role they hold, which is almost never what a gated app means. Add one row per screen: {"component": "{component}", "screen": "<the name the wireframe spells>", "requires": <one catalog handle, null for any signed-in user, or "public">}.',
-
   // --- warnings ------------------------------------------------------------
   handle_used_nowhere:
-    'catalog handle "{handle}" is declared, used nowhere — no operation and no screen requires it. Remove it, or require it from the operation or screen it was meant to guard.',
+    'catalog handle "{handle}" is declared, used nowhere — no operation requires it. Remove it, or require it from the operation it was meant to guard.',
   handle_unreachable:
     'catalog handle "{handle}" is unreachable by any role — an operation requires it and no roles[].grants holds it. Grant it to the role that needs it, or make the operation public.',
 
   // --- the version boundary ------------------------------------------------
   v1_document:
-    "security.json v1 is not accepted: {fields}. Version 3 declares the permission catalog in permissions[] (resource, component, actions[{handle, description}]), roles grant handles from it in roles[].grants and name their org groups in assignTo, screens[] maps each wireframe screen to one handle, and testUsers[].roles is a list.",
+    "security.json v1 is not accepted: {fields}. Version 3 declares the permission catalog in permissions[] (resource, component, actions[{handle, description}]), roles grant handles from it in roles[].grants and name their org groups in assignTo, and testUsers[].roles is a list.",
   v2_document:
-    "security.json v2 is not accepted: remove actions[].ownership and set version to 3. Version 3 carries no row axis in this file — which rows an operation reaches is its PATH in openapi.yaml: an operation under /me/ reaches the caller's rows (or the rows of the relation the path names, /me/team/claims), every other operation reaches every row. A handle says what a caller may do, never how far; two reaches are two operations guarded by two handles (GET /me/claims claims:read, GET /claims claims:read-all).",
+    "security.json v2 is not accepted: remove actions[].ownership and screens[], and set version to 3. Version 3 carries no row axis and no screen table — which rows an operation reaches is its PATH in openapi.yaml (/me/… the caller's rows, /me/<relation>/… a relation's, anything else every row), and which screens a role reaches follows from the operations those screens load. A handle says what a caller may do, never how far; two reaches are two operations guarded by two handles (GET /me/claims claims:read, GET /claims claims:read-all).",
 } as const;
 
 /** A key of the gate's message vocabulary. */

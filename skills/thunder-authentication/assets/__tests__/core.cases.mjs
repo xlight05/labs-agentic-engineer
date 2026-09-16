@@ -16,20 +16,20 @@
  * under the License.
  */
 
-// The cases for ../authz-core.ts. NOT named *.test.mjs on purpose: importing a
-// .ts module needs `--experimental-strip-types` on the Node this repo pins, and
-// the repo-wide runner (`node --test $(find skills -name '*.test.mjs')`) passes
-// no flags. ./authz-core.test.mjs is the wrapper that runs this file with the
-// flag; run it directly with
+// The cases for ../app/src/authz/core.ts. NOT named *.test.mjs on purpose:
+// importing a .ts module needs `--experimental-strip-types` on the Node this
+// repo pins, and the repo-wide runner (`node --test $(find skills -name
+// '*.test.mjs')`) passes no flags. ./core.test.mjs is the wrapper that runs
+// this file with the flag; run it directly with
 //
-//   node --experimental-strip-types --test authz-core.cases.mjs
+//   node --experimental-strip-types --test core.cases.mjs
 //
 // when you want the per-case output.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  canReach,
+  canCall,
   classifyApiFailure,
   createUnauthorizedHandler,
   granted,
@@ -37,7 +37,7 @@ import {
   parseScopes,
   rolesGranting,
   tokenIsValid,
-} from "../authz-core.ts";
+} from "../app/src/authz/core.ts";
 
 // The Expense Tracker catalog, as security.json declares it.
 const ROLE_GRANTS = {
@@ -80,21 +80,37 @@ test("granted compares the WHOLE handle — read-all is not read", () => {
   assert.equal(granted(scopes, "claims:rea"), false);
 });
 
-// --- canReach ---------------------------------------------------------------
+// --- canCall ----------------------------------------------------------------
+// The ONE gate: an operation's requirement against what the caller holds. It is
+// also the screen gate — a screen is reachable when its load operation is
+// callable — so these six assertions are the whole of "which screens do I see".
 
-test("canReach: null is any signed-in caller", () => {
-  assert.equal(canReach(null, held()), true);
-  assert.equal(canReach(null, held("claims:read")), true);
+test("canCall: a public operation is callable signed in or out", () => {
+  assert.equal(canCall({ kind: "public" }, held(), false), true);
+  assert.equal(canCall({ kind: "public" }, held("claims:read"), true), true);
 });
 
-test('canReach: "public" is reachable with nothing at all', () => {
-  assert.equal(canReach("public", held()), true);
+test("canCall: signedIn is exactly having a session, whatever is held", () => {
+  assert.equal(canCall({ kind: "signedIn" }, held(), true), true);
+  assert.equal(canCall({ kind: "signedIn" }, held("claims:read"), true), true);
+  // A visitor with no session cannot, and this is the branch a screen routed
+  // below the sign-in guard never reaches by itself.
+  assert.equal(canCall({ kind: "signedIn" }, held(), false), false);
 });
 
-test("canReach: a handle is matched exactly", () => {
-  assert.equal(canReach("claims:read", held("claims:read")), true);
-  assert.equal(canReach("claims:read", held("claims:read-all")), false);
-  assert.equal(canReach("claims:read", held()), false);
+test("canCall: a scope is matched exactly, whole-string", () => {
+  const need = { kind: "scope", scope: "claims:read" };
+  assert.equal(canCall(need, held("claims:read"), true), true);
+  assert.equal(canCall(need, held("claims:read-all"), true), false);
+  assert.equal(canCall(need, held(), true), false);
+});
+
+test("canCall: the scope branch answers on the handle alone", () => {
+  // Holding a project handle IS holding a token — the scopes come out of one —
+  // so the scope branch does not re-ask about the session, while `signedIn`
+  // remains the only thing the signedIn branch reads.
+  assert.equal(canCall({ kind: "scope", scope: "claims:read" }, held("claims:read"), false), true);
+  assert.equal(canCall({ kind: "signedIn" }, held("claims:read"), false), false);
 });
 
 // --- heldRoles / rolesGranting ---------------------------------------------

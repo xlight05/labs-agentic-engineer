@@ -19,10 +19,13 @@ the access token's `scope` — one authority, nothing else.**
   See `api-management` for the gateway's side of that contract.
 - **The SPA** signs the user in with OIDC Authorization Code + PKCE, asking for
   a **resource indicator** so the token is minted for this project, reads the
-  granted permissions from `user.scope`, and gates every screen on them.
+  granted permissions from `user.scope`, and gates every screen on the scope of
+  the **operation that screen loads**.
 
 **Nothing reads the groups claim to decide anything** — not the SPA, not the
-service, not for display. Permissions reach code as scopes.
+service, not for display. Permissions reach code as scopes. The invariants
+behind every rule here are stated once in `authorization-model`; this skill is
+the mechanics.
 
 The OAuth client itself is **platform-owned**: you never create, compute, or
 hardcode any part of it.
@@ -35,15 +38,19 @@ writing any authorization code:
 | Field | What you do with it |
 |---|---|
 | `permissions[].resource` + `actions[].handle` | joined by `:` these are the **scope handles** — `claims:read`, `reports:export`. This is the closed set. |
-| `roles[].grants` | which handles a role holds. Drives the SPA's header badge and the "which role unlocks this" wording; `scopes.gen.ts` is generated from it. |
-| `screens[].requires` | a handle, `null` (any signed-in user) or `"public"` (reachable before sign-in) — the SPA's route guard for that screen. |
+| `roles[].grants` | which handles a role holds. Drives the SPA's header badge and the "which role unlocks this" wording; `src/authz/roles.gen.ts` is generated from it. |
 | `roles[].assignTo`, `groups[]` | provisioning only. **No application code reads these.** |
 
-Which **rows** an operation reaches is not in this file. It is the operation's
-path in `openapi.yaml`: under `/me/` the caller's (or a relation's —
-`/me/team/claims`), anywhere else every row. `openapi-conventions` owns that
-rule; here it means a `/me/…` handler resolves rows through the assertion's
-`sub`, and nothing else ever filters.
+Two things are **not** in this file, on purpose. Which **rows** an operation
+reaches is the operation's path in `openapi.yaml`: under `/me/` the caller's
+(or a relation's — `/me/team/claims`), anywhere else every row.
+`openapi-conventions` owns that rule; here it means a `/me/…` handler resolves
+rows through the assertion's `sub`, and nothing else ever filters. And which
+**screens** a caller may open is the scope of the operation each screen
+**loads** — the one handle that operation already names in `openapi.yaml`. No
+screen table exists anywhere; the generator projects every contract into
+`src/authz/operations.gen.ts` and you bind each screen to its load operation
+once, in `src/authz/screens.ts` (§5).
 
 The platform creates the resource server, the roles and the test users when the
 user clicks Build. Never write user-, group- or role-provisioning code, and
@@ -61,57 +68,64 @@ your app's roles, and the platform will not grant it your app's scopes.
 ## Order of work
 
 `src/env.ts` (add the four `<DEP>_*` keys the SPA reads to the `react-webapp` shim) →
-`scripts/gen-scopes.mjs` wired into the build, so `src/scopes.gen.ts` exists →
-`src/auth.ts` → `src/authz-core.ts` + `src/authz.tsx` → `src/api-client.ts` →
-**`src/api.ts` stripped of every authorization rule of its own** (§4) → a
-**`/callback` route** that calls `handleCallback()` once on mount → `src/screens.ts`
-and the route guards in `src/App.tsx`. Verify with the `react-webapp` build check.
+copy the `assets/app/` tree (below) → `scripts/gen-authz.mjs` wired into the
+build and run once, so the three generated files exist → the `USER_AUTH_`
+prefix in `src/authz/session.ts` → **`src/api.ts` stripped of every
+authorization rule of its own** (§4) → a **`/callback` route** that calls
+`handleCallback()` once on mount → `src/authz/screens.ts` and the route guards
+in `src/App.tsx`. Verify with the `react-webapp` build check.
 
 ## What you copy
 
-Seven files ship as assets — five copied verbatim, two patterns you adapt.
-**Copy them; do not write your own.** The rules they carry were measured against
-this IdP and this gateway, and every one of them has already been got wrong by a
-real run.
+The assets are laid out as the app is, so the install is **one command** and
+nothing is renamed on the way in. **Copy them; do not write your own.** The
+rules they carry were measured against this IdP and this gateway, and every one
+of them has already been got wrong by a real run.
 
-| Asset | Copy to | How |
+```bash
+cp -r "$AEP_SKILLS_DIR/thunder-authentication/assets/app/." .
+```
+
+That puts eight files in place, all verbatim:
+
+| Path in the app | What it is |
+|---|---|
+| `scripts/gen-authz.mjs` | the generator — run by `npm run gen`, emits the three `*.gen.ts` files |
+| `src/authz/session.ts` | sign-in, the session, `tokenIsValid()` — the ONE edit: the `USER_AUTH_` prefix becomes YOUR dependency's |
+| `src/authz/core.ts` | the pure rules, no imports — testable in plain node |
+| `src/authz/gates.tsx` | `AuthzProvider`, `Can`, `RequireOperation`, `Forbidden`, `NoAccess` — restyle the markup with the pinned design system, keep the words and every export name |
+| `src/authz/client.ts` | the 401 rule and the `openapi-fetch` middleware |
+| `mock/authz/session.ts` | mock mode's substitute for `src/authz/session.ts` (`?role=`, `?auth=out`) |
+| `mock/authz/gateway.ts`, `mock/authz/contract.ts` | mock mode's API gateway: the contract projected into a table, and the 401s |
+
+Two more ship as **patterns** beside `app/`, and are adapted rather than copied:
+
+| Asset | Becomes | How |
 |---|---|---|
-| `assets/gen-scopes.mjs` | `scripts/gen-scopes.mjs` | verbatim |
-| `assets/authz-core.ts` | `src/authz-core.ts` | verbatim |
-| `assets/authz.tsx` | `src/authz.tsx` | verbatim — restyle the markup with the pinned design system, keep the words and every export name |
-| `assets/auth.ts` | `src/auth.ts` | verbatim except the `USER_AUTH_` prefix, which becomes YOUR dependency's |
-| `assets/api-client.ts` | `src/api-client.ts` | verbatim |
-| `assets/screens.example.ts` | `src/screens.ts` | **pattern** — replace `COMPONENT` and `ROUTE_BY_KEY` with yours, keep the rest |
-| `assets/App.example.tsx` | `src/App.tsx` | **pattern** — replace `PAGE_BY_KEY` *and* `APP_NAME` with yours; the ROUTING STRUCTURE is prescribed |
+| `assets/screens.example.ts` | `src/authz/screens.ts` | replace `SCREEN_ROUTES` with YOUR screens — key, label, path and the operation each **loads** — in rail order; keep the rest |
+| `assets/App.example.tsx` | `src/App.tsx` | replace `PAGE_BY_KEY` *and* `APP_NAME` with yours; the ROUTING STRUCTURE is prescribed |
 
-An eighth file is not copied and is not optional: **`src/api.ts`, the per-service
+One file is not copied and is not optional: **`src/api.ts`, the per-service
 client you already have.** Whatever it carried about authorization comes OUT —
 the bearer it attached, any `WWW-Authenticate` read, and above all
-`if (res.status === 401) signIn()` — and it calls `api-client.ts`'s
+`if (res.status === 401) signIn()` — and it calls `src/authz/client.ts`'s
 `authorizationHeader()` and `classifyResponse()` instead (§4 has the
 `openapi-fetch` middleware to paste). Two modules that both decide what a 401
 means is the same bug as one module deciding it wrong, and on an app that
-already exists this is the only edit the copy table cannot make for you.
+already exists this is the only edit the copy cannot make for you.
 
-The two example files are written against the Expense Tracker — `COMPONENT`,
-`ROUTE_BY_KEY`, `PAGE_BY_KEY` and `APP_NAME` all name ITS screens. They are a
-shape to follow, not a fixture to ship: every one of those four is yours to
-replace. If your app already holds its name somewhere (the wireframes' `navbar`
-title, usually `src/appName.ts`), import it rather than declaring a second copy.
-
-```bash
-mkdir -p scripts
-cp "$AEP_SKILLS_DIR/thunder-authentication/assets/gen-scopes.mjs"  scripts/gen-scopes.mjs
-cp "$AEP_SKILLS_DIR/thunder-authentication/assets/authz-core.ts"   src/authz-core.ts
-cp "$AEP_SKILLS_DIR/thunder-authentication/assets/authz.tsx"       src/authz.tsx
-cp "$AEP_SKILLS_DIR/thunder-authentication/assets/auth.ts"         src/auth.ts
-cp "$AEP_SKILLS_DIR/thunder-authentication/assets/api-client.ts"   src/api-client.ts
-```
+The two example files are written against the Expense Tracker — its
+`SCREEN_ROUTES`, `PAGE_BY_KEY` and `APP_NAME` all name ITS screens and ITS
+operations. They are a shape to follow, not a fixture to ship. If your app
+already holds its name somewhere (the wireframes' `navbar` title, usually
+`src/appName.ts`), import it rather than declaring a second copy.
 
 If `$AEP_SKILLS_DIR` is unset, copy from `assets/` next to this skill's
 `SKILL.md`. The two `*.example.*` files and everything under `assets/__tests__/`
 are **not** copied into the app: the examples are patterns you adapt, and the
-tests are this skill's own regression suite.
+tests are this skill's own regression suite. `react-webapp`'s mock harness
+(`mock/plugin.ts`, `mock/browser.ts`) is copied separately and imports the
+`mock/authz/` files above by those paths.
 
 ## Constraints
 
@@ -149,8 +163,9 @@ itself. Measured against the library, not assumed:
 | code → token exchange | **no** — `_processCode` sends only its own fields plus `...extraTokenParams` | `extraTokenParams: { resource: env.<DEP>_RESOURCE }` |
 | refresh / silent renew | **no** — `signinSilent(args)` forwards `args` and never falls back to `this.settings` | pass `{ resource, extraTokenParams }` to **every** `signinSilent()` call |
 
-`assets/auth.ts` sets all three. A run that copied a settings-only snippet got a
-green build, a healthy-looking sign-in, and a wrong `aud` on every token.
+`src/authz/session.ts` sets all three. A run that copied a settings-only
+snippet got a green build, a healthy-looking sign-in, and a wrong `aud` on every
+token.
 
 On **this** IdP leg 3 is survivable: Thunder binds the refresh token to the
 resource server it was issued for, so an argument-less renew keeps the same
@@ -168,8 +183,8 @@ plausible enough that they get written:
 - **`clockSkewInSeconds`** is not a member either. The settings that do exist
   are `accessTokenExpiringNotificationTimeInSeconds` (default 60 — the lead time
   the silent renew fires at) and `staleStateAgeInSeconds`. So the grace period
-  `tokenIsValid()` allows past `expires_at` is **ours**: `assets/auth.ts` holds a
-  private `CLOCK_SKEW_SECONDS = 60`, the same width as that renew window.
+  `tokenIsValid()` allows past `expires_at` is **ours**: `src/authz/session.ts`
+  holds a private `CLOCK_SKEW_SECONDS = 60`, the same width as that renew window.
 
 **`client_id` is platform-owned.** It is a platform-derived opaque identifier,
 **not** the dependency's `name`; the platform delivers it in
@@ -209,87 +224,98 @@ user could plausibly wait for a grant to arrive.
 **There is no sign-out endpoint.** Thunder's discovery document advertises only
 issuer, authorize and token — no `end_session_endpoint` — so `signoutRedirect()`
 rejects. Sign-out drops the local session (`removeUser()`) and reloads;
-`assets/auth.ts` already wraps it in that fallback.
+`src/authz/session.ts` already wraps it in that fallback.
 
 **Permissions ride in the access token's `scope`.** `oidc-client-ts` surfaces the
-token response's scope string as `user.scope`, and `src/authz.tsx` is the only
-module that reads it. Never decode the access token, never hand-parse a JWT, and
+token response's scope string as `user.scope`, and `src/authz/gates.tsx` is the
+only module that reads it. Never decode the access token, never hand-parse a JWT, and
 **never read `user.profile.groups`** — the groups claim is still issued and
 nothing in your app may consume it. There is no `getRoles()`, no role table of
 your own, and no default role for a user who matches nothing: a caller whose
 token grants nothing sees `NoAccess`.
 
 **`userManager` is never exported.** Every other module reaches the session
-through `src/auth.ts`'s functions — `signIn`, `handleCallback`, `signOut`,
-`currentUser`, `accessToken`, `tokenIsValid`. That list is the module's whole
-surface, and it is what lets mock mode substitute the module wholesale
-(`react-webapp`'s `references/mock-mode.md` owns that). `userManager` is
+through `src/authz/session.ts`'s functions — `signIn`, `handleCallback`,
+`signOut`, `currentUser`, `accessToken`, `tokenIsValid`. That list is the
+module's whole surface, and it is what lets mock mode substitute the module
+wholesale with `mock/authz/session.ts` (`react-webapp`'s
+`references/mock-mode.md` owns the wiring). `userManager` is
 `oidc-client-ts`'s own object and has no mock substitute, so a single
 `export const userManager` compiles in production and breaks the app the moment
 anybody opens it without a cluster.
 
 ## Implementation
 
-### 1 · `src/scopes.gen.ts`, generated from the catalog
+### 1 · The three generated files
 
-`scripts/gen-scopes.mjs` reads `specs/design/security.json` and emits the one
-file that carries the design into the bundle. Wire it into `package.json`:
+`scripts/gen-authz.mjs` reads `specs/design/security.json` **and every contract
+under `specs/design/components/`** (`*/openapi.yaml` and
+`*/dependencies/*.openapi.yaml`) and emits the files that carry the design into
+the bundle. Wire it into `package.json`:
 
 ```json
 "scripts": {
-  "gen":   "node scripts/gen-scopes.mjs --component <this component's name>",
+  "gen":   "node scripts/gen-authz.mjs",
   "build": "npm run gen && tsc --noEmit && vite build"
 }
 ```
 
 **`gen` before `tsc` is not optional.** The whole point of a generated string
-literal union is that a handle the design dropped fails the type check — and a
-**stale** `scopes.gen.ts` type-checks perfectly green. `--component` filters
-`SCREENS` to this component's rows (`AEP_APP_COMPONENT` does the same).
+literal union is that a handle the design dropped, or an operation the contract
+renamed, fails the type check — and a **stale** generated file type-checks
+perfectly green.
 
-Run `npm run gen` once by hand and **commit `src/scopes.gen.ts`**. The generator
-walks UP from the app folder to find `specs/design/security.json`, because how
-many levels up the project's spec tree sits is a layout detail nothing may
-hardcode. Inside a per-component image build there is no such ancestor at all —
-the build context is the app folder alone — so when the catalog is out of reach
-and a committed output exists the generator **keeps it, says so on stdout and
-exits 0**. Exiting 1 there would fail every image build the platform runs. With
-no committed output and no catalog it exits 1 and names why, which is the
-uncommitted-file case.
+Run `npm run gen` once by hand and **commit all three outputs**. The generator
+walks UP from the app folder to find `specs/design/security.json` (and reads
+the contracts under that same `specs/`), because how many levels up the
+project's spec tree sits is a layout detail nothing may hardcode. Inside a
+per-component image build there is no such ancestor at all — the build context
+is the app folder alone — so when the specs are out of reach and all three
+committed outputs exist the generator **keeps them, says so on stdout and exits
+0**. Exiting 1 there would fail every image build the platform runs. With any
+output missing and no specs it exits 1 and names which, which is the
+uncommitted-file case. The contract half imports `yaml` (a devDependency every
+web app already carries for the mock plugin; `npm i` runs before `npm run
+build` in the image) — when `yaml` cannot be resolved the same fallback applies.
 
-That fallback is for the walk-up only, and it is the generator's ONLY quiet
-path. Everything else fails loudly, because each of these otherwise emits
-`Scope = never` / `SCREENS = []` — an app where every caller lands on
-`NoAccess`, type-checked green:
+That fallback is the generator's ONLY quiet path. Everything else fails loudly,
+because each of these otherwise emits an empty table — an app where every
+caller lands on `NoAccess`, type-checked green:
 
 | Situation | What it does |
 |---|---|
 | `--spec` / `AEP_SECURITY_JSON` names a file that is not there | **exit 1** — a path the caller typed and misspelled is never a build context |
 | the document is not version 3 (a v1 or v2 file, `null`, an array) | **exit 1** naming the version; **only v3 is accepted** |
-| a version-3 document missing `permissions[]`, `roles[]` or `screens[]` | **exit 1** naming the field |
-| `--component` matches no screen in the document | **exit 1** listing the components the document does declare |
+| a version-3 document that still carries `screens[]` | **exit 1** naming the key — screens are not authored anywhere |
+| a version-3 document missing `permissions[]` or `roles[]` | **exit 1** naming the field |
+| an operation whose `security` names two scopes, two requirements or a reserved OIDC scope | **exit 1** naming the file, method and path |
+| an operation whose scope is not in the catalog | **exit 1** naming the handle |
 | an unknown flag, or a flag with no value | **exit 2** with the usage, and nothing written |
 
-`--help` prints the usage and exits 0 without writing. `--out` (rarely needed;
-the default is the app's own `src/scopes.gen.ts`) resolves against the current
-directory.
+`--help` prints the usage and exits 0 without writing. `--out-dir` (rarely
+needed; the default is the app root) sets where the three files land. Two
+contracts declaring the same `METHOD path`: the first wins, with a warning. A
+contract that declares no `oauth2` scheme contributes every operation as
+`public`.
 
 What it emits, and what each export is for:
 
-| Export | Use |
-|---|---|
-| `Scope`, `SCOPES`, `isScope` | the catalog handles as a string-literal union |
-| `Role`, `ROLES` | the user-kind roles (a service-kind role has no login and is not here) |
-| `ROLE_GRANTS` | role → grants; `heldRoles()` projects the caller's scopes through it |
-| `ROLE_ASSIGN_TO`, `ROLE_ASSIGNABLE_BY` | the group and role names `NoAccess` tells the user to ask for, and whom to ask |
-| `ScreenGate`, `SCREENS` | the screen table, in DECLARED order — the nav order, whose first reachable row is the landing screen |
+| File | Export | Use |
+|---|---|---|
+| `src/authz/roles.gen.ts` | `Scope`, `SCOPES`, `isScope` | the catalog handles as a string-literal union |
+| | `Role`, `ROLES` | the user-kind roles (a service-kind role has no login and is not here) |
+| | `ROLE_GRANTS` | role → grants; `heldRoles()` projects the caller's scopes through it |
+| | `ROLE_ASSIGN_TO`, `ROLE_ASSIGNABLE_BY` | the group and role names `NoAccess` tells the user to ask for, and whom to ask |
+| `src/authz/operations.gen.ts` | `OperationKey` | `"<METHOD> <path template>"` as the contract spells it — `"GET /me/claims"` — a string-literal union of every operation in every contract |
+| | `OPERATIONS`, `OperationRequirement`, `isOperationKey` | operation → `{ kind: "public" }` \| `{ kind: "signedIn" }` \| `{ kind: "scope", scope }`, the projection the gateway trait and the mock gateway make of the same block |
+| `mock/authz/roles.gen.ts` | `mockRoles` | the user-kind roles with their grants, in DECLARED order — the first is mock mode's default persona |
 
-### 2 · `src/auth.ts`
+### 2 · `src/authz/session.ts`
 
 Add the four `<DEP>_*` keys the SPA reads — `CLIENT_ID`, `ISSUER`, `SCOPES`,
-`RESOURCE`; not `JWKS_URL` — to the `Env` type in the `react-webapp` shim, copy
-the asset, and change only the `USER_AUTH_` prefix to YOUR dependency's. It is
-`env.ts` and this module that make the import graph browser-only: `env.ts`
+`RESOURCE`; not `JWKS_URL` — to the `Env` type in the `react-webapp` shim, and
+change only the `USER_AUTH_` prefix in the copied file to YOUR dependency's. It
+is `env.ts` and this module that make the import graph browser-only: `env.ts`
 throws at module load when `/env-config.js` did not run, and the `UserManager`
 is constructed at module load.
 
@@ -305,44 +331,48 @@ that turns a silent refresh into a full-screen redirect on every visit.
 `email`, `given_name`, `family_name`, `groups` and `ouId`/`ouName`/`ouHandle`,
 and no `username`, even when the application is registered with one in its
 attribute list. So "signed in as …" falls back `name` → `email` → `sub`, which
-is what `authz.tsx`'s `displayName()` does. Reading `profile.username` renders
+is what `gates.tsx`'s `displayName()` does. Reading `profile.username` renders
 `undefined`; reading `sub` alone renders a UUID.
 
-### 3 · `src/authz-core.ts` and `src/authz.tsx` — the one authorization surface
+### 3 · `src/authz/core.ts` and `src/authz/gates.tsx` — the one authorization surface
 
 The rules are **split** from the wiring, and the split is what makes them
-testable. `src/env.ts` throws at module load and `src/auth.ts` constructs a
-`UserManager` at module load, so anything that imports `auth.ts` drags a browser
-into the import graph and cannot be loaded by a unit test in a plain node
-environment. `authz-core.ts` imports **nothing** — not even `./scopes.gen`,
-which is why every function that needs the generated tables takes them as an
-argument — and `authz.tsx` re-exports what callers need, so the module surface
-is unchanged.
+testable. `src/env.ts` throws at module load and `src/authz/session.ts`
+constructs a `UserManager` at module load, so anything that imports
+`session.ts` drags a browser into the import graph and cannot be loaded by a
+unit test in a plain node environment. `core.ts` imports **nothing** — not even
+the generated tables, which is why every function that needs them takes them as
+an argument — and `gates.tsx` re-exports what callers need, so the module
+surface is unchanged.
 
-`authz-core.ts`: `parseScopes`, `granted`, `canReach`, `heldRoles`,
-`rolesGranting`, `tokenIsValid`, `classifyApiFailure`, `createUnauthorizedHandler`.
+`core.ts`: `parseScopes`, `granted`, `canCall`, `heldRoles`, `rolesGranting`,
+`tokenIsValid`, `classifyApiFailure`, `createUnauthorizedHandler`.
 
-`authz.tsx` — the surface every screen decision goes through:
+`gates.tsx` — the surface every screen decision goes through:
 
 | Export | Use |
 |---|---|
 | `<AuthzProvider fallback={…}>` | resolves the session's scopes ONCE, above everything that gates |
 | `useScopes()`, `useAuthz()` | the caller's scopes / the whole session state |
-| `granted()`, `can(scope)` | the async form, for a route loader or a plain function outside React. `granted()` resolves to a `Set<string>` — the token's scopes verbatim, the five OIDC ones included — so ask it with `can()`, never "is the set non-empty" |
-| `<Can scope={…}>` | show a nav item, a button, a column — hide it otherwise |
-| `<RequireScope scope={…} screen={…} />` | route guard; a caller without the scope lands on `/forbidden` |
+| `granted()`, `can(op)` | the async form, for a route loader or a plain function outside React. `granted()` resolves to a `Set<string>` — the token's scopes verbatim, the five OIDC ones included — so ask it with `can()`, never "is the set non-empty" |
+| `<Can op={…}>` | show a nav item, a button, a column — hide it otherwise |
+| `<RequireOperation op={…} screen={…} />` | route guard; a caller who may not call the operation lands on `/forbidden` |
 | `<Forbidden />` | route it at `/forbidden`, **inside** the app shell |
 | `<NoAccess />` | **replaces** the shell when nothing at all is reachable |
 | `heldRoles()`, `useHeldRoles()` | the header badge |
 | `rolesGranting(scope)` | which roles unlock a scope — the Forbidden copy |
 
-**The prop is `scope`**: `<RequireScope scope="claims:approve" />`,
-`<Can scope="claims:submit">`.
+**The prop is `op`, an `OperationKey`**: `<RequireOperation op="GET /claims" />`,
+`<Can op="POST /me/claims">`. Every gate answers
+`canCall(OPERATIONS[op], scopes, signedIn)`: a `public` operation is always
+callable, a `signedIn` one by any session, a `scope` one when the token holds
+that handle. No component takes a handle; a handle typed into JSX is the stale
+gate nothing can see (§5).
 
 **Scope comparison is a whole-string match, everywhere.** A token carrying
 `claims:read-all` does NOT satisfy `claims:read`: the gateway does not treat one
-as a superset of the other, the service middleware does not, so neither may the
-SPA. A role that needs both holds both.
+as a superset of the other, so neither may the SPA. A role that needs both holds
+both.
 
 **`heldRoles()` is derived from scopes against `ROLE_GRANTS`** — a role whose
 EVERY grant is held. It is a label for the badge and for the copy that tells a
@@ -351,7 +381,7 @@ groups claim, and there is no default role. The `NoAccess` copy names the groups
 and the granting roles from `ROLE_ASSIGN_TO` / `ROLE_ASSIGNABLE_BY`: no role
 name, group name or administrator is ever hardcoded in that page.
 
-### 4 · `src/api-client.ts` — the 401 rule
+### 4 · `src/authz/client.ts` — the 401 rule
 
 **The gateway answers 401 for every failure, missing scope included, and sends
 no `WWW-Authenticate`** — `api-management`'s status matrix owns that and why no
@@ -361,17 +391,17 @@ read — there is nothing to read.**
 
 So the SPA absorbs it, in three places, and all three are already in the assets:
 
-1. **`authz.tsx` gates before it calls.** A screen the token does not unlock is
-   never rendered, so its operations are never invoked. That removes every
-   routine case — and it is not sufficient alone: a typed URL, a stale bundle
-   or a race past a narrowed renew still reach the gateway.
-2. **`auth.ts` exposes `tokenIsValid()`** — a pure, side-effect-free read of the
-   stored user's `expires_at` against the clock, with the 60 s grace. No
+1. **`gates.tsx` gates before it calls.** A screen whose load operation the
+   token does not unlock is never rendered, so that operation is never invoked.
+   That removes every routine case — and it is not sufficient alone: a typed
+   URL, a stale bundle or a race past a narrowed renew still reach the gateway.
+2. **`session.ts` exposes `tokenIsValid()`** — a pure, side-effect-free read of
+   the stored user's `expires_at` against the clock, with the 60 s grace. No
    network, no renew, no sign-in, so the API client can call it on every
    response without recursing into the thing it is deciding about. `expires_at`
    is local and authoritative, and it is the only signal that tells the two
    401s apart.
-3. **`api-client.ts` maps the answer**, through `classifyApiFailure`:
+3. **`client.ts` maps the answer**, through `classifyApiFailure`:
 
 | Answer | Outcome | Why |
 |---|---|---|
@@ -388,7 +418,7 @@ into an endless sign-in loop: sign in, succeed, call, 401, sign in.
 at once answers 401 several times over, and without the guard each answer starts
 its own redirect.
 
-**Wire the Forbidden route once, at the router root.** `api-client.ts` holds no
+**Wire the Forbidden route once, at the router root.** `client.ts` holds no
 router import; it takes the navigator. One component, rendered inside the router
 and above every route — `assets/App.example.tsx`'s `ForbiddenWiring`:
 
@@ -406,24 +436,41 @@ looks exactly like a screen that renders nothing. Your per-service client — `s
 and `classifyResponse()` from its middleware. It adds **nothing** of its own
 about authorization.
 
-### 5 · `src/screens.ts` — screens come from `SCREENS`, never from JSX
+### 5 · `src/authz/screens.ts` — each screen names the operation it loads
 
-**A screen's required handle is read from the generated table and never retyped
-in JSX.** `scopes.has("claims:read") || scopes.has("claims:submit")` hand-written
-into `App.tsx` is a stale handle the moment the design moves, and nothing — not
-`tsc`, not the build gate, not the mock walk — can see that it went stale. Bind
-each row to a route instead, and a design change reaches the app on the next
-`npm run gen` and nowhere else.
+**A screen is gated on the operation it loads, and that operation is named
+once, here.** The screen table is yours to write from `wireframes.dsl`, in
+**rail order** — the first reachable row is the landing screen:
 
-`security.json` spells a screen the way a person reads it (`"My Claims"`); the
-wireframe DSL cannot carry a space and spells the same screen `MyClaims`.
-**Normalize both to lowercase alphanumerics** — that is what binds one to the
-other, and it is the rule both sides of the platform use.
+```ts
+export const SCREEN_ROUTES: readonly ScreenRoute[] = [
+  { key: "my-claims", label: "My Claims",    path: "/claims/mine", loads: "GET /me/claims" },
+  { key: "submit",    label: "Submit Claim", path: "/claims/new",  loads: null },
+  { key: "approvals", label: "Approvals",    path: "/approvals",   loads: "GET /claims" },
+];
+```
 
-**Fail loudly on an unknown screen.** A screen `security.json` declares for this
-component that the app has no route for throws at module load — in dev, in the
-walk and in the deployed pod — rather than becoming a screen nobody can reach
-and nobody notices. Do not soften that to a `console.warn` or a filter.
+`loads` is the operation whose answer the screen renders when it opens — the
+list or the detail call, at the reach the screen shows: an every-row queue
+loads `GET /claims`, a "mine" page loads `GET /me/claims`. `loads: null` is a
+screen with no load call (a form), reachable by any signed-in caller. A screen
+in a flow with **no `role` line** is `public: true` and is routed above the
+sign-in guard (§6). `reachableScreens(scopes, signedIn)` filters the table
+through `canCall`, and the rail, the landing redirect and `NoAccess` all read
+it.
+
+**Never retype a handle in JSX.** `scopes.has("claims:read")` hand-written into
+`App.tsx` is a stale handle the moment the design moves, and nothing — not
+`tsc`, not the build gate, not the mock walk — can see that it went stale.
+`loads` is typed as `OperationKey`, the union the generator emits from the
+contracts, so an operation the design renamed or dropped fails the type check
+on the next `npm run gen`, which `build` runs first.
+
+**Fail loudly on a stale table.** The pattern checks every `loads` against
+`OPERATIONS` at module load and throws — in dev, in the walk and in the
+deployed pod — so a committed table that outlived its contract cannot become a
+screen nobody can reach and nobody notices. Do not soften that to a
+`console.warn` or a filter.
 
 ### 6 · `src/App.tsx` — where each view sits is a routing rule
 
@@ -437,26 +484,27 @@ and what a real run wrote — is `NoAccess` inside `AppShell`'s `<Outlet />`; it
 own walk caught it. The test sits above the `<Routes>` that carry the shell:
 
 ```tsx
-const reachable = reachableScreens(scopes);
+const reachable = reachableScreens(scopes, true);
 if (reachable.length === 0) return <NoAccess appName={APP_NAME} />;   // no shell around it
 return <Routes><Route element={<AppShell />}>…</Route></Routes>;
 ```
 
 The rest of the structure, from `assets/App.example.tsx`: `/callback` is routed
 **outside** the provider (there is no session to read until the redirect has been
-processed); every gated route is wrapped in `<RequireScope>` with the scope taken
-from `SCREEN_ROUTES`; the landing route redirects to the first **reachable**
-screen.
+processed); every route whose screen `loads` an operation is wrapped in
+`<RequireOperation op={screen.loads} screen={screen.label}>`; the landing route
+redirects to the first **reachable** screen in `SCREEN_ROUTES` order.
 
-- `requires: "<handle>"` → `<RequireScope scope={…}>` around the route and
-  `<Can scope={…}>` around its nav item.
-- `requires: null` → any signed-in caller; no guard.
-- `requires: "public"` → reachable before sign-in; keep it outside the sign-in
-  gate entirely. `App.example.tsx` routes those screens **above** `SignedIn`,
-  still inside `AuthzProvider` (so `<Can>` and `useScopes()` work on them) and
-  outside `AppShell` — a visitor with no session has no signed-in chrome to
-  draw. A public screen routed inside the guard is unreachable by the visitor it
-  exists for, because the guard redirects them to the IdP first.
+- `loads: "<operation>"` → `<RequireOperation op={…}>` around the route and
+  `<Can op={…}>` around its nav item.
+- `loads: null` → any signed-in caller; no guard.
+- `public: true` (a screen in a flow with no `role` line) → reachable before
+  sign-in; keep it outside the sign-in gate entirely. `App.example.tsx` routes
+  those screens **above** `SignedIn`, still inside `AuthzProvider` (so `<Can>`
+  and `useScopes()` work on them) and outside `AppShell` — a visitor with no
+  session has no signed-in chrome to draw. A public screen routed inside the
+  guard is unreachable by the visitor it exists for, because the guard
+  redirects them to the IdP first.
 
 **The rail is ONE rail whose items are each wrapped in `Can`.** The DSL draws a
 different sidebar per role because it draws one role at a time; a single gated
@@ -586,9 +634,10 @@ that skill already sets.
 | The service will not start: `GATEWAY_ASSERTION_CERTIFICATE is not set` | Running outside a deployed cell, or in an environment whose gateway has no keypair | Locally, set the three variables from a throwaway keypair. In a cell this is fail-closed on purpose: the environment's gateway needs provisioning. |
 | Every request 401s right after a deploy | The environment's gateway was re-provisioned; this component still holds the previous certificate | Redeploy the component — the certificate rides its ReleaseBinding. |
 | A forged request is served as an anonymous caller | An unverifiable assertion was treated as "no caller" | A present-but-invalid assertion is always a 401. |
-| Signed-in user loops back to the login page forever, ~160 ms per cycle | `if (res.status === 401) signIn()` in the API client: the gateway answers 401 for a missing scope exactly as for a dead token | The 401 rule — 401 + `tokenIsValid()` ⇒ Forbidden; only an absent/expired token signs in. Copy `assets/api-client.ts`. |
+| Signed-in user loops back to the login page forever, ~160 ms per cycle | `if (res.status === 401) signIn()` in the API client: the gateway answers 401 for a missing scope exactly as for a dead token | The 401 rule — 401 + `tokenIsValid()` ⇒ Forbidden; only an absent/expired token signs in. Copy `src/authz/client.ts` from the assets. |
 | Sign-in succeeds, looks perfectly healthy, and EVERY `/api` call 401s | The token's `aud` is not this project's resource server — `resource` missing from one of the three legs | Set all three: `settings.resource`, `extraTokenParams`, and the `signinSilent({ resource, … })` argument. |
-| `tsc` is green but a screen is gated on a handle the design dropped, or a new handle reaches nothing | `scopes.gen.ts` is stale, or the handle was retyped as a string literal in JSX | `build` is `npm run gen && tsc --noEmit && vite build`; gate from `SCREENS` through `src/screens.ts`, never from a literal. |
+| `tsc` is green but a screen is gated on an operation the contract dropped, or a new handle reaches nothing | `operations.gen.ts` is stale, or a handle was retyped as a string literal in JSX | `build` is `npm run gen && tsc --noEmit && vite build`; gate on `loads` through `src/authz/screens.ts`, never from a literal. |
+| A role opens its own screen and the screen's list call answers 401, or the screen is hidden for the role it exists for | The role's `grants` lack the handle of the operation the screen **loads** — whole-string match, so `x:read-all` (`GET /x`) is not `x:read` (`GET /me/x`); or `loads` names the wrong reach for the screen | A design finding: report the role, the screen and the handle. Never widen `loads`, a mock or a guard to hide it. |
 | `TS2353: 'useRefreshToken' / 'clockSkewInSeconds' does not exist in type 'UserManagerSettings'` | Neither is a member in oidc-client-ts 3.5.0 | Delete both. `automaticSilentRenew: true` drives the refresh grant; the expiry grace is the asset's own `CLOCK_SKEW_SECONDS`. |
 | The header badge is empty for a user who clearly has a role | Code read `user.profile.groups` | `heldRoles()` — the roles whose EVERY grant is in the token's `scope`. |
 | "You have no access" is drawn with a navbar and an empty sidebar around it | `NoAccess` was rendered through `AppShell`'s `<Outlet />` | Return it ABOVE the shell route; `Forbidden` is the one that stays inside. |

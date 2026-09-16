@@ -70,11 +70,11 @@ export interface SecurityEntry {
   /** True only when that same committed fallback failed. */
   isError: boolean;
   /**
-   * The sibling spec files the document's cross-checks read — `design.cell`,
-   * the owning components' OpenAPI, the screens' wireframes — resolved room
-   * first and committed copy second. It satisfies
-   * `SecurityReferenceContext` from `@aep/agent-stream`, which is what
-   * `securityReferenceFindings(doc, ctx)` wants.
+   * The sibling spec files the document's cross-checks read — `design.cell`
+   * and the owning components' OpenAPI — resolved room first and committed
+   * copy second. It satisfies `SecurityReferenceContext` from
+   * `@aep/agent-stream`, which is what `securityReferenceFindings(doc, ctx)`
+   * wants.
    *
    * ALWAYS present, never undefined: "which files can I see?" is a per-path
    * question, and a whole-context `undefined` would make a caller branch on
@@ -146,22 +146,13 @@ export function useSecurityEntry({
     securityLiveText ?? securityCommitted.data?.content ?? null;
 
   // Which siblings to read is a property of the DOCUMENT — the components that
-  // own a resource, the components a screen names — so the paths are derived
-  // from the parsed copy rather than from the whole design tree. An unreadable
-  // document asks for nothing, which is right: there is nothing to cross-check.
-  // Every wireframe the project has, not only the ones this document mentions:
-  // the ungated-screen rule is about a component that may name itself nowhere
-  // in `screens[]`, so a path list derived from the document alone would skip
-  // the one component it exists to catch. Room paths and committed paths both,
-  // because a wireframe written this turn is in neither list alone.
-  const knownPaths = useMemo(
-    () => [...files.map((f) => f.path), ...collab.docPaths],
-    [files, collab.docPaths],
-  );
+  // own a resource — so the paths are derived from the parsed copy rather than
+  // from the whole design tree. An unreadable document asks for nothing, which
+  // is right: there is nothing to cross-check.
   const paths = useMemo(() => {
     const parsed = parseSecurityDesign(securityJson);
-    return parsed.kind === "ok" ? referencePaths(parsed.doc, knownPaths) : [];
-  }, [securityJson, knownPaths]);
+    return parsed.kind === "ok" ? referencePaths(parsed.doc) : [];
+  }, [securityJson]);
 
   const references = useSpecReferences({
     projectName,

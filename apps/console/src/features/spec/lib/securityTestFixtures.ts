@@ -18,7 +18,7 @@
 
 /**
  * Expense Tracker — the worked example the Security page was designed against —
- * as the three files the page reads it from.
+ * as the files the page reads it from.
  *
  * It is here rather than in `src/mocks` because it is the SPEC being asserted,
  * not a convenience: the example fixes this exact matrix, down to which cells
@@ -117,18 +117,6 @@ export const EXPENSE_TRACKER_TEXT = `{
       "assignableBy": [
         "Approver"
       ]
-    }
-  ],
-  "screens": [
-    {
-      "component": "expense-spa",
-      "screen": "My Claims",
-      "requires": "claims:read"
-    },
-    {
-      "component": "expense-spa",
-      "screen": "My account",
-      "requires": null
     }
   ],
   "testUsers": [
@@ -238,21 +226,6 @@ paths:
 `;
 
 /**
- * `specs/design/components/expense-spa/wireframes.dsl` — the screens the web
- * app draws. Exactly the two the document gates, so the example stays clean;
- * a test that wants the ungated-screen rule takes a row OUT of the document
- * rather than adding a screen here, which is the shape the live defect had.
- */
-const EXPENSE_SPA_WIREFRAMES = `screen MyClaims "An employee's own claims"
-  navbar "Expense Tracker"
-  text "Your claims"
-
-screen MyAccount "The signed-in account"
-  navbar "Expense Tracker"
-  text "Your details"
-`;
-
-/**
  * `specs/requirements/prd.md`, cut to its Actors section — the only part the
  * page reads. The two actors are the two roles, which is what a reader is
  * checking when they look at the line above the role cards.
@@ -275,8 +248,6 @@ export const EXPENSE_TRACKER_REFERENCES: SecurityReferenceContext = {
     if (path === "specs/design/design.cell") return CELL;
     if (path === "specs/design/components/expense-api/openapi.yaml")
       return EXPENSE_API_OPENAPI;
-    if (path === "specs/design/components/expense-spa/wireframes.dsl")
-      return EXPENSE_SPA_WIREFRAMES;
     if (path === "specs/requirements/prd.md") return EXPENSE_TRACKER_PRD;
     return undefined;
   },

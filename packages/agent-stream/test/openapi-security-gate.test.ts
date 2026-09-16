@@ -77,7 +77,6 @@ const CATALOG_WITH_FOREIGN_RESOURCE = JSON.stringify({
   ],
   groups: [],
   roles: [],
-  screens: [],
   testUsers: [],
 });
 

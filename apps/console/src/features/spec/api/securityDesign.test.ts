@@ -67,7 +67,6 @@ function doc(over: Partial<SecurityDesign> = {}): SecurityDesign {
     ],
     groups: [],
     roles: [role("Admin"), role("Viewer")],
-    screens: [],
     testUsers: [],
     ...over,
   };
@@ -105,11 +104,6 @@ function richDoc(): SecurityDesign {
         grants: ["orders:read"],
         enrolment: "self-service",
       },
-    ],
-    screens: [
-      { component: "storefront", screen: "Orders", requires: "orders:read" },
-      { component: "storefront", screen: "Catalog", requires: "public" },
-      { component: "storefront", screen: "My account", requires: null },
     ],
     testUsers: [{ username: "test-admin", roles: ["Admin", "Viewer"] }],
   };
@@ -212,7 +206,7 @@ describe("parseSecurityDesign", () => {
     expect(parsed).toEqual({ kind: "ok", doc: good });
   });
 
-  it("accepts a document with no groups, screens or test users", () => {
+  it("accepts a document with no groups or test users", () => {
     const good = doc();
     const parsed = parseSecurityDesign(serializeSecurityDesign(good));
     expect(parsed).toEqual({ kind: "ok", doc: good });
@@ -618,43 +612,34 @@ describe("grantsOf / rolesGranting", () => {
 });
 
 describe("referencePaths", () => {
-  it("asks for the cell, the PRD, the owners' contracts and the screens' wireframes", () => {
+  it("asks for the cell, the PRD and the owners' contracts", () => {
     expect(referencePaths(canonical("expense-tracker"))).toEqual([
       "specs/design/design.cell",
       "specs/requirements/prd.md",
       "specs/design/components/expense-api/openapi.yaml",
       "specs/design/components/expense-api/openapi.yml",
-      "specs/design/components/expense-webapp/wireframes.dsl",
     ]);
   });
 
-  // The rule that catches a screen the wireframe DRAWS and the document does
-  // not gate has to be able to read a wireframe the document never mentions —
-  // a web app whose screens are all ungated names itself nowhere in screens[].
-  it("adds every wireframe the project has, whatever the document names", () => {
-    const paths = referencePaths(canonical("expense-tracker"), [
-      "specs/design/components/admin-webapp/wireframes.dsl",
-      "specs/design/components/expense-webapp/wireframes.dsl",
-      "specs/design/components/expense-api/openapi.yaml",
-      "specs/requirements/prd.md",
-    ]);
-    expect(paths).toContain("specs/design/components/admin-webapp/wireframes.dsl");
-    // Not duplicated, and a non-wireframe path in the list is not pulled in.
-    expect(
-      paths.filter((p) => p === "specs/design/components/expense-webapp/wireframes.dsl"),
-    ).toHaveLength(1);
+  // A screen's gate is the scope of the operation it loads (ADR-0033) — the
+  // document declares nothing about screens, so no rule reads a DSL and no
+  // wireframe is asked for, whatever the project draws.
+  it("asks for no wireframe at all", () => {
+    for (const name of ["expense-tracker", "clinic", "vendor"] as const) {
+      expect(
+        referencePaths(canonical(name)).filter((p) => p.endsWith("/wireframes.dsl")),
+      ).toEqual([]);
+    }
   });
 
-  // Two components own resources and two more carry screens: every one of them
-  // is a file some rule reads, and none of them is asked for twice.
-  it("covers every component named, once each", () => {
+  // Every component that owns a resource is a file some rule reads, and none
+  // of them is asked for twice however many resources it owns.
+  it("covers every owning component named, once each", () => {
     expect(referencePaths(canonical("clinic"))).toEqual([
       "specs/design/design.cell",
       "specs/requirements/prd.md",
       "specs/design/components/appointments-api/openapi.yaml",
       "specs/design/components/appointments-api/openapi.yml",
-      "specs/design/components/booking-site/wireframes.dsl",
-      "specs/design/components/staff-webapp/wireframes.dsl",
     ]);
     expect(referencePaths(canonical("vendor"))).toEqual([
       "specs/design/design.cell",
@@ -663,24 +648,11 @@ describe("referencePaths", () => {
       "specs/design/components/orders-api/openapi.yml",
       "specs/design/components/payments-api/openapi.yaml",
       "specs/design/components/payments-api/openapi.yml",
-      "specs/design/components/vendor-webapp/wireframes.dsl",
     ]);
   });
 
-  // A component that only carries screens has no contract to judge the catalog
-  // against, and a component that only owns resources has no screens.
-  it("does not ask for a contract from a screen-only component", () => {
-    const paths = referencePaths(canonical("expense-tracker"));
-    expect(paths).not.toContain(
-      "specs/design/components/expense-webapp/openapi.yaml",
-    );
-    expect(paths).not.toContain(
-      "specs/design/components/expense-api/wireframes.dsl",
-    );
-  });
-
   it("asks for the cell and the PRD alone when the document names nothing", () => {
-    expect(referencePaths({ ...doc(), screens: [], permissions: [] })).toEqual([
+    expect(referencePaths({ ...doc(), permissions: [] })).toEqual([
       "specs/design/design.cell",
       "specs/requirements/prd.md",
     ]);

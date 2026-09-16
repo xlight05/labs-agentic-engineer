@@ -16,11 +16,11 @@
  * under the License.
  */
 
-// The cases for ../mock-contract.ts. NOT named *.test.mjs on purpose: importing
-// a .ts module needs `--experimental-strip-types` on the Node this repo pins,
-// and the repo-wide runner (`node --test $(find skills -name '*.test.mjs')`)
-// passes no flags. ./mock-contract.test.mjs is the wrapper that runs this file
-// with the flag; run it directly with
+// The cases for ../app/mock/authz/contract.ts. NOT named *.test.mjs on purpose:
+// importing a .ts module needs `--experimental-strip-types` on the Node this
+// repo pins, and the repo-wide runner (`node --test $(find skills -name
+// '*.test.mjs')`) passes no flags. ./mock-contract.test.mjs is the wrapper that
+// runs this file with the flag; run it directly with
 //
 //   node --experimental-strip-types --test mock-contract.cases.mjs
 //
@@ -33,7 +33,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { projectOperations } from "../mock-contract.ts";
+import { projectOperations } from "../app/mock/authz/contract.ts";
 
 /** A minimal document that satisfies every structural rule. */
 function doc(paths, overrides = {}) {

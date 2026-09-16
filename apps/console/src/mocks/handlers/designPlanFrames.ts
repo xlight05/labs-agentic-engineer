@@ -76,9 +76,6 @@ const CONTENT: Record<string, string> = {
           assignTo: ["Finance"],
         },
       ],
-      screens: [
-        { component: "expense-portal", screen: "Queue", requires: "expenses:approve" },
-      ],
       testUsers: [{ username: "test-approver", roles: ["approver"] }],
     },
     null,

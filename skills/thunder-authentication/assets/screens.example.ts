@@ -16,76 +16,96 @@
  * under the License.
  */
 
-// PATTERN, not a verbatim copy. Copy this to <app-path>/src/screens.ts and
-// replace COMPONENT and ROUTE_BY_KEY with YOUR component name and YOUR routes —
-// both below are the Expense Tracker fixture's, not defaults.
-// Everything else stays as it is.
+// PATTERN, not a verbatim copy. Copy this to <app-path>/src/authz/screens.ts
+// and replace SCREEN_ROUTES with YOUR screens — the table below is the Expense
+// Tracker fixture's, not a default. Everything else stays as it is.
 //
-// THE RULE THIS FILE EXISTS FOR: a screen's required handle is READ FROM THE
-// GENERATED TABLE, never retyped in JSX. `scopes.has("claims:read") ||
-// scopes.has("claims:submit")` written by hand into App.tsx is a stale handle
-// the moment the design moves, and nothing — not tsc, not the build gate, not
-// the mock walk — can see that it went stale. Bind the route to the row and a
-// design change reaches the app on the next `npm run gen` and nowhere else.
+// THIS IS THE ONLY FILE THAT KNOWS ABOUT SCREENS, and all it says about each
+// one is which API operation it LOADS. The gate follows: a screen is reachable
+// when the caller may call that operation, and what the operation needs is in
+// the contract, projected into ./operations.gen.ts. Nothing here names a scope,
+// a role or a handle, and security.json carries no screen table at all.
 //
-// security.json spells a screen the way a person reads it ("My Claims"); the
-// wireframe DSL cannot carry a space and spells the same screen "MyClaims".
-// Normalizing both to lowercase alphanumerics is what binds one to the other.
+// WHY `loads` AND NOT A HANDLE. `scopes.has("claims:read")` written by hand into
+// App.tsx is a stale handle the moment the design moves, and nothing — not tsc,
+// not the build gate, not the mock walk — can see that it went stale. An
+// OperationKey is a generated literal union, so a contract change that renames
+// or drops the operation fails `npm run gen && tsc` on the next build.
+//
+// THE ORDER OF THIS TABLE IS THE RAIL'S ORDER, and its first reachable row is
+// the screen the app lands on. Write the screens in the order the wireframes
+// draw them.
 
-import { canReach } from "./authz-core";
-import { SCREENS, type ScreenGate } from "./scopes.gen";
-
-/** YOUR component's name, exactly as design.json and security.json spell it. */
-export const COMPONENT = "expense-webapp";
-
-/** "My Claims" and "MyClaims" both normalize to "myclaims". */
-export function screenKey(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-}
-
-/** YOUR routes, keyed by the normalized screen name. One row per wireframe screen. */
-const ROUTE_BY_KEY: Record<string, string> = {
-  myclaims: "/claims",
-  submitclaim: "/submit",
-  approvals: "/approvals",
-  reports: "/reports",
-};
+import { canCall } from "./core";
+import { OPERATIONS, isOperationKey, type OperationKey } from "./operations.gen";
 
 export interface ScreenRoute {
-  /** The normalized name — the key App.tsx maps to a page component. */
+  /** A stable id the App maps to a page component. */
   readonly key: string;
-  /** The label security.json gives it, for the nav rail and Forbidden copy. */
+  /** The wireframe's screen name, for the rail and the Forbidden copy. */
   readonly label: string;
   readonly path: string;
-  /** null = any signed-in caller; "public" = before sign-in; else a handle. */
-  readonly requires: ScreenGate["requires"];
+  /**
+   * The operation whose answer this screen renders on load; null = a signed-in
+   * screen with no load call (a form that only posts, say).
+   */
+  readonly loads: OperationKey | null;
+  /**
+   * In a flow with no `role` line: reachable before sign-in, routed ABOVE the
+   * sign-in guard. Its load operation, if it has one, is `security: []` in the
+   * contract.
+   */
+  readonly public?: boolean;
 }
 
 /**
- * The screen table for THIS component, in declared order.
+ * YOUR screens, in RAIL ORDER. One row per wireframe screen.
  *
- * FAIL LOUDLY. A screen security.json declares for this component and this app
- * has no page for is a design/implementation mismatch, and it is caught here at
- * module load — the first render, every time, in dev, in the mock walk and in
- * the deployed pod — rather than becoming a screen nobody can reach and nobody
- * notices. Do not soften this to a console.warn or a filter.
+ * `loads` is the operation whose answer the screen renders when it opens — the
+ * list or the detail call, AT THE REACH THE SCREEN SHOWS: an every-row queue
+ * loads `GET /claims`, a "mine" page loads `GET /me/claims`. A screen with no
+ * load call at all — a form — is `loads: null`, reachable by any signed-in
+ * caller, and gate its submit button with `<Can op="POST /me/claims">`. A
+ * screen in a flow with no `role` line is `public: true`.
  */
-export const SCREEN_ROUTES: readonly ScreenRoute[] = SCREENS.filter(
-  (row) => row.component === COMPONENT,
-).map((row) => {
-  const key = screenKey(row.screen);
-  const path = ROUTE_BY_KEY[key];
-  if (!path) {
+export const SCREEN_ROUTES: readonly ScreenRoute[] = [
+  { key: "myclaims", label: "My Claims", path: "/claims", loads: "GET /me/claims" },
+  { key: "submitclaim", label: "Submit Claim", path: "/submit", loads: null },
+  { key: "approvals", label: "Approvals", path: "/approvals", loads: "GET /claims" },
+  { key: "reports", label: "Reports", path: "/reports", loads: "GET /reports" },
+];
+
+// FAIL LOUDLY, at module load — the first render, every time, in dev, in the
+// mock walk and in the deployed pod. `loads` is typed as an OperationKey, so a
+// name the contract does not declare is already a type error; this catches the
+// case tsc cannot, a COMMITTED operations.gen.ts that went stale against a
+// contract nobody regenerated from. Do not soften it to a console.warn: the
+// alternative is a screen that silently reads as "no such operation" and gates
+// on nothing.
+for (const screen of SCREEN_ROUTES) {
+  if (screen.loads !== null && !isOperationKey(screen.loads)) {
     throw new Error(
-      `security.json declares screen "${row.screen}" for ${COMPONENT}, ` +
-        `which this app has no route for. Add it to ROUTE_BY_KEY in src/screens.ts ` +
-        `(or remove the screen from specs/design/security.json).`,
+      `src/authz/screens.ts: screen "${screen.label}" loads "${screen.loads}", which ` +
+        `no contract declares. Re-run \`npm run gen\`, or name the operation the ` +
+        `way openapi.yaml spells it.`,
     );
   }
-  return { key, label: row.screen, path, requires: row.requires };
-});
+}
 
-/** The screens a caller holding `scopes` can actually open, in declared order. */
-export function reachableScreens(scopes: ReadonlySet<string>): readonly ScreenRoute[] {
-  return SCREEN_ROUTES.filter((screen) => canReach(screen.requires, scopes));
+/**
+ * The screens a caller can actually open, in rail order. The first one is the
+ * landing screen; an EMPTY list is the NoAccess case.
+ *
+ * One rule, and it is the gate the API itself applies: may this caller call the
+ * operation the screen loads?
+ */
+export function reachableScreens(
+  scopes: ReadonlySet<string>,
+  signedIn: boolean,
+): readonly ScreenRoute[] {
+  return SCREEN_ROUTES.filter((screen) => {
+    if (screen.public) return true;
+    if (screen.loads === null) return signedIn;
+    return canCall(OPERATIONS[screen.loads], scopes, signedIn);
+  });
 }

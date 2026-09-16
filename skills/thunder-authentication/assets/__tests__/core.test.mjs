@@ -16,16 +16,16 @@
  * under the License.
  */
 
-// Runner for ./mock-contract.cases.mjs.
+// Runner for ./core.cases.mjs.
 //
-// mock-contract.ts is TypeScript, and the repo-wide skill test runner is a bare
-// `node --test <files matching *.test.mjs>` — no flags, no transpiler, no
+// app/src/authz/core.ts is TypeScript, and the repo-wide skill test runner is a
+// bare `node --test <files matching *.test.mjs>` — no flags, no transpiler, no
 // dependency. The pinned Node needs `--experimental-strip-types` to import a
 // .ts module at all, so the cases run in a child process that has the flag and
 // this file asserts the child's exit status, surfacing its output on failure.
 //
 // When Node's default type stripping lands under the version this repo pins,
-// fold mock-contract.cases.mjs back into this file and delete the spawn.
+// fold core.cases.mjs back into this file and delete the spawn.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -48,21 +48,16 @@ function childEnv() {
   return env;
 }
 
-test("mock-contract: the contract reads the same way the deployed gateway does", () => {
+test("authz/core: the pure authorization rules", () => {
   const child = spawnSync(
     process.execPath,
-    [
-      "--experimental-strip-types",
-      "--no-warnings",
-      "--test",
-      path.join(here, "mock-contract.cases.mjs"),
-    ],
+    ["--experimental-strip-types", "--no-warnings", "--test", path.join(here, "core.cases.mjs")],
     { encoding: "utf8", env: childEnv() },
   );
   const output = `${child.stdout ?? ""}${child.stderr ?? ""}`;
-  assert.equal(child.status, 0, `mock-contract.cases.mjs failed:\n${output}`);
+  assert.equal(child.status, 0, `core.cases.mjs failed:\n${output}`);
   // Guard against the child silently running nothing at all.
   assert.match(output, /# pass (\d+)/);
   const passed = Number(/# pass (\d+)/.exec(output)[1]);
-  assert.ok(passed >= 12, `expected the case file to run its suite, saw ${passed} passing`);
+  assert.ok(passed >= 15, `expected the case file to run its suite, saw ${passed} passing`);
 });

@@ -255,11 +255,10 @@ func validateRolesDocument(designFiles map[string]string, prdStories map[int]str
 	}
 
 	// The referential rules that need MORE than security.json: a permission's
-	// component is a node of design.cell, a screen exists in its component's
-	// wireframes.dsl, and — the one that matters most — every role that reaches
-	// a screen is granted the scope of the operation that screen loads. Parse
-	// ran the document-only half already; only the gate holds the whole bundle,
-	// where every sibling file is present by construction.
+	// component is a node of design.cell, and the two coverage warnings read
+	// the owner components' openapi.yaml. Parse ran the document-only half
+	// already; only the gate holds the whole bundle, where every sibling file is
+	// present by construction.
 	var errs []FileValidationError
 	for _, finding := range securityspec.ReferenceFindings(doc, securityspec.DesignBundle(designFiles)) {
 		if finding.Severity != securityspec.SeverityError {

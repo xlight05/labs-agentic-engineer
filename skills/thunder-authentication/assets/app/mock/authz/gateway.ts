@@ -16,7 +16,8 @@
  * under the License.
  */
 
-// Mock mode — copied verbatim to <app-path>/mock/gateway.ts, never edited.
+// Mock mode — copied verbatim, with the rest of app/, to
+// <app-path>/mock/authz/gateway.ts, never edited.
 //
 // THE API GATEWAY, in mock mode. Production has two layers in front of a
 // screen and they answer different questions:
@@ -49,7 +50,7 @@
 // authentication-policy failure — no token, expired token, wrong issuer, wrong
 // audience, MISSING SCOPE — with a byte-identical body and no
 // `WWW-Authenticate`. Nothing downstream can tell those apart, which is the
-// whole reason `src/api-client.ts` decides on its own `expires_at` instead.
+// whole reason `src/authz/client.ts` decides on its own `expires_at` instead.
 // Answering 403 here would walk a branch of that rule the deployed app never
 // takes, and leave the branch it does take — 401 while the token is still
 // valid — untested. That branch is the one whose regression is an endless
@@ -87,7 +88,7 @@ const table: MockOperationTable | null =
  * The scopes carried by a mock bearer (`mock:claims:read,claims:submit`).
  *
  * This file owns the format because in production the GATEWAY is what reads a
- * token; `mock/auth.ts` mints one and re-exports this reader for the header
+ * token; `mock/authz/session.ts` mints one and re-exports this reader for the header
  * badge. A handler never decides on it: which rows an operation returns is its
  * path (`/api/me/…` the caller's, anything else every row — ADR-0031).
  */

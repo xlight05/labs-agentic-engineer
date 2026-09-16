@@ -17,15 +17,15 @@
  */
 
 /**
- * The referential rules of `specs/design/security.json` v2 — one passing case
+ * The referential rules of `specs/design/security.json` v3 — one passing case
  * per design document, one failing case per rule.
  *
  * The three documents under `fixtures/security/` are the design's own worked
- * examples. Each now comes with the sibling files its cross-checks need — a
- * `design.cell`, the owning components' `openapi.yaml`, the web apps'
- * `wireframes.dsl` — assembled into a bundle at the paths the real spec tree
- * uses. All three must come out CLEAN, so a rule that would refuse one of the
- * design's own documents fails here rather than in a live run.
+ * examples. Each comes with the sibling files its cross-checks need — a
+ * `design.cell` and the owning components' `openapi.yaml` — assembled into a
+ * bundle at the paths the real spec tree uses. All three must come out CLEAN,
+ * so a rule that would refuse one of the design's own documents fails here
+ * rather than in a live run.
  *
  * The Go save-gate (`internal/platform/securityspec`) mirrors this rule set and
  * formats the same vendored `security-design-messages.json`, so a rule added
@@ -40,7 +40,6 @@ import { fileURLToPath } from "node:url";
 import {
   securityReferenceFindings,
   checkSecurityReferences,
-  normalizeScreenName,
   type SecurityReferenceFinding,
   type SecurityReferenceContext,
 } from "../src/security-design-references.ts";
@@ -77,7 +76,7 @@ function bundleFiles(name: FixtureName): Record<string, string> {
       files["specs/design/design.cell"] = body;
       continue;
     }
-    const m = /^(.+)\.(openapi\.yaml|wireframes\.dsl)$/.exec(entry);
+    const m = /^(.+)\.(openapi\.yaml)$/.exec(entry);
     if (!m) throw new Error(`unexpected fixture file ${name}/${entry}`);
     files[`specs/design/components/${m[1]}/${m[2]}`] = body;
   }
@@ -164,100 +163,15 @@ test("the two coverage warnings fire on the Expense Tracker catalog", () => {
   assert.ok(!warnings.some((w) => w.startsWith("handle_used_nowhere:")), warnings.join(", "));
 });
 
-test("a catalog handle nothing requires is reported as declared, used nowhere", () => {
+test("a catalog handle NO OPERATION requires is reported as declared, used nowhere", () => {
+  // The only thing that uses a handle is an operation: v3 has no screen table,
+  // so a handle the component's openapi.yaml never names can be asked for by
+  // nobody, for nothing.
   const doc = expense((d) => {
     d.permissions[0]!.actions.push({ handle: "archive" });
   });
   const warnings = only(securityReferenceFindings(doc, contextFor("expense-tracker")), "warning");
   assert.ok(warnings.some((w) => w.key === "handle_used_nowhere" && w.params["handle"] === "claims:archive"));
-});
-
-// --- THE reachability cross-check (plan §1.2, Δ P6 §5) -----------------------
-
-test("the design's own Expense Tracker defect is refused: Approver reaches Approvals and can read no claims", () => {
-  // The shape the design shipped and P6 §5 measured: Approvals is gated on
-  // claims:approve and renders a list of claims the role could not call. Live,
-  // that was a 401 the SPA read as an expired session — an infinite sign-in
-  // loop. The resource has two reads at two reaches (GET /me/claims on
-  // claims:read, GET /claims on claims:read-all); the rule refuses a role that
-  // holds NEITHER and names both, leaving which one to the design.
-  const doc = expense((d) => {
-    const approver = role(d, "Approver");
-    approver.grants = approver.grants.filter((g) => g !== "claims:read" && g !== "claims:read-all");
-  });
-  const found = errors(securityReferenceFindings(doc, contextFor("expense-tracker")));
-  const reach = found.find((f) => f.key === "screen_without_read");
-  if (!reach) throw new Error(`no reachability error; got: ${found.map((f) => f.message).join(" | ")}`);
-  assert.deepEqual(reach.params, {
-    role: "Approver",
-    screen: "Approvals",
-    resource: "claims",
-    handles: '"claims:read", "claims:read-all"',
-  });
-  assert.match(reach.message, /role "Approver" reaches screen "Approvals"/);
-});
-
-test("holding ANY read of the resource satisfies the rule — the reach is the design's choice", () => {
-  // An Approver who reads every claim (GET /claims) but not their own
-  // (GET /me/claims) can still render Approvals. Nothing implies anything, and
-  // nothing here says which list the screen shows; only that it can show one.
-  const doc = expense((d) => {
-    const approver = role(d, "Approver");
-    approver.grants = approver.grants.filter((g) => g !== "claims:read");
-  });
-  assert.deepEqual(errors(securityReferenceFindings(doc, contextFor("expense-tracker"))), []);
-});
-
-test("the reachability rule is silent when the owning component's spec is not in the bundle", () => {
-  const doc = expense((d) => {
-    const approver = role(d, "Approver");
-    approver.grants = approver.grants.filter((g) => g !== "claims:read" && g !== "claims:read-all");
-  });
-  const files = bundleFiles("expense-tracker");
-  delete files["specs/design/components/expense-api/openapi.yaml"];
-  const found = errors(securityReferenceFindings(doc, { read: (p) => files[p] }));
-  assert.ok(!found.some((f) => f.key === "screen_without_read"));
-});
-
-test("a service role reaches no screen, so the reachability rule skips it", () => {
-  // The Vendor Portal's reconciliation-job grants invoices:read and
-  // payments:read; it must not be judged against the screens those handles gate.
-  const doc = fixtureDoc("vendor");
-  const job = role(doc, "reconciliation-job");
-  job.grants = ["invoices:read-all", "invoices:read", "payments:read"];
-  const found = errors(securityReferenceFindings(doc, contextFor("vendor")));
-  assert.deepEqual(found, []);
-});
-
-// --- screen names normalize on both sides ------------------------------------
-
-test('a screen name normalizes on both sides — "My Claims" is the DSL\'s MyClaims', () => {
-  assert.equal(normalizeScreenName("My Claims"), normalizeScreenName("MyClaims"));
-  const doc = expense((d) => {
-    d.screens[0]!.screen = "my-claims!";
-  });
-  assert.deepEqual(errors(securityReferenceFindings(doc, contextFor("expense-tracker"))), []);
-});
-
-test("a screen the wireframe does not declare is refused", () => {
-  // Added rather than renamed: renaming the row would ALSO leave the screen it
-  // used to gate ungated, and this case is about one rule.
-  const doc = expense((d) => {
-    d.screens.push({ component: "expense-webapp", screen: "My Claim", requires: "claims:read" });
-  });
-  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_unknown", {
-    component: "expense-webapp",
-    screen: "My Claim",
-  });
-});
-
-test("a screen rule is silent when the component has no wireframes.dsl in the bundle", () => {
-  const files = bundleFiles("expense-tracker");
-  delete files["specs/design/components/expense-webapp/wireframes.dsl"];
-  const doc = expense((d) => {
-    d.screens[0]!.screen = "My Claim";
-  });
-  assert.deepEqual(errors(securityReferenceFindings(doc, { read: (p) => files[p] })), []);
 });
 
 // --- one negative per rule ---------------------------------------------------
@@ -488,102 +402,11 @@ test("a role name of letters, digits, spaces, dots, hyphens and underscores is a
   }
 });
 
-test("a screen on a component the cell does not draw", () => {
-  // Added, not moved — see the note on the wireframe-does-not-declare case.
-  const doc = expense((d) => {
-    d.screens.push({ component: "expense-admin", screen: "My Claims", requires: "claims:read" });
-  });
-  assertOnlyError(
-    securityReferenceFindings(doc, contextFor("expense-tracker")),
-    "screen_component_unknown",
-    { component: "expense-admin", screen: "My Claims" },
-  );
-});
-
-// --- screens the wireframe draws and the document does not gate --------------
-
-test("a screen the wireframe draws with no screens[] row is refused", () => {
-  const doc = expense((d) => {
-    d.screens = d.screens.filter((s) => s.screen !== "Approvals");
-  });
-  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_not_gated", {
-    component: "expense-webapp",
-    screens: '"Approvals"',
-  });
-});
-
-test("every ungated screen of one component is ONE finding, in the order drawn", () => {
-  // The write-gate hands the model one sentence per round trip, so four missing
-  // screens must be one fix rather than four.
-  const doc = expense((d) => {
-    d.screens = d.screens.filter((s) => s.screen === "My Claims");
-  });
-  assertOnlyError(securityReferenceFindings(doc, contextFor("expense-tracker")), "screen_not_gated", {
-    component: "expense-webapp",
-    screens: '"SubmitClaim", "Approvals", "Reports"',
-  });
-});
-
-test("a web app with NO screens[] row at all is still caught — via the cell", () => {
-  // The case a scan of screens[] can never reach: the component names itself
-  // nowhere in the document, and every screen it draws is open.
-  const doc = expense((d) => {
-    d.screens = [];
-  });
-  const found = errors(securityReferenceFindings(doc, contextFor("expense-tracker")));
-  assert.deepEqual(
-    found.map((f) => f.key),
-    ["screen_not_gated"],
-  );
-  assert.equal(found[0]!.params["component"], "expense-webapp");
-});
-
-test("the rule is silent when the component has no wireframes.dsl", () => {
-  const files = bundleFiles("expense-tracker");
-  delete files["specs/design/components/expense-webapp/wireframes.dsl"];
-  const doc = expense((d) => {
-    d.screens = [];
-  });
-  assert.deepEqual(errors(securityReferenceFindings(doc, { read: (path) => files[path] })), []);
-});
-
-test("without the cell the rule falls back to the components screens[] names", () => {
-  const files = bundleFiles("expense-tracker");
-  delete files["specs/design/design.cell"];
-  const doc = expense((d) => {
-    d.screens = d.screens.filter((s) => s.screen === "My Claims");
-  });
-  assertOnlyError(securityReferenceFindings(doc, { read: (path) => files[path] }), "screen_not_gated", {
-    component: "expense-webapp",
-    screens: '"SubmitClaim", "Approvals", "Reports"',
-  });
-});
-
-test("a screen name is matched across spelling, so a gated screen is never reported", () => {
-  const doc = expense((d) => {
-    for (const screen of d.screens) if (screen.screen === "My Claims") screen.screen = "myclaims";
-  });
-  assert.deepEqual(errors(securityReferenceFindings(doc, contextFor("expense-tracker"))), []);
-});
-
-test("a screen requiring a handle the catalog does not declare", () => {
-  const doc = expense((d) => {
-    d.screens[2]!.requires = "claims:archive";
-  });
-  assertOnlyError(
-    securityReferenceFindings(doc, contextFor("expense-tracker")),
-    "screen_requires_unknown_handle",
-    { component: "expense-webapp", screen: "Approvals", handle: "claims:archive" },
-  );
-});
-
 // --- what a missing sibling does ---------------------------------------------
 
 test("with no bundle at all, only the rules the document can answer alone run", () => {
   const doc = expense((d) => {
     d.permissions[1]!.component = "expense-worker";
-    d.screens[0]!.component = "expense-admin";
-    d.screens[0]!.screen = "Nowhere";
   });
   // The info note about a reused org group is all that survives: every rule
   // with a sibling-file input is skipped in silence.

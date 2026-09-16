@@ -26,9 +26,12 @@
  * than restating prose:
  *
  *  - `roles[].grants` names catalog handles (`<resource>:<action>`);
- *  - `screens[].requires` names one handle, `null` for any signed-in user, or
- *    the literal `"public"` for a screen shown before sign-in;
  *  - `openapi.yaml` operations name handles in their `security` block.
+ *
+ * Screens are NOT in this file. A screen's gate is a projection of the API
+ * contract: a screen is reachable when the token holds the scope of the
+ * operation that LOADS it, and that operation's one scope is already in
+ * `openapi.yaml` (ADR-0033).
  *
  * It is read by two very different consumers:
  *
@@ -78,11 +81,6 @@ export interface SecurityDesign {
   groups: Group[];
   /** Every role this project defines. At least one. */
   roles: Role[];
-  /**
-   * One row per screen a web application's wireframe declares, saying what a
-   * caller must hold to reach it. May be empty for an API-only project.
-   */
-  screens: Screen[];
   /**
    * The accounts that exist so a role's behaviour can be exercised — the
    * validation agent signs in as one to judge role-gated criteria. May be
@@ -188,23 +186,6 @@ export interface Role {
    * principal, never to a group, and gets no test user.
    */
   kind?: RoleKind | undefined;
-}
-
-/** One screen of one web application, and what it takes to reach it. */
-export interface Screen {
-  /** The web-application component, as it appears in `design.cell`. */
-  component: string;
-  /**
-   * The screen name as `wireframes.dsl` declares it. Both sides normalize
-   * before comparing, so `"My Claims"` matches `screen MyClaims`.
-   */
-  screen: string;
-  /**
-   * One catalog handle, `null` for any signed-in user, or the literal
-   * `"public"` for a screen shown before sign-in. A handle always contains a
-   * colon, so the literal cannot collide with one.
-   */
-  requires: string | null;
 }
 
 /**

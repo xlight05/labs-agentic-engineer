@@ -17,7 +17,7 @@
  */
 
 /**
- * Write-gate behavior for `specs/design/security.json` v2. These assert the zod
+ * Write-gate behavior for `specs/design/security.json` v3. These assert the zod
  * source of truth directly; the Go save-gate (internal/platform/securityspec)
  * validates the SAME published JSON Schema plus the same referential rules,
  * and has its own parity tests — a document that passes one gate MUST pass the
@@ -121,7 +121,10 @@ test("a version other than 3 is refused", () => {
 test("a version-2 document is refused with the migration sentence", () => {
   const problem = checkSecurityDesign(PATH, doc({ version: 2 }));
   assert.equal(problem?.code, "SCHEMA_VIOLATION");
-  assert.match(problem!.message, /v2 is not accepted: remove actions\[\]\.ownership and set version to 3/);
+  assert.match(
+    problem!.message,
+    /v2 is not accepted: remove actions\[\]\.ownership and screens\[\], and set version to 3/,
+  );
   assert.match(problem!.message, /its PATH in openapi\.yaml/);
 });
 
@@ -221,29 +224,17 @@ test("a grant that is not a resource:action handle is rejected", () => {
   }
 });
 
-test("a screen requiring something that is neither a handle, null nor \"public\" is rejected", () => {
-  for (const bad of ["signed-in", "claims", "Public", "claims:read:all"]) {
-    const problem = checkSecurityDesign(
-      PATH,
-      doc({ screens: [{ component: "expense-webapp", screen: "My Claims", requires: bad }] }),
-    );
-    assert.equal(problem?.code, "SCHEMA_VIOLATION", `expected requires "${bad}" to be refused`);
-  }
-});
-
-test("a screen may require null (any signed-in user) or the literal public", () => {
-  assert.equal(
-    checkSecurityDesign(
-      PATH,
-      doc({
-        screens: [
-          { component: "expense-webapp", screen: "Home", requires: null },
-          { component: "expense-webapp", screen: "Landing", requires: "public" },
-        ],
-      }),
-    ),
-    null,
+test("a version-3 document that still carries screens[] is refused, and the message names the key", () => {
+  // v3 has no screen table: a screen's gate is the scope of the operation that
+  // LOADS it (ADR-0033). The document is `strictObject`, so the refusal is the
+  // schema's own unrecognized-key message — no bespoke refinement — and it has
+  // to NAME the key, or the author is left guessing which field to delete.
+  const problem = checkSecurityDesign(
+    PATH,
+    doc({ screens: [{ component: "expense-webapp", screen: "My Claims", requires: "claims:read" }] }),
   );
+  assert.equal(problem?.code, "SCHEMA_VIOLATION");
+  assert.match(problem!.message, /screens/);
 });
 
 test("a role must grant at least one handle, and a permission must carry at least one action", () => {
