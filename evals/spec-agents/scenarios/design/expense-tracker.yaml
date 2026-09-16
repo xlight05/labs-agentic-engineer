@@ -35,13 +35,13 @@ rubric:
   mustCover:
     - item: A web application component and a protected service component are both designed, with the service owning claims and the monthly report
       weight: 2
-    - item: "specs/design/security.json is written at version 2 with a permissions catalog whose every action declares ownership — own for the employee's own rows, any for the approver's every-row capabilities"
+    - item: "specs/design/security.json is written at version 3 with a permissions catalog of handles and descriptions and no ownership field — which rows an operation reaches is its path in openapi.yaml"
       weight: 2
     - item: Exactly two roles, named Employee and Approver, each citing the PRD story numbers it serves, and each assigned to an organisation group (the Approver reusing the directory's existing Finance group rather than inventing one)
       weight: 2
-    - item: "The Approver's grants hold BOTH claims:read and claims:read-all — the all handle widens the rows an operation returns and never replaces the operation's own handle"
+    - item: "The service's openapi.yaml puts the employee's own claims under /me/claims (guarded by claims:read) and every claim at /claims (guarded by claims:read-all): two operations, two handles, no handle guarding both sides of /me/"
       weight: 3
-    - item: "Every screen carries a requires handle from the catalog, and each role that reaches a screen holds the scope of every operation that screen calls (the approvals queue reads the claims list operation, which requires claims:read)"
+    - item: "Every screen carries a requires handle from the catalog, and each role that reaches a screen holds a handle that reads the resource the screen renders at the reach the screen shows (the approvals queue lists every claim, so the Approver holds claims:read-all)"
       weight: 2
     - item: "The service's openapi.yaml declares an oauth2 security scheme whose scope keys are catalog handles, a document-level default of any signed-in user, and at most one scope on any operation"
       weight: 2

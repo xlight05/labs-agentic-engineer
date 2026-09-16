@@ -48,7 +48,7 @@ describe("patchGrants — the one edit the Security page makes", () => {
   });
 
   it("keeps the authored key order rather than the schema's", () => {
-    const source = `{\n  "roles": [\n    {\n      "grants": [],\n      "name": "Admin",\n      "description": "d",\n      "stories": [1]\n    }\n  ],\n  "version": 2\n}\n`;
+    const source = `{\n  "roles": [\n    {\n      "grants": [],\n      "name": "Admin",\n      "description": "d",\n      "stories": [1]\n    }\n  ],\n  "version": 3\n}\n`;
     const result = patchGrants(source, "Admin", "orders:read", true);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -62,7 +62,7 @@ describe("patchGrants — the one edit the Security page makes", () => {
   });
 
   it("keeps fields the console's schema does not model", () => {
-    const source = `{\n  "version": 2,\n  "somethingNewer": { "kept": true },\n  "roles": [\n    { "name": "Admin", "grants": [] }\n  ]\n}\n`;
+    const source = `{\n  "version": 3,\n  "somethingNewer": { "kept": true },\n  "roles": [\n    { "name": "Admin", "grants": [] }\n  ]\n}\n`;
     const result = patchGrants(source, "Admin", "orders:read", true);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -150,7 +150,7 @@ describe("patchGrants — the one edit the Security page makes", () => {
   });
 
   it("reports an unreadable document instead of throwing", () => {
-    const result = patchGrants('{"version": 2,', "Employee", "claims:read", true);
+    const result = patchGrants('{"version": 3,', "Employee", "claims:read", true);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.kind).toBe("unreadable");

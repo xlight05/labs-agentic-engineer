@@ -27,7 +27,6 @@ import expenseTrackerJson from "../../../../../../packages/agent-stream/test/fix
 import vendorJson from "../../../../../../packages/agent-stream/test/fixtures/security/vendor.json?raw";
 
 import {
-  baselineScreens,
   grantsOf,
   isGranted,
   needsTestUser,
@@ -58,12 +57,12 @@ function role(name: string): Role {
 
 function doc(over: Partial<SecurityDesign> = {}): SecurityDesign {
   return {
-    version: 2,
+    version: 3,
     permissions: [
       {
         resource: "orders",
         component: "orders-api",
-        actions: [{ handle: "read", ownership: "own" }],
+        actions: [{ handle: "read" }],
       },
     ],
     groups: [],
@@ -77,15 +76,15 @@ function doc(over: Partial<SecurityDesign> = {}): SecurityDesign {
 /** Fully populated document for parse and planUsers round-trip tests. */
 function richDoc(): SecurityDesign {
   return {
-    version: 2,
+    version: 3,
     permissions: [
       {
         resource: "orders",
         component: "orders-api",
         description: "Customer orders",
         actions: [
-          { handle: "read", ownership: "own", description: "See own orders" },
-          { handle: "read-all", ownership: "any" },
+          { handle: "read", description: "See own orders" },
+          { handle: "read-all" },
         ],
       },
     ],
@@ -150,10 +149,10 @@ describe("parseSecurityDesign", () => {
   // reader sees mid-turn is a PREFIX. Calling that broken would raise an alarm
   // about a document nothing is wrong with.
   it.each([
-    ["a truncated object", '{"version": 2,'],
-    ["a key with no value yet", '{"version": 2, "permissions"'],
-    ["an unterminated string", '{"version": 2, "roles": [{"name": "Admi'],
-    ["an array still open", '{"version": 2, "roles": ['],
+    ["a truncated object", '{"version": 3,'],
+    ["a key with no value yet", '{"version": 3, "permissions"'],
+    ["an unterminated string", '{"version": 3, "roles": [{"name": "Admi'],
+    ["an array still open", '{"version": 3, "roles": ['],
   ])("reads %s as unfinished rather than as a failure", (_label, text) => {
     expect(parseSecurityDesign(text)).toEqual({ kind: "unfinished" });
   });
@@ -162,8 +161,8 @@ describe("parseSecurityDesign", () => {
   // reader is owed the error.
   it.each([
     ["a closer that does not match its opener", '{"roles": [1, 2}'],
-    ["one closer too many", '{"version": 2}}'],
-    ["text after the document", '{"version": 2} and then some'],
+    ["one closer too many", '{"version": 3}}'],
+    ["text after the document", '{"version": 3} and then some'],
   ])("reports %s as invalid", (_label, text) => {
     const parsed = parseSecurityDesign(text);
     expect(parsed.kind).toBe("invalid");
@@ -472,7 +471,7 @@ describe("securityMatrix", () => {
     ]);
   });
 
-  it("carries the handle, ownership and prose of each action", () => {
+  it("carries the handle and prose of each action — and no row axis, which the document does not have", () => {
     const [claims] = securityMatrix(canonical("expense-tracker")).groups;
     expect(claims?.description).toBe("Expense claims and their approval");
     expect(claims?.rows[0]).toEqual({
@@ -480,11 +479,9 @@ describe("securityMatrix", () => {
       resource: "claims",
       action: "read",
       component: "expense-api",
-      ownership: "own",
       description: "See own claims",
       grantedBy: ["Employee", "Approver"],
     });
-    expect(claims?.rows[1]?.ownership).toBe("any");
   });
 
   // The document's `description` is optional and the schema forbids "", so an
@@ -582,40 +579,6 @@ describe("isGranted", () => {
   });
 });
 
-describe("baselineScreens", () => {
-  // The three kinds of `requires` in one document: a handle, `null` and the
-  // literal. Only the last two are baseline rows.
-  it("separates the signed-in screens from the public ones", () => {
-    expect(baselineScreens(richDoc())).toEqual({
-      signedInScreens: [{ component: "storefront", screen: "My account" }],
-      publicScreens: [{ component: "storefront", screen: "Catalog" }],
-    });
-  });
-
-  it("reads the clinic's one public screen and no signed-in screen", () => {
-    expect(baselineScreens(canonical("clinic"))).toEqual({
-      signedInScreens: [],
-      publicScreens: [{ component: "booking-site", screen: "Find a slot" }],
-    });
-  });
-
-  // The design's "any signed-in user · GET /me" row is only half derivable
-  // here: this document declares screens and never operations, so a document
-  // whose every screen carries a handle has an EMPTY baseline even when its
-  // components expose unscoped operations. That half comes from each
-  // component's openapi.yaml, which the panel reads separately.
-  it("is empty for a document whose every screen requires a handle", () => {
-    expect(baselineScreens(canonical("expense-tracker"))).toEqual({
-      signedInScreens: [],
-      publicScreens: [],
-    });
-  });
-
-  it("is reachable through the matrix as well", () => {
-    expect(securityMatrix(richDoc()).baseline).toEqual(baselineScreens(richDoc()));
-  });
-});
-
 describe("grantsOf / rolesGranting", () => {
   it("returns a role's handles as authored, widening nothing", () => {
     const d = canonical("expense-tracker");
@@ -655,13 +618,31 @@ describe("grantsOf / rolesGranting", () => {
 });
 
 describe("referencePaths", () => {
-  it("asks for the cell, the owners' contracts and the screens' wireframes", () => {
+  it("asks for the cell, the PRD, the owners' contracts and the screens' wireframes", () => {
     expect(referencePaths(canonical("expense-tracker"))).toEqual([
       "specs/design/design.cell",
+      "specs/requirements/prd.md",
       "specs/design/components/expense-api/openapi.yaml",
       "specs/design/components/expense-api/openapi.yml",
       "specs/design/components/expense-webapp/wireframes.dsl",
     ]);
+  });
+
+  // The rule that catches a screen the wireframe DRAWS and the document does
+  // not gate has to be able to read a wireframe the document never mentions —
+  // a web app whose screens are all ungated names itself nowhere in screens[].
+  it("adds every wireframe the project has, whatever the document names", () => {
+    const paths = referencePaths(canonical("expense-tracker"), [
+      "specs/design/components/admin-webapp/wireframes.dsl",
+      "specs/design/components/expense-webapp/wireframes.dsl",
+      "specs/design/components/expense-api/openapi.yaml",
+      "specs/requirements/prd.md",
+    ]);
+    expect(paths).toContain("specs/design/components/admin-webapp/wireframes.dsl");
+    // Not duplicated, and a non-wireframe path in the list is not pulled in.
+    expect(
+      paths.filter((p) => p === "specs/design/components/expense-webapp/wireframes.dsl"),
+    ).toHaveLength(1);
   });
 
   // Two components own resources and two more carry screens: every one of them
@@ -669,6 +650,7 @@ describe("referencePaths", () => {
   it("covers every component named, once each", () => {
     expect(referencePaths(canonical("clinic"))).toEqual([
       "specs/design/design.cell",
+      "specs/requirements/prd.md",
       "specs/design/components/appointments-api/openapi.yaml",
       "specs/design/components/appointments-api/openapi.yml",
       "specs/design/components/booking-site/wireframes.dsl",
@@ -676,6 +658,7 @@ describe("referencePaths", () => {
     ]);
     expect(referencePaths(canonical("vendor"))).toEqual([
       "specs/design/design.cell",
+      "specs/requirements/prd.md",
       "specs/design/components/orders-api/openapi.yaml",
       "specs/design/components/orders-api/openapi.yml",
       "specs/design/components/payments-api/openapi.yaml",
@@ -696,9 +679,10 @@ describe("referencePaths", () => {
     );
   });
 
-  it("asks for the cell alone when the document names no screens", () => {
+  it("asks for the cell and the PRD alone when the document names nothing", () => {
     expect(referencePaths({ ...doc(), screens: [], permissions: [] })).toEqual([
       "specs/design/design.cell",
+      "specs/requirements/prd.md",
     ]);
   });
 });

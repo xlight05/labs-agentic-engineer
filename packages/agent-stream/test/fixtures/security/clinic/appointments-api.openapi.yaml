@@ -28,9 +28,9 @@ paths:
       security: []
       responses:
         "200": { description: ok }
-  /appointments:
+  /me/appointments:
     get:
-      operationId: listAppointments
+      operationId: listMyAppointments
       security: [{ oauth2: [appointments:read] }]
       responses:
         "200": { description: ok }
@@ -39,6 +39,12 @@ paths:
       security: [{ oauth2: [appointments:book] }]
       responses:
         "201": { description: created }
+  /me/appointments/{id}:
+    delete:
+      operationId: cancelAppointment
+      security: [{ oauth2: [appointments:cancel] }]
+      responses:
+        "204": { description: cancelled }
   /appointments/day:
     get:
       operationId: listDay
@@ -46,11 +52,6 @@ paths:
       responses:
         "200": { description: ok }
   /appointments/{id}:
-    delete:
-      operationId: cancelAppointment
-      security: [{ oauth2: [appointments:cancel] }]
-      responses:
-        "204": { description: cancelled }
     put:
       operationId: manageAppointment
       security: [{ oauth2: [appointments:manage] }]
@@ -68,9 +69,9 @@ paths:
       security: [{ oauth2: [schedule:publish] }]
       responses:
         "202": { description: accepted }
-  /records:
+  /me/patients/records:
     get:
-      operationId: readRecords
+      operationId: readMyPatientsRecords
       security: [{ oauth2: [records:read] }]
       responses:
         "200": { description: ok }

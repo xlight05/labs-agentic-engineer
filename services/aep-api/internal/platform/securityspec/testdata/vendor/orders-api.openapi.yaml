@@ -21,7 +21,7 @@ components:
 security:
   - oauth2: []
 paths:
-  /orders:
+  /me/company/orders:
     get:
       operationId: listOrders
       security: [{ oauth2: [orders:read] }]
@@ -32,13 +32,13 @@ paths:
       security: [{ oauth2: [orders:place] }]
       responses:
         "201": { description: created }
-  /orders/{id}/confirm:
+  /me/company/orders/{id}/confirm:
     post:
       operationId: confirmOrder
       security: [{ oauth2: [orders:confirm] }]
       responses:
         "204": { description: confirmed }
-  /invoices:
+  /me/company/invoices:
     get:
       operationId: listInvoices
       security: [{ oauth2: [invoices:read] }]
@@ -49,7 +49,7 @@ paths:
       security: [{ oauth2: [invoices:submit] }]
       responses:
         "201": { description: created }
-  /invoices/all:
+  /invoices:
     get:
       operationId: listEveryInvoice
       security: [{ oauth2: [invoices:read-all] }]

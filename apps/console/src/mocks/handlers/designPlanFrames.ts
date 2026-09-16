@@ -53,16 +53,16 @@ const CONTENT: Record<string, string> = {
     "# Approve an expense\n\nAn approver reviews a submitted expense and approves or refuses it.\n\n```mermaid\nsequenceDiagram\n    actor Approver\n    participant expense-portal\n    participant expense-api\n\n    Approver->>expense-portal: open the queue\n    expense-portal->>expense-api: list submitted expenses\n    Approver->>expense-portal: approve\n    expense-portal->>expense-api: approve expense\n    expense-api-->>expense-portal: approved\n```\n",
   [SECURITY]: JSON.stringify(
     {
-      version: 2,
+      version: 3,
       permissions: [
         {
           resource: "expenses",
           component: "expense-api",
           description: "Submitted expenses and their approval",
           actions: [
-            { handle: "read", ownership: "own", description: "See own expenses" },
-            { handle: "submit", ownership: "own", description: "Submit an expense" },
-            { handle: "approve", ownership: "any", description: "Approve a submitted expense" },
+            { handle: "read", description: "See own expenses" },
+            { handle: "submit", description: "Submit an expense" },
+            { handle: "approve", description: "Approve a submitted expense" },
           ],
         },
       ],

@@ -12,8 +12,8 @@ components:
           authorizationUrl: https://idp.example/oauth2/authorize
           tokenUrl: https://idp.example/oauth2/token
           scopes:
-            claims:read: See own claims
-            claims:read-all: See every claim
+            claims:read: The caller's own claims
+            claims:read-all: Every claim
             claims:submit: Create and send a claim
             claims:approve: Approve a submitted claim
             claims:reject: Reject a submitted claim
@@ -33,9 +33,9 @@ paths:
       operationId: me
       responses:
         "200": { description: ok }
-  /claims:
+  /me/claims:
     get:
-      operationId: listClaims
+      operationId: listMyClaims
       security: [{ oauth2: [claims:read] }]
       responses:
         "200": { description: ok }
@@ -44,6 +44,12 @@ paths:
       security: [{ oauth2: [claims:submit] }]
       responses:
         "201": { description: created }
+  /claims:
+    get:
+      operationId: listClaims
+      security: [{ oauth2: [claims:read-all] }]
+      responses:
+        "200": { description: ok }
   /claims/{claimId}/approve:
     post:
       operationId: approveClaim

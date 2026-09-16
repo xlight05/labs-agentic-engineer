@@ -1,6 +1,6 @@
 ---
 name: go
-description: "How to build a Go service on the platform — project layout, the OpenAPI server generation, scope enforcement, the build-verify command, and this stack's constraints and pitfalls. Apply when a component's `language` is Go. For a Ballerina service, use `ballerina` instead."
+description: "How to build a Go service on the platform — project layout, the OpenAPI server generation, verifying the gateway's signed assertion, the build-verify command, and this stack's constraints and pitfalls. Apply when a component's `language` is Go. For a Ballerina service, use `ballerina` instead."
 metadata:
   aep:
     kind: org
@@ -67,13 +67,18 @@ injected address can end in `/`.
 
 **Periodic work.** A background goroutine started in `main`.
 
-## The OpenAPI server, and the scope it enforces
+## The OpenAPI server
 
 A service whose `design.json` sets `exposesAPI.auth` implements
-`specs/design/components/<name>/openapi.yaml`, and that contract carries the
-authorization rules: one scope per protected operation. Generate the server
-from it rather than hand-writing routes, because the generated code is what
-hands the operation's scope to the middleware.
+`specs/design/components/<name>/openapi.yaml`. Generate the server from the
+contract rather than hand-writing routes: the contract is also what the API
+gateway enforces, so generating keeps the two from drifting.
+
+**The gateway has already done the authorization.** It validated the caller's
+token and checked the scope each operation declares in that same contract; a
+request that failed either never reached this process. So this service holds
+**no operation → scope table**, in any form. Writing one is keeping a second
+copy of the contract that nothing keeps in sync.
 
 **Generate.** `internal/gen/oapi-codegen.yaml`:
 
@@ -98,102 +103,101 @@ go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0 \
   ../specs/design/components/<name>/openapi.yaml
 ```
 
-Commit the output. The generated wrapper puts each operation's declared scopes
-on the request context as `gen.Oauth2Scopes` (`[]string`), in three states:
-absent for `security: []` (public), empty for the inherited document default
-(signed in, no scope), and one element for an operation that names a scope.
-**Nothing you write parses the spec.**
+Commit the output. **Nothing you write parses the spec.**
 
-**Copy the middleware.** From the App Path:
+## Who the caller is: the gateway's signed assertion
+
+The gateway decides *whether* a request may happen. It cannot prove to your code
+that a request *came through it* — any pod that can open a socket to this
+service can send whatever headers it likes. So it signs a JWT of the caller it
+authenticated and puts it on the upstream request, and this service verifies
+that signature against one certificate the platform publishes per environment.
+
+**Copy the verifier.** From the App Path:
 
 ```bash
 mkdir -p internal/auth
-cp "$AEP_SKILLS_DIR/go/assets/scopes_middleware.go" internal/auth/scopes_middleware.go
-# then edit the ONE marked import line to your module path + /internal/gen
+cp "$AEP_SKILLS_DIR/go/assets/gateway_assertion.go" internal/auth/gateway_assertion.go
 ```
 
 If `$AEP_SKILLS_DIR` is unset, copy from `assets/` next to this skill's
-`SKILL.md` (the BFF mirrors that directory to `.claude/skills/go/`). The file is
-verbatim apart from that one import: it cannot be a shared library, because the
-scope context key's type is unexported in the generated package.
+`SKILL.md` (the BFF mirrors that directory to `.claude/skills/go/`). It is
+**verbatim — there is no line to edit**, it imports only the standard library,
+and it adds nothing to `go.mod`.
 
-**Wire it in `Middlewares`, never in `r.Use`.** This is the whole point and
-getting it wrong is silent:
+**Wire it in `main`, and make a missing key fatal:**
 
 ```go
-handler := gen.HandlerWithOptions(
-	gen.NewStrictHandler(srv, nil),
-	gen.ChiServerOptions{
-		BaseRouter:  chi.NewRouter(),
-		Middlewares: []gen.MiddlewareFunc{auth.RequireScope},
-	},
-)
+verifier, err := auth.NewVerifierFromEnv()
+if err != nil {
+	log.Fatalf("gateway assertion: %v", err)   // refuse to start
+}
+
+r := chi.NewRouter()
+r.Use(verifier.Middleware)
+handler := gen.HandlerWithOptions(gen.NewStrictHandler(srv, nil), gen.ChiServerOptions{BaseRouter: r})
 ```
 
-`ChiServerOptions.Middlewares` runs **after** the generated wrapper has put the
-scopes on the context and **before** the strict handler decodes the body, so a
-401 or 403 costs no parse. A middleware registered with `chi`'s `r.Use` runs
-*before* the wrapper, sees `nil`, and treats **every operation as public** — a
-full authorization bypass that no test of the handlers can see.
+`r.Use` is correct here and there is no ordering trap: the verifier needs
+nothing from the generated wrapper. The platform sets
+`GATEWAY_ASSERTION_CERTIFICATE`, `GATEWAY_ASSERTION_ISSUER` and
+`GATEWAY_ASSERTION_HEADER` on the container; a service that starts without them
+cannot tell a real caller from a forged one, which is why the error is fatal
+rather than logged.
 
-**Read identity only from the injected headers, and read them the way they are
-actually shaped.** `api-management` holds the full table; these four are what a
-Go handler gets wrong:
+**Read identity from the verified caller, never from a header.**
 
 | Rule | Why |
 |---|---|
-| **Never read `Authorization`** — the gateway strips it. | `r.Header.Get("Authorization")` returns `""` on every request that came through the gateway, and whatever the caller typed on a public one. |
-| **Test a header for *empty*, never for *missing*.** | `r.Header.Get` cannot tell an absent header from one set to `""` anyway, so there is only one check to write: `strings.TrimSpace(r.Header.Get("X-User-Id")) == ""`, which is what the asset does. |
-| **`X-User-Scopes` is the authorization authority** — what it carries and how it compares is in that table. | In Go that spelling is `strings.Fields` plus `==` on a whole handle. `strings.Contains` is the trap — it matches `claims:read` inside `claims:read-all` — and so is testing the header for non-empty, which is true of every signed-in caller. |
-| **`X-User-Groups` is JSON** (`["Finance"]`), and this stack does not read it. | Roles reach a service only as scopes. `strings.Split(h, ",")` is wrong even for the one caller that ever needs the list — that is `json.Unmarshal`. |
+| **`auth.RequireCaller(ctx)`** in any handler that needs an identity; 401 on its error. | The assertion is the only statement about the caller that a forged request cannot make. |
+| **Never read `X-User-Id`, `X-User-Scopes`, `X-User-Groups` or `Authorization`.** | The first three are unsigned — the gateway sets them, and so can anyone else who reaches this pod directly. `Authorization` is stripped. |
+| **A `security: []` handler reads NO identity at all.** | The gateway serves a public operation with no assertion, so `CallerFrom` is absent there by design. |
+| **Compare a scope with `==` on the whole handle** (`caller.HasScope`). | `strings.Contains` matches `claims:read` inside `claims:read-all`. The gateway compares whole strings too. |
 
-**What the middleware is, and is not.** `api-management` owns the argument: it
-turns *misconfiguration* into a 401/403 and is the second line behind the
-NetworkPolicy `visibility: internal` creates, not a replacement for it. What
-that rules out in Go: do not try to close the gap by verifying a JWT in the
-service.
-
-**Widen inside a handler with `auth.HasScope`.** Where the catalog pairs an
-`own` action with an `any` one:
+**Reach is the path, never a branch on a scope.** A `/me/…` handler resolves
+rows through the caller's `sub`; a handler outside `/me/` reaches every row and
+filters on nothing (`openapi-conventions`):
 
 ```go
+// GET /me/claims
+caller, err := auth.RequireCaller(ctx)
+// …401 on err…
 rows := s.store.ByOwner(caller.UserID)
-if auth.HasScope(ctx, "claims:read-all") {
-	rows = s.store.All()
-}
+
+// GET /claims — a different operation, guarded by claims:read-all
+rows := s.store.All()
 ```
 
-Never use `HasScope` as an operation's only check — that is `RequireScope`'s
-job, and the contract's.
+`auth.HasScope` never decides which rows come back and is never an operation's
+only check — both were settled before the handler ran, at the gateway and by
+the path.
 
 A **single-row** read is the same rule at the other end: when the caller holds
 only the `own` handle and the row belongs to someone else, answer **404, not
 403** — a caller who may not learn a row exists may not learn it exists from a
 status code either (`api-management` owns the rule; this is its Go shape).
 
-**Test the matrix, through the real router.** Build the wired handler in the
-test — `gen.HandlerWithOptions(…)`, not the bare handlers — and write five
-tests, by these names:
+**Test through the real router.** Build the wired handler in the test —
+`gen.HandlerWithOptions(…)` with the verifier middleware, not the bare
+handlers. Mint the test's assertions with a throwaway RSA key and point
+`GATEWAY_ASSERTION_CERTIFICATE` at its self-signed certificate; nothing in the
+test talks to a gateway. Write four tests, by these names:
 
-- **`TestScopeMatrix`** — table-driven over *every* operation × four header
-  combinations: no headers, `X-User-Id` only, id + a wrong scope, id + the
-  right scope. Assert the status, and on a 403 assert the `WWW-Authenticate`
-  challenge `api-management`'s status matrix prescribes — byte for byte, taken
-  from there rather than retyped — and assert its **absence** on every other
-  row.
+- **`TestForgedAssertionIs401`** — the same request signed by a *different* key
+  is rejected, and so is one with its payload edited after signing. This is the
+  one test that proves the trust anchor is the signature and not the header.
 - **`TestHealthIsPublic`** — the `security: []` operation answers 200 with no
-  headers *and* with forged ones, and the handler reads neither.
+  assertion *and* with forged `X-User-*` headers, and the handler reads neither.
 - **`Test<Resource>ListOwnershipAndWidening`** and
   **`Test<Resource>GetOwnershipWidening`** — the `own`/`any` pair: the same
   operation returns the caller's rows with the `own` handle and every row with
   the `any` one, and the single-row read 404s on another owner's id.
-- **`TestRouterUseIsFailOpen`** — wire `RequireScope` with `r.Use` instead, call
-  a protected operation anonymously, and assert the **200**. It is a test that
-  asserts the bug, so the wiring rule above is pinned by code rather than by a
-  comment.
 
-Domain invariants (an already-approved claim, a conflicting transition) get
-their own test beside these; they are not part of the scope matrix.
+There is deliberately no per-operation scope matrix here: that table lives in
+the contract and is enforced at the gateway, and a copy of it in these tests
+would pass while the deployed API disagreed. Domain invariants (an
+already-approved claim, a conflicting transition) get their own test beside
+these.
 
 ## Layout
 
@@ -204,9 +208,8 @@ their own test beside these; they are not part of the scope matrix.
 ├── main.go              # entrypoint — small services keep it all here
 ├── internal/
 │   ├── gen/             # oapi-codegen output — generated, committed, never edited
-│   ├── auth/            # scopes_middleware.go, copied from this skill's assets/
-│   │                    #   it IMPORTS internal/gen: the scope context key's type
-│   │                    #   is unexported there, so this cannot be a shared library
+│   ├── auth/            # gateway_assertion.go, copied VERBATIM from this
+│   │                    #   skill's assets/ — stdlib only, nothing to edit
 │   ├── handlers/        # http handlers, one file per resource
 │   ├── store/           # Postgres access
 │   ├── models/          # request/response/domain types
@@ -280,6 +283,7 @@ pool, err := pgxpool.New(ctx, os.Getenv("<DB_URL_ENV_VAR>"))
 | `POST` to an injected upstream returns `405` (or a `301` then a `GET`) | Address ended in `/`, so `base + "/path"` built `//path`; `ServeMux` 301s to the clean path and the client re-issues it as `GET` | `url.JoinPath(base, "path")` |
 | Create/POST 500s only when an optional list field is omitted (`[]` works) | Nil slice bound as `NULL` into a `NOT NULL` array column; its `DEFAULT` skipped because the INSERT lists it | Normalize nil→empty, or omit the column |
 | API reachable via SPA `/api` but not curl-able on the public gateway | Provider `visibility` is missing `external` (misread "not `external`" as the endpoint list) | List all three — `- project`, `- internal`, `- external` — on the service's own endpoint |
-| Every operation answers 200 for an anonymous caller, in tests and in the cell | `RequireScope` registered with `r.Use` — it runs before the generated wrapper writes the scopes and sees `nil` | Put it in `gen.ChiServerOptions{Middlewares: …}` |
-| `undefined: gen.Oauth2Scopes` | The spec's security scheme is not named `oauth2`, or the server was generated without `chi-server`/`std-http-server` | The const is `<SchemeName>Scopes`; the contract's scheme is `oauth2` |
-| A public operation still 401s | `security: []` puts NO value on the context, so a `len(required) == 0` check reads it as "signed-in required" | Use the comma-ok form the asset ships (`required, guarded := …`) |
+| Every call 401s right after a deploy | The environment's gateway publishes a different key than the container holds — it was re-provisioned and this component was not redeployed | Redeploy the component; the certificate rides its ReleaseBinding |
+| The service will not start: `GATEWAY_ASSERTION_CERTIFICATE is not set` | Running outside a deployed cell, or in an environment whose gateway has no keypair | Locally, set the three variables from a throwaway keypair. In a cell, the environment's gateway needs provisioning — this is fail-closed on purpose |
+| A public operation 401s | A handler for a `security: []` operation called `RequireCaller` | A public handler reads no identity; the gateway sends no assertion with one |
+| Every caller looks anonymous | Read `X-User-Id` instead of the verified caller | `auth.RequireCaller(ctx)` — the headers are unsigned and prove nothing |

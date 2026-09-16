@@ -243,13 +243,13 @@ func authService(id, stories string) string {
 		`"description":"real responsibility text","exposesAPI":{"auth":"end-user-required"}}`
 }
 
-// rolesDoc is a security.json v2 for the lunch design: one resource owned by
+// rolesDoc is a security.json v3 for the lunch design: one resource owned by
 // lunch-api, one role that grants from it and is assigned to an org group, one
 // screen the wireframe declares, one test user.
 func rolesDoc(stories string) string {
-	return `{"version":2,` +
+	return `{"version":3,` +
 		`"permissions":[{"resource":"rounds","component":"lunch-api","actions":[` +
-		`{"handle":"read","ownership":"own"},{"handle":"join","ownership":"own"}]}],` +
+		`{"handle":"read"},{"handle":"join"}]}],` +
 		`"groups":[{"name":"Lunch Members","description":"Everyone who orders lunch"}],` +
 		`"roles":[{"name":"Member","description":"Joins today's order.","stories":[` + stories + `],` +
 		`"grants":["rounds:read","rounds:join"],"assignTo":["Lunch Members"]}],` +
@@ -396,8 +396,8 @@ func TestBuildGate_CoverageWarningsDoNotBlock(t *testing.T) {
 	// `rounds:audit` is declared and used by nothing; `rounds:join` is required
 	// by POST /rounds/join and granted by nobody once the role drops it.
 	doc := strings.Replace(rolesDoc("1"),
-		`{"handle":"join","ownership":"own"}`,
-		`{"handle":"join","ownership":"own"},{"handle":"audit","ownership":"any"}`, 1)
+		`{"handle":"join"}`,
+		`{"handle":"join"},{"handle":"audit"}`, 1)
 	files["security.json"] = strings.Replace(doc, `"grants":["rounds:read","rounds:join"]`, `"grants":["rounds:read"]`, 1)
 
 	if errs := gateErrors(t, files); len(errs) != 0 {
@@ -470,35 +470,35 @@ func TestBuildGate_RolesDocumentValidatedEvenWithoutSignIn(t *testing.T) {
 	}
 }
 
-// TestBuildGate_ReadAllWithoutReadRefusesTheTag — the reviewer's live-proof
+// TestBuildGate_ScreenWithoutReadRefusesTheTag — the reviewer's live-proof
 // question, pinned as a test.
 //
-// `X:read-all` widens the ROWS the read operation returns; it is not a
-// substitute for `X:read`, because scope matching at the gateway is a
-// whole-string compare. A role holding the "all" handle without the read one
-// therefore reaches a screen it cannot load — the app looks provisioned and
-// 403s in the user's face.
+// A role that reaches a screen must be able to READ the resource the screen
+// renders — hold at least one handle guarding a safe operation on it. A role
+// that holds none reaches a screen it cannot load: the app looks provisioned
+// and 401s in the user's face, which the SPA cannot tell from an expired
+// session (ADR-0030 §6, ADR-0031).
 //
 // The apply path reports it as a WARNING, which is that path's contract (§8's
 // soft tier: a write is never refused). This is the gate that must refuse, and
 // the test exists because "it warned at apply" was read once as "a tag could be
 // cut".
-func TestBuildGate_ReadAllWithoutReadRefusesTheTag(t *testing.T) {
+func TestBuildGate_ScreenWithoutReadRefusesTheTag(t *testing.T) {
 	files := signInDesignFiles()
-	files["security.json"] = `{"version":2,` +
+	files["components/lunch-api/openapi.yaml"] = lunchAPISpec
+	files["security.json"] = `{"version":3,` +
 		`"permissions":[{"resource":"rounds","component":"lunch-api","actions":[` +
-		`{"handle":"read","ownership":"own"},{"handle":"read-all","ownership":"any"},` +
-		`{"handle":"join","ownership":"own"}]}],` +
+		`{"handle":"read"},{"handle":"join"}]}],` +
 		`"groups":[{"name":"Lunch Members","description":"Everyone who orders lunch"}],` +
 		`"roles":[` +
 		`{"name":"Member","description":"Joins today's order.","stories":[1],` +
 		`"grants":["rounds:read","rounds:join"],"assignTo":["Lunch Members"]},` +
-		// The defect: the "all" handle with no `rounds:read` beside it.
-		`{"name":"Auditor","description":"Reads every round.","stories":[2],` +
-		`"grants":["rounds:read-all"],"assignTo":["Lunch Members"]}],` +
-		`"screens":[{"component":"lunch-web","screen":"home","requires":"rounds:read"}],` +
+		// The defect: reaches the screen on rounds:join, can call no read of rounds.
+		`{"name":"Joiner","description":"Only joins.","stories":[2],` +
+		`"grants":["rounds:join"],"assignTo":["Lunch Members"]}],` +
+		`"screens":[{"component":"lunch-web","screen":"home","requires":"rounds:join"}],` +
 		`"testUsers":[{"username":"test-member","roles":["Member"]},` +
-		`{"username":"test-auditor","roles":["Auditor"]}]}`
+		`{"username":"test-joiner","roles":["Joiner"]}]}`
 
 	errs := gateErrors(t, files)
 	if !slices.Contains(codesOf(errs), codeInvalidRolesDocument) {
@@ -507,11 +507,11 @@ func TestBuildGate_ReadAllWithoutReadRefusesTheTag(t *testing.T) {
 	}
 	var carried bool
 	for _, e := range errs {
-		if strings.Contains(e.Message, `"rounds:read-all"`) && strings.Contains(e.Message, `"rounds:read"`) {
+		if strings.Contains(e.Message, `"Joiner"`) && strings.Contains(e.Message, `"rounds:read"`) {
 			carried = true
 		}
 	}
 	if !carried {
-		t.Fatalf("the refusal does not name both handles: %+v", errs)
+		t.Fatalf("the refusal does not name the role and the read it lacks: %+v", errs)
 	}
 }

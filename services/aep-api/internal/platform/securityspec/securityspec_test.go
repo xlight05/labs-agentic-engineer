@@ -135,8 +135,8 @@ func TestParseAcceptsEveryDesignFixture(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
-			if doc.Version != 2 {
-				t.Fatalf("version = %d, want 2", doc.Version)
+			if doc.Version != 3 {
+				t.Fatalf("version = %d, want 3", doc.Version)
 			}
 			if len(doc.Permissions) == 0 || len(doc.Roles) == 0 {
 				t.Fatalf("fixture carries no catalog or no roles: %+v", doc)
@@ -255,7 +255,7 @@ func TestParseRejects(t *testing.T) {
 				m["permissions"] = append(perms, map[string]any{
 					"resource":  "claims",
 					"component": "expense-api",
-					"actions":   []any{map[string]any{"handle": "purge", "ownership": "any"}},
+					"actions":   []any{map[string]any{"handle": "purge"}},
 				})
 			},
 			want: "declared twice",
@@ -266,7 +266,7 @@ func TestParseRejects(t *testing.T) {
 			edit: func(t *testing.T, m map[string]any) {
 				perm := m["permissions"].([]any)[0].(map[string]any)
 				perm["actions"] = append(perm["actions"].([]any),
-					map[string]any{"handle": "read", "ownership": "any"})
+					map[string]any{"handle": "read"})
 			},
 			want: `action "read" twice`,
 		},
@@ -301,19 +301,6 @@ func TestParseRejects(t *testing.T) {
 				m["screens"].([]any)[0].(map[string]any)["requires"] = "claims:audit"
 			},
 			want: `requires "claims:audit"`,
-		},
-		{
-			// Decision B1, and the defect the design's own example carried: the
-			// "all" handle widens the ROWS the read operation returns; a role
-			// holding it without the read reaches a screen it cannot load.
-			name:    "read-all without read",
-			fixture: expenseTracker,
-			edit: func(t *testing.T, m map[string]any) {
-				roleNamed(t, m, "Approver")["grants"] = []any{
-					"claims:read-all", "claims:approve", "claims:reject", "reports:read",
-				}
-			},
-			want: `grants "claims:read-all" without "claims:read"`,
 		},
 	}
 	for _, tc := range cases {
@@ -371,7 +358,7 @@ func TestParseRefusesAHalfMigratedDocument(t *testing.T) {
 }
 
 func TestParseRejectsUnknownKeysAndMalformedJSON(t *testing.T) {
-	if _, err := Parse([]byte(`{"version":2,`)); err == nil {
+	if _, err := Parse([]byte(`{"version":3,`)); err == nil {
 		t.Fatal("malformed JSON must not parse")
 	}
 	raw := mutate(t, expenseTracker, func(m map[string]any) { m["password"] = "hunter2" })

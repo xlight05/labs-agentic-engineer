@@ -135,14 +135,25 @@ turn — apply them directly, and load one only if you find you do not have it.
 6. **Per-component artifacts** — every `service` gets `openapi.yaml`
    (`openapi-conventions`); every `web-application` gets `wireframes.dsl`
    (`wireframes`).
-7. **Validation criteria** (`validation-criteria`) — mint
+7. **Security reconciliation** (`security-design`) — re-emit
+   `specs/design/security.json` now that the screens and the operations exist.
+   Step 5 wrote it against a design it could only intend: a `screens[]` row for
+   every screen the wireframe actually draws, and the grants each role needs
+   for the operations behind the screens it reaches, are decidable only here.
+   Skip it only when step 5 wrote no security.json at all. This is the ONE
+   place those rules can be satisfied — every one of them is skipped in silence
+   at step 5, so a design that stops there is gated on paper and open in fact.
+   The gate answers this write with one sentence at a time: fix what it names
+   and re-emit until it is quiet.
+8. **Validation criteria** (`validation-criteria`) — mint
    `specs/validation/validation-criteria.json` LAST. A design without its
    acceptance oracle is unfinished — never skip this.
 
 Order binds only where a step reads an earlier one's result: the cell before
-enrichment (the platform scaffolds each design.json from it), and
+enrichment (the platform scaffolds each design.json from it),
 domain-model.md's ER model before `openapi.yaml` (those entities become the
-API schemas).
+API schemas), and the per-component artifacts before the security
+reconciliation (it is those files it reconciles against).
 Everything else is independent — emit independent artifacts as parallel calls
 in ONE step, not a step each.
 

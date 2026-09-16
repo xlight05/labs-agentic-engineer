@@ -94,16 +94,18 @@ func mustProjection(t *testing.T, body []byte) Projection {
 // -------------------------------------------------------------------------
 
 // TestOperationsFromSpec_ExpenseTracker is the shape the whole feature is read
-// off: a public operation, a signed-in one, six scoped ones, and one
-// synthesised OPTIONS per distinct path carrying its first sibling's
-// requirement.
+// off: a public operation, a signed-in one, seven scoped ones — the caller's
+// claims under /me/ and every claim outside it are two operations on two
+// handles (ADR-0031) — and one synthesised OPTIONS per distinct path carrying
+// its first sibling's requirement.
 func TestOperationsFromSpec_ExpenseTracker(t *testing.T) {
 	got := mustOperations(t, fixtureSpec(t, "expense-tracker/expense-api.openapi.yaml"))
 	want := []Operation{
 		{Method: "GET", Path: "/health", Requirement: Requirement{Kind: RequirementPublic}},
 		{Method: "GET", Path: "/me", Requirement: Requirement{Kind: RequirementSignedIn}},
-		{Method: "GET", Path: "/claims", Requirement: scopeOf("claims:read")},
-		{Method: "POST", Path: "/claims", Requirement: scopeOf("claims:submit")},
+		{Method: "GET", Path: "/me/claims", Requirement: scopeOf("claims:read")},
+		{Method: "POST", Path: "/me/claims", Requirement: scopeOf("claims:submit")},
+		{Method: "GET", Path: "/claims", Requirement: scopeOf("claims:read-all")},
 		{Method: "POST", Path: "/claims/{claimId}/approve", Requirement: scopeOf("claims:approve")},
 		{Method: "POST", Path: "/claims/{claimId}/reject", Requirement: scopeOf("claims:reject")},
 		{Method: "GET", Path: "/reports", Requirement: scopeOf("reports:read")},
@@ -112,7 +114,8 @@ func TestOperationsFromSpec_ExpenseTracker(t *testing.T) {
 		// in first-appearance order.
 		{Method: "OPTIONS", Path: "/health", Requirement: Requirement{Kind: RequirementPublic}},
 		{Method: "OPTIONS", Path: "/me", Requirement: Requirement{Kind: RequirementSignedIn}},
-		{Method: "OPTIONS", Path: "/claims", Requirement: scopeOf("claims:read")},
+		{Method: "OPTIONS", Path: "/me/claims", Requirement: scopeOf("claims:read")},
+		{Method: "OPTIONS", Path: "/claims", Requirement: scopeOf("claims:read-all")},
 		{Method: "OPTIONS", Path: "/claims/{claimId}/approve", Requirement: scopeOf("claims:approve")},
 		{Method: "OPTIONS", Path: "/claims/{claimId}/reject", Requirement: scopeOf("claims:reject")},
 		{Method: "OPTIONS", Path: "/reports", Requirement: scopeOf("reports:read")},
@@ -534,7 +537,8 @@ func TestRenderedOperations_PolicyShape(t *testing.T) {
 		t.Error("GET /me carries a public flag")
 	}
 
-	// Scoped: exactly one handle, in anyOf.
+	// Scoped: exactly one handle, in anyOf. `GET /claims` is the every-row list,
+	// so its handle is `claims:read-all`; the caller's list is `GET /me/claims`.
 	claims := onePolicy(t, byKey["GET /claims"])
 	params, ok := claims["params"].(map[string]interface{})
 	if !ok {
@@ -544,7 +548,7 @@ func TestRenderedOperations_PolicyShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("GET /claims scopes missing: %#v", params)
 	}
-	if want := []interface{}{"claims:read"}; !reflect.DeepEqual(scopes["anyOf"], want) {
+	if want := []interface{}{"claims:read-all"}; !reflect.DeepEqual(scopes["anyOf"], want) {
 		t.Errorf("GET /claims anyOf = %#v, want %#v", scopes["anyOf"], want)
 	}
 	if _, ok := scopes["allOf"]; ok {
@@ -718,8 +722,8 @@ func TestDesiredDeploymentFor_ProjectsOperationsAndAudience(t *testing.T) {
 	}
 	parameters := apiConfigurationParameters(t, desired)
 	ops, ok := parameters["operations"].([]interface{})
-	if !ok || len(ops) != 15 {
-		t.Fatalf("operations parameter = %#v, want 15 rows", parameters["operations"])
+	if !ok || len(ops) != 17 {
+		t.Fatalf("operations parameter = %#v, want 17 rows", parameters["operations"])
 	}
 	config := desired.Binding.TraitEnvironmentConfigs["expense-api-http"]
 	jwt, ok := config["jwtAuth"].(map[string]interface{})

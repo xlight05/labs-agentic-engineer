@@ -55,12 +55,12 @@ const FILE = entry(SECURITY_JSON_PATH);
 /** A v2 document naming one owning component and one screen component. */
 function designText(): string {
   const doc: SecurityDesign = {
-    version: 2,
+    version: 3,
     permissions: [
       {
         resource: "orders",
         component: "orders-api",
-        actions: [{ handle: "read", ownership: "own" }],
+        actions: [{ handle: "read" }],
       },
     ],
     groups: [],
@@ -95,7 +95,15 @@ function room(files: Record<string, string> | null): {
   }
   const text = (path: string) => map.get(path) ?? null;
   return {
-    collab: { peers: [], doc, getFileText: text } as unknown as CollabSpec,
+    // `docPaths` is the room's own file list, which is exactly the files map's
+    // keys — the hook reads it to find every wireframe the project has, not
+    // only the ones this document already names.
+    collab: {
+      peers: [],
+      doc,
+      getFileText: text,
+      docPaths: [...map.keys()],
+    } as unknown as CollabSpec,
     text,
   };
 }
@@ -419,9 +427,11 @@ describe("useSecurityEntry — references", () => {
     expect(result.current.references.read(OPENAPI_PATH)).toBeUndefined();
   });
 
-  // Only what the DOCUMENT names and git actually lists: no 404-probing for a
+  // Only what the rules READ and git actually lists: no 404-probing for a
   // component whose specs were never written, and no request for a file the
-  // room is already streaming.
+  // room is already streaming. The PRD is in that set — the page shows the
+  // actors the roles are compared against — while `other-api`, which this
+  // document names nowhere, is not.
   it("fetches only the document's siblings that the committed tree lists", () => {
     run({
       roomFiles: withDocument(designText()),
@@ -437,6 +447,7 @@ describe("useSecurityEntry — references", () => {
     expect(mockContents).toHaveBeenLastCalledWith("p", [
       entry(DESIGN_CELL_PATH),
       entry(OPENAPI_PATH),
+      entry("specs/requirements/prd.md"),
     ]);
   });
 
@@ -474,14 +485,14 @@ describe("useSecurityEntry — references", () => {
       roomFiles: {
         ...withDocument(designText()),
         [DESIGN_CELL_PATH]: 'component "orders-api" service',
-        "specs/requirements/prd.md": "# PRD",
+        "specs/design/domain-model.md": "# Model",
       },
       files: [FILE, entry(DESIGN_CELL_PATH)],
     });
     const before = result.current.references;
 
     act(() => {
-      text("specs/requirements/prd.md")?.insert(5, " more prose");
+      text("specs/design/domain-model.md")?.insert(5, " more prose");
     });
     rerender();
 

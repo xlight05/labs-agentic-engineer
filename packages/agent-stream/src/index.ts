@@ -96,7 +96,6 @@ export type {
   SecurityDesign,
   Permission,
   Action,
-  Ownership,
   Group,
   Enrolment,
   RoleKind,
@@ -151,7 +150,7 @@ export {
   COMPONENT_DESIGN_JSON_RE,
 } from "./component-design-schema.js";
 export type { ComponentDesignProblem } from "./component-design-schema.js";
-export { checkDesignDiagram, cellNodeIds, prdActors, DOMAIN_MODEL_PATH } from "./design-diagrams.js";
+export { checkDesignDiagram, cellNodeIds, prdActors, DOMAIN_MODEL_PATH, PRD_PATH } from "./design-diagrams.js";
 export type { DesignDiagramProblem, DiagramBundleReader, CellNodes } from "./design-diagrams.js";
 export { checkComponentDependencies } from "./component-dependencies.js";
 export type { ComponentDependencyProblem } from "./component-dependencies.js";

@@ -55,6 +55,7 @@ function centerX(element: Element): number {
 function renderMatrix(): void {
   render(
     <SecurityPanel
+      projectName="expense-tracker"
       securityJson={EXPENSE_TRACKER_TEXT}
       references={EXPENSE_TRACKER_REFERENCES}
       roomLive
@@ -90,15 +91,22 @@ describe("the permission matrix, laid out", () => {
     }
   });
 
-  it("spans the baseline rows across the grid rather than widening it", async () => {
-    renderMatrix();
+  it("spans the baseline row across the grid rather than widening it", async () => {
+    render(
+      <SecurityPanel
+        projectName="expense-tracker"
+        securityJson={EXPENSE_TRACKER_TEXT}
+        references={EXPENSE_TRACKER_REFERENCES}
+        roomLive
+        writeSecurityJson={() => {}}
+        dependencies={[{ componentName: "expense-spa", dependencies: [] }]}
+      />,
+    );
 
     const table = page.getByRole("table").element();
-    // The screens block below the grid says "Any signed-in person" too, so the
-    // baseline label is read out of the table rather than off the whole page.
     const baselineCell = page
       .getByRole("table")
-      .getByText("Any signed-in person")
+      .getByText("No sign-in at all")
       .element()
       .closest("td")!.nextElementSibling!;
 

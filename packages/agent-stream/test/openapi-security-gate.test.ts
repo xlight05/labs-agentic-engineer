@@ -66,13 +66,13 @@ const UNPROTECTED_DESIGN = JSON.stringify({
 
 /** A catalog whose `notifications` resource belongs to a DIFFERENT component. */
 const CATALOG_WITH_FOREIGN_RESOURCE = JSON.stringify({
-  version: 2,
+  version: 3,
   permissions: [
     ...(JSON.parse(CATALOG) as { permissions: unknown[] }).permissions,
     {
       resource: "notifications",
       component: "notify-api",
-      actions: [{ handle: "send", ownership: "any", description: "Send a notification" }],
+      actions: [{ handle: "send", description: "Send a notification" }],
     },
   ],
   groups: [],
@@ -118,6 +118,23 @@ test("openapi-security-messages.json is in step with the templates it publishes"
 
 test("the P6 expense-api spec passes against the expense-tracker catalog", () => {
   assert.equal(gate(EXPENSE_API_SPEC), null);
+});
+
+// --- one reach per handle (ADR-0031) ----------------------------------------
+
+test("a handle guarding an operation under /me/ AND one outside it is refused, naming both", () => {
+  // claims:read guards GET /me/claims. Guard the every-row approve path with it
+  // too, and the same grant means two different reaches.
+  const mixed = mutate(EXPENSE_API_SPEC, "- oauth2: [claims:approve]", "- oauth2: [claims:read]");
+  const problem = gate(mixed);
+  assert.ok(problem, "expected a refusal");
+  assert.match(problem!.message, /`claims:read` guards GET \/me\/claims under \/me\/ and POST \/claims\/\{claimId\}\/approve outside it/);
+  assert.match(problem!.message, /one handle cannot guard both/);
+});
+
+test("the reach rule needs no catalog — it is about the document alone", () => {
+  const mixed = mutate(EXPENSE_API_SPEC, "- oauth2: [claims:approve]", "- oauth2: [claims:read]");
+  assert.match(gate(mixed, { [DESIGN_PATH]: PROTECTED_DESIGN })!.message, /one handle cannot guard both/);
 });
 
 test("the same spec passes with security.json absent — catalog rules narrow, they do not block", () => {
@@ -244,7 +261,7 @@ test("operation_multiple_requirements: two requirement objects (OpenAPI anyOf) a
 
 test("operation_multiple_scopes: two scopes in one requirement object are refused", () => {
   const two = mutate(EXPENSE_API_SPEC, "- oauth2: [claims:submit]", "- oauth2: [claims:submit, claims:read]");
-  assert.match(gate(two)!.message, /POST \/claims names more than one scope/);
+  assert.match(gate(two)!.message, /POST \/me\/claims names more than one scope/);
 });
 
 test("operation_unknown_scheme: an operation may only name the oauth2 scheme", () => {
@@ -437,7 +454,7 @@ for (const tc of [
         "- oauth2: [claims:approve]",
         "- oauth2: [claims:archive]",
       ),
-    wantHas: /POST \/claims names more than one scope/,
+    wantHas: /POST \/me\/claims names more than one scope/,
   },
   {
     // Every security rule outranks the identity-header rules, which run last on

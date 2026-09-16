@@ -92,6 +92,11 @@ type DeploymentInputs struct {
 	// identity.ResourceServerIdentifier, which is the one authority for it.
 	// Empty skips the audience check, which is the pre-scopes behaviour.
 	Audience string
+	// GatewayAssertion is the environment gateway's signed-assertion contract,
+	// read off the Environment's annotations. The zero value — an environment
+	// whose gateway publishes no verification half — leaves the assertion off
+	// for every component in the pass.
+	GatewayAssertion openchoreo.GatewayAssertion
 	// EnvVars are the user's component config (the DB is their canonical
 	// record). Nil means "not managed by this write" — see
 	// openchoreo.ReleaseBindingDesired.
@@ -156,6 +161,7 @@ func DesiredDeploymentFor(in DeploymentInputs) DesiredDeployment {
 		// Thunder binds it into the `aud`), not about the rows.
 		Audience:   audienceFor(in, apiEnabled, endUserSignIn),
 		Operations: operations,
+		Assertion:  in.GatewayAssertion,
 	})
 
 	// Appended to the SAME slice/map: `spec.traits` is replaced wholesale on

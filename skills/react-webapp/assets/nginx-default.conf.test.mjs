@@ -17,13 +17,13 @@
  */
 
 // The SPA's own `/api` proxy is a lane into the service that the API gateway
-// does NOT sit on, and the service is required to believe the `X-User-*`
-// headers it is handed. So every one of them must be cleared here, and
-// `X-User-Scopes` above all: it is the authorization authority, and a browser
-// that set it on a call to this SPA's `/api` would otherwise hand itself every
-// permission in the project's catalog. Missing ONE of these lines is a silent
-// full authorization bypass with every test still green, which is why the list
-// is pinned rather than reviewed.
+// does NOT sit on, so nothing should be able to put an identity on it.
+// `x-jwt-assertion` above all: it is the gateway-signed statement the service
+// actually believes, and on a PUBLIC operation the gateway overwrites nothing,
+// so a replayed one would arrive intact. The `X-User-*` headers are unsigned
+// and no generated service reads them any more, but they are cleared too.
+// Missing ONE of these lines is a hole with every other test still green,
+// which is why the list is pinned rather than reviewed.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -36,10 +36,11 @@ const asset = readFileSync(
   "utf8",
 );
 
-// Exactly the headers the api-management skill's table declares the gateway
-// maps. A header added there and not here is a hole this test cannot see, so
-// the two lists are kept in step by hand — and by this comment.
+// The assertion plus exactly the headers the api-management skill declares the
+// gateway maps. A header added there and not here is a hole this test cannot
+// see, so the two lists are kept in step by hand — and by this comment.
 const MAPPED_IDENTITY_HEADERS = [
+  "x-jwt-assertion",
   "X-User-Scopes",
   "X-User-Id",
   "X-User-Name",
@@ -53,7 +54,7 @@ test("the /api proxy clears every gateway-mapped identity header", () => {
       asset,
       new RegExp(`^\\s*proxy_set_header\\s+${header}\\s+"";\\s*$`, "m"),
       `nginx-default.conf must carry: proxy_set_header ${header} "";  — ` +
-        "a browser can set it, and the service behind this proxy believes it",
+        "a browser can set it on this lane, which the gateway does not sit on",
     );
   }
 });

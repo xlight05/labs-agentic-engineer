@@ -19,8 +19,7 @@
 #
 # Sibling of verify-api-platform.sh, which asserts WHICH IDENTITY TIER a
 # gateway trusts. This one asserts, one layer up, WHAT A GIVEN USER MAY DO —
-# at the gateway, and again at the service with the gateway bypassed, because
-# the two answer differently on purpose:
+# at the gateway, which is the only place per-operation scope is enforced:
 #
 #   at the gateway   every failure is 401 with a byte-identical body and no
 #                    WWW-Authenticate. Missing scope is indistinguishable from
@@ -30,14 +29,12 @@
 #                    A1: the SPA absorbs it by gating before it calls and
 #                    treating a 401-while-my-token-is-still-valid as Forbidden.
 #
-#   at the service   the middleware answers a true 403 +
-#                    `WWW-Authenticate: Bearer error="insufficient_scope"`, and
-#                    401 when `X-User-Id` is EMPTY (the gateway always sets a
-#                    mapped header, to the empty string when the claim is
-#                    absent — test for empty, never for missing).
-#
-# so a run that only ever calls the gateway cannot tell a working scope check
-# from a service that ignores scopes entirely.
+# and then, with the gateway BYPASSED, that the service believes nothing a
+# caller on that lane asserts. The service holds no operation → scope table any
+# more; what it holds is the gateway's public certificate, so a request that did
+# not come through the gateway carries no assertion it can verify and is
+# refused whatever headers it sets. That is the property section 5 probes, and
+# a run that only ever calls the gateway cannot see it.
 #
 # ── Usage ──────────────────────────────────────────────────────────────────
 #
@@ -54,8 +51,9 @@
 # curl's argv nor any file on disk. `-H "Authorization: Bearer …"` and
 # `-d "…client_secret=…"` would both have leaked through `ps`. The in-cell
 # calls are the one place a header still rides argv, and deliberately so: they
-# carry `X-User-Id`/`X-User-Scopes` and no token at all, which is the whole
-# point of that layer — behind the gateway those headers ARE the identity.
+# carry FORGED `X-User-*` values and no token at all, which is the whole point
+# of that layer — they are what a hostile pod would send, and the service must
+# refuse them.
 #
 # The credentials file is sourced as shell (`KEY=value` lines, `#` comments):
 #
@@ -133,10 +131,15 @@
 #
 #   service    (kubectl exec from inside the cell, straight to
 #              http://<component>.<namespace>:<port>, gateway bypassed)
-#              401  no X-User-Id
-#              403 + WWW-Authenticate: Bearer error="insufficient_scope"
-#                   with X-User-Id but without the scope
-#              200  with X-User-Id and the scope
+#              401  no headers at all
+#              401  with forged X-User-Id + X-User-Scopes — unsigned headers
+#                   buy a caller on this lane nothing
+#              401  with a forged x-jwt-assertion — it does not verify against
+#                   the gateway's certificate, and an unverifiable assertion is
+#                   never downgraded to an anonymous request
+#              (there is no 200 row here on purpose: a valid assertion can only
+#               be minted by the gateway, so the positive case is the gateway's
+#               own rows above)
 #
 #   ownership  the employee's collection read returns strictly fewer rows than
 #              the approver's (`own` vs `all` on the same operation)
@@ -878,34 +881,34 @@ else
     echo "   calling from pod ${EXEC_POD}"
 fi
 
-# The middleware's contract, and the reason the service enforces scopes at all:
-# behind the gateway these headers are authoritative, in front of it they are
-# caller-controlled. `X-User-Id` EMPTY (not missing) is the 401 — the gateway
-# always sets a mapped header, to "" when the claim is absent.
+# What this lane proves. Every call below is what a hostile pod in the cell can
+# actually do: set any header it likes and reach the service directly. None of
+# it produces a caller the service will believe, because the one thing it cannot
+# produce is a JWT signed with the environment gateway's private key.
+#
+# All three rows are 401. There is deliberately no 200 row: a valid assertion is
+# minted by the gateway and only by the gateway, so the positive case is the
+# gateway's own rows in section 4.
 SVC_NO_ID="$(incell -sS -o /dev/null -w '%{http_code}' "${SERVICE_URL}${READ_PATH}")"
-assert_eq service "401 no X-User-Id" 401 "$SVC_NO_ID"
+assert_eq service "401 no headers at all" 401 "$SVC_NO_ID"
 
-SVC_NO_SCOPE="$(incell -sS -o /dev/null -w '%{http_code}' \
-    -H "X-User-Id: ${EMPLOYEE_SUB}" -H "X-User-Scopes: openid profile email group ou" \
-    "${SERVICE_URL}${READ_PATH}")"
-assert_eq service "403 identified but scope not held" 403 "$SVC_NO_SCOPE"
-
-SVC_CHALLENGE="$(incell -sS -D - -o /dev/null \
-    -H "X-User-Id: ${EMPLOYEE_SUB}" -H "X-User-Scopes: openid profile email group ou" \
-    "${SERVICE_URL}${READ_PATH}" | tr -d '\r' | grep -i '^www-authenticate:' || true)"
-case "$SVC_CHALLENGE" in
-    *'error="insufficient_scope"'*)
-        printf '   ✅ %-44s %s\n' "WWW-Authenticate on the 403" "$SVC_CHALLENGE"
-        record PASS service 'WWW-Authenticate: Bearer error="insufficient_scope"' "present" ;;
-    *)
-        printf '   ❌ %-44s got: %s\n' "WWW-Authenticate on the 403" "${SVC_CHALLENGE:-<none>}"
-        record FAIL service 'WWW-Authenticate: Bearer error="insufficient_scope"' "${SVC_CHALLENGE:-absent}" ;;
-esac
-
-SVC_OK="$(incell -sS -o /dev/null -w '%{http_code}' \
+# The unsigned headers the gateway also maps. Before the assertion these WERE
+# the identity on this lane; now they are worth nothing, and that is the whole
+# change this row pins.
+SVC_FORGED_HEADERS="$(incell -sS -o /dev/null -w '%{http_code}' \
     -H "X-User-Id: ${EMPLOYEE_SUB}" -H "X-User-Scopes: ${EMPLOYEE_SCOPES}" \
     "${SERVICE_URL}${READ_PATH}")"
-assert_eq service "200 identified and holding ${READ_SCOPE}" 200 "$SVC_OK"
+assert_eq service "401 forged X-User-* headers" 401 "$SVC_FORGED_HEADERS"
+
+# A forged assertion. Structurally a JWT, signed by nobody the service trusts.
+# It must be a 401 and never a fall-through to an anonymous caller — otherwise
+# forging one would be strictly better for an attacker than sending none.
+FORGED_ASSERTION="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJub3QtdGhlLWdhdGV3YXkiLCJzdWIiOiJhdHRhY2tlciJ9.bm90LWEtc2lnbmF0dXJl"
+SVC_FORGED_ASSERTION="$(incell -sS -o /dev/null -w '%{http_code}' \
+    -H "x-jwt-assertion: ${FORGED_ASSERTION}" \
+    -H "X-User-Id: ${EMPLOYEE_SUB}" -H "X-User-Scopes: ${EMPLOYEE_SCOPES}" \
+    "${SERVICE_URL}${READ_PATH}")"
+assert_eq service "401 forged x-jwt-assertion" 401 "$SVC_FORGED_ASSERTION"
 
 # ───────────────────────────────────────────────────────────────────────────
 # 6. Ownership — the scope says WHICH OPERATION, the rows say WHOSE DATA

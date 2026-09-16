@@ -1,6 +1,6 @@
 operations:
     - method: GET
-      path: /orders
+      path: /me/company/orders
       policies:
         - name: jwt-auth
           params:
@@ -9,7 +9,7 @@ operations:
                     - orders:read
           version: v1
     - method: POST
-      path: /orders
+      path: /me/company/orders
       policies:
         - name: jwt-auth
           params:
@@ -18,7 +18,7 @@ operations:
                     - orders:place
           version: v1
     - method: POST
-      path: /orders/{id}/confirm
+      path: /me/company/orders/{id}/confirm
       policies:
         - name: jwt-auth
           params:
@@ -27,7 +27,7 @@ operations:
                     - orders:confirm
           version: v1
     - method: GET
-      path: /invoices
+      path: /me/company/invoices
       policies:
         - name: jwt-auth
           params:
@@ -36,7 +36,7 @@ operations:
                     - invoices:read
           version: v1
     - method: POST
-      path: /invoices
+      path: /me/company/invoices
       policies:
         - name: jwt-auth
           params:
@@ -45,7 +45,7 @@ operations:
                     - invoices:submit
           version: v1
     - method: GET
-      path: /invoices/all
+      path: /invoices
       policies:
         - name: jwt-auth
           params:
@@ -63,7 +63,7 @@ operations:
                     - invoices:approve
           version: v1
     - method: OPTIONS
-      path: /orders
+      path: /me/company/orders
       policies:
         - name: jwt-auth
           params:
@@ -72,7 +72,7 @@ operations:
                     - orders:read
           version: v1
     - method: OPTIONS
-      path: /orders/{id}/confirm
+      path: /me/company/orders/{id}/confirm
       policies:
         - name: jwt-auth
           params:
@@ -81,7 +81,7 @@ operations:
                     - orders:confirm
           version: v1
     - method: OPTIONS
-      path: /invoices
+      path: /me/company/invoices
       policies:
         - name: jwt-auth
           params:
@@ -90,7 +90,7 @@ operations:
                     - invoices:read
           version: v1
     - method: OPTIONS
-      path: /invoices/all
+      path: /invoices
       policies:
         - name: jwt-auth
           params:

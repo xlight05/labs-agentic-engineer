@@ -572,9 +572,9 @@ func TestApply_SecurityDesignCoverageWarnings(t *testing.T) {
 	// One more action nobody grants, no screen requires and no operation
 	// guards: the shape of a handle renamed in the spec but not in the catalog.
 	withOrphan := strings.Replace(catalog,
-		`{ "handle": "submit", "ownership": "own", "description": "Create and send a claim" }`,
-		`{ "handle": "submit", "ownership": "own", "description": "Create and send a claim" },
-        { "handle": "archive", "ownership": "own", "description": "Archive an old claim" }`, 1)
+		`{ "handle": "submit", "description": "Create and send a claim" }`,
+		`{ "handle": "submit", "description": "Create and send a claim" },
+        { "handle": "archive", "description": "Archive an old claim" }`, 1)
 	if withOrphan == catalog {
 		t.Fatal("fixture reworded — the orphan handle was never added")
 	}

@@ -149,10 +149,19 @@ export function useSecurityEntry({
   // own a resource, the components a screen names — so the paths are derived
   // from the parsed copy rather than from the whole design tree. An unreadable
   // document asks for nothing, which is right: there is nothing to cross-check.
+  // Every wireframe the project has, not only the ones this document mentions:
+  // the ungated-screen rule is about a component that may name itself nowhere
+  // in `screens[]`, so a path list derived from the document alone would skip
+  // the one component it exists to catch. Room paths and committed paths both,
+  // because a wireframe written this turn is in neither list alone.
+  const knownPaths = useMemo(
+    () => [...files.map((f) => f.path), ...collab.docPaths],
+    [files, collab.docPaths],
+  );
   const paths = useMemo(() => {
     const parsed = parseSecurityDesign(securityJson);
-    return parsed.kind === "ok" ? referencePaths(parsed.doc) : [];
-  }, [securityJson]);
+    return parsed.kind === "ok" ? referencePaths(parsed.doc, knownPaths) : [];
+  }, [securityJson, knownPaths]);
 
   const references = useSpecReferences({
     projectName,

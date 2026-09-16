@@ -18,12 +18,21 @@ mode supplies exactly those three and nothing else:
 
 | Missing in a dev server | Production | Mock mode |
 |---|---|---|
-| the sibling API at `/api` | nginx proxies to the service | `mock/handlers.ts`, through **MSW** |
+| the API gateway | enforces each operation's declared scope; 401 | `mock/gateway.ts`, from the contract |
+| the sibling service at `/api` | nginx proxies to it | `mock/handlers.ts`, through **MSW** |
 | `window._env_` | the platform mounts `/env-config.js` | `mock/plugin.ts` serves it from `mockEnv` |
 | sign-in | Thunder, OIDC + PKCE | `mock/auth.ts` — `?role=` and `?auth=out` on the URL |
 
 Everything else is the real app: the real router, the real pages, the real
 design-system components, the real generated client.
+
+**The gateway and the service are two layers here, as they are in a cell.** They
+answer different questions — *may this caller call this operation at all* (the
+gateway, 401) and *which of these rows are theirs* (the service, 404) — and
+mock mode keeps them in separate files so an app cannot quietly merge them. You
+author only the second. The first is read out of `openapi.yaml` at dev-server
+start, so it cannot drift from the contract the deployed gateway is rendered
+from.
 
 **The API half is [Mock Service Worker](https://mswjs.io).** A service worker
 intercepts the app's own `fetch` calls, so the handlers you write are ordinary
@@ -38,8 +47,11 @@ swapping `src/auth.ts` is a module substitution, not a request.
 ```
 <app-path>/
 ├── mock/
-│   ├── plugin.ts     copied verbatim — env-config, the auth swap, the worker script
-│   ├── browser.ts    copied verbatim — starts MSW with your handlers
+│   ├── plugin.ts     copied verbatim — env-config, the auth swap, the worker
+│   │                 script, and the operation table read off openapi.yaml
+│   ├── contract.ts   copied verbatim — projects that contract into the table
+│   ├── gateway.ts    copied verbatim — the API gateway: the 401s
+│   ├── browser.ts    copied verbatim — starts MSW, gateway ahead of handlers
 │   ├── handlers.ts   YOURS — the seed data and the request handlers
 │   ├── env.ts        YOURS — what window._env_ holds
 │   ├── roles.ts      YOURS — role -> grants    ┐ only with an auth
@@ -56,11 +68,18 @@ From the App Path:
 
 ```bash
 mkdir -p mock
-cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-plugin.ts"  mock/plugin.ts
-cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-browser.ts" mock/browser.ts
+cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-plugin.ts"   mock/plugin.ts
+cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-contract.ts" mock/contract.ts
+cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-gateway.ts"  mock/gateway.ts
+cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-browser.ts"  mock/browser.ts
 # only if this component declares an auth platform-resource dependency:
-cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-auth.ts"    mock/auth.ts
+cp "$AEP_SKILLS_DIR/react-webapp/assets/mock-auth.ts"     mock/auth.ts
 ```
+
+`contract.ts` and `gateway.ts` are copied **always**, auth dependency or not.
+Together they are the gateway layer, and they turn themselves off: a contract
+that declares no `oauth2` scheme has no sign-in to enforce, so the table comes
+back empty and no handler is registered. The dev server says which it did.
 
 **Copy again even when `mock/` already exists.** These files carry every fix the
 platform has made to the harness since this component last saw them, and a
@@ -137,11 +156,26 @@ platform delivers config through `window._env_` at request time. `DEV` and
 which is exactly what lets the bundler prove the branch is dead and drop it.
 Read no other key, and read these two nowhere else.
 
-`package.json` — one script, and `msw` + `@types/node` in `devDependencies`:
+`package.json` — one script, and `msw`, `yaml` and `@types/node` in
+`devDependencies`:
 
 ```json
 "scripts": { "dev:mock": "vite --mode mock" }
 ```
+
+`yaml` is the plugin's, for reading the sibling's contract. It looks like it
+contradicts `scripts/gen-scopes.mjs`'s zero-dependency rule and does not: that
+rule exists because `gen` runs inside an image build with no network, and mock
+mode is eliminated from the production build entirely. The plugin imports it
+**dynamically, inside `mockMode()`**, so a production `vite build` — which loads
+`vite.config.ts` and never calls it — does not resolve it at all.
+
+The table then rides `/env-config.js`, beside `window._env_`, because both have
+the same requirement: in place before the bundle runs. Vite's `define` is the
+obvious reach and is the wrong one — it is skipped for client modules in dev
+(`vite:define` returns early when `consumer === "client" && !isBuild`), so the
+table would be correct in a production build nobody runs and MISSING from
+`dev:mock`, silently, with the gateway disabling itself.
 
 `tsconfig.json` — two edits, both **additive**: add the entries that are
 missing and keep the ones that are there. An app with a vitest suite already
@@ -182,22 +216,25 @@ repeatable, and it is also why a row created a moment ago can vanish if the run
 leaves the app mid-scenario. Seed enough rows that a table, its empty state and
 its pagination are all reachable.
 
-**The mock enforces the contract's scopes too.** An operation whose `security`
-block names a handle answers **403** when the caller's token does not carry it,
-and an `own`/`any` pair widens the same way the service does. Without that,
-`Forbidden` and the ownership rule are unwalkable and the first time anyone sees
-them is on the cluster.
+**Write NO scope check here.** Whether an operation may be called at all is
+`mock/gateway.ts`'s answer, read from the contract, exactly as it is the API
+gateway's answer in a cell. A handler that re-checks the operation's handle is a
+second copy of the contract that nothing keeps in sync — the same defect the
+real services no longer carry.
 
-**Enforce EXACTLY the handle the operation declares — never a substitute.**
-Scope comparison is a whole-string match everywhere else in the system, so
-`todos:read-all` does not admit an operation that declares `todos:read`. A
-mock that accepts the sibling handle lets a role pass a walk the real service
-answers 403 to, which hides the precise defect the walk exists to find. If a
-role the design means to serve cannot reach an operation with the grants
-`security.json` gives it, **that is a defect in the design**: leave the mock
-exact and report the role, the screen and the handle, in the walk's progress
-lines and in your own report. Never widen a handler or a route guard to make it
-pass.
+**What a handler DOES owe** is what a real service owes: its path's reach. A
+`/api/me/…` handler answers the caller's rows and nothing else — resolved from
+the mock identity, never from a query parameter — and a handler outside `/me/`
+answers every row. Nothing widens on a scope; a caller who may see every row
+calls the every-row operation. A row that exists and is not theirs is a **404**
+under `/me/…`, never 403. `scopesFromToken` is exported for the header badge
+and for nothing a handler decides with.
+
+If a role the design means to serve cannot reach an operation with the grants
+`security.json` gives it, **that is a defect in the design**: report the role,
+the screen and the handle, in the walk's progress lines and in your own report.
+Never widen a handler or a route guard to make it pass — and there is now
+nothing in a handler to widen, which is the point.
 
 ```ts
 import { http, HttpResponse } from "msw";
@@ -211,27 +248,18 @@ let todos: Todo[] = [
   { id: "2", title: "Ship the thing", done: true, owner: "mock-owner" },
 ];
 
-const forbidden = (scope: string) =>
-  HttpResponse.json(
-    { error: "insufficient_scope", message: `this action requires the ${scope} permission` },
-    { status: 403, headers: { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="${scope}"` } },
-  );
-
 export const handlers = [
-  http.get("/api/todos", ({ request }) => {
-    // The contract declares todos:read on this operation; todos:read-all widens
-    // it from the caller's own rows to every row. Exactly those two handles.
-    const held = scopesFromToken(request.headers.get("authorization"));
-    if (!held.includes("todos:read")) return forbidden("todos:read");
-    return HttpResponse.json(
-      held.includes("todos:read-all") ? todos : todos.filter((t) => t.owner === "mock-owner"),
-    );
-  }),
+  // The caller's todos — the path says so. No `todos:read` check: a caller who
+  // does not hold it was refused by mock/gateway.ts and never reached here.
+  http.get("/api/me/todos", () =>
+    HttpResponse.json(todos.filter((t) => t.owner === "mock-owner")),
+  ),
 
-  http.post("/api/todos", async ({ request }) => {
-    if (!scopesFromToken(request.headers.get("authorization")).includes("todos:submit")) {
-      return forbidden("todos:submit");
-    }
+  // Every todo — a different operation, guarded by todos:read-all. Nothing to
+  // decide here either: whoever reached it may see it all.
+  http.get("/api/todos", () => HttpResponse.json(todos)),
+
+  http.post("/api/me/todos", async ({ request }) => {
     const input = (await request.json()) as { title?: string };
     if (!input?.title) {
       return HttpResponse.json({ error: "title is required" }, { status: 400 });
@@ -260,12 +288,32 @@ export const handlers = [
 `/api/todos/archived` has to be registered before `/api/todos/:id` or the
 literal path is swallowed by the parameter.
 
-`mock/browser.ts` adds one handler of its own after yours: a catch-all that
-answers any other `/api` call `501` naming the method and path. That is not
+`mock/browser.ts` registers three layers, in the order a request meets them in a
+cell: `mock/gateway.ts` first, your handlers next, and last a catch-all that
+answers any other `/api` call `501` naming the method and path. The 501 is not
 decoration — MSW passes an *unhandled* request through to the network, so
 without it a call you forgot would reach the dev server and come back as
 index.html with status 200, which reads as a working screen. Seeing a 501 means
 a handler is missing, never that the app is wrong.
+
+The layering works because an MSW resolver that returns nothing falls through to
+the next matching handler: the gateway answers only the requests it refuses, and
+everything it lets past reaches your handler unchanged.
+
+**What a refusal looks like.** A bare **401**, with no body and no
+`WWW-Authenticate` — byte for byte what the deployed gateway answers, which
+cannot distinguish a missing scope from a dead token. The reason goes to the
+browser CONSOLE instead:
+
+```
+[mock gateway] 401 GET /todos — the caller does not hold todos:read.
+```
+
+Never 403. `src/api-client.ts` decides between Forbidden and sign-in from the
+app's own `expires_at`, and 401-while-my-token-is-valid is the branch the
+deployed app actually takes; answering 403 here would walk the other one and
+leave that branch — the one whose regression is an endless sign-in loop —
+untested.
 
 ## 4 · Author `mock/env.ts`
 
@@ -367,16 +415,18 @@ memory for the rest of the run.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Blank screen, console says `window._env_ not set` | `/env-config.js` did not load — the plugin is not in the mode you started | Start with `--mode mock`; the plugin serves that file. |
+| Blank screen, console says `window._env_ not set` | `/env-config.js` did not load — the plugin is not in the mode you started | Start with `--mode mock`; the plugin serves that file. The gateway's table rides the same script, so this also silently disables it. |
 | Throws `<DEP>_URL not set in window._env_` | The app reads a sibling's address from `window._env_`, which the platform does not emit | A real production failure, reproduced. Fix the app — `baseUrl: "/api"` — never `mockEnv`. |
 | A call answers `501 {"error":"mock: no handler for …"}` | No handler matches — often the `/api` prefix is missing from the handler's path | Handler paths are what the app calls: `/api/todos`, not `/todos`. |
-| A parameterised route swallows a literal one | Registration order | Most specific first — `/api/todos/archived` before `/api/todos/:id`. |
+| A parameterised route swallows a literal one | Registration order in `mock/handlers.ts` | Most specific first — `/api/me/todos` before `/api/todos/:id`. (The gateway layer sorts its own table; this is about yours.) |
 | The first call of the page escapes the mock | The app rendered before the worker started | `enableMocking()` is awaited before `createRoot`; keep that order. |
 | The app renders as the wrong role | `mock/roles.ts` is ordered differently from `security.json` | The first entry is the default; keep the file's order. |
 | Every screen is reachable under every `?role=` | `mock/roles.ts` lists names without grants, so the scope string carries no handle and the gate was written to fall open | Grants per role; `authz` hides what is not held. |
 | Every role lands on `NoAccess` | `mockEnv`'s `USER_AUTH_SCOPES` is v1 (`groups`, no project handles), or the mock user carries no `scope` field | `openid profile email group ou <the project's handles>`; the mock user's `scope` is what `authz` reads. |
 | The first internal click reverts to the default role | A project-local `mock/auth.ts` that re-reads `?role=` on every mount | Re-copy the asset; it persists the last explicit `?role=` in `sessionStorage`. |
-| `Forbidden` is unreachable in mock mode | The handlers answer 200 regardless of scope | Enforce the contract's exact handle in the handler; 403 with `insufficient_scope`. |
+| `Forbidden` is unreachable in mock mode | The gateway layer is off — no contract was found, or none declares an `oauth2` scheme | Read what the dev server printed at startup: it says how many operations it enforces and from which files, or why it enforces none. |
+| Every `/api` call 401s under every role | The handlers were reached from a page that calls before sign-in resolves, or `mock/roles.ts` grants nothing | Check the `[mock gateway]` console line — it names the operation and the handle it wanted. |
+| A call the contract does declare answers 501 | The gateway let it through and no handler matched | Add the handler; the 501 is the mock's own gap, not a refusal. |
 | `dist/` contains `msw` or `mock/` | The dev-only guard is not statically decidable | Keep the `import.meta.env.DEV` test first and the import dynamic. |
 | `tsc --noEmit` passes but `dev:mock` fails on a type | `mock` is missing from `tsconfig.json`'s `include` | Add it, and re-run the type-check. |
 | `TS2339: Property 'env' does not exist on type 'ImportMeta'` | `vite/client` is not in `tsconfig.json`'s `types` | Add `"types": ["vite/client", "node"]`. |

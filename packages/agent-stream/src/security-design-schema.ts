@@ -17,7 +17,7 @@
  */
 
 /**
- * Runtime validation for the AUTHORED `specs/design/security.json`, version 2
+ * Runtime validation for the AUTHORED `specs/design/security.json`, version 3
  * (`SecurityDesign` in `./contracts/security-design.ts` — the wire source of
  * truth; the Zod schema below is drift-guarded against it). The FileBundle
  * calls `checkSecurityDesign` on every write to that path, so the model gets a
@@ -43,9 +43,11 @@
  *     express (a grant naming a catalog handle, a test user naming a declared
  *     role), applied separately by BOTH sides.
  *
- * **v1 is not accepted.** A version-1 document fails with one message naming
- * the fields v2 removed, rather than a Zod dump about a `const` mismatch plus
- * five unknown keys.
+ * **v1 and v2 are not accepted.** A stale document fails with one message
+ * naming what its version got wrong, rather than a Zod dump about a `const`
+ * mismatch plus unknown keys. v2's one difference is `actions[].ownership`:
+ * v3 has no row axis in this file, because which rows an operation reaches is
+ * its path in `openapi.yaml` (ADR-0031).
  */
 
 import { z } from "zod";
@@ -105,7 +107,6 @@ const handleSegment = z
 
 const actionSchema = z.strictObject({
   handle: handleSegment,
-  ownership: z.enum(["own", "any"]),
   description: z.string().min(1).optional(),
 });
 
@@ -152,7 +153,7 @@ const testUserSchema = z.strictObject({
 });
 
 export const securityDesignSchema = z.strictObject({
-  version: z.literal(2),
+  version: z.literal(3),
   permissions: z.array(permissionSchema).min(1),
   groups: z.array(groupSchema),
   roles: z.array(roleSchema).min(1),
@@ -185,8 +186,8 @@ export interface SecurityDesignProblem {
 }
 
 /**
- * The fields v2 removed, in the order the message lists them. Detected BEFORE
- * the schema runs so a v1 document gets one sentence about the migration
+ * The fields v2 removed from v1, in the order the message lists them. Detected
+ * BEFORE the schema runs so a v1 document gets one sentence about the migration
  * instead of a Zod dump in which the real cause (`version` is 1) is one issue
  * among six.
  */
@@ -201,6 +202,28 @@ const REMOVED_V1_FIELDS: { path: string; present: (doc: Record<string, unknown>)
 
 function someEntryHas(value: unknown, key: string): boolean {
   return Array.isArray(value) && value.some((e) => typeof e === "object" && e !== null && key in e);
+}
+
+/** True when any `permissions[].actions[]` entry still carries v2's `ownership`. */
+function someActionHasOwnership(doc: Record<string, unknown>): boolean {
+  const permissions = doc["permissions"];
+  if (!Array.isArray(permissions)) return false;
+  return permissions.some(
+    (p) => typeof p === "object" && p !== null && someEntryHas((p as Record<string, unknown>)["actions"], "ownership"),
+  );
+}
+
+/**
+ * The one-line refusal for a version-2 document, or null when the document is
+ * not v2. "Is v2" means it says so, or an action still carries `ownership` —
+ * the one field v3 removed. Checked AFTER the v1 test so a v1 document is told
+ * about v1, not about a field it never had.
+ */
+function v2Refusal(parsed: unknown): string | null {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const doc = parsed as Record<string, unknown>;
+  if (doc["version"] !== 2 && !someActionHasOwnership(doc)) return null;
+  return securityMessage("v2_document");
 }
 
 /**
@@ -258,7 +281,7 @@ export function checkSecurityDesign(
     };
   }
 
-  const legacy = v1Refusal(parsed);
+  const legacy = v1Refusal(parsed) ?? v2Refusal(parsed);
   if (legacy) return { code: "SCHEMA_VIOLATION", message: `${path}: ${legacy}` };
 
   const res = securityDesignSchema.safeParse(parsed);

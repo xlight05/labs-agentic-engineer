@@ -17,12 +17,24 @@
  */
 
 /**
- * Spec → Security: one scroll over `security.json` v2.
+ * Spec → Security: one scroll over `security.json` v3, in three sections.
  *
- * The page is the permission MATRIX first — every handle the project declares
- * against every role a person can hold — and then a card per role for the
- * things a grid cannot say: what the role is for, who signs in as it, and which
- * org groups carry it.
+ * **Groups, roles & users** comes first — the people: every org group this
+ * design touches, then a card per role. **Permissions** is the matrix, every
+ * handle the project declares against every role a person can hold. **Screens**
+ * is what each drawn screen takes to reach.
+ *
+ * The cast before the grid. A reader meeting the matrix first meets a column
+ * header per role and no way to learn what any of them is for; meeting the
+ * roles first, the columns are already names they know.
+ *
+ * Groups and roles were two sections and are now one. The split meant a group
+ * and the role that uses it were never on screen together, and a REUSED group
+ * had no row at all — it existed only as a chip inside whichever role card
+ * named it. The standing prose each section carried (how the identity provider
+ * works, what a test account is for) is gone from the page body: the first is
+ * said per group by its New / Existing chip, the second hangs on the ⓘ beside
+ * the test user it is about.
  *
  * It is the console's first WRITE into a spec room. One cell is one edit: the
  * room's CURRENT text is patched (`patchGrants`) inside the write itself, and
@@ -42,11 +54,16 @@ import {
   AlertTitle,
   Box,
   CircularProgress,
+  IconButton,
   Stack,
+  Tooltip,
   Typography,
 } from "@wso2/oxygen-ui";
+import { Info } from "@wso2/oxygen-ui-icons-react";
 
 import {
+  prdActors,
+  PRD_PATH,
   securityReferenceFindings,
   type SecurityReferenceContext,
 } from "@aep/agent-stream";
@@ -59,13 +76,13 @@ import {
   securityMatrix,
   type SecurityDesign,
 } from "../api/securityDesign";
-import { baselineOperations } from "../lib/baselineOperations";
 import { patchGrants, type PatchFailure } from "../lib/patchGrants";
 import { routeFindings } from "../lib/securityFindings";
 import {
   GroupsBlock,
-  RolesIntro,
+  IdentityIntro,
   ScreensBlock,
+  SubLabel,
 } from "./security/DocumentSections";
 import { PermissionMatrix } from "./security/PermissionMatrix";
 import { RoleCard } from "./security/RoleCard";
@@ -75,6 +92,13 @@ const NO_ROOM_REASON =
   "Grants are edited in the live document. This page is showing the last committed copy, so cells are read-only until the collaborative room has the file.";
 
 export interface SecurityPanelProps {
+  /**
+   * The project's handle — which is also its resource server's NAME on the
+   * directory (the ensure creates it under exactly this string). Taken as a
+   * prop rather than cut out of the identifier: the identifier's shape is the
+   * platform's to change, and a console that parses it would break silently.
+   */
+  projectName: string;
   /** Live `security.json` text — from the room, or the committed fallback. */
   securityJson: string | null;
   live?: ProjectRolesLiveState | undefined;
@@ -102,8 +126,9 @@ export interface SecurityPanelProps {
   /**
    * Every component's declared dependencies, from the Spec view's own
    * design-dependencies read. `undefined` while that read is in flight or after
-   * it failed — the "No sign-in at all" row is then omitted rather than
-   * claiming that every component provisions sign-in.
+   * it failed — the "No sign-in at all" row is then omitted, exactly as it is
+   * when every component provisions sign-in: the row exists only to name an
+   * exposure, never to say there is none.
    */
   dependencies?: ComponentDependencies[] | undefined;
 }
@@ -126,6 +151,7 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 export function SecurityPanel({
+  projectName,
   securityJson,
   live,
   isPending = false,
@@ -197,6 +223,7 @@ export function SecurityPanel({
 
   return (
     <SecurityDocument
+      projectName={projectName}
       doc={parsed.doc}
       text={securityJson ?? ""}
       live={live}
@@ -214,6 +241,7 @@ export function SecurityPanel({
  * renderings, and a hook cannot live behind that decision.
  */
 function SecurityDocument({
+  projectName,
   doc,
   text,
   live,
@@ -222,6 +250,7 @@ function SecurityDocument({
   writeSecurityJson,
   dependencies,
 }: {
+  projectName: string;
   doc: SecurityDesign;
   text: string;
   live: ProjectRolesLiveState | undefined;
@@ -263,32 +292,25 @@ function SecurityDocument({
     return routeFindings(findings, rows);
   }, [findings, matrix]);
 
-  const baseline = useMemo(() => {
-    const operations = baselineOperations(
-      matrix.groups.map((group) => group.component),
-      references,
-    );
-    return {
-      signedIn: [
-        ...operations.signedIn,
-        ...matrix.baseline.signedInScreens.map(screenLine),
-      ],
-      open: [
-        ...operations.open,
-        ...matrix.baseline.publicScreens.map(screenLine),
-      ],
-      // Derived from the architecture, never authored — see
-      // `signInlessComponents` for why that is the only honest source.
-      //
-      // Each entry names its KIND, the way the rows above name theirs
-      // (`GET /me`, `screen My account (expense-spa)`). This row lists
-      // COMPONENTS while those list operations and screens, and the sub-header
-      // they share cannot say so for all three — so the entry says it.
+  // The PRD's actors, for the line above the role cards. Read through the same
+  // sibling-file reader every cross-check uses, so it follows the room; an
+  // unreadable or absent PRD answers `[]` and the line is simply not drawn.
+  const actors = useMemo(
+    () => prdActors(references?.read(PRD_PATH) ?? ""),
+    [references],
+  );
+
+  // Derived from the architecture, never authored — see `signInlessComponents`
+  // for why that is the only honest source. An unanswered dependency read is
+  // an empty list: the row then simply does not render, and nothing is claimed.
+  const baseline = useMemo(
+    () => ({
       openComponents: dependencies
         ? componentsWithoutSignIn(dependencies).map(componentLine)
-        : null,
-    };
-  }, [matrix, references, dependencies]);
+        : [],
+    }),
+    [dependencies],
+  );
 
   // Editability is asked ONCE. `writer` is the writer only when the room can
   // actually take the write, so the cells and the handler cannot disagree
@@ -325,10 +347,40 @@ function SecurityDocument({
             What this project protects, what each role may do with it, and the
             accounts the validation agent signs in with.
           </Typography>
-          <ResourceServerLine live={live} />
+          <ResourceServerLine projectName={projectName} live={live} />
         </Box>
 
         {failure && <PatchFailureAlert failure={failure.failure} />}
+
+        <Box>
+          <IdentityIntro actors={actors} />
+          <GroupsBlock doc={doc} live={live} />
+          <Box sx={{ mt: 2 }}>
+            <SubLabel>Roles</SubLabel>
+            <Box
+              sx={{
+                mt: 0.5,
+                display: "grid",
+                // auto-fit, not a fixed count: the panel shares its width with
+                // the agent chat, so the column count has to answer to the
+                // space there is rather than to a breakpoint that cannot see
+                // whether the chat is open.
+                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                gap: 1.5,
+                alignItems: "start",
+              }}
+            >
+              {doc.roles.map((role) => (
+                <RoleCard
+                  key={role.name}
+                  doc={doc}
+                  role={role}
+                  findings={routed.byRole.get(role.name.toLowerCase()) ?? []}
+                />
+              ))}
+            </Box>
+          </Box>
+        </Box>
 
         <PermissionMatrix
           matrix={matrix}
@@ -338,18 +390,7 @@ function SecurityDocument({
           onToggleGrant={onToggleGrant}
         />
 
-        <GroupsBlock doc={doc} />
-        <RolesIntro />
-        {doc.roles.map((role) => (
-          <RoleCard
-            key={role.name}
-            doc={doc}
-            role={role}
-            live={live}
-            findings={routed.byRole.get(role.name.toLowerCase()) ?? []}
-          />
-        ))}
-        <ScreensBlock doc={doc} />
+        <ScreensBlock doc={doc} findings={routed.screens} />
       </Stack>
     </Box>
   );
@@ -361,19 +402,27 @@ function SecurityDocument({
  * token is asked for. One project has exactly one, so the first role's answer
  * is the project's.
  *
- * It is read from the platform's record rather than derived here: the console
- * guessing a URL that the gateway then does not accept would be worse than
- * saying nothing, and before the first Build there is no record to read.
+ * The NAME is on the line and the identifier is on the ⓘ. The identifier is a
+ * URI that never resolves, and printing it in full made the widest thing under
+ * the page title a string nobody reads twice — but it is also the exact value
+ * someone diagnosing a 401 needs, so it stays one hover away rather than gone.
+ *
+ * Whether the line renders at all is still the platform's answer, not the
+ * console's: `resourceServerOf` returning nothing means there is no record of
+ * this project yet, and a name with no identifier behind it would be a claim
+ * the page cannot back.
  */
 function ResourceServerLine({
+  projectName,
   live,
 }: {
+  projectName: string;
   live: ProjectRolesLiveState | undefined;
 }) {
   const resourceServer = resourceServerOf(live);
   if (!resourceServer) return null;
   return (
-    <Stack direction="row" spacing={1} alignItems="baseline" sx={{ mt: 0.5 }}>
+    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
       <Typography variant="caption" color="text.secondary">
         Resource server
       </Typography>
@@ -382,15 +431,21 @@ function ResourceServerLine({
         color="text.secondary"
         sx={{ fontFamily: "monospace" }}
       >
-        {resourceServer}
+        {projectName}
       </Typography>
+      <Tooltip
+        title={`The audience every access token for this project carries, and the value the gateway checks: ${resourceServer}`}
+      >
+        <IconButton
+          size="small"
+          aria-label="About the resource server"
+          sx={{ p: 0.25 }}
+        >
+          <Info size={13} aria-hidden />
+        </IconButton>
+      </Tooltip>
     </Stack>
   );
-}
-
-/** One baseline screen, as the design writes it: `screen Find a slot (booking-site)`. */
-function screenLine(entry: { component: string; screen: string }): string {
-  return `screen ${entry.screen} (${entry.component})`;
 }
 
 /** One baseline component: `component booking-site`. */

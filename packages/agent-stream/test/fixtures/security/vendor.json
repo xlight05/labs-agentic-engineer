@@ -1,32 +1,32 @@
 {
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "orders",
       "component": "orders-api",
       "description": "Purchase orders raised by buyers and confirmed by suppliers",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "See own company's orders" },
-        { "handle": "place", "ownership": "own", "description": "Raise an order" },
-        { "handle": "confirm", "ownership": "own", "description": "Confirm an order" }
+        { "handle": "read", "description": "See own company's orders" },
+        { "handle": "place", "description": "Raise an order" },
+        { "handle": "confirm", "description": "Confirm an order" }
       ]
     },
     {
       "resource": "invoices",
       "component": "orders-api",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "See own company's invoices" },
-        { "handle": "read-all", "ownership": "any", "description": "See every invoice" },
-        { "handle": "submit", "ownership": "own", "description": "Submit an invoice" },
-        { "handle": "approve", "ownership": "any", "description": "Approve an invoice" }
+        { "handle": "read", "description": "See own company's invoices" },
+        { "handle": "read-all", "description": "See every invoice" },
+        { "handle": "submit", "description": "Submit an invoice" },
+        { "handle": "approve", "description": "Approve an invoice" }
       ]
     },
     {
       "resource": "payments",
       "component": "payments-api",
       "actions": [
-        { "handle": "read", "ownership": "any", "description": "See payments" },
-        { "handle": "release", "ownership": "any", "description": "Release a payment" }
+        { "handle": "read", "description": "See payments" },
+        { "handle": "release", "description": "Release a payment" }
       ]
     }
   ],

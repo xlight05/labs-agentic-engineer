@@ -15,11 +15,11 @@
 // under the License.
 
 // Package securityspec parses and validates `specs/design/security.json`,
-// version 2 — the one spec file the platform acts on deterministically at build
+// version 3 — the one spec file the platform acts on deterministically at build
 // time. There is no prose companion: this document is the whole security
 // design.
 //
-// v2 puts the PERMISSION CATALOG at the centre. A project owns one OAuth
+// The PERMISSION CATALOG is at the centre. A project owns one OAuth
 // resource server; `permissions[]` declares its resources and the actions on
 // them, and everything else in the document — and in `openapi.yaml` and the
 // wireframes — references those `<resource>:<action>` handles rather than
@@ -78,14 +78,12 @@ const Path = "specs/design/security.json"
 // relative to specs/design/).
 const BundleKey = "security.json"
 
-// Document vocabulary. `Ownership` says which ROWS an action reaches; `Kind`
-// says what a role is assigned TO; `Enrolment` says how somebody comes to hold
-// it. The zero value of the two optional ones is the default, which is why
-// Role.RoleKind and Role.EnrolmentKind exist rather than callers comparing "".
+// Document vocabulary. `Kind` says what a role is assigned TO; `Enrolment` says
+// how somebody comes to hold it. The zero value of each is the default, which
+// is why Role.RoleKind and Role.EnrolmentKind exist rather than callers
+// comparing "". There is no row vocabulary: which rows an operation reaches is
+// its path in openapi.yaml (ADR-0031), not a property of a handle.
 const (
-	OwnershipOwn = "own"
-	OwnershipAny = "any"
-
 	KindUser    = "user"
 	KindService = "service"
 
@@ -132,7 +130,7 @@ var usernameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // reason.
 var handleSegmentRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// Document is the parsed security.json, version 2.
+// Document is the parsed security.json, version 3.
 type Document struct {
 	Version     int          `json:"version"`
 	Permissions []Permission `json:"permissions"`
@@ -152,11 +150,10 @@ type Permission struct {
 }
 
 // Action is one action on a resource; `<resource>:<handle>` is the scope handle.
-// Ownership is required — an unstated ownership is how a prose-only permission
-// turns into a list-everything endpoint.
+// It carries no row axis: `read` and `read-all` are two actions because they
+// guard two operations, and the path of each says which rows it reaches.
 type Action struct {
 	Handle      string `json:"handle"`
-	Ownership   string `json:"ownership"`
 	Description string `json:"description,omitempty"`
 }
 
@@ -244,6 +241,9 @@ func Parse(raw []byte) (*Document, error) {
 	if msg := v1Refusal(v); msg != "" {
 		return nil, &ValidationError{Code: CodeSchemaViolation, Message: msg}
 	}
+	if msg := v2Refusal(v); msg != "" {
+		return nil, &ValidationError{Code: CodeSchemaViolation, Message: msg}
+	}
 	if msgs := jsonschema.Validate(v, securitySchema); len(msgs) > 0 {
 		return nil, &ValidationError{Code: CodeSchemaViolation, Message: msgs[0]}
 	}
@@ -318,7 +318,7 @@ func IsHandle(value string) bool {
 	return handleSegmentRE.MatchString(resource) && handleSegmentRE.MatchString(action)
 }
 
-// removedV1Fields are the fields v2 removed, in the order the refusal lists
+// removedV1Fields are the fields v2 removed from v1, in the order the refusal lists
 // them — the Go twin of REMOVED_V1_FIELDS in the TS gate.
 var removedV1Fields = []struct {
 	path    string
@@ -368,11 +368,43 @@ func v1Refusal(parsed any) string {
 	// The slot carries the whole clause, exactly as the agent's v1Refusal builds
 	// it: what to remove, or — for a document that only SAYS 1 — what to do
 	// instead.
-	carries := "re-author it against version 2"
+	carries := "re-author it against version 3"
 	if len(removed) > 0 {
 		carries = "remove " + strings.Join(removed, ", ")
 	}
 	return Msg(MsgV1Document, "fields", carries)
+}
+
+// v2Refusal is the one-line refusal for a version-2 document, or "" when the
+// document is not v2. "Is v2" means it SAYS so, or an action still carries
+// `ownership` — the one field v3 removed. Checked AFTER v1Refusal so a v1
+// document is told about v1, not about a field it never had. The Go twin of
+// v2Refusal in the TS gate.
+func v2Refusal(parsed any) string {
+	doc, ok := parsed.(map[string]any)
+	if !ok {
+		return ""
+	}
+	version, _ := doc["version"].(float64)
+	if version != 2 && !someActionHasOwnership(doc) {
+		return ""
+	}
+	return Msg(MsgV2Document)
+}
+
+// someActionHasOwnership reports whether any permissions[].actions[] entry still
+// carries v2's `ownership`.
+func someActionHasOwnership(doc map[string]any) bool {
+	permissions, ok := doc["permissions"].([]any)
+	if !ok {
+		return false
+	}
+	for _, p := range permissions {
+		if perm, ok := p.(map[string]any); ok && someEntryHas(perm["actions"], "ownership") {
+			return true
+		}
+	}
+	return false
 }
 
 // CatalogHandles returns every `<resource>:<action>` handle the document

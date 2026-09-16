@@ -38,7 +38,7 @@
 //
 // Run `node scripts/gen-scopes.mjs --help` for the usage; the exit codes are
 // 0 written (or a committed output deliberately kept), 1 the design could not
-// be read or is not a version-2 document, 2 the command line is wrong.
+// be read or is not a version-3 document, 2 the command line is wrong.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -65,7 +65,7 @@ Environment:
   AEP_SECURITY_JSON   same as --spec (skips the walk-up)
 
 Exit: 0 written (or a committed output deliberately kept), 1 the design could
-not be read or is not version 2, 2 this command line is wrong.`;
+not be read or is not version 3, 2 this command line is wrong.`;
 
 /**
  * A wrong command line NEVER writes. `--componenet <name>` silently ignored is
@@ -169,7 +169,7 @@ try {
   process.exit(1);
 }
 
-// REFUSE anything that is not a version-2 document, rather than reading zero
+// REFUSE anything that is not a version-3 document, rather than reading zero
 // permissions and zero screens out of it. `Scope = never` and `SCREENS = []`
 // type-check green and deploy an app in which every caller lands on NoAccess —
 // a v1 file, a null, or a JSON array all produce exactly that, silently, over
@@ -178,24 +178,25 @@ const SHAPE = ["permissions", "roles", "screens"];
 if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
   console.error(
     `gen-scopes: ${specPath} is not a security.json document — expected a JSON ` +
-      `object with "version": 2, read ${doc === null ? "null" : Array.isArray(doc) ? "an array" : typeof doc}.`,
+      `object with "version": 3, read ${doc === null ? "null" : Array.isArray(doc) ? "an array" : typeof doc}.`,
   );
   process.exit(1);
 }
-if (doc.version !== 2) {
+if (doc.version !== 3) {
   console.error(
     `gen-scopes: ${specPath} declares version ${JSON.stringify(doc.version ?? null)}. ` +
-      `security.json v1 is not accepted: version 2 declares the permission ` +
-      `catalog in permissions[] (resource, component, actions[{handle, ownership}]), ` +
+      `security.json v${String(doc.version ?? null)} is not accepted; only version 3 is. Version 3 declares the permission ` +
+      `catalog in permissions[] (resource, component, actions[{handle, description}]), ` +
       `roles grant handles from it in roles[].grants, and screens[] maps each ` +
-      `wireframe screen to one handle. Re-author it against version 2.`,
+      `wireframe screen to one handle; which rows an operation reaches is its ` +
+      `path in openapi.yaml, not a field here. Re-author it against version 3.`,
   );
   process.exit(1);
 }
 for (const field of SHAPE) {
   if (!Array.isArray(doc[field])) {
     console.error(
-      `gen-scopes: ${specPath} has no ${field}[] array — a version-2 document ` +
+      `gen-scopes: ${specPath} has no ${field}[] array — a version-3 document ` +
         `declares all of ${SHAPE.join(", ")}.`,
     );
     process.exit(1);

@@ -57,8 +57,6 @@ export const SECURITY_DESIGN_MESSAGES = {
     'role "{role}" is also declared in groups[] — a role is project-scoped (it becomes "<project>/{role}" on the directory) and a group is org-owned and shared, so one name cannot be both. Rename the role.',
   grant_unknown_handle:
     'role "{role}" grants "{handle}", which permissions[] does not declare — add the action to its resource, or grant a declared handle.',
-  read_all_without_read:
-    'role "{role}" grants "{allHandle}" without "{readHandle}" — the "all" handle widens the ROWS an operation returns, it does not replace the operation, and the gateway compares scopes whole-string. Grant both.',
   assignable_by_unknown_role:
     'role "{role}" names "{ref}" in assignableBy, which no roles[] entry declares — assignableBy names project roles, never org groups.',
   admin_role_needs_assign_to:
@@ -84,8 +82,10 @@ export const SECURITY_DESIGN_MESSAGES = {
     'component "{component}" has no screen "{screen}" — its wireframes.dsl declares no matching `screen` (names are compared ignoring case and punctuation). Declare the screen in the wireframe, or correct the name here.',
   screen_requires_unknown_handle:
     'screen "{screen}" of component "{component}" requires "{handle}", which permissions[] does not declare — require a declared handle, null for any signed-in user, or "public".',
-  screen_operation_not_granted:
-    'role "{role}" reaches screen "{screen}" but does not grant "{handle}", which an operation behind that screen requires — the screen loads into a 401 that the SPA cannot tell from an expired session. Grant "{handle}" to "{role}", or gate the screen on a handle "{role}" does not hold.',
+  screen_without_read:
+    'role "{role}" reaches screen "{screen}", which renders "{resource}", but grants none of the handles that read it ({handles}) — the screen loads into a 401 that the SPA cannot tell from an expired session. Grant "{role}" the one of those handles whose path is the rows this screen shows, or gate the screen on a handle "{role}" does not hold.',
+  screen_not_gated:
+    'component "{component}" draws {screens} in its wireframes.dsl, and screens[] has no row for it — a screen this document does not gate is reachable by any signed-in person, whatever role they hold, which is almost never what a gated app means. Add one row per screen: {"component": "{component}", "screen": "<the name the wireframe spells>", "requires": <one catalog handle, null for any signed-in user, or "public">}.',
 
   // --- warnings ------------------------------------------------------------
   handle_used_nowhere:
@@ -95,7 +95,9 @@ export const SECURITY_DESIGN_MESSAGES = {
 
   // --- the version boundary ------------------------------------------------
   v1_document:
-    "security.json v1 is not accepted: {fields}. Version 2 declares the permission catalog in permissions[] (resource, component, actions[{handle, ownership}]), roles grant handles from it in roles[].grants and name their org groups in assignTo, screens[] maps each wireframe screen to one handle, and testUsers[].roles is a list.",
+    "security.json v1 is not accepted: {fields}. Version 3 declares the permission catalog in permissions[] (resource, component, actions[{handle, description}]), roles grant handles from it in roles[].grants and name their org groups in assignTo, screens[] maps each wireframe screen to one handle, and testUsers[].roles is a list.",
+  v2_document:
+    "security.json v2 is not accepted: remove actions[].ownership and set version to 3. Version 3 carries no row axis in this file — which rows an operation reaches is its PATH in openapi.yaml: an operation under /me/ reaches the caller's rows (or the rows of the relation the path names, /me/team/claims), every other operation reaches every row. A handle says what a caller may do, never how far; two reaches are two operations guarded by two handles (GET /me/claims claims:read, GET /claims claims:read-all).",
 } as const;
 
 /** A key of the gate's message vocabulary. */

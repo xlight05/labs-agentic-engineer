@@ -14,9 +14,9 @@ which the API gateway is wired to as its external IDP. **What a caller may do is
 the access token's `scope` — one authority, nothing else.**
 
 - **The protected backend** never sees a token: the gateway validates it,
-  enforces the scope each operation declares in `openapi.yaml`, and injects the
-  same scope string as `X-User-Scopes`. See `api-management` for the gateway's
-  side of that contract.
+  enforces the scope each operation declares in `openapi.yaml`, and hands the
+  service a **gateway-signed assertion** carrying the same `sub` and `scope`.
+  See `api-management` for the gateway's side of that contract.
 - **The SPA** signs the user in with OIDC Authorization Code + PKCE, asking for
   a **resource indicator** so the token is minted for this project, reads the
   granted permissions from `user.scope`, and gates every screen on them.
@@ -35,10 +35,15 @@ writing any authorization code:
 | Field | What you do with it |
 |---|---|
 | `permissions[].resource` + `actions[].handle` | joined by `:` these are the **scope handles** — `claims:read`, `reports:export`. This is the closed set. |
-| `actions[].ownership` | `own` = this action reaches the caller's own rows; `any` = every row. The pair `read`/`read-all` on one resource is the widening idiom. |
 | `roles[].grants` | which handles a role holds. Drives the SPA's header badge and the "which role unlocks this" wording; `scopes.gen.ts` is generated from it. |
 | `screens[].requires` | a handle, `null` (any signed-in user) or `"public"` (reachable before sign-in) — the SPA's route guard for that screen. |
 | `roles[].assignTo`, `groups[]` | provisioning only. **No application code reads these.** |
+
+Which **rows** an operation reaches is not in this file. It is the operation's
+path in `openapi.yaml`: under `/me/` the caller's (or a relation's —
+`/me/team/claims`), anywhere else every row. `openapi-conventions` owns that
+rule; here it means a `/me/…` handler resolves rows through the assertion's
+`sub`, and nothing else ever filters.
 
 The platform creates the resource server, the roles and the test users when the
 user clicks Build. Never write user-, group- or role-provisioning code, and
@@ -260,8 +265,8 @@ path. Everything else fails loudly, because each of these otherwise emits
 | Situation | What it does |
 |---|---|
 | `--spec` / `AEP_SECURITY_JSON` names a file that is not there | **exit 1** — a path the caller typed and misspelled is never a build context |
-| the document is not version 2 (a v1 file, `null`, an array) | **exit 1** naming the version; **v1 is not accepted** |
-| a version-2 document missing `permissions[]`, `roles[]` or `screens[]` | **exit 1** naming the field |
+| the document is not version 3 (a v1 or v2 file, `null`, an array) | **exit 1** naming the version; **only v3 is accepted** |
+| a version-3 document missing `permissions[]`, `roles[]` or `screens[]` | **exit 1** naming the field |
 | `--component` matches no screen in the document | **exit 1** listing the components the document does declare |
 | an unknown flag, or a flag with no value | **exit 2** with the usage, and nothing written |
 
@@ -372,7 +377,7 @@ So the SPA absorbs it, in three places, and all three are already in the assets:
 |---|---|---|
 | **401 + `tokenIsValid()`** | route to **Forbidden** | the session is fine, so the refusal is about scope — and the gateway cannot say so |
 | **401 + `!tokenIsValid()`** | **`signIn()`**, at most once per page load | the ordinary expired/absent case |
-| **403** | **Forbidden, always** | the service, reached past the gateway, saying `insufficient_scope`. Signing in again cannot add a scope the caller's roles do not grant |
+| **403** | **Forbidden, always** | no generated service answers 403 today, but an org API behind the same gateway may; signing in again cannot add a scope the caller's roles do not grant |
 
 `if (res.status === 401) signIn()` — what the previous revision of this skill
 taught — is **DELETED**, and deleting it is the point of the file. It threw a
@@ -472,103 +477,105 @@ defect even though no wireframe names them.
 
 # Backend authorization
 
-The gateway hands your service the caller's verified identity as headers
-(`api-management` covers the mechanism, the header table, the never-read-
-`Authorization` rule and the 401-on-empty-`X-User-Id` rule). What follows is how
-you enforce on it.
+**The operation's scope is enforced at the gateway, and nowhere else.** Every
+protected operation in `openapi.yaml` declares exactly one scope, or none; the
+gateway is rendered from that same contract and refuses a caller who lacks the
+handle before your service is reached. A generated service therefore holds **no
+operation → scope table, in any stack**. `api-management` owns the argument.
 
-## The operation's scope is enforced by a middleware you copy
+What a gateway cannot do is prove to your code that a request came through it.
+So it mints a short-lived JWT of the caller it authenticated, signs it with the
+environment's own key, and puts it on the upstream request — and your service
+verifies that signature. That is the whole of backend authentication.
 
-Every protected operation in `openapi.yaml` declares **exactly one** scope, or
-none. The middleware reads that declaration — from the generated server, or from
-a table a drift test pins to the contract — and answers:
-
-```
-required = the operation's declared scope        (exactly one, or none)
-if the operation is public                → next()   # reads no identity header
-if X-User-Id is EMPTY                     → 401      # the request bypassed the gateway
-if required and required ∉ X-User-Scopes  → 403 + the insufficient_scope challenge (api-management)
-next()
-```
-
-Copy it from your stack skill and wire it once:
+## Verify the assertion: one copied asset, wired once
 
 | Stack | Asset | Wiring |
 |---|---|---|
-| Go | `$AEP_SKILLS_DIR/go/assets/scopes_middleware.go` | `gen.ChiServerOptions{Middlewares: …}` — **never** `r.Use` |
-| Ballerina | `$AEP_SKILLS_DIR/ballerina/assets/scopes.bal` + `scope_table_drift_test.bal` | `http:InterceptableService` + `createInterceptors`; verify with `bal build && bal test` |
+| Go | `$AEP_SKILLS_DIR/go/assets/gateway_assertion.go` | `auth.NewVerifierFromEnv()` in `main` (fatal on error) + `r.Use(verifier.Middleware)` |
+| Ballerina | `$AEP_SKILLS_DIR/ballerina/assets/gateway_assertion.bal` | `http:InterceptableService` + `createInterceptors() returns AssertionInterceptor` |
 
-**You author no new check.** A handler that re-tests the operation's own scope
-is a second authority that drifts from the contract.
+Both read the same three variables, which the platform sets on the container
+when the environment's gateway publishes a keypair:
+`GATEWAY_ASSERTION_CERTIFICATE`, `GATEWAY_ASSERTION_ISSUER`,
+`GATEWAY_ASSERTION_HEADER`. **A missing one stops the service from starting**,
+in both stacks, on purpose: a service that runs without them cannot tell a real
+caller from a forged one.
 
-**Test for EMPTY, never for MISSING** — `X-User-Id: ""` is what an
-identity-less request looks like on the wire (`api-management`).
+**You author no new check.** The asset verifies the signature, pins the issuer
+to the gateway (never the IdP), checks the expiry and puts the caller on the
+request context. A handler reads the caller from there and nothing else.
 
-**The service answers 403 even though the gateway answers 401** —
-`api-management`'s status matrix owns the two columns and why they differ. What
-it means here is that the SPA has to treat **both** statuses as a refusal: §4's
-`classifyResponse()` sends a 401 with a still-valid token to Forbidden for
-exactly this reason. Never answer 401 for a permission failure — the SPA reads
-that as "token expired" and restarts sign-in, which loops forever.
-
-## Ownership: the finer rule an operation-level check cannot express
-
-The catalog marks every action `own` or `any`. A pair on one resource
-(`claims:read` own, `claims:read-all` any) is one operation whose result set
-widens:
+Three outcomes, and the middle one is the point:
 
 ```
-rows := claims.where(owner_id = X-User-Id)        // ownership: own
-if hasScope("claims:read-all") { rows = claims.all() }
+no assertion                 → continue with no caller    # a public operation has none
+present but not verifiable   → 401, immediately           # never "anonymous"
+verified                     → continue with the caller
 ```
 
-`hasScope` (Go: `auth.HasScope(ctx, handle)`; Ballerina:
-`hasScope(xUserScopes, handle)`) is for exactly this, never as the only check on
-an operation. Where the catalog gives an action a prose-named scope rather than
-an ownership pair, map it the same way: read the catalog's
-`actions[].description`, not your own guess.
+Downgrading an unverifiable assertion to an anonymous request would make forging
+one strictly better for an attacker than sending none.
 
-**The widening handle is extra, not a substitute.** Scope comparison is an exact
-whole-string match (`api-management`), so `claims:read-all` does not imply
-`claims:read` to anything but a human reader. A role meant to call
-`GET /claims` must be granted the operation's OWN handle (`claims:read`) as well
-as the widening one. If the design grants a role only the widening handle, say
-so in your report — the app cannot fix it, and the role will be refused at the
-gateway before your code runs.
+**The SPA sees only 401s** — the gateway answers 401 for a missing scope exactly
+as for a dead token, so §4's `classifyResponse()` sends a 401 with a still-valid
+token to Forbidden. Nothing in the service answers 403.
+
+## Reach is the path, not a check in the handler
+
+A handler holds **no authorization logic**. Whether the operation may be called
+was settled at the gateway from the contract; which rows it returns was settled
+by its path. So there are exactly two shapes of handler, and neither branches
+on a scope:
+
+```
+GET /me/claims        →  rows := claims.where(owner_id = caller.sub)
+GET /me/team/claims   →  rows := claims.where(owner_id in reports_of(caller.sub))
+GET /claims           →  rows := claims.all()
+POST /me/claims       →  claim.owner_id = caller.sub   // stamped, never read from the body
+```
+
+`hasScope` (Go: `auth.HasScope`; Ballerina: `hasScope(caller, …)`) exists for
+the rare handler that needs a second fact about the caller for something other
+than authorization — a header badge, an audit line. If you are reaching for it
+to decide which rows to return, the design has one operation where it needs
+two: report that, do not code around it.
 
 **A row that exists but is not the caller's is a 404, not a 403** — a caller who
 may not see a row may not learn it exists (`api-management` owns that rule).
+Under `/me/…` that is not a special case: the row is simply not in the caller's
+collection.
 
 ## Identity is not authorization
 
-- **What may they do** is `X-User-Scopes`, always. There is no group matching, no
-  substring match on a role name, no role column in your own table, and no
-  cold-start default. A caller whose token grants no scope for an operation is a
-  **403**, full stop.
-- **Which rows are theirs** is `X-User-Id` — an opaque IdP subject, and the one
-  key for rows this service creates. Stamp it on every row, gate every
-  per-caller query on it.
+- **What may they do** was answered at the gateway, from the contract, and
+  **which rows** by the operation's path. Inside the service the assertion's
+  `scope` claim decides nothing. There is no group matching, no substring match
+  on a role name, no role column in your own table, and no cold-start default.
+- **Which rows are theirs** is the assertion's `sub` — an opaque IdP subject,
+  and the one key for rows this service creates. Stamp it on every row a
+  `/me/…` operation creates, and resolve every `/me/…` query through it.
 - **Directory attributes** (their unit, their own id in some other system) come
-  from the caller's directory record, resolved by `X-User-Name` — the username,
-  which the directory keys on. A username can be renamed, so look the record UP
-  by it and never store it as a row key. Never match `X-User-Id` against a
-  record id another system minted, and never parse an attribute out of a group
-  name. Empty `X-User-Name`, or a username that resolves to no record → **403**.
-  The directory's real endpoint, its username field, and the dependency wiring
-  are org-specific — `internal-services` owns them; do not hardcode a roster.
+  from the caller's directory record, resolved by their username. A username can
+  be renamed, so look the record UP by it and never store it as a row key. Never
+  match `sub` against a record id another system minted, and never parse an
+  attribute out of a group name. A username that resolves to no record is a
+  refusal. The directory's real endpoint, its username field, and the dependency
+  wiring are org-specific — `internal-services` owns them; do not hardcode a
+  roster.
 
 ## The service's own per-caller rows
 
 Rows this service creates for a caller — their claim, their draft, their
-preferences — are keyed on `X-User-Id`, the one case where that is right,
-because the service stored the subject itself rather than matching it against
-ids another system minted. Fill display fields from `X-User-Name`. **Store no
-role column and no permission column**: the token already answered that, and a
-second copy is a second authority that drifts.
+preferences — are keyed on the assertion's `sub`, the one case where that is
+right, because the service stored the subject itself rather than matching it
+against ids another system minted. **Store no role column and no permission
+column**: the token already answered that, and a second copy is a second
+authority that drifts.
 
-Express this in your stack's own idiom — where the middleware is wired, where
-the shared helper lives, and how a handler returns 403 — following the
-conventions that skill already sets.
+Express this in your stack's own idiom — where the verifier is wired, where the
+shared helper lives, and how a handler returns 401 — following the conventions
+that skill already sets.
 
 ---
 
@@ -576,18 +583,18 @@ conventions that skill already sets.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Every operation answers 200 for anyone, tests included | The scope middleware is wired where the framework runs it before the operation's scope is known (Go: `r.Use`) | Wire it in the generated server's `Middlewares` / as the service's interceptor — the asset carries the proof test. |
-| Signed-in user loops back to the login page forever, ~160 ms per cycle | `if (res.status === 401) signIn()` in the API client: the gateway answers 401 for a missing scope exactly as for a dead token | The 401 rule — 401 + `tokenIsValid()` ⇒ Forbidden; only an absent/expired token signs in. Copy `assets/api-client.ts`; a handler answers **403** + `insufficient_scope`. |
+| The service will not start: `GATEWAY_ASSERTION_CERTIFICATE is not set` | Running outside a deployed cell, or in an environment whose gateway has no keypair | Locally, set the three variables from a throwaway keypair. In a cell this is fail-closed on purpose: the environment's gateway needs provisioning. |
+| Every request 401s right after a deploy | The environment's gateway was re-provisioned; this component still holds the previous certificate | Redeploy the component — the certificate rides its ReleaseBinding. |
+| A forged request is served as an anonymous caller | An unverifiable assertion was treated as "no caller" | A present-but-invalid assertion is always a 401. |
+| Signed-in user loops back to the login page forever, ~160 ms per cycle | `if (res.status === 401) signIn()` in the API client: the gateway answers 401 for a missing scope exactly as for a dead token | The 401 rule — 401 + `tokenIsValid()` ⇒ Forbidden; only an absent/expired token signs in. Copy `assets/api-client.ts`. |
 | Sign-in succeeds, looks perfectly healthy, and EVERY `/api` call 401s | The token's `aud` is not this project's resource server — `resource` missing from one of the three legs | Set all three: `settings.resource`, `extraTokenParams`, and the `signinSilent({ resource, … })` argument. |
 | `tsc` is green but a screen is gated on a handle the design dropped, or a new handle reaches nothing | `scopes.gen.ts` is stale, or the handle was retyped as a string literal in JSX | `build` is `npm run gen && tsc --noEmit && vite build`; gate from `SCREENS` through `src/screens.ts`, never from a literal. |
 | `TS2353: 'useRefreshToken' / 'clockSkewInSeconds' does not exist in type 'UserManagerSettings'` | Neither is a member in oidc-client-ts 3.5.0 | Delete both. `automaticSilentRenew: true` drives the refresh grant; the expiry grace is the asset's own `CLOCK_SKEW_SECONDS`. |
 | The header badge is empty for a user who clearly has a role | Code read `user.profile.groups` | `heldRoles()` — the roles whose EVERY grant is in the token's `scope`. |
 | "You have no access" is drawn with a navbar and an empty sidebar around it | `NoAccess` was rendered through `AppShell`'s `<Outlet />` | Return it ABOVE the shell route; `Forbidden` is the one that stays inside. |
-| A caller with no subject is treated as signed in | The check tested "`X-User-Id` present"; the gateway sets every mapped header even when the claim is absent | Test for the EMPTY string. |
-| A role-scoped caller signs in but sees no rows | The handler filtered on `X-User-Id` and never widened, or matched `X-User-Id` against a directory id | Widen with `hasScope("<resource>:<any-action>")`; resolve directory records by `X-User-Name`. |
-| A caller holding `claims:read-all` is refused `GET /claims` | Scope comparison is an exact string match; the widening handle does not imply the operation's own handle | A design finding: the role must be granted `claims:read` too. Report it; do not special-case it in code. |
-| A public endpoint trusts `X-User-Id` | A public operation has no policy to overwrite an inbound header, so the caller set it | A handler behind `security: []` reads no identity header at all. |
-| `bal test` never runs, so the Ballerina scope table silently drifts | `bal build` does not run tests | Verify is `bal build && bal test`. |
+| A role-scoped caller signs in but sees no rows | The SPA called `/me/…` for a role whose screen lists every row, or the handler matched `sub` against a directory id | The screen calls the operation whose path is its reach (`/claims` for an every-row queue); resolve directory records by username. |
+| A caller holding `claims:read-all` is refused `GET /me/claims` | Scope comparison is an exact string match; `claims:read-all` guards `GET /claims`, a different operation | The SPA calls the operation the role's handle guards. If the role genuinely needs both views, the design grants both handles — report it; do not special-case it in code. |
+| A public endpoint trusts an identity | A public operation has no policy, so every inbound header is the caller's own and no assertion is minted | A handler behind `security: []` reads no identity at all. |
 | A newly granted permission does not show up for a user who is already signed in | A refresh narrows but never widens — RFC 6749 §6 | Sign out and in again; a removed grant, by contrast, disappears at the next renew. |
 | Sign-in loops at the right path, or the user is sent to login on every visit / new tab | No persistent `WebStorageStateStore` (the in-memory default loses the PKCE verifier across the redirect), session in `sessionStorage`, or the load path calls `signIn()` on a merely-expired token | `WebStorageStateStore({ store: localStorage })` + `automaticSilentRenew`; renew via `signinSilent()` and only `signIn()` when there is no session. |
 | After login, "invalid redirect URI" | `redirect_uri` doesn't match the `<origin>/callback` the platform registered | Compute `window.location.origin + '/callback'`. |

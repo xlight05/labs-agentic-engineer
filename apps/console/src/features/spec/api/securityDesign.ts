@@ -39,7 +39,7 @@
 
 import {
   checkSecurityDesign,
-  PUBLIC_SCREEN,
+  PRD_PATH,
   roleGrants,
   securityDesignSchema,
   type SecurityDesign,
@@ -87,7 +87,7 @@ export function parseSecurityDesign(
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return { kind: "empty" };
   }
-  if ("version" in raw && (raw as { version?: unknown }).version !== 2) {
+  if ("version" in raw && (raw as { version?: unknown }).version !== 3) {
     const problem = checkSecurityDesign(SECURITY_DESIGN_PATH, text);
     if (problem) {
       return { kind: "invalid", message: unprefixed(problem.message) };
@@ -202,9 +202,6 @@ export function planUsers(doc: SecurityDesign): PlannedUser[] {
 /** One role of the document, spelled out so the selectors below can name it. */
 export type SecurityRole = SecurityDesign["roles"][number];
 
-/** Which ROWS an action reaches — `securityspec.Ownership`. */
-export type Ownership = SecurityDesign["permissions"][number]["actions"][number]["ownership"];
-
 /** What a role is assigned TO. Absent in the document means `user`. */
 export type RoleKind = "user" | "service";
 
@@ -304,8 +301,6 @@ export interface MatrixRow {
   action: string;
   /** The component that OWNS the resource, as `design.cell` names it. */
   component: string;
-  /** Which rows the action reaches. Required by the schema, never inferred. */
-  ownership: Ownership;
   /** The document's prose, or "" when it authored none (the schema forbids ""). */
   description: string;
   /**
@@ -339,36 +334,6 @@ export interface MatrixColumn {
   role: SecurityRole;
 }
 
-/** One screen named by the baseline rows. */
-export interface BaselineScreen {
-  component: string;
-  screen: string;
-}
-
-/**
- * The two rows under the catalog: what any signed-in account reaches, and what
- * is reachable before sign-in.
- *
- * **What this document knows.** `security.json` carries `screens[]` and nothing
- * else about reachability: a screen whose `requires` is `null` is the
- * signed-in baseline, and one whose `requires` is `"public"` is open.
- *
- * **What it does NOT know.** An OPERATION's protection is authored in that
- * component's `specs/design/components/<component>/openapi.yaml`, in the
- * operation's `security` block — never here. So the design's "any signed-in
- * user · GET /me" row is only half derivable from this document: the screens
- * come from here, the operations must come from the component contracts the
- * panel reads separately (`useSpecFileContent` + `@aep/ui-openapi-view`'s
- * parsed `protection`). These fields are deliberately screens-only rather than
- * pretending an empty operation list means "no unscoped operations".
- */
-export interface SecurityBaseline {
-  /** Screens with `requires: null` — any signed-in account reaches them. */
-  signedInScreens: BaselineScreen[];
-  /** Screens with `requires: "public"` — reachable before sign-in. */
-  publicScreens: BaselineScreen[];
-}
-
 /** The whole matrix: banded rows, the columns they are scored against. */
 export interface SecurityMatrix {
   /** The catalog, grouped by resource, in declaration order. */
@@ -386,22 +351,6 @@ export interface SecurityMatrix {
    * does), which works because `MatrixRow.grantedBy` scores every role.
    */
   serviceColumns: MatrixColumn[];
-  baseline: SecurityBaseline;
-}
-
-/**
- * The screens-only baseline. See `SecurityBaseline` for what this document
- * cannot answer.
- */
-export function baselineScreens(doc: SecurityDesign): SecurityBaseline {
-  const signedInScreens: BaselineScreen[] = [];
-  const publicScreens: BaselineScreen[] = [];
-  for (const screen of doc.screens) {
-    const entry = { component: screen.component, screen: screen.screen };
-    if (screen.requires === null) signedInScreens.push(entry);
-    else if (screen.requires === PUBLIC_SCREEN) publicScreens.push(entry);
-  }
-  return { signedInScreens, publicScreens };
 }
 
 /**
@@ -433,7 +382,6 @@ export function securityMatrix(doc: SecurityDesign): SecurityMatrix {
         resource: permission.resource,
         action: action.handle,
         component: permission.component,
-        ownership: action.ownership,
         description: action.description ?? "",
         grantedBy: doc.roles
           .filter((role) => grants.get(role.name)?.has(handle) === true)
@@ -455,7 +403,7 @@ export function securityMatrix(doc: SecurityDesign): SecurityMatrix {
     (kind === "service" ? serviceColumns : columns).push(column);
   }
 
-  return { groups, columns, serviceColumns, baseline: baselineScreens(doc) };
+  return { groups, columns, serviceColumns };
 }
 
 /**
@@ -522,15 +470,27 @@ export function rolesGranting(doc: SecurityDesign, handle: string): string[] {
  * Both OpenAPI spellings are listed because the rules try `.yaml` then `.yml`;
  * a caller resolves whichever exists and answers `undefined` for the other.
  * Paths come back deduplicated, in a stable order.
+ *
+ * `known` is every spec path the project has anywhere — the committed tree plus
+ * the room's live files. It is what makes EVERY wireframe readable rather than
+ * only the ones this document already mentions, and the ungated-screen rule
+ * needs exactly that: a web application whose screens are all ungated names
+ * itself nowhere in `screens[]`, so a path list derived from the document alone
+ * would skip the one component the rule exists to catch. The PRD rides along
+ * for the same reason — the page shows the actors a reader compares the roles
+ * against, and no field of this document names that file.
  */
-export function referencePaths(doc: SecurityDesign): string[] {
-  const paths = new Set<string>([DESIGN_CELL_PATH]);
+export function referencePaths(doc: SecurityDesign, known: readonly string[] = []): string[] {
+  const paths = new Set<string>([DESIGN_CELL_PATH, PRD_PATH]);
   for (const component of new Set(doc.permissions.map((p) => p.component))) {
     paths.add(`${componentDir(component)}/openapi.yaml`);
     paths.add(`${componentDir(component)}/openapi.yml`);
   }
   for (const component of new Set(doc.screens.map((s) => s.component))) {
     paths.add(`${componentDir(component)}/wireframes.dsl`);
+  }
+  for (const path of known) {
+    if (path.endsWith("/wireframes.dsl")) paths.add(path);
   }
   return [...paths];
 }

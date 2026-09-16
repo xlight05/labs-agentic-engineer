@@ -1,31 +1,31 @@
 {
-  "version": 2,
+  "version": 3,
   "permissions": [
     {
       "resource": "appointments",
       "component": "appointments-api",
       "description": "Patient appointments and the day's diary",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "See own appointments" },
-        { "handle": "read-all", "ownership": "any", "description": "See the whole day" },
-        { "handle": "book", "ownership": "own", "description": "Book an appointment" },
-        { "handle": "cancel", "ownership": "own", "description": "Cancel own appointment" },
-        { "handle": "manage", "ownership": "any", "description": "Move, check in, cancel any" }
+        { "handle": "read", "description": "See own appointments" },
+        { "handle": "read-all", "description": "See the whole day" },
+        { "handle": "book", "description": "Book an appointment" },
+        { "handle": "cancel", "description": "Cancel own appointment" },
+        { "handle": "manage", "description": "Move, check in, cancel any" }
       ]
     },
     {
       "resource": "schedule",
       "component": "appointments-api",
       "actions": [
-        { "handle": "read", "ownership": "any", "description": "See the clinic schedule" },
-        { "handle": "publish", "ownership": "any", "description": "Publish next week" }
+        { "handle": "read", "description": "See the clinic schedule" },
+        { "handle": "publish", "description": "Publish next week" }
       ]
     },
     {
       "resource": "records",
       "component": "appointments-api",
       "actions": [
-        { "handle": "read", "ownership": "own", "description": "Records of the caller's own patients" }
+        { "handle": "read", "description": "Records of the caller's own patients" }
       ]
     }
   ],

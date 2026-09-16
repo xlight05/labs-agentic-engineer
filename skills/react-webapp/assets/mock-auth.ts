@@ -48,14 +48,13 @@
 // reach it.
 //
 // THE MOCK NEVER WIDENS. `mockRoles` carries each role's grants exactly as
-// security.json declares them, and mock/handlers.ts enforces the exact handle
-// the contract declares. A mock that accepts `claims:read-all` where the
-// contract says `claims:read` lets a role pass a walk the real service answers
-// 403 to — which hides the precise defect the walk exists to find. A role that
-// cannot reach its own screen is a DESIGN DEFECT to report, never a mock to
-// loosen.
+// security.json declares them, and mock/gateway.ts enforces the exact handle
+// the CONTRACT declares — read out of openapi.yaml, never transcribed. A role
+// that cannot reach its own screen is a DESIGN DEFECT to report, never a mock
+// to loosen.
 
 import { mockRoles } from "./roles";
+import { scopesFromToken } from "./gateway";
 
 // The OIDC scopes the platform always requests beside the project handles. They
 // are in the real token's `scope` claim, so they are in the mock's too — and
@@ -146,18 +145,14 @@ function user(): MockUser {
 
 /**
  * The scopes carried by an `Authorization: Bearer mock:claims:read,…` header.
- * mock/handlers.ts enforces with this, so a scope-gated operation is scope-gated
- * in mock mode too — the 403 + `insufficient_scope` included.
+ *
+ * Re-exported from mock/gateway.ts rather than defined here, because in
+ * production it is the GATEWAY that reads a token. This module mints one in
+ * that format; the handlers import this name for ownership WIDENING, which is
+ * the one thing a real service reads the scope claim for. Whether an operation
+ * may be called at all is the gateway's answer, not a handler's.
  */
-export function scopesFromToken(header: string | null): string[] {
-  const token = header?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!token.startsWith("mock:")) return [];
-  return token
-    .slice("mock:".length)
-    .split(",")
-    .map((value) => decodeURIComponent(value).trim())
-    .filter(Boolean);
-}
+export { scopesFromToken };
 
 // Signed in already, unless ?auth=out says otherwise — in which case this is
 // the redirect coming back: drop the parameter and reload, and the caller finds
@@ -197,9 +192,11 @@ export async function accessToken(): Promise<string | null> {
 
 /**
  * The mock session never expires, so this answers "is somebody signed in?".
- * src/api-client.ts asks it on every 401 and 403: with a session, a refusal is
- * about SCOPE and routes to Forbidden; without one it signs in. Returning true
- * unconditionally here would make `?auth=out` unwalkable.
+ * src/api-client.ts asks it on every 401: with a session, the refusal is about
+ * SCOPE and routes to Forbidden; without one it signs in. That is the whole of
+ * the 401 rule, and mock mode is where it is walked — the gateway answers 401
+ * for both cases and this is the only thing that tells them apart. Returning
+ * true unconditionally here would make `?auth=out` unwalkable.
  */
 export async function tokenIsValid(): Promise<boolean> {
   return !signedOut();
