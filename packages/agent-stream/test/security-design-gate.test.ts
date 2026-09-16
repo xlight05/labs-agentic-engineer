@@ -339,3 +339,34 @@ test("the FileBundle refuses a bad security.json and stays byte-for-byte unchang
   assert.equal(res.code, "SCHEMA_VIOLATION");
   assert.equal(bundle.snapshot()[PATH], before);
 });
+
+// The rejection is the model's ONLY signal about what happened to the file:
+// seen live, the agent answered a refused `addFile` with `editFile` (the rule
+// sentence reads as advice about a file that exists — "Rename the role.") and
+// got NO_SUCH_FILE. The message has to say the write was refused and name the
+// retry, like every other gate's does.
+test("a refused addFile creates nothing, and says so plus the retry move", () => {
+  const bundle = new FileBundle({});
+  const clashing = JSON.stringify({
+    ...JSON.parse(fixture("expense-tracker")),
+    roles: [
+      { name: "Employees", description: "a", stories: [1], grants: ["claims:read"], assignTo: ["Employees"] },
+    ],
+    testUsers: [{ username: "test-employee", roles: ["Employees"] }],
+  });
+
+  const add = bundle.addFile(PATH, clashing);
+  assert.equal(add.ok, false);
+  if (add.ok) throw new Error("expected rejection");
+  assert.equal(add.code, "SCHEMA_VIOLATION");
+  assert.match(add.message, /also declared in groups\[\]/);
+  assert.match(add.message, /The file is unchanged/);
+  assert.match(add.message, /addFile/);
+
+  // Nothing landed, so the edit the message must NOT invite has nowhere to go.
+  assert.equal(bundle.has(PATH), false);
+  const edit = bundle.editFile(PATH, '"Employees"', '"ITStaff"');
+  assert.equal(edit.ok, false);
+  if (edit.ok) throw new Error("expected rejection");
+  assert.equal(edit.code, "NO_SUCH_FILE");
+});
