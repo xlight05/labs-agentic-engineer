@@ -256,6 +256,82 @@ spec:
               items:
                 type: string
               default: []
+            forwardedTokenHeader:
+              type: string
+              default: "x-forwarded-authorization"
+              description: >-
+                Header the VALIDATED token is re-presented under upstream.
+                jwt-auth v1.3.0 strips the inbound `Authorization` and forwards
+                under this name; its own default is `x-forwarded-authorization`,
+                which is what `api-management` is written against. Set it to
+                "Authorization" only for an upstream that demands the original
+                header — a handler that reads `Authorization` naively then gets
+                a token instead of nothing, which is the failure this default
+                prevents.
+
+        # --- backend-jwt policy ---
+        # MEASURED 2026-09-15, and the reason the composition below is per
+        # operation rather than API level: an API-level backend-jwt cannot see
+        # the authenticated context of a PER-OPERATION jwt-auth. In that shape
+        # the assertion it mints carries only iss/iat/exp — no `sub`, no
+        # `scope` — while the unsigned x-user-* headers carry the real values,
+        # so a service trusting the assertion would read an empty caller and a
+        # service trusting the headers would be back to trusting unsigned
+        # input. backend-jwt is therefore emitted ALONGSIDE each operation's
+        # own jwt-auth, and at API level only in the `/*` default shape where
+        # the API-level jwt-auth is what authenticated the request.
+        # Gateway-signed assertion of the AUTHENTICATED caller, injected upstream.
+        # This is what lets a service prove a request came through the gateway:
+        # it verifies ONE platform-supplied public key per environment and never
+        # touches the IdP's JWKS. Runs after jwt-auth, so the assertion carries
+        # sub, scope, aud and the IdP's custom claims. A client-supplied value
+        # for the header is OVERWRITTEN by the gateway (measured 2026-09-15).
+        # The signing key is a gateway system parameter
+        # (`policy_configurations.backendjwt_v1.signingkey`), not a trait field.
+        BackendJwtConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            header:
+              type: string
+              default: "x-jwt-assertion"
+            # The VERIFICATION half of the same keypair, delivered to the
+            # upstream container as environment variables (see the Deployment
+            # patch at the bottom of this file). The gateway holds the private
+            # key; a service that does not hold this can read the assertion but
+            # cannot believe a word of it, and nothing else in the platform
+            # delivers it — the keypair is a property of the environment's
+            # gateway, and a component's namespace cannot reference a ConfigMap
+            # in the gateway's.
+            #
+            # A self-signed X.509 CERTIFICATE rather than a bare SPKI public
+            # key, because that is the shape both generated stacks can read:
+            # Ballerina's `crypto:decodeRsaPublicKeyFromContent` takes
+            # certificate content and nothing else. It carries no trust of its
+            # own — it is a container for the public key, pinned by the platform
+            # that published it and verified by nobody.
+            #
+            # Written by aep-api from the Environment's
+            # `aep.wso2.com/gateway-assertion-*` annotations, which
+            # setup-environment-gateway.sh puts there when it provisions the
+            # gateway's keypair — the same projection the Thunder binding uses,
+            # and the only one aep-api can read from outside the cluster.
+            #
+            # Empty is the honest default and the fail-closed one: an
+            # environment whose gateway has no keypair delivers nothing, and a
+            # service that requires it refuses to start rather than trusting an
+            # assertion it cannot verify.
+            certificate:
+              type: string
+              default: ""
+            # The `iss` the gateway stamps on the assertion — NOT the IdP's
+            # issuer. Delivered so the service can pin it instead of accepting
+            # any token the key happens to verify.
+            issuer:
+              type: string
+              default: ""
 
         # --- basic-ratelimit policy ---
         # Restricts request rates using one or more time windows.
@@ -314,6 +390,9 @@ spec:
         jwtAuth:
           $ref: "#/$defs/JwtAuthConfig"
           default: {}
+        backendJwt:
+          $ref: "#/$defs/BackendJwtConfig"
+          default: {}
         rateLimit:
           $ref: "#/$defs/RateLimitConfig"
           default: {}
@@ -352,6 +431,8 @@ spec:
             - method: DELETE
               path: "/*"
             - method: OPTIONS
+              path: "/*"
+            - method: HEAD
               path: "/*"
           items:
             type: object
@@ -446,6 +527,21 @@ spec:
           type: string
           default: ""
           description: "Base path appended to the upstream URL."
+        context:
+          type: string
+          default: ""
+          description: >-
+            Custom suffix appended to the auto-derived API context path. Empty
+            leaves the context at /<env>-<namespace>-<component>-<endpoint>.
+        endpointVisibility:
+          type: string
+          default: "external"
+          description: >-
+            Visibility of the bound workload endpoint. The service
+            ComponentType creates an HTTPRoute only for an external endpoint,
+            so for "internal" the kgateway Backend is not created and the
+            HTTPRoute patches below are skipped — they would otherwise target
+            nothing and silently succeed.
       required:
         - endpointName
 
@@ -454,7 +550,13 @@ spec:
     # This Backend resource tells kgateway to forward traffic to the WSO2 API Platform
     # router instead of directly to the component's Service. The HTTPRoute's backendRef
     # is patched (below) to reference this Backend.
-    - template:
+    #
+    # External endpoints only: the service ComponentType creates no HTTPRoute for
+    # an internal endpoint, so there is nothing for this Backend to be referenced
+    # BY. Creating it anyway left an orphan object and made the patches below
+    # match nothing while still reporting success.
+    - includeWhen: ${parameters.endpointVisibility == "external"}
+      template:
         apiVersion: gateway.kgateway.dev/v1alpha1
         kind: Backend
         metadata:
@@ -516,7 +618,7 @@ spec:
         spec:
           displayName: ${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${parameters.endpointName}
           version: v1.0
-          context: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${parameters.endpointName}
+          context: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${parameters.endpointName}${parameters.context}
           upstream:
             main:
               url: "http://${metadata.componentName}.${metadata.namespace}:${parameters.upstreamPort > 0 ? parameters.upstreamPort : workload.endpoints[parameters.endpointName].port}${parameters.upstreamBasePath}"
@@ -531,7 +633,9 @@ spec:
           policies: >-
             ${(environmentConfigs.cors.enabled ? [{"name": "cors", "version": "v1", "params": {"allowedOrigins": environmentConfigs.cors.allowedOrigins, "allowedMethods": environmentConfigs.cors.allowedMethods, "allowedHeaders": environmentConfigs.cors.allowedHeaders, "allowCredentials": environmentConfigs.cors.allowCredentials}}] : [])
               + ((environmentConfigs.jwtAuth.enabled && !parameters.operations.exists(op, (has(op.policies) && op.policies.size() > 0) || (has(op.public) && op.public)))
-                  ? [{"name": "jwt-auth", "version": "v1", "params": {"issuers": environmentConfigs.jwtAuth.issuers, "audiences": environmentConfigs.jwtAuth.audience, "claimMappings": {"sub": "x-user-id", "username": "x-user-name", "ouHandle": "x-user-ou", "groups": "x-user-groups", "scope": "x-user-scopes"}}}] : [])
+                  ? [{"name": "jwt-auth", "version": "v1", "params": {"issuers": environmentConfigs.jwtAuth.issuers, "audiences": environmentConfigs.jwtAuth.audience, "forwardedTokenHeader": environmentConfigs.jwtAuth.forwardedTokenHeader, "claimMappings": {"sub": "x-user-id", "username": "x-user-name", "ouHandle": "x-user-ou", "groups": "x-user-groups", "scope": "x-user-scopes"}}}] : [])
+              + ((environmentConfigs.backendJwt.enabled && environmentConfigs.jwtAuth.enabled && !parameters.operations.exists(op, (has(op.policies) && op.policies.size() > 0) || (has(op.public) && op.public)))
+                  ? [{"name": "backend-jwt", "version": "v1", "params": {"header": environmentConfigs.backendJwt.header}}] : [])
               + (environmentConfigs.rateLimit.enabled ? [{"name": "basic-ratelimit", "version": "v1", "params": {"limits": environmentConfigs.rateLimit.limits}}] : [])
               + (environmentConfigs.addHeaders.enabled ? [{"name": "add-headers", "version": "v1", "params": {"requestHeaders": environmentConfigs.addHeaders.requestHeaders, "responseHeaders": environmentConfigs.addHeaders.responseHeaders}}] : [])}
           # Operations. `method` and `path` pass through; the per-operation
@@ -561,6 +665,7 @@ spec:
                     "version": has(p.version) && p.version != "" ? p.version : "v1",
                     "params": {
                       "issuers": environmentConfigs.jwtAuth.issuers,
+                      "forwardedTokenHeader": environmentConfigs.jwtAuth.forwardedTokenHeader,
                       "audiences": has(p.params) && has(p.params.audiences) && p.params.audiences.size() > 0
                         ? p.params.audiences : environmentConfigs.jwtAuth.audience,
                       "claimMappings": {"sub": "x-user-id", "username": "x-user-name", "ouHandle": "x-user-ou", "groups": "x-user-groups", "scope": "x-user-scopes"},
@@ -573,6 +678,8 @@ spec:
                         : oc_omit()
                     }
                   })
+                  + (environmentConfigs.backendJwt.enabled
+                      ? [{"name": "backend-jwt", "version": "v1", "params": {"header": environmentConfigs.backendJwt.header}}] : [])
                 : oc_omit()
             })}
 
@@ -588,7 +695,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${resource.metadata.labels["openchoreo.dev/endpoint-name"] == parameters.endpointName}'
+        where: '${resource.metadata.labels["openchoreo.dev/endpoint-name"] == parameters.endpointName && parameters.endpointVisibility == "external"}'
       operations:
         - op: replace
           path: /spec/rules/0/backendRefs/[?(@.name=='${metadata.componentName}')]
@@ -603,4 +710,55 @@ spec:
           path: /spec/rules/0/filters/0/urlRewrite/path
           value:
             type: ReplacePrefixMatch
-            replacePrefixMatch: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${parameters.endpointName}
+            replacePrefixMatch: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${parameters.endpointName}${parameters.context}
+        # --- Patch HTTPRoute: widen the path match to include the context suffix ---
+        # kgateway matches BEFORE the rewrite, so a non-empty `context` that is
+        # not also in the match makes every request on the suffixed path a 404
+        # before the rewrite is ever applied. No-op when `context` is empty.
+        - op: replace
+          path: /spec/rules/0/matches/0/path
+          value:
+            type: PathPrefix
+            value: /${metadata.componentName}-${parameters.endpointName}${parameters.context}
+
+    # --- Patch Deployment: deliver the assertion's verification half ---
+    # The gateway signs the upstream assertion with a key the service never
+    # sees. These three variables are what let the service verify it: the
+    # certificate carrying the public key, the issuer to pin, and the header to
+    # read. Without them a service is back to trusting unsigned headers, which
+    # is the whole thing the assertion exists to replace.
+    #
+    # `add` on `/env/-`, never `replace` on `/env`: the ComponentType renders
+    # that list from the component's own dependencies (`dependencies.toContainerEnvs()`),
+    # and replacing it would drop every one of them.
+    #
+    # Gated on a NON-EMPTY certificate rather than on `enabled` alone. An
+    # environment whose gateway has no keypair must deliver nothing at all — an
+    # empty GATEWAY_ASSERTION_CERTIFICATE is worse than an absent one, because a
+    # service can only distinguish "not configured" from "configured with
+    # nothing" if the platform never emits the second.
+    #
+    # No `resource.` filter in the `where`: a component's release has exactly
+    # one Deployment, and it is the one that serves every endpoint this trait
+    # can be attached to.
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+        where: '${environmentConfigs.backendJwt.enabled && environmentConfigs.backendJwt.certificate != ""}'
+      operations:
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: GATEWAY_ASSERTION_CERTIFICATE
+            value: ${environmentConfigs.backendJwt.certificate}
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: GATEWAY_ASSERTION_ISSUER
+            value: ${environmentConfigs.backendJwt.issuer}
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: GATEWAY_ASSERTION_HEADER
+            value: ${environmentConfigs.backendJwt.header}

@@ -17,10 +17,10 @@
  */
 
 /**
- * SecurityDesign v2 — the AUTHORED `specs/design/security.json`. There is no
+ * SecurityDesign v3 — the AUTHORED `specs/design/security.json`. There is no
  * prose companion: this file is the whole security design.
  *
- * v2 makes the permission **catalog** the centre of the document. A project
+ * The permission **catalog** is the centre of the document. A project
  * owns one OAuth resource server; `permissions[]` declares its resources and
  * the actions on them, and every other section references those handles rather
  * than restating prose:
@@ -32,8 +32,10 @@
  *
  * It is read by two very different consumers:
  *
- *  - the **coding agent**, which implements the permissions it declares
- *    (including the `own`/`any` row filter each action carries);
+ *  - the **coding agent**, which implements the permissions it declares.
+ *    Which ROWS an operation reaches is not in this file at all: it is the
+ *    operation's PATH in `openapi.yaml` — under `/me/` the caller's, otherwise
+ *    every row (ADR-0031). A handle says what a caller may do, never how far;
  *  - the **platform**, deterministically at build time (no model in the loop),
  *    which ensures the resource server, its actions, the project roles, the org
  *    groups and the test users exist on the identity provider before validation
@@ -57,11 +59,11 @@
 /** The authored `specs/design/security.json`. */
 export interface SecurityDesign {
   /**
-   * Schema version. Pinned to the literal `2`, not widened to `number`: one
-   * version exists at a time, and a stale `1` appearing here is caught by the
-   * codec with a message naming the fields v2 removed.
+   * Schema version. Pinned to the literal `3`, not widened to `number`: one
+   * version exists at a time, and a stale `1` or `2` appearing here is caught
+   * by the codec with a message naming what changed.
    */
-  version: 2;
+  version: 3;
   /**
    * The permission catalog — every resource this project's services expose and
    * the actions on them. At least one. `resource` is unique within the project.
@@ -114,21 +116,15 @@ export interface Action {
    * The action name — one lowercase handle segment (`read`, `read-all`,
    * `submit`). Unique within its resource; the same segment may legally appear
    * under a different resource (`claims:read` and `reports:read` coexist).
+   *
+   * An action carries no row axis. `read` and `read-all` are two actions
+   * because they guard two operations — `GET /me/claims` and `GET /claims` —
+   * and the path of each says which rows it reaches; nothing here does.
    */
   handle: string;
-  /**
-   * Which rows the action reaches: `own` (only the caller's) or `any`. The
-   * coding agent emits the row filter for `own`; the console shows it beside
-   * the handle. Required — an unstated ownership is how prose-only permissions
-   * turn into a list-everything endpoint.
-   */
-  ownership: Ownership;
   /** What holding this action lets a caller do. */
   description?: string | undefined;
 }
-
-/** Which rows an action reaches. */
-export type Ownership = "own" | "any";
 
 /** An org group this project introduces. */
 export interface Group {

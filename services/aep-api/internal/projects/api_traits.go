@@ -109,6 +109,14 @@ type APIConfigurationDesired struct {
 	// default (six methods on `/*`) in place: one API-level jwt-auth and no
 	// per-operation scope.
 	Operations []Operation
+	// Assertion is the environment gateway's signed-assertion contract — the
+	// certificate a service verifies against, the issuer it pins and the header
+	// it reads. An unconfigured one turns the whole feature off for this
+	// component: the gateway mints no assertion and the container is handed no
+	// certificate, which is the only honest pair of answers. Handing over a
+	// certificate with no assertion, or an assertion with no certificate, both
+	// end as a service that believes something it cannot check.
+	Assertion openchoreo.GatewayAssertion
 }
 
 // DesiredAPIConfigurationTrait returns the BFF-internal desired state for the
@@ -197,6 +205,27 @@ func DesiredAPIConfigurationTrait(in APIConfigurationDesired) (traits []openchor
 				"audience": audience,
 			},
 		},
+	}
+	// The gateway-signed assertion, and with it the verification half the trait
+	// puts in the container's environment. Omitted rather than emitted disabled
+	// when the environment publishes none: the whole config map is replaced on
+	// every write, so an absent block reverts to the trait's `enabled: false`
+	// default — and an explicitly disabled block carrying an empty certificate
+	// would read as "configured with nothing", which is the one state the
+	// trait's gate is written to keep out of a container.
+	if in.Assertion.Configured() {
+		backendJwt := map[string]interface{}{
+			"enabled":     true,
+			"certificate": in.Assertion.Certificate,
+			"issuer":      in.Assertion.Issuer,
+		}
+		// The header is the policy's own default; emitted only when the
+		// environment names one, so the trait schema stays the single place
+		// that spells `x-jwt-assertion`.
+		if h := strings.TrimSpace(in.Assertion.Header); h != "" {
+			backendJwt["header"] = h
+		}
+		configs[inst]["backendJwt"] = backendJwt
 	}
 	return traits, configs
 }

@@ -4,7 +4,7 @@
   "properties": {
     "version": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "permissions": {
       "minItems": 1,
@@ -34,21 +34,13 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "ownership": {
-                  "type": "string",
-                  "enum": [
-                    "own",
-                    "any"
-                  ]
-                },
                 "description": {
                   "type": "string",
                   "minLength": 1
                 }
               },
               "required": [
-                "handle",
-                "ownership"
+                "handle"
               ],
               "additionalProperties": false
             }

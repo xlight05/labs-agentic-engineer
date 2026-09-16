@@ -1941,13 +1941,13 @@ const ORDERS_OPENAPI_PATH = "specs/design/components/orders-api/openapi.yaml";
 /** A minimal v2 catalog: one resource, one action, one role. */
 const SECURITY_DOC = JSON.stringify(
   {
-    version: 2,
+    version: 3,
     permissions: [
       {
         resource: "orders",
         component: "orders-api",
         actions: [
-          { handle: "read", ownership: "own", description: "See own orders" },
+          { handle: "read", description: "See own orders" },
         ],
       },
     ],
@@ -2055,22 +2055,16 @@ describe("SpecView — the Security page's architecture facts", () => {
     });
     openSecurity();
 
-    // The other two baseline rows still render — this is one absent fact, not
-    // a broken page. Read out of the GRID: the screens block says "Any
-    // signed-in person" too, and this assertion exists to prove the baseline
-    // row, so it must not be satisfiable by the block below it.
+    // No row and no sub-header: the baseline exists only to name an exposure,
+    // and an unanswered read has none to name. The grid itself still renders.
     const grid = screen.getByRole("table");
-    expect(within(grid).getByText("Any signed-in person")).toBeInTheDocument();
+    expect(within(grid).queryByText("No sign-in at all")).not.toBeInTheDocument();
     expect(
-      within(grid).queryByText("No sign-in at all"),
+      within(grid).queryByText("Reachable without a permission"),
     ).not.toBeInTheDocument();
-    // The sub-header stands on the two rows that always render.
-    expect(
-      within(grid).getByText("Reachable without a permission"),
-    ).toBeInTheDocument();
   });
 
-  it("says so when every component provisions sign-in", () => {
+  it("draws nothing when every component provisions sign-in", () => {
     mockUseDesignDependencies.mockReturnValue({
       data: [
         {
@@ -2090,9 +2084,8 @@ describe("SpecView — the Security page's architecture facts", () => {
     });
     openSecurity();
 
-    expect(
-      screen.getByText("Every component signs people in."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Reachable without a permission")).not.toBeInTheDocument();
+    expect(screen.queryByText("No sign-in at all")).not.toBeInTheDocument();
   });
 });
 
@@ -2113,7 +2106,7 @@ describe("SpecView — the API view's granting roles and audience", () => {
       refetch: vi.fn(),
     });
     mockUseApiViewSecurity.mockReturnValue({
-      roles: { "orders:read": { roles: ["Shopper"], note: "own rows" } },
+      roles: { "orders:read": { roles: ["Shopper"], note: "filtered by caller" } },
       resourceServer: "https://aep.wso2.com/orgs/acme/projects/shop",
     });
   });
@@ -2130,7 +2123,7 @@ describe("SpecView — the API view's granting roles and audience", () => {
     render(<SpecView projectName="proj1" />);
 
     expect(screen.getByText("orders:read")).toBeInTheDocument();
-    expect(screen.getByText("Shopper · own rows")).toBeInTheDocument();
+    expect(screen.getByText("Shopper · filtered by caller")).toBeInTheDocument();
   });
 
   it("names the audience the scopes are granted on", () => {

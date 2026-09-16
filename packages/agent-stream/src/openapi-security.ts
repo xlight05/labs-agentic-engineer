@@ -350,7 +350,56 @@ function checkProtected(
     const problem = checkOperationSecurity(component, op, owners);
     if (problem) return problem;
   }
-  return identityHeaderProblem(ops);
+  return mixedReachProblem(ops) ?? identityHeaderProblem(ops);
+}
+
+/**
+ * True when `path` reaches the CALLER's rows — `/me` or anything under `/me/`.
+ * Every other path reaches every row (ADR-0031). This is the whole of the row
+ * axis: a design has no other place to say which rows an operation returns, so
+ * the console derives what it shows beside a handle from this one predicate.
+ */
+export function isCallerPath(path: string): boolean {
+  return path === "/me" || path.startsWith("/me/");
+}
+
+/**
+ * The scope an operation names, once `checkOperationSecurity` has passed it —
+ * one requirement object, one scope. Null for a public operation, one that
+ * inherits the document default, or one with no `security` key.
+ */
+function scopeOf(op: Operation): string | null {
+  const security = op.op["security"];
+  if (!Array.isArray(security) || security.length !== 1) return null;
+  const requirement = asRecord(security[0]);
+  if (!requirement) return null;
+  const scopes = Object.values(requirement)[0];
+  if (!Array.isArray(scopes) || scopes.length !== 1) return null;
+  const scope = scopes[0];
+  return typeof scope === "string" ? scope : null;
+}
+
+/**
+ * One reach per handle. A handle that guards an operation under `/me/` AND one
+ * outside it would let the gateway admit a caller to the every-row operation on
+ * the strength of a grant the design meant as "their own rows" — the exact
+ * confusion ADR-0031 removes by making the path the row axis. Reported once,
+ * naming the first operation on each side.
+ */
+function mixedReachProblem(ops: Operation[]): string | null {
+  const firstInside = new Map<string, string>();
+  const firstOutside = new Map<string, string>();
+  for (const op of ops) {
+    const scope = scopeOf(op);
+    if (scope === null) continue;
+    const side = isCallerPath(op.path) ? firstInside : firstOutside;
+    if (!side.has(scope)) side.set(scope, `${op.method} ${op.path}`);
+  }
+  for (const [scope, inside] of firstInside) {
+    const outside = firstOutside.get(scope);
+    if (outside !== undefined) return say("handle_mixed_reach", { scope, inside, outside });
+  }
+  return null;
 }
 
 /** Absent, `[]`, or ONE requirement object naming `oauth2` with at most one scope. */

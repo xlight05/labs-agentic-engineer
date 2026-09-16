@@ -24,16 +24,15 @@
  * and the component that owns it; columns are the user-kind roles; a filled
  * mark is a grant.
  *
- * Three rows sit at the foot of the grid under a "Reachable without a
- * permission" sub-header, because they cross no column: what any signed-in
- * person reaches without holding a handle, what is open before sign-in, and
- * which components provision no sign-in at all. They are a ladder of
- * decreasing protection and the labels are written to be read as one.
- *
- * The last two are adjacent and deliberately not merged. "Open before sign-in"
- * is a door deliberately left open in a component that DOES sign people in;
- * "No sign-in at all" is a component with no door to close — a reader deciding
- * whether this project exposes anything has to be able to tell them apart.
+ * One row can sit at the foot of the grid, under a "Reachable without a
+ * permission" sub-header, and only when it has something to say: the
+ * components that provision no sign-in at all, so whatever they serve they
+ * serve to everyone. It is the one exposure fact nothing else on the page or
+ * in the API view states. Operations and screens that need no permission are
+ * NOT repeated here — the API view names every operation's protection and the
+ * Screens block below names every screen's — and a chip saying which rows a
+ * handle reaches was dropped for the same reason: the path on the API view
+ * already says it (ADR-0031).
  *
  * Service-kind roles are not columns. A service principal holds an application
  * token and reaches no screen, so a column beside the roles a person holds
@@ -46,10 +45,8 @@
 
 import {
   Box,
-  Chip,
   ListingTable,
   Stack,
-  Tooltip,
   Typography,
 } from "@wso2/oxygen-ui";
 
@@ -58,28 +55,20 @@ import {
   isLastGrant,
   type MatrixColumn,
   type MatrixResourceGroup,
-  type Ownership,
   type SecurityMatrix,
 } from "../../api/securityDesign";
 import type { RoutedFindings } from "../../lib/securityFindings";
 import { FindingLines } from "./FindingLine";
 import { GrantCell } from "./GrantCell";
 
-/**
- * The rows under the catalog, already merged from the document's screens, the
- * component contracts' operations, and the architecture — one list per row, in
- * reading order.
- */
+/** The one row under the catalog, from the architecture rather than the document. */
 export interface BaselineRows {
-  signedIn: string[];
-  open: string[];
   /**
-   * Components that declare no sign-in dependency at all, so whatever they
-   * serve they serve to everyone. `null` means the dependency read has not
-   * answered — a different fact from "every component needs sign-in", and the
-   * row is omitted rather than asserting the wrong one.
+   * Components that declare no sign-in dependency at all. Empty when every
+   * component signs people in — or when the dependency read has not answered,
+   * which renders the same way: nothing is claimed either way.
    */
-  openComponents: string[] | null;
+  openComponents: string[];
 }
 
 export interface PermissionMatrixProps {
@@ -100,22 +89,6 @@ function lastGrantReason(role: string): string {
   return `Every role must grant at least one permission, so this one cannot be cleared — it is all ${role} has. Grant ${role} something else first, or ask in chat to remove the role.`;
 }
 
-/** What rows an action reaches, said in words a reader does not have to decode. */
-function ownershipWords(ownership: Ownership): string {
-  return ownership === "own"
-    ? "own — the caller's own records only"
-    : "any — every record of this resource";
-}
-
-/**
- * The chip's label. The schema's words are `own` and `any`; a reader of this
- * page has never seen them, so the chip carries the meaning and the tooltip
- * above becomes the longer answer rather than the only one.
- */
-function ownershipLabel(ownership: Ownership): string {
-  return ownership === "own" ? "own records" : "all records";
-}
-
 export function PermissionMatrix({
   matrix,
   baseline,
@@ -128,17 +101,13 @@ export function PermissionMatrix({
 
   return (
     <Box>
-      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
         Permissions
       </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Everything this project protects, and which role may do it. A role
-        grants these by name and the API asks for them by name — nothing else is
-        a permission.
-      </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        Tick a cell to move a grant between roles. New permissions or roles,
-        and changing what an operation requires, come from chat.
+        Everything this project protects, and which role may do it. Tick a cell
+        to move a grant between roles — new permissions, new roles and what an
+        operation requires all come from chat.
       </Typography>
 
       <FindingLines findings={findings.document} />
@@ -168,36 +137,21 @@ export function PermissionMatrix({
                 span={span}
               />
             ))}
-            {/*
-              The sub-header stands even when the third row is omitted: the
-              first two always render, and a ladder of two still needs saying.
-            */}
-            <ListingTable.Row>
-              <ListingTable.Cell colSpan={span} sx={{ bgcolor: "action.hover" }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Reachable without a permission
-                </Typography>
-              </ListingTable.Cell>
-            </ListingTable.Row>
-            <BaselineRow
-              label="Any signed-in person"
-              entries={baseline.signedIn}
-              span={span}
-              empty="Nothing — everything needs a permission."
-            />
-            <BaselineRow
-              label="Open before sign-in"
-              entries={baseline.open}
-              span={span}
-              empty="Nothing is open before sign-in."
-            />
-            {baseline.openComponents !== null && (
-              <BaselineRow
-                label="No sign-in at all"
-                entries={baseline.openComponents}
-                span={span}
-                empty="Every component signs people in."
-              />
+            {baseline.openComponents.length > 0 && (
+              <>
+                <ListingTable.Row>
+                  <ListingTable.Cell colSpan={span} sx={{ bgcolor: "action.hover" }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      Reachable without a permission
+                    </Typography>
+                  </ListingTable.Cell>
+                </ListingTable.Row>
+                <BaselineRow
+                  label="No sign-in at all"
+                  entries={baseline.openComponents}
+                  span={span}
+                />
+              </>
             )}
           </ListingTable.Body>
         </ListingTable>
@@ -250,18 +204,9 @@ function ResourceGroup({
         return (
           <ListingTable.Row key={row.handle}>
             <ListingTable.Cell>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {row.handle}
-                </Typography>
-                <Tooltip title={ownershipWords(row.ownership)}>
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={ownershipLabel(row.ownership)}
-                  />
-                </Tooltip>
-              </Stack>
+              <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                {row.handle}
+              </Typography>
               <FindingLines findings={rowFindings} dense />
             </ListingTable.Cell>
             <ListingTable.Cell>
@@ -295,20 +240,18 @@ function ResourceGroup({
 }
 
 /**
- * One of the rows with no column. They are inside the same grid on purpose: the
- * design's point is that the reader sees the baseline where they read the
- * grants, not in a panel they have to remember to open.
+ * The row with no column. It is inside the same grid on purpose: the design's
+ * point is that the reader sees the exposure where they read the grants, not
+ * in a panel they have to remember to open. Rendered only with entries.
  */
 function BaselineRow({
   label,
   entries,
   span,
-  empty,
 }: {
   label: string;
   entries: string[];
   span: number;
-  empty: string;
 }) {
   return (
     <ListingTable.Row>
@@ -319,7 +262,7 @@ function BaselineRow({
       </ListingTable.Cell>
       <ListingTable.Cell colSpan={span - 1}>
         <Typography variant="body2" color="text.secondary">
-          {entries.length > 0 ? entries.join(" · ") : empty}
+          {entries.join(" · ")}
         </Typography>
       </ListingTable.Cell>
     </ListingTable.Row>

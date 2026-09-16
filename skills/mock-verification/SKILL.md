@@ -64,12 +64,14 @@ smoke.
     would unlock it. Never a redirect to sign-in, never a blank page, never the
     screen itself.
   - **The mock must have refused something.** None of this means anything
-    unless `mock/handlers.ts` enforces the handle the contract declares and
-    answers 403 + `insufficient_scope` on it. A handler that answers 200
-    regardless, or that accepts a sibling handle (`claims:read-all` where the
-    contract says `claims:read`), makes the whole walk green and hides the
-    defect it exists to find. Check one refusal in
-    `agent-browser network requests` before you trust the rest.
+    unless the mock's gateway layer is actually enforcing. It reads the handles
+    out of `openapi.yaml`, so they cannot be wrong — but it can be OFF, and an
+    app where it is off is green everywhere and proves nothing. Two checks, and
+    both are cheap: the dev server prints how many operations it enforces and
+    from which contracts at startup, and one refusal shows in
+    `agent-browser network requests` as a bare **401** with the reason on the
+    console (`[mock gateway] 401 GET /claims — …`). See one before you trust
+    the rest.
 
   A screen a role is *meant* to reach but cannot, because the design does not
   grant it the handle the operation declares, is **open**, naming the role, the
@@ -97,9 +99,9 @@ Every item ends in exactly one:
 - **outside** — the truth lives outside the app: a computed total, a generated
   checklist, what the real IdP grants a real account. The mock answers to
   `openapi.yaml`, so it proves the request went out, never that the number is
-  right; `aep-validation` judges that against the deployed system. A **403 is
-  not outside** — the mock answers it from the contract's own handle, so
-  `Forbidden` is something you walk and see.
+  right; `aep-validation` judges that against the deployed system. A **refusal
+  is not outside** — the mock's gateway layer answers it from the contract's own
+  handle, so `Forbidden` is something you walk and see.
 
 An unreachable screen is **open**, naming the navigation that failed, never
 **done** read off the source.
@@ -210,12 +212,12 @@ in your reply.
   else. A handler bent until a screen passes hides the defect from the deployed
   system too. A `501` is a handler you never wrote: write it against the
   contract.
-- **Widen a scope to make a walk pass.** Not in a handler, not in a route
-  guard, not in `mock/roles.ts`. Scope comparison is a whole-string match at the
-  gateway and in the service, so a mock that accepts a sibling handle passes a
-  walk the deployed system answers 403 to. A role that cannot reach its own
-  screen is a **design defect**: post it open, naming the role, the screen and
-  the handle.
+- **Widen a scope to make a walk pass.** Not in `mock/roles.ts`, not in a route
+  guard, and not by adding a check to a handler that overrides the gateway
+  layer. Scope comparison is a whole-string match at the gateway, so a mock bent
+  to accept a sibling handle passes a walk the deployed system 401s. A role that
+  cannot reach its own screen is a **design defect**: post it open, naming the
+  role, the screen and the handle.
 - **Run `git`, commit, or open a pull request.** The record belongs to the agent
   that dispatched you. Progress, where your prompt says it goes, is the only
   writing you do outside the App Path.

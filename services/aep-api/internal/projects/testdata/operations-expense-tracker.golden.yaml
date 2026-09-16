@@ -8,7 +8,7 @@ operations:
         - name: jwt-auth
           version: v1
     - method: GET
-      path: /claims
+      path: /me/claims
       policies:
         - name: jwt-auth
           params:
@@ -17,13 +17,22 @@ operations:
                     - claims:read
           version: v1
     - method: POST
-      path: /claims
+      path: /me/claims
       policies:
         - name: jwt-auth
           params:
             scopes:
                 anyOf:
                     - claims:submit
+          version: v1
+    - method: GET
+      path: /claims
+      policies:
+        - name: jwt-auth
+          params:
+            scopes:
+                anyOf:
+                    - claims:read-all
           version: v1
     - method: POST
       path: /claims/{claimId}/approve
@@ -70,13 +79,22 @@ operations:
         - name: jwt-auth
           version: v1
     - method: OPTIONS
-      path: /claims
+      path: /me/claims
       policies:
         - name: jwt-auth
           params:
             scopes:
                 anyOf:
                     - claims:read
+          version: v1
+    - method: OPTIONS
+      path: /claims
+      policies:
+        - name: jwt-auth
+          params:
+            scopes:
+                anyOf:
+                    - claims:read-all
           version: v1
     - method: OPTIONS
       path: /claims/{claimId}/approve

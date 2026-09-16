@@ -46,10 +46,8 @@ import {
  * nothing beside such a row, and the Security page's own "used nowhere" /
  * "not declared" findings are where that disagreement is reported.
  *
- * An `own`-ownership action carries the qualifier the matrix draws as a chip,
- * so the row reads "Employee, Approver · own rows" — the same sentence in both
- * places. `any` gets none: it is the unremarkable case, and a note on every row
- * would be noise rather than information.
+ * No qualifier rides along: which rows an operation reaches is its PATH, and
+ * the API view is drawing the path on the same row (ADR-0031).
  */
 export function scopeRoles(doc: SecurityDesign): ScopeRoles {
   const out: ScopeRoles = {};
@@ -57,8 +55,7 @@ export function scopeRoles(doc: SecurityDesign): ScopeRoles {
     for (const action of permission.actions) {
       const handle = `${permission.resource}:${action.handle}`;
       const roles = rolesGranting(doc, handle);
-      out[handle] =
-        action.ownership === "own" ? { roles, note: "own rows" } : roles;
+      out[handle] = roles;
     }
   }
   return out;

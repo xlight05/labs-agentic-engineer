@@ -186,11 +186,11 @@ yourself; the URL is not something you can work out from inside the cluster.
   browser at it.
 
   **What a refusal looks like, and what you may conclude from it.** When a login
-  lacks the permission an operation requires, the **service** answers **403**
-  with `insufficient_scope`; the **gateway** — which is what the deployed app
-  actually talks to — answers **401**, and it answers the same 401, with the
-  same body and no `WWW-Authenticate`, for every other token failure too (no
-  token, expired, wrong audience). So a 401 seen through the app does not tell
+  lacks the permission an operation requires, the **gateway** — which is what
+  the deployed app talks to — answers **401**, and it answers the same 401, with
+  the same body and no `WWW-Authenticate`, for every other token failure too (no
+  token, expired, wrong audience). No generated service answers 403; a row that
+  is not the caller's is a 404. So a 401 seen through the app does not tell
   you WHY, and you must never report one as "missing permission" on its own.
   Assert the user-visible outcome the criterion states — the Forbidden view
   (inside the app's own shell, with the navigation the account CAN use still

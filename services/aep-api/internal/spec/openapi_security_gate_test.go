@@ -103,7 +103,7 @@ func catalogWithForeignResource(t *testing.T) string {
 		"resource":  "notifications",
 		"component": "notify-api",
 		"actions": []any{map[string]any{
-			"handle": "send", "ownership": "any", "description": "Send a notification",
+			"handle": "send", "description": "Send a notification",
 		}},
 	})
 	encoded, err := json.Marshal(doc)
@@ -283,7 +283,7 @@ func TestOpenapiSecurity_OperationMultipleRequirements(t *testing.T) {
 
 func TestOpenapiSecurity_OperationMultipleScopes(t *testing.T) {
 	two := mutate(t, p6Spec(t), "- oauth2: [claims:submit]", "- oauth2: [claims:submit, claims:read]")
-	assertContains(t, gate(t, two, fullBundle(t)), "POST /claims names more than one scope")
+	assertContains(t, gate(t, two, fullBundle(t)), "POST /me/claims names more than one scope")
 }
 
 // Two schemes in ONE requirement object mean "both", which the gateway cannot
@@ -453,7 +453,7 @@ func TestOpenapiSecurity_FirstViolationOrder(t *testing.T) {
 				spec = mutate(t, spec, "- oauth2: [claims:submit]", "- oauth2: [claims:submit, claims:read]")
 				return mutate(t, spec, "- oauth2: [claims:approve]", "- oauth2: [claims:archive]")
 			},
-			wantHas: "POST /claims names more than one scope",
+			wantHas: "POST /me/claims names more than one scope",
 		},
 		{
 			// Every security rule outranks the identity-header rules, which run
@@ -498,6 +498,7 @@ var openapiGateKeys = []string{
 	securityspec.MsgFlowScopeNotInCatalog,
 	securityspec.MsgFlowScopeNotOwned,
 	securityspec.MsgReservedOIDCScope,
+	securityspec.MsgHandleMixedReach,
 	securityspec.MsgIdentityHeaderRequired,
 	securityspec.MsgPublicOperationDeclaresIdentityHeader,
 }

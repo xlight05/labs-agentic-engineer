@@ -17,126 +17,236 @@
  */
 
 /**
- * The parts of the page the matrix does not draw: the org groups this project
- * introduces, the heading that opens the role cards — with the one thing a
- * reader must not miss about the test accounts — and what each wireframe
- * screen takes to reach.
+ * The parts of the page the matrix does not draw: the heading that opens the
+ * identity half, the org groups under it, and what each wireframe screen takes
+ * to reach.
  *
- * The two document sections are here rather than in the matrix because neither
- * crosses a role. A group is a directory object the roles are assigned TO, and
- * a screen's requirement is a single handle — a column would be a column of
- * one.
+ * Groups and roles are ONE section. They were two — a card of declared groups
+ * above a separate "Roles & users" heading — and the split cost the reader the
+ * only question they have about a group, which is whether it already exists:
+ * a reused group had no row at all, appearing solely as a chip inside whichever
+ * role card named it. Now every group this design touches is one list, each
+ * with a New / Existing chip, and the role cards below it name the group they
+ * are held by.
+ *
+ * Screens stay their own section because a screen's requirement is a single
+ * handle and crosses no role — a column would be a column of one.
  */
 
 import { Box, Stack, Typography } from "@wso2/oxygen-ui";
+import type { ReactNode } from "react";
 
+import type { SecurityReferenceFinding } from "@aep/agent-stream";
+
+import type { ProjectRolesLiveState } from "../../api/roles";
 import type { SecurityDesign } from "../../api/securityDesign";
+import { groupReachLine, groupRows } from "../../lib/groupRows";
+import { FindingLines } from "./FindingLine";
+import { GroupChip } from "./GroupChip";
 
-/**
- * Only the groups this project INTRODUCES. A role may be assigned to a group
- * the org already has; that one is named on the role, not declared here.
- */
-export function GroupsBlock({ doc }: { doc: SecurityDesign }) {
-  if (doc.groups.length === 0) return null;
+/** A bordered list of rows, divided rather than boxed one card each. */
+function RowList({ children }: { children: ReactNode }) {
   return (
-    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
-      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
-        New org groups
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        Groups this project adds to the organisation directory at Build. They
-        are shared — other projects can assign roles to them too.
-      </Typography>
-      <Stack spacing={0.5}>
-        {doc.groups.map((group) => (
-          <Typography key={group.name} variant="body2">
-            <Box component="span" sx={{ fontWeight: 600 }}>
-              {group.name}
-            </Box>
-            {" — "}
-            {group.description}
-          </Typography>
-        ))}
-      </Stack>
+    <Box
+      sx={{
+        border: 1,
+        borderColor: "divider",
+        borderRadius: 1,
+        "& > *": { borderBottom: 1, borderColor: "divider", px: 1.5, py: 1 },
+        "& > *:last-of-type": { borderBottom: 0 },
+      }}
+    >
+      {children}
     </Box>
   );
 }
 
 /**
- * The heading the role cards open under, and the standing fact about the test
- * accounts that sits with them.
- *
- * The accounts note is NOT an alert. It is how the platform works on every
- * healthy project, so a severity would cry wolf on all of them; what a reader
- * must not miss is the last clause, and that gets its weight from being bold in
- * quiet text rather than from borrowing a warning's colour.
+ * The quiet label over a sub-list inside a section. It is deliberately not a
+ * heading: Groups and Roles are two halves of one section, and promoting them
+ * would put four headings on a page with three sections.
  */
-export function RolesIntro() {
+export function SubLabel({ children }: { children: ReactNode }) {
+  return (
+    <Typography
+      variant="overline"
+      color="text.secondary"
+      sx={{ display: "block", letterSpacing: "0.1em" }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+/**
+ * The heading the groups and role cards open under.
+ *
+ * It no longer carries the paragraph about the platform identity provider: the
+ * New / Existing chip on each group says the same thing per group and says it
+ * from the live directory, so the paragraph was a less accurate second copy.
+ */
+export function IdentityIntro({ actors }: { actors: readonly string[] }) {
   return (
     <Box>
-      <Typography variant="h5" sx={{ mb: 0.5 }}>
-        Roles &amp; users
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+        Groups, roles &amp; users
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        These roles are created on the platform identity provider when you
-        click Build — the same directory every project shares, so a role
-        another project already uses is reused rather than duplicated.
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+        Who holds the permissions this project defines. A group is the
+        organisation&apos;s and is shared across projects; a role is this
+        project&apos;s and is rewritten to match this document at every Build.
       </Typography>
-      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-        Disposable accounts for agents, not for real people
-      </Typography>
-      <Typography variant="body2" color="text.secondary">
-        Each role gets a test user so the validation agent can sign in and check
-        what that role can actually do. Usernames live here; passwords are shown
-        on Deploy after Build publishes them —{" "}
-        <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>
-          never name a real person
-        </Box>
-        .
-      </Typography>
+      <ActorsLine actors={actors} />
     </Box>
   );
 }
 
-/** What a caller must hold to reach each screen the wireframes declare. */
-export function ScreensBlock({ doc }: { doc: SecurityDesign }) {
-  if (doc.screens.length === 0) return null;
+/**
+ * Every org group this design touches — the ones it introduces and the ones it
+ * reuses, in one list, each judged against the live directory.
+ *
+ * Nothing renders when the design names no group at all: an API-only project
+ * whose roles are all service-kind has no directory surface to describe.
+ */
+export function GroupsBlock({
+  doc,
+  live,
+}: {
+  doc: SecurityDesign;
+  live: ProjectRolesLiveState | undefined;
+}) {
+  const rows = groupRows(doc, live);
+  if (rows.length === 0) return null;
   return (
-    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
-      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+    <Box sx={{ mt: 2 }}>
+      <SubLabel>Groups</SubLabel>
+      <Box sx={{ mt: 0.5 }}>
+        <RowList>
+          {rows.map((row) => {
+            const reach = groupReachLine(row);
+            return (
+              <Stack
+                key={row.name}
+                data-testid="group-row"
+                direction="row"
+                spacing={1}
+                alignItems="baseline"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {row.name}
+                </Typography>
+                <GroupChip row={row} />
+                {row.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {row.description}
+                  </Typography>
+                )}
+                {reach && (
+                  <Typography variant="caption" color="text.secondary">
+                    {reach}
+                  </Typography>
+                )}
+              </Stack>
+            );
+          })}
+        </RowList>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * The actors the PRD names, beside the roles built from them.
+ *
+ * Stated, never checked. "Every PRD actor gets a role" is a real rule, but it
+ * is not one a name comparison can judge: a role may not take a name an org
+ * group already owns, so the actor `Finance` legitimately becomes the role
+ * `FinanceReviewer`. A machine verdict here would be wrong on exactly the
+ * designs that followed the rule — so the page puts the two lists in front of
+ * the reader, who can tell in a glance what a matcher cannot.
+ *
+ * Nothing renders when the PRD is unreadable or names nobody: an empty actor
+ * list is "we could not read it", not "this design has no actors".
+ */
+function ActorsLine({ actors }: { actors: readonly string[] }) {
+  if (actors.length === 0) return null;
+  return (
+    <Typography variant="body2" color="text.secondary">
+      The PRD names {actors.length === 1 ? "one actor" : `${actors.length} actors`}:{" "}
+      <Box component="span" sx={{ color: "text.primary" }}>
+        {actors.join(", ")}
+      </Box>
+      . Every one of them should have a role below — by description, not by
+      name: a role cannot take a name an org group already owns.
+    </Typography>
+  );
+}
+
+/**
+ * What a caller must hold to reach each screen the wireframes declare — and the
+ * findings about the screen set as a whole.
+ *
+ * The findings are why this block renders even with no rows. The rule a reader
+ * most needs is a screen the wireframe DRAWS and this document does not gate,
+ * and that one is invisible in a list of gated screens by construction: the
+ * page can only draw the rows the document has. An empty block that says "these
+ * four screens are open to anyone signed in" is the whole point.
+ */
+export function ScreensBlock({
+  doc,
+  findings = [],
+}: {
+  doc: SecurityDesign;
+  findings?: readonly SecurityReferenceFinding[];
+}) {
+  if (doc.screens.length === 0 && findings.length === 0) return null;
+  return (
+    <Box>
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
         Screens
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
         What a person must hold to reach each screen.
       </Typography>
-      <Stack spacing={0.5}>
-        {doc.screens.map((screen) => (
-          <Stack
-            key={`${screen.component}:${screen.screen}`}
-            direction="row"
-            spacing={1}
-            alignItems="center"
-          >
-            <Typography variant="body2">{screen.screen}</Typography>
-            <Typography variant="caption" color="text.secondary">
-              {screen.component}
-            </Typography>
-            {screen.requires === null ? (
-              <Typography variant="body2" color="text.secondary">
-                Any signed-in person
-              </Typography>
-            ) : screen.requires === "public" ? (
-              <Typography variant="body2" color="text.secondary">
-                Open to everyone, no sign-in
-              </Typography>
-            ) : (
-              <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                {screen.requires}
-              </Typography>
-            )}
-          </Stack>
-        ))}
-      </Stack>
+      <FindingLines findings={findings} />
+      {doc.screens.length > 0 && (
+        <Box sx={{ mt: 1 }}>
+          <RowList>
+            {doc.screens.map((screen) => (
+              <Stack
+                key={`${screen.component}:${screen.screen}`}
+                direction="row"
+                spacing={1}
+                alignItems="baseline"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {screen.screen}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {screen.component}
+                </Typography>
+                {screen.requires === null ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Any signed-in person
+                  </Typography>
+                ) : screen.requires === "public" ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Open to everyone, no sign-in
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                    {screen.requires}
+                  </Typography>
+                )}
+              </Stack>
+            ))}
+          </RowList>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -1,6 +1,12 @@
 # ADR-0030 — Scopes are the authorization authority for a generated app
 
-**Status:** Accepted · 2026-09-13
+**Status:** Accepted · 2026-09-13 · **point 3 superseded** by
+[ADR-0031](ADR-0031-reach-is-the-path.md) on 2026-09-16 (which rows an
+operation reaches is its path; `ownership` and the `read-all` widening idiom are
+gone) · **point 5 superseded** by
+[ADR-0032](ADR-0032-the-gateway-assertion-replaces-the-service-scope-recheck.md)
+on 2026-09-16 (the service verifies the gateway's signed assertion and holds no
+scope table). Every other point stands.
 **Supersedes the role half of:** [ADR-0022](ADR-0022-roles-and-test-users-are-shared-directory-objects.md),
 whose group and test-account model stands unchanged.
 
@@ -65,8 +71,11 @@ catalog under it. Derivation rather than lookup, because the parties that must
 agree on the string never speak to each other, and a hostname would make one
 project's audience differ between the local plane and a cloud one.
 
-**5. The service enforces the same scope the gateway does.** The gateway is the
-first check, not the only one. It maps the token's `scope` claim onto
+**5. The service enforces the same scope the gateway does.** *Superseded by
+[ADR-0032](ADR-0032-the-gateway-assertion-replaces-the-service-scope-recheck.md):
+the service verifies a gateway-signed assertion instead and holds no scope
+table; the text below is kept as the record of what was decided here.* The
+gateway is the first check, not the only one. It maps the token's `scope` claim onto
 `x-user-scopes`, and the generated service's middleware re-checks the
 operation's own handle against that header before the handler runs. A trait that
 failed to render, a route reached by another path inside the cell, or a policy

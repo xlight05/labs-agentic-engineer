@@ -1353,6 +1353,11 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// address is derived per deploy beside the context-path builder it has to
 	// agree with (projects.APIGatewayHost). Empty is the normal case.
 	deploymentService.SetAPIGatewayHostOverride(cfg.APIGatewayHost)
+	// How a protected service verifies that a request reached it through the
+	// gateway. Read off the Environment's annotations — the same projection the
+	// Thunder binding arrives on, and the only one this process can see from
+	// outside the cluster.
+	deploymentService.SetGatewayAssertions(environmentClient)
 	configService.SetConverger(deploymentService)
 	// The cross-project access grant is the only deploy observer left. The two
 	// that rode beside it — the env-config.js re-emit and the api-configuration

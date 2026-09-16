@@ -1,6 +1,6 @@
 ---
 name: ballerina
-description: "Use this whenever you are working with ballerina code or editing .bal files — project layout, the bal library lookup flow, scope enforcement for a contract-backed service, and the bal build && bal test verify step."
+description: "Use this whenever you are working with ballerina code or editing .bal files — project layout, the bal library lookup flow, verifying the gateway's signed assertion on a contract-backed service, and the bal build && bal test verify step."
 metadata:
   aep:
     kind: org
@@ -60,98 +60,94 @@ events.
   verifies with `bal build && bal test` — a green build says nothing about a
   test that guards a correctness invariant.
 
-## Scope enforcement on a contract-backed service
+## Who the caller is: the gateway's signed assertion
 
 A service whose `design.json` sets `exposesAPI.auth` implements
-`specs/design/components/<name>/openapi.yaml`, and that contract declares one
-OAuth2 scope per protected operation. **`bal openapi` drops the `security`
-block entirely** — the generated resource functions carry no scope information,
-and no flag changes that. So the mapping is transcribed, and a shipped test
-keeps it honest.
+`specs/design/components/<name>/openapi.yaml`.
+
+**The gateway has already done the authorization.** It validated the caller's
+token and checked the scope each operation declares in that same contract; a
+request that failed either never reached this process. So this service holds
+**no operation → scope table**. That `bal openapi` drops the contract's
+`security` block no longer matters: there is nothing to transcribe, and nothing
+to keep in sync.
+
+What the gateway cannot do is prove to your code that a request *came through
+it* — any pod that can open a socket to this service can send whatever headers
+it likes. So it signs a JWT of the caller it authenticated and puts it on the
+upstream request, and this service verifies that signature against one
+certificate the platform publishes per environment.
 
 From the App Path:
 
 ```bash
-cp "$AEP_SKILLS_DIR/ballerina/assets/scopes.bal" scopes.bal
-mkdir -p tests
-cp "$AEP_SKILLS_DIR/ballerina/assets/scope_table_drift_test.bal" tests/scope_table_drift_test.bal
-cp ../specs/design/components/<name>/openapi.yaml openapi.yaml
+cp "$AEP_SKILLS_DIR/ballerina/assets/gateway_assertion.bal" gateway_assertion.bal
 ```
 
 If `$AEP_SKILLS_DIR` is unset, copy from `assets/` next to this skill's
-`SKILL.md` (the BFF mirrors that directory to `.claude/skills/ballerina/`).
-`tests/scope_table_drift_test.bal` is verbatim — never edit it; it is the only
-thing that catches a table row drifting from the contract.
+`SKILL.md` (the BFF mirrors that directory to `.claude/skills/ballerina/`). The
+file is **verbatim — there is no line to edit**.
 
-The last `cp` is not optional. **`openapi.yaml` at the package root is the copy
-the drift test reads** — `yaml:readFile("openapi.yaml")` resolves against the
-package root, not against `specs/`, so without it `bal test` fails on a missing
-file rather than on a wrong row. Re-copy it whenever the contract changes; it is
-a build input, and it is committed with the package.
+Two edits, and nothing else:
 
-Three edits, and nothing else:
-
-1. **`OPERATION_SCOPES` in `scopes.bal`** — one row per operation in the
-   contract, between the marked comment lines. `segments` is the path split on
-   `/` with every `{pathParam}` written as `"*"`; `scope` is the handle, `()`
-   for an operation that inherits the document-level `security: [{oauth2: []}]`
-   (signed in, no scope), or `PUBLIC` for `security: []`.
-2. **The generated service becomes interceptable**:
+1. **The generated service becomes interceptable**:
    ```ballerina
    service http:InterceptableService / on ep0 {
-       public function createInterceptors() returns ScopeInterceptor => new;
+       public function createInterceptors() returns AssertionInterceptor => new;
        // …generated resources, unchanged…
    }
    ```
-3. **Nothing in `Ballerina.toml` or `Dependencies.toml`.** The drift test's
-   `import ballerina/yaml` is the whole declaration: `bal build` resolves it and
-   records it as `scope = "testOnly"` on its own, because it is imported only
-   from `tests/`, so the YAML parser never ships in the runtime image. Hand-
-   editing `Dependencies.toml` here is the same mistake as anywhere else.
+2. **A resource that needs an identity takes `http:RequestContext ctx`** and
+   calls `requireGatewayCaller(ctx)`, returning its `http:Unauthorized` as-is:
+   ```ballerina
+   // GET /me/claims — the caller's rows, resolved through sub and nothing the client sent
+   resource function get me/claims(http:RequestContext ctx) returns Claim[]|http:Unauthorized {
+       GatewayCaller|http:Unauthorized caller = requireGatewayCaller(ctx);
+       if caller is http:Unauthorized {
+           return caller;
+       }
+       return store.byOwner(caller.userId);
+   }
+   // GET /claims — every row; a different operation, guarded by claims:read-all
+   resource function get claims() returns Claim[] {
+       return store.all();
+   }
+   ```
 
-**Read identity only from the injected headers, and read them the way they are
-actually shaped.** `api-management` holds the full table; these four are what a
-resource gets wrong:
+Nothing goes in `Ballerina.toml` or `Dependencies.toml`: `ballerina/crypto`,
+`ballerina/jwt` and `ballerina/os` are distribution modules that `bal build`
+resolves from the imports.
+
+**Read identity from the verified caller, never from a header.**
 
 | Rule | Why |
 |---|---|
-| **Never read `Authorization`** — the gateway strips it. | Binding it as a resource header parameter yields nothing on every request that came through the gateway, and whatever the caller typed on a public one. |
-| **Test a header for *empty*, never for *missing*.** | The asset's `header()` helper collapses both cases to `""` for exactly this reason; a `is ()` check on a bound `string?` parameter is not the same test. |
-| **`X-User-Scopes` is the authorization authority** — what it carries and how it compares is in that table. | Call the asset's `hasScope`, which already splits on whitespace and compares whole handles. A `string:includes` test is the trap — it matches `claims:read` inside `claims:read-all` — and so is testing the header for non-empty, which is true of every signed-in caller. |
-| **`X-User-Groups` is JSON** (`["Finance"]`), and this stack does not read it. | Roles reach a service only as scopes. If anything ever needs the list it is `value:fromJsonString`, never a comma split. |
+| **`requireGatewayCaller(ctx)`** in any resource that needs an identity. | The assertion is the only statement about the caller that a forged request cannot make. |
+| **Never bind `X-User-Id`, `X-User-Scopes`, `X-User-Groups` or `Authorization`** as resource header parameters. | The first three are unsigned — the gateway sets them, and so can anyone else who reaches this pod directly. `Authorization` is stripped. |
+| **A `security: []` resource reads NO identity at all** and takes no `ctx`. | The gateway serves a public operation with no assertion, so there is no caller to read there. |
+| **Compare a scope with the asset's `hasScope`.** | It compares whole handles. `string:includes` is the trap — it matches `claims:read` inside `claims:read-all`. |
+| **Never `http:ServiceConfig { auth: … }`.** | That is listener-side token validation against the identity provider — the coupling the assertion exists to remove. |
 
-**What the interceptor is, and is not.** `api-management` owns the argument: it
-turns *misconfiguration* into a 401/403 and is the second line behind the
-NetworkPolicy the workload's `visibility: internal` creates, not a replacement
-for it. What that rules out in Ballerina: do not try to close the gap by
-validating a JWT in the service — `http:ServiceConfig { auth: … }` is
-listener-side token validation and is the wrong construct here.
-
-**Widening inside a resource.** The generated resource already binds
-`X-User-Scopes` as a header parameter, so no context plumbing is needed:
-
-```ballerina
-Claim[] rows = hasScope(xUserScopes, "claims:read-all")
-    ? store.all()
-    : store.byOwner(xUserId);
-```
-
-Never use `hasScope` as an operation's only check — the interceptor and the
-contract own that.
+`hasScope` is never an operation's only check. Whether the operation may be
+called at all was settled at the gateway, from the contract.
 
 A **single-row** read is the same rule at the other end: when the caller holds
 only the `own` handle and the row belongs to someone else, return **404, not
 403** — a caller who may not see a row may not learn it exists from a status
 code either (`api-management` owns the rule; this is its Ballerina shape).
 
-**Verify** a package with `scopes.bal` in it:
+**Verify** a package with `gateway_assertion.bal` in it:
 
 ```bash
 bal build && bal test
 ```
 
-`bal test` is what runs `testScopeTableMatchesContract`; without it a table row
-that disagrees with the contract ships silently.
+Write the tests against a **throwaway RSA keypair**: mint an assertion with the
+private half and export `GATEWAY_ASSERTION_CERTIFICATE` from its self-signed
+certificate, so nothing in the test talks to a gateway. Cover four cases — a
+valid assertion is accepted; one signed by a *different* key is a 401; one whose
+payload was edited after signing is a 401 (never an anonymous caller); and a
+`security: []` resource answers 200 with no assertion at all.
 
 ## Dockerfile
 

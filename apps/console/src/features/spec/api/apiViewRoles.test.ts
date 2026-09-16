@@ -41,15 +41,9 @@ describe("scopeRolesOf — the catalog as the API view reads it", () => {
     expect(roles["reports:read"]).toEqual(["Approver"]);
   });
 
-  it("carries the ownership qualifier for an own-rows action", () => {
-    expect(roles["claims:read"]).toEqual({
-      roles: ["Employee", "Approver"],
-      note: "own rows",
-    });
-    expect(roles["claims:submit"]).toEqual({
-      roles: ["Employee"],
-      note: "own rows",
-    });
+  it("carries no qualifier — which rows an operation reaches is its path, drawn on the same row", () => {
+    expect(roles["claims:read"]).toEqual(["Employee", "Approver"]);
+    expect(roles["claims:submit"]).toEqual(["Employee"]);
   });
 
   // "Declared and granted by nobody" is a real answer, and the API view draws
@@ -65,6 +59,6 @@ describe("scopeRolesOf — the catalog as the API view reads it", () => {
     expect(scopeRolesOf(null)).toBeUndefined();
     expect(scopeRolesOf("")).toBeUndefined();
     expect(scopeRolesOf("{}")).toBeUndefined();
-    expect(scopeRolesOf('{"version": 2,')).toBeUndefined();
+    expect(scopeRolesOf('{"version": 3,')).toBeUndefined();
   });
 });
