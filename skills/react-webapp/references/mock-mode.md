@@ -251,16 +251,28 @@ import { scopesFromToken } from "./authz/session";
 
 type Todo = components["schemas"]["Todo"];
 
+// The caller this mock speaks for, shaped like the gateway assertion: a
+// directory id AND a login name, because which one a row stores is the model's
+// choice. Seed one row owned by somebody else, or `/me/` and every-row look
+// identical.
+export const mockCaller = {
+  userId: "01a0ab00-0000-7000-8000-000000000001",
+  username: "mock-owner",
+};
+
 let todos: Todo[] = [
-  { id: "1", title: "Buy milk", done: false, owner: "mock-owner" },
-  { id: "2", title: "Ship the thing", done: true, owner: "mock-owner" },
+  { id: "1", title: "Buy milk", done: false, owner: mockCaller.userId },
+  { id: "2", title: "Ship the thing", done: true, owner: mockCaller.userId },
+  { id: "3", title: "Someone else's", done: false, owner: "not-the-caller" },
 ];
 
 export const handlers = [
   // The caller's todos — the path says so. No `todos:read` check: a caller who
   // does not hold it was refused by mock/authz/gateway.ts and never reached here.
+  // Resolve the caller from `mockCaller`, never a literal: filtering on a
+  // constant the seed rows also hardcode makes reach pass by construction.
   http.get("/api/me/todos", () =>
-    HttpResponse.json(todos.filter((t) => t.owner === "mock-owner")),
+    HttpResponse.json(todos.filter((t) => t.owner === mockCaller.userId)),
   ),
 
   // Every todo — a different operation, guarded by todos:read-all. Nothing to

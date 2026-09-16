@@ -243,6 +243,25 @@ export type {
 } from "./security-design-references.js";
 
 /**
+ * The tail a refused write carries: what happened to the file, and the ONE move
+ * that fixes it. The rule sentences themselves are phrased as instructions to
+ * the author ("Rename the role."), which reads as advice about a file that
+ * exists — seen live: the agent answered a refused `addFile` with `editFile` and
+ * got NO_SUCH_FILE, because a rejected write leaves the bundle byte-for-byte
+ * unchanged and the file was never created. Every other gate says this
+ * (`openapi-spec.ts`, `design-diagrams.ts`, `component-dependencies.ts`); this
+ * one now does too.
+ *
+ * Deliberately NOT in the message catalog: the catalog is the vocabulary BOTH
+ * gates share, and the platform's save-gate refuses a document that is already
+ * on disk, where "re-emit it with addFile" is not the move.
+ */
+const REMEDY =
+  "The file is unchanged — the write was refused, so this path holds nothing to edit. " +
+  "Fix what this names and re-emit the WHOLE corrected document in ONE retry with addFile " +
+  "(removeFile first only if the file already existed).";
+
+/**
  * Validate a candidate security.json body for `path`. Returns null when the
  * path is not the security document or the content is valid; otherwise the
  * problem, phrased for the model's self-correction.
@@ -272,12 +291,15 @@ export function checkSecurityDesign(
     const issues = res.error.issues
       .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("; ");
-    return { code: "SCHEMA_VIOLATION", message: `${path} violates the SecurityDesign schema — ${issues}.` };
+    return {
+      code: "SCHEMA_VIOLATION",
+      message: `${path} violates the SecurityDesign schema — ${issues}. ${REMEDY}`,
+    };
   }
 
   const refProblem = checkSecurityReferences(res.data, ctx);
   if (refProblem) {
-    return { code: "SCHEMA_VIOLATION", message: `${path}: ${refProblem}` };
+    return { code: "SCHEMA_VIOLATION", message: `${path}: ${refProblem} ${REMEDY}` };
   }
   return null;
 }

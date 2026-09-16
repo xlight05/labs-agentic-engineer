@@ -37,11 +37,18 @@ what to write; this page says what must stay true whatever they write.
    for every reader of the block. ADR-0030.
 
 4. **Reach is the path.** `/me/<resource>` is the caller's rows, resolved
-   through the gateway assertion's `sub`; `/me/<relation>/<resource>` is a
-   relation's; anything else is every row. A handle guards operations on one
-   side of `/me/`, never both. A capability at two reaches is two operations
-   with two handles. Nothing widens on a scope, and a row that is not the
-   caller's is 404, never 403. ADR-0031.
+   through the gateway assertion; `/me/<relation>/<resource>` is a relation's;
+   anything else is every row. A handle guards operations on one side of
+   `/me/`, never both. A capability at two reaches is two operations with two
+   handles. Nothing widens on a scope, and a row that is not the caller's is
+   404, never 403. ADR-0031.
+
+   **A reach declares the field it matches on, and the assertion must carry
+   that identifier.** `sub` is a directory UUID; a model that names its person
+   by login name or email must be matched on that instead. The design says
+   which field before any code is written. A UUID compared to a name matches
+   nothing for every caller, and an identity that will not resolve is an error,
+   never an empty result.
 
 5. **The gateway is the whole "may this be called" decision.** It is rendered
    per operation from the same `security` block the gates read. The service
@@ -87,6 +94,14 @@ what to write; this page says what must stay true whatever they write.
     a designed state: the operations with no `security` override serve them,
     and the SPA shows `NoAccess`. Inferring a role from the absence of one is
     fail-open. ADR-0030 point 8.
+
+11. **A screen shows only what its role can reach.** Every field a screen
+    displays is carried by the operation it loads, under a handle that screen's
+    role holds. A criterion naming a field no permitted operation returns is a
+    design contradiction, not a coding task: put the field on the projection
+    the screen already reads, never widen the role to reach a second one.
+    *Why:* otherwise the screen renders an id where a name belongs, and no code
+    can fix it.
 
 ## What this rules out, by name
 
