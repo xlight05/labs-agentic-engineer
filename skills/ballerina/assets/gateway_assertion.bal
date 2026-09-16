@@ -56,10 +56,14 @@ const string CALLER_CTX_KEY = "aep_gateway_caller";
 #
 # + userId - the assertion's `sub`: a directory id for an end user, a client id
 #            for a service-to-service caller
+# + username - the assertion's `username`: the login name the person signs in
+#              with. "" when the assertion carries no such claim. See
+#              `requireCallerUsername` before you reach for this.
 # + scopes - the whole handles the caller holds
 # + orgHandle - the assertion's `ouHandle`; "" when the IdP sent none
 public type GatewayCaller record {|
     string userId;
+    string username;
     string[] scopes;
     string orgHandle;
 |};
@@ -106,6 +110,32 @@ public isolated function requireGatewayCaller(http:RequestContext ctx)
         return <http:Unauthorized>{body: {message: "no verified caller on this request"}};
     }
     return caller;
+}
+
+# The caller's login name, for a model that identifies people by name.
+#
+# `userId` is a directory UUID. When a row names its person by login name —
+# `ownerUsername`, an email local part — that is the side to match on, and
+# comparing the UUID instead matches nothing for every caller, silently: the
+# endpoint answers `200 []`, which reads as "you own nothing" rather than "this
+# service cannot tell who you are". An identity that will not resolve is an
+# error, never an empty result.
+#
+# Not the `x-user-name` header: the gateway sends one, but it is unsigned and
+# anything reaching this pod can forge it. Only the assertion is evidence.
+#
+# + caller - the verified caller
+# + return - the caller's login name, or a 500 to return as-is when the
+#            assertion carried none
+public isolated function requireCallerUsername(GatewayCaller caller)
+        returns string|http:InternalServerError {
+    if caller.username.trim() == "" {
+        return <http:InternalServerError>{body: {
+            message: "the gateway assertion carries no username, so this service "
+                + "cannot resolve the caller's own records"
+        }};
+    }
+    return caller.username;
 }
 
 # Verifies the assertion, if the request carries one, and puts the caller it
@@ -187,8 +217,10 @@ public isolated service class AssertionInterceptor {
             return <http:Unauthorized>{body: {message: "gateway assertion names no subject"}};
         }
         anydata orgHandle = payload["ouHandle"];
+        anydata username = payload["username"];
         GatewayCaller caller = {
             userId: subject,
+            username: username is string ? username : "",
             scopes: splitScopes(payload["scope"]),
             orgHandle: orgHandle is string ? orgHandle : ""
         };

@@ -270,12 +270,16 @@ Extra component-kind siblings: add one `location /api/<component-name>/` block
 each (same `proxy_pass` pattern, rewrite stripping that prefix) and a matching
 `sed` of `__<NAME>_BACKEND__` from that sibling's `<DEP>_URL`. Primary stays `/api`.
 
-`index.html` — the `env-config.js` tag is **synchronous** and comes BEFORE the
-bundle. No `async`, no `defer`, no `type="module"` on it.
+`index.html` — the `env-config.js` tag is **synchronous**, **root-absolute** and
+comes BEFORE the bundle. No `async`, no `defer`, no `type="module"` on it.
+
+The leading `/` is load-bearing: a relative `./` resolves against the current
+route, so on any nested URL the catch-all returns `index.html` instead and the
+app never mounts.
 
 ```html
 <head>
-  <script src="./env-config.js"></script>          <!-- 1. synchronous -->
+  <script src="/env-config.js"></script>           <!-- 1. synchronous, root-absolute -->
 </head>
 <body>
   <div id="root"></div>
@@ -404,7 +408,7 @@ place rather than stripping `external` because this SPA uses `/api`
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| SPA throws on load: `window._env_ not set` | `/env-config.js` failed to load — path wrong, 404, or the `<script>` was `defer`/`async` | Make the tag synchronous in `<head>`, BEFORE the bundle's `<script type="module">`. |
+| SPA throws on load: `window._env_ not set` | `/env-config.js` failed to load. A `SyntaxError: Unexpected token '<'` just before it means the tag is relative and the catch-all served `index.html`. Otherwise 404, or the `<script>` was `defer`/`async` | Root-absolute (`/env-config.js`), synchronous, in `<head>` before the bundle. Verify on a nested route loaded directly, not clicked into. |
 | `nginx: [emerg] host not found in upstream "…"` at pod start | Literal `proxy_pass http://hostname` (startup DNS) or leftover `/oidc/` block | Use the asset conf (`proxy_pass http://$api_backend`) and the drop-in; delete `/oidc/`. |
 | Browser CORS error calling the sibling API | `baseUrl` is the public gateway URL or `window._env_.API_BASE_URL` | `baseUrl: "/api"`. |
 | `/api` 502, SPA otherwise fine | API pod down, or drop-in left `TODO_API_URL` when the dep is named something else | Align both `API_URL="${…}"` lines with the dependency name; 502 while the API is down is expected. |
