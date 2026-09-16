@@ -85,6 +85,11 @@ smoke.
 - **Probes**: submit one form empty; open one detail route with an id that does
   not exist. The wireframe draws the happy path; these are the two states it
   implies.
+- **Deep entry**: load one nested route as a fresh page load in the address
+  bar, not by clicking into it. Clicking never leaves the first document, so
+  only this exercises the app booting at that URL — the path a bookmark, a
+  shared link and F5 all take. A blank page is the finding; `agent-browser
+  errors` names it.
 - **Console** (`agent-browser console`, read whole, once, before you stop): a
   page that renders and throws is broken for whoever touches it next, and the
   error text is the finding.

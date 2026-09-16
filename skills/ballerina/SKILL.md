@@ -98,9 +98,12 @@ Two edits, and nothing else:
    }
    ```
 2. **A resource that needs an identity takes `http:RequestContext ctx`** and
-   calls `requireGatewayCaller(ctx)`, returning its `http:Unauthorized` as-is:
+   calls `requireGatewayCaller(ctx)`, returning its `http:Unauthorized` as-is.
+   Match on the side the model stores — `userId` for a directory id,
+   `requireCallerUsername(caller)` for a login name:
    ```ballerina
-   // GET /me/claims — the caller's rows, resolved through sub and nothing the client sent
+   // GET /me/claims — the caller's rows, resolved through the assertion and
+   // nothing the client sent. `ownerId` here stores a directory id.
    resource function get me/claims(http:RequestContext ctx) returns Claim[]|http:Unauthorized {
        GatewayCaller|http:Unauthorized caller = requireGatewayCaller(ctx);
        if caller is http:Unauthorized {
@@ -108,6 +111,11 @@ Two edits, and nothing else:
        }
        return store.byOwner(caller.userId);
    }
+   // Same shape when the model stores a login name instead — the only change
+   // is which side of the comparison the assertion supplies.
+   //   string|http:InternalServerError name = requireCallerUsername(caller);
+   //   if name is http:InternalServerError { return name; }
+   //   return store.byManager(name);
    // GET /claims — every row; a different operation, guarded by claims:read-all
    resource function get claims() returns Claim[] {
        return store.all();
@@ -123,6 +131,7 @@ resolves from the imports.
 | Rule | Why |
 |---|---|
 | **`requireGatewayCaller(ctx)`** in any resource that needs an identity. | The assertion is the only statement about the caller that a forged request cannot make. |
+| **Match the caller on the side the model stores** — `userId` for a directory id, `requireCallerUsername(caller)` for a login name. | A UUID compared to a name matches nothing and answers `200 []` — "you own nothing", not "who are you". An identity failure is never an empty list. |
 | **Never bind `X-User-Id`, `X-User-Scopes`, `X-User-Groups` or `Authorization`** as resource header parameters. | The first three are unsigned — the gateway sets them, and so can anyone else who reaches this pod directly. `Authorization` is stripped. |
 | **A `security: []` resource reads NO identity at all** and takes no `ctx`. | The gateway serves a public operation with no assertion, so there is no caller to read there. |
 | **Compare a scope with the asset's `hasScope`.** | It compares whole handles. `string:includes` is the trap — it matches `claims:read` inside `claims:read-all`. |
